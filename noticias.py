@@ -7,80 +7,84 @@ import xml.etree.ElementTree as ET
 import re
 from config import IDS_AUTORIZADOS
 
-RSS_URL = "https://publicidadeimobiliaria.com/feed/"
+# URLs para tentar em ordem
+RSS_URLS = [
+    "https://publicidadeimobiliaria.com/?feed=rss2",
+    "https://publicidadeimobiliaria.com/?feed=rss",
+    "https://publicidadeimobiliaria.com/feed/rss/",
+    "https://publicidadeimobiliaria.com/feed/",
+]
 
 _ids_enviados = set()
 _inicializado = False
 
 
 async def buscar_noticias():
-    try:
-        async with httpx.AsyncClient(
-            timeout=30,
-            follow_redirects=True,
-            headers={
-                "User-Agent": "Mozilla/5.0 (compatible; RSS reader)",
-                "Accept": "application/rss+xml, application/xml, text/xml, */*"
-            }
-        ) as client:
-            response = await client.get(RSS_URL)
+    """Tenta múltiplas URLs de RSS até encontrar XML válido."""
+    for url in RSS_URLS:
+        try:
+            async with httpx.AsyncClient(
+                timeout=30,
+                follow_redirects=True,
+                headers={
+                    "User-Agent": "Feedfetcher-Google; (+http://www.google.com/feedfetcher.html)",
+                    "Accept": "application/rss+xml, application/xml, text/xml, */*",
+                    "Cache-Control": "no-cache"
+                }
+            ) as client:
+                response = await client.get(url)
 
-        print(f"📰 RSS status: {response.status_code}")
-        print(f"📰 RSS content-type: {response.headers.get('content-type','')}")
+            texto = response.text.strip()
+            print(f"📰 {url} → {response.status_code} | {response.headers.get('content-type','')[:30]}")
 
-        if response.status_code != 200:
-            print(f"⚠️ RSS erro: {response.status_code}")
-            return []
-
-        texto = response.text.strip()
-
-        # Verifica se é XML válido
-        if not texto.startswith("<?xml") and not texto.startswith("<rss"):
-            print(f"⚠️ RSS não retornou XML. Início: {texto[:200]}")
-            return []
-
-        root = ET.fromstring(texto)
-        channel = root.find("channel")
-        if not channel:
-            print("⚠️ RSS: channel não encontrado")
-            return []
-
-        noticias = []
-        for item in channel.findall("item"):
-            titulo = item.findtext("title", "").strip()
-            link   = item.findtext("link",  "").strip()
-            data   = item.findtext("pubDate", "").strip()[:25]
-            desc   = item.findtext("description", "").strip()
-
-            if not titulo or not link:
+            if response.status_code != 200:
                 continue
 
-            desc_limpa = re.sub(r'<[^>]+>', '', desc)[:200].strip()
-            categoria  = ""
-            cat_el     = item.find("category")
-            if cat_el is not None and cat_el.text:
-                categoria = cat_el.text.strip()
+            if not ("<rss" in texto or "<?xml" in texto):
+                continue
 
-            slug = link.strip("/").split("/")[-1] or link
+            # Tenta parsear
+            root = ET.fromstring(texto)
+            channel = root.find("channel")
+            if not channel:
+                continue
 
-            noticias.append({
-                "id":        slug,
-                "titulo":    titulo,
-                "link":      link,
-                "data":      data,
-                "categoria": categoria,
-                "resumo":    desc_limpa
-            })
+            noticias = []
+            for item in channel.findall("item"):
+                titulo = item.findtext("title", "").strip()
+                link   = item.findtext("link",  "").strip()
+                data   = item.findtext("pubDate", "").strip()[:25]
+                desc   = item.findtext("description", "").strip()
 
-        print(f"📰 {len(noticias)} notícias no RSS")
-        return noticias
+                if not titulo or not link:
+                    continue
 
-    except ET.ParseError as e:
-        print(f"⚠️ RSS ParseError: {e}")
-        return []
-    except Exception as e:
-        print(f"⚠️ RSS erro geral: {e}")
-        return []
+                desc_limpa = re.sub(r'<[^>]+>', '', desc)[:200].strip()
+                categoria  = ""
+                cat_el = item.find("category")
+                if cat_el is not None and cat_el.text:
+                    categoria = cat_el.text.strip()
+
+                slug = link.strip("/").split("/")[-1] or link
+
+                noticias.append({
+                    "id":        slug,
+                    "titulo":    titulo,
+                    "link":      link,
+                    "data":      data,
+                    "categoria": categoria,
+                    "resumo":    desc_limpa
+                })
+
+            print(f"📰 ✅ RSS funcionou! {len(noticias)} notícias de {url}")
+            return noticias
+
+        except Exception as e:
+            print(f"📰 ⚠️ Falhou {url}: {e}")
+            continue
+
+    print("📰 ❌ Nenhuma URL de RSS funcionou.")
+    return []
 
 
 def formatar_noticia(n, index, total):

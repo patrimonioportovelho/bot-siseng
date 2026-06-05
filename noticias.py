@@ -132,7 +132,9 @@ def formatar_noticia(n, index, total):
     )
 
 
-IMAGEM_NOTICIAS = "banner-noticias.jpg"  # arquivo local na pasta do bot
+import os
+IMOVEL_DIR = os.path.dirname(os.path.abspath(__file__))
+IMAGEM_NOTICIAS = os.path.join(IMOVEL_DIR, "banner-noticias.jpg")
 
 async def disparar_noticias(bot, periodo_label=""):
     global _inicializado, _ids_enviados

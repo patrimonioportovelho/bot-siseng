@@ -184,10 +184,18 @@ async def cmd_cliente(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_historico(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not autorizado(update): await acesso_negado(update); return
     if not context.args:
-        await update.message.reply_text("ℹ️ Use: `/historico e6c1183f`", parse_mode="Markdown"); return
-    id_cliente = context.args[0].strip()
+        await update.message.reply_text(
+            "ℹ️ Use:\n`/historico e6c1183f` — todos os tempos\n`/historico e6c1183f ano` — este ano",
+            parse_mode="Markdown"); return
+    periodos = ["hoje", "semana", "mes", "ano"]
+    if len(context.args) > 1 and context.args[-1].lower() in periodos:
+        periodo = context.args[-1].lower()
+        id_cliente = context.args[0].strip()
+    else:
+        periodo = None
+        id_cliente = context.args[0].strip()
     await update.message.reply_text(f"🔍 Buscando jornada de `{id_cliente}`...", parse_mode="Markdown")
-    await update.message.reply_text(historico_cliente(id_cliente), parse_mode="Markdown")
+    await update.message.reply_text(historico_cliente(id_cliente, periodo), parse_mode="Markdown")
 
 async def cmd_imovel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not autorizado(update): await acesso_negado(update); return

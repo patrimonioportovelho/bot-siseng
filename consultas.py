@@ -192,9 +192,11 @@ def formatar_cliente(r):
         f"📌 Use /historico `{id_cliente}` para ver a jornada completa."
     )
 
-def historico_cliente(id_cliente):
+def historico_cliente(id_cliente, periodo=None):
     id_cliente = id_cliente.strip()
-    mapa_bancos = carregar_mapa_bancos()
+    mapa_bancos   = carregar_mapa_bancos()
+    mapa_clientes = carregar_mapa_clientes()
+    mapa_parceiros = carregar_mapa_parceiros()
 
     clientes = ler_aba("Cliente")
     cliente = next(
@@ -204,9 +206,14 @@ def historico_cliente(id_cliente):
         return f"❌ Cliente com ID `{id_cliente}` não encontrado."
 
     nome = ou_traco(cliente.get("Nome"))
-    linhas = [f"📂 *Jornada do cliente: {nome}*\n"]
+    periodo_label = {
+        None: "todos os tempos", "hoje": "hoje",
+        "semana": "esta semana", "mes": "este mês", "ano": "este ano"
+    }.get(periodo, periodo)
 
-    # Avaliações — resolve banco
+    linhas = [f"📂 *Jornada: {nome}* — {periodo_label}\n"]
+
+    # Avaliações
     avaliacoes = [r for r in ler_aba("Avaliacao")
                   if str(r.get("Cliente","")).strip() == id_cliente]
     linhas.append(f"🏦 *Avaliações de crédito:* {len(avaliacoes)}")
@@ -229,25 +236,36 @@ def historico_cliente(id_cliente):
             f"Status: {ou_traco(a.get('StatusAndamento'))}"
         )
 
-    # Transações
-    transacoes  = ler_aba("Transacao")
-    trans_cli   = [r for r in transacoes if str(r.get("Cliente","")).strip()  == id_cliente]
-    trans_cli1  = [r for r in transacoes if str(r.get("Cliente1","")).strip() == id_cliente]
+    # Transações com filtro de período
+    transacoes = ler_aba("Transacao")
+    trans_cli  = [r for r in transacoes if str(r.get("Cliente","")).strip()  == id_cliente]
+    trans_cli1 = [r for r in transacoes if str(r.get("Cliente1","")).strip() == id_cliente]
+    todas_trans = trans_cli + trans_cli1
 
-    linhas.append(f"\n📝 *Transações como proprietário/vendedor:* {len(trans_cli)}")
-    for t in trans_cli[:3]:
+    todas_filtradas = filtrar_por_periodo(todas_trans, "DataAssinatura", periodo)
+    trans_cli_f  = [t for t in todas_filtradas if str(t.get("Cliente","")).strip()  == id_cliente]
+    trans_cli1_f = [t for t in todas_filtradas if str(t.get("Cliente1","")).strip() == id_cliente]
+
+    linhas.append(f"\n📝 *Transações como proprietário/vendedor:* {len(trans_cli_f)}")
+    for t in trans_cli_f[:5]:
+        id_parc  = str(t.get("CorretorCliente","") or t.get("Parceiro","")).strip()
+        corretor = mapa_parceiros.get(id_parc, "—") if id_parc else "—"
+        nome_c1  = mapa_clientes.get(str(t.get("Cliente1","")).strip(), "—")
         linhas.append(
-            f"  • {ou_traco(t.get('Tipo'))} | "
-            f"Valor: {formatar_moeda(t.get('ValorTransacao'))} | "
-            f"Loja: {ou_traco(t.get('Loja'))}"
+            f"  • {ou_traco(t.get('Tipo'))} | {nome_c1} | "
+            f"{formatar_moeda(t.get('ValorTransacao'))} | "
+            f"{ou_traco(t.get('Loja'))} | Corretor: {corretor}"
         )
 
-    linhas.append(f"\n📝 *Transações como locatário/comprador:* {len(trans_cli1)}")
-    for t in trans_cli1[:3]:
+    linhas.append(f"\n📝 *Transações como locatário/comprador:* {len(trans_cli1_f)}")
+    for t in trans_cli1_f[:5]:
+        id_parc  = str(t.get("CorretorCliente1","") or t.get("Parceiro","")).strip()
+        corretor = mapa_parceiros.get(id_parc, "—") if id_parc else "—"
+        nome_c   = mapa_clientes.get(str(t.get("Cliente","")).strip(), "—")
         linhas.append(
-            f"  • {ou_traco(t.get('Tipo'))} | "
-            f"Valor: {formatar_moeda(t.get('ValorTransacao'))} | "
-            f"Loja: {ou_traco(t.get('Loja'))}"
+            f"  • {ou_traco(t.get('Tipo'))} | Prop: {nome_c} | "
+            f"{formatar_moeda(t.get('ValorTransacao'))} | "
+            f"{ou_traco(t.get('Loja'))} | Corretor: {corretor}"
         )
 
     # Imóveis
@@ -515,20 +533,57 @@ def resumo_periodo(periodo=None):
     }.get(periodo, periodo)
 
     total_label = f" (total geral: {len(clientes)})" if periodo else ""
+    mapa_clientes = carregar_mapa_clientes()
+    mapa_parceiros = carregar_mapa_parceiros()
 
-    return (
-        f"📊 *Resumo SISENG — {periodo_label}*\n\n"
-        f"👥 Novos clientes: {len(cli_filtrados)}{total_label}\n"
-        f"🏠 Imóveis em carteira: {len(imoveis)}\n"
-        f"🤝 Equipe interna: {len(internos)} | Total parceiros: {len(parceiros)}\n\n"
-        f"📝 *Transações: {len(trans_filtradas)}*\n\n"
-        f"🔑 Locações: {len(locacoes)}\n"
-        f"  ↳ Porto Velho: {len(pv_loc)}\n"
-        f"  ↳ Jaru: {len(ja_loc)}\n\n"
-        f"🏡 Compra e Venda: {len(vendas)}\n"
-        f"  ↳ Porto Velho: {len(pv_vnd)}\n"
-        f"  ↳ Jaru: {len(ja_vnd)}"
-    )
+    linhas = [
+        f"📊 *Resumo SISENG — {periodo_label}*\n",
+        f"👥 Novos clientes: {len(cli_filtrados)}{total_label}",
+        f"🏠 Imóveis em carteira: {len(imoveis)}",
+        f"🤝 Equipe interna: {len(internos)} | Total parceiros: {len(parceiros)}\n",
+        f"📝 *Transações: {len(trans_filtradas)}*\n",
+        f"🔑 Locações: {len(locacoes)}",
+        f"  ↳ Porto Velho: {len(pv_loc)}",
+        f"  ↳ Jaru: {len(ja_loc)}\n",
+        f"🏡 Compra e Venda: {len(vendas)}",
+        f"  ↳ Porto Velho: {len(pv_vnd)}",
+        f"  ↳ Jaru: {len(ja_vnd)}",
+    ]
+
+    if trans_filtradas:
+        linhas.append(f"\n📋 *Detalhes das transações:*")
+        for t in trans_filtradas:
+            id_t      = ou_traco(t.get("IdTransacao"))
+            tipo      = ou_traco(t.get("Tipo"))
+            loja      = ou_traco(t.get("Loja"))
+            valor     = formatar_moeda(t.get("ValorTransacao"))
+            data_ass  = ou_traco(t.get("DataAssinatura"))
+            nome_cli  = mapa_clientes.get(str(t.get("Cliente","")).strip(), "—")
+            nome_cli1 = mapa_clientes.get(str(t.get("Cliente1","")).strip(), "—")
+            id_parc   = str(t.get("CorretorCliente","") or t.get("Parceiro","")).strip()
+            corretor  = mapa_parceiros.get(id_parc, "—") if id_parc else "—"
+            emoji = "🔑" if tipo == "Locação" else "🏡"
+            linhas.append(
+                f"\n{emoji} *{tipo}* — {loja}\n"
+                f"  👤 {nome_cli} → {nome_cli1}\n"
+                f"  💰 {valor} | 📅 {data_ass}\n"
+                f"  🤝 Corretor: {corretor}\n"
+                f"  🆔 `{id_t}`"
+            )
+
+    if cli_filtrados and periodo:
+        linhas.append(f"\n👥 *Novos clientes cadastrados:*")
+        for c in cli_filtrados[:5]:
+            nome     = ou_traco(c.get("Nome"))
+            vinculo  = ou_traco(c.get("TipoVinculo"))
+            id_parc  = str(c.get("Parceiro","")).strip()
+            captador = mapa_parceiros.get(id_parc, "—") if id_parc else "—"
+            linhas.append(f"  • *{nome}* | {vinculo} | Captado: {captador}")
+        if len(cli_filtrados) > 5:
+            linhas.append(f"  ... e mais {len(cli_filtrados) - 5} cliente(s)")
+
+    return "\n".join(linhas)
+
 
 
 def resumo_por_corretor(termo, periodo=None):

@@ -24,7 +24,9 @@ Você pode responder de duas formas:
    - /transacao [ID ou nome]
    - /parceiro [nome ou ID]
    - /parceiros [função]
-   - /resumo
+   - /resumo [hoje|semana|mes|ano]
+   - /corretor [nome ou ID] [hoje|semana|mes|ano]
+   - /funcao [função] [hoje|semana|mes|ano]
 
 Exemplos de intenção → comando:
 - "me mostra o João Silva" → /cliente João Silva
@@ -37,8 +39,23 @@ Exemplos de intenção → comando:
 - "equipe interna" → /parceiros internos
 - "ver transação ab12cd34" → /transacao ab12cd34
 - "mostra o resumo do sistema" → /resumo
+- "resumo de hoje" → /resumo hoje
+- "resumo desse mês" → /resumo mes
+- "resumo dessa semana" → /resumo semana
 - "tem imóvel na Rua das Flores?" → /imovel Rua das Flores
 - "jornada do cliente e6c1183f" → /historico e6c1183f
+- "transações do cliente e6c1183f desse ano" → /historico e6c1183f ano
+- "transações do João desse mês" → (busca primeiro o cliente, depois usa /historico ID mes)
+- "o que o corretor João fez esse mês?" → /corretor João mes
+- "transações dos corretores esse mês" → /funcao Corretor mes
+- "resumo do corretor Ana" → /corretor Ana
+- "o que a equipe fez hoje?" → /funcao internos hoje
+
+IMPORTANTE sobre contexto:
+- Se o usuário mostrar um cliente e pedir transações, use o ID já mostrado
+- Se pedir "transações desse ano" após ver um cliente, use /historico [ID] ano
+- Nunca peça confirmação se já tem o ID — execute direto
+- Se o usuário disser "esse" ou "dele" referindo-se a algo já mostrado, use o contexto
 
 Para saudações e conversa geral:
 - "oi", "olá", "bom dia", "boa tarde", "boa noite" → responda com saudação simpática

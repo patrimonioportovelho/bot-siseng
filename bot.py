@@ -391,6 +391,31 @@ async def mensagem_livre(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(resposta, parse_mode="Markdown")
 
 
+# ─── TESTE DE NOTÍCIAS ──────────────────────────────────────
+
+async def cmd_testenoticias(update, context):
+    if not autorizado(update): await acesso_negado(update); return
+    await update.message.reply_text("📰 Buscando última notícia do site...")
+    try:
+        from noticias import buscar_noticias, formatar_noticia
+        noticias = await buscar_noticias()
+        if not noticias:
+            await update.message.reply_text("❌ Nenhuma notícia encontrada. Verifique o site.")
+            return
+        # Mostra só a primeira notícia como teste
+        n = noticias[0]
+        await update.message.reply_text(
+            f"✅ *Teste de notícia — 1 de {len(noticias)} encontradas*
+
+"
+            + formatar_noticia(n, 1, len(noticias)),
+            parse_mode="Markdown",
+            disable_web_page_preview=False
+        )
+    except Exception as e:
+        await update.message.reply_text(f"❌ Erro: {e}")
+
+
 # ─── INICIALIZAÇÃO ──────────────────────────────────────────
 
 async def main():
@@ -409,6 +434,7 @@ async def main():
     app.add_handler(CommandHandler("resumo",    cmd_resumo))
     app.add_handler(CommandHandler("corretor",  cmd_corretor))
     app.add_handler(CommandHandler("funcao",    cmd_funcao))
+    app.add_handler(CommandHandler("testenoticias", cmd_testenoticias))
 
     # Todas as mensagens de texto vão para o Gemini
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, mensagem_livre))

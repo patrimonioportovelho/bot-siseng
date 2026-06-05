@@ -185,16 +185,25 @@ async def cmd_historico(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not autorizado(update): await acesso_negado(update); return
     if not context.args:
         await update.message.reply_text(
-            "ℹ️ Use:\n`/historico e6c1183f` — todos os tempos\n`/historico e6c1183f ano` — este ano",
+            "ℹ️ Use:\n`/historico João Silva` — busca pelo nome\n`/historico João mes` — este mês",
             parse_mode="Markdown"); return
     periodos = ["hoje", "semana", "mes", "ano"]
     if len(context.args) > 1 and context.args[-1].lower() in periodos:
         periodo = context.args[-1].lower()
-        id_cliente = context.args[0].strip()
+        termo = " ".join(context.args[:-1])
     else:
         periodo = None
-        id_cliente = context.args[0].strip()
-    await update.message.reply_text(f"🔍 Buscando jornada de `{id_cliente}`...", parse_mode="Markdown")
+        termo = " ".join(context.args)
+    await update.message.reply_text(f"🔍 Buscando cliente: *{termo}*...", parse_mode="Markdown")
+    resultados = buscar_cliente(termo)
+    if not resultados:
+        await update.message.reply_text("❌ Nenhum cliente encontrado."); return
+    if len(resultados) > 1:
+        nomes = "\n".join([f"  • *{r.get('Nome','—')}* — `{r.get('IdCliente','')}`" for r in resultados[:5]])
+        await update.message.reply_text(
+            f"📋 Encontrei {len(resultados)} clientes. Use o ID para ser específico:\n{nomes}",
+            parse_mode="Markdown"); return
+    id_cliente = str(resultados[0].get("IdCliente","")).strip()
     await update.message.reply_text(historico_cliente(id_cliente, periodo), parse_mode="Markdown")
 
 async def cmd_imovel(update: Update, context: ContextTypes.DEFAULT_TYPE):

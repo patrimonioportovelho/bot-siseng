@@ -43,9 +43,10 @@ Exemplos de intenção → comando:
 - "resumo desse mês" → /resumo mes
 - "resumo dessa semana" → /resumo semana
 - "tem imóvel na Rua das Flores?" → /imovel Rua das Flores
-- "jornada do cliente e6c1183f" → /historico e6c1183f
-- "transações do cliente e6c1183f desse ano" → /historico e6c1183f ano
-- "transações do João desse mês" → (busca primeiro o cliente, depois usa /historico ID mes)
+- "jornada do cliente João" → /historico João
+- "transações do João desse ano" → /historico João ano
+- "transações do João desse mês" → /historico João mes
+- "histórico do Fabrício" → /historico Fabrício
 - "o que o corretor João fez esse mês?" → /corretor João mes
 - "transações dos corretores esse mês" → /funcao Corretor mes
 - "resumo do corretor Ana" → /corretor Ana

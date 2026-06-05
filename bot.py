@@ -402,8 +402,14 @@ async def cmd_testenoticias(update, context):
         if not noticias:
             await update.message.reply_text("❌ Nenhuma notícia encontrada.")
             return
+        from noticias import IMAGEM_NOTICIAS
         total = len(noticias)
-        await update.message.reply_text(f"✅ {total} notícia(s) encontrada(s). Mostrando as 3 primeiras:")
+        await context.bot.send_photo(
+            chat_id=update.effective_chat.id,
+            photo=IMAGEM_NOTICIAS,
+            caption=f"🏠 *Notícias do Mercado Imobiliário*\nTeste — {total} encontrada(s)",
+            parse_mode="Markdown"
+        )
         for i, n in enumerate(noticias[:3], 1):
             await update.message.reply_text(
                 formatar_noticia(n, i, total),

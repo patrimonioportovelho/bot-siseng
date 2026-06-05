@@ -132,6 +132,8 @@ def formatar_noticia(n, index, total):
     )
 
 
+IMAGEM_NOTICIAS = "https://drive.google.com/uc?export=view&id=1K1dkydroXSLFxLuXD8ErwQ-BcN2BLvfe"
+
 async def disparar_noticias(bot, periodo_label=""):
     global _inicializado, _ids_enviados
 
@@ -155,11 +157,18 @@ async def disparar_noticias(bot, periodo_label=""):
 
     for chat_id in IDS_AUTORIZADOS:
         try:
-            await bot.send_message(
+            # Envia cabeçalho com imagem
+            await bot.send_photo(
                 chat_id=chat_id,
-                text=f"🏠 *Notícias Imobiliárias*\n_{periodo_label}_ — {len(novas)} nova(s)",
+                photo=IMAGEM_NOTICIAS,
+                caption=(
+                    f"🏠 *Notícias do Mercado Imobiliário*
+"
+                    f"_{periodo_label}_ — {len(novas)} nova(s)"
+                ),
                 parse_mode="Markdown"
             )
+            # Envia cada notícia
             for i, n in enumerate(novas, 1):
                 await bot.send_message(
                     chat_id=chat_id,

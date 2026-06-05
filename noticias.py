@@ -132,7 +132,7 @@ def formatar_noticia(n, index, total):
     )
 
 
-IMAGEM_NOTICIAS = "https://raw.githubusercontent.com/jotasilvestre/bot-siseng/main/banner-noticias.jpg"
+IMAGEM_NOTICIAS = "banner-noticias.jpg"  # arquivo local na pasta do bot
 
 async def disparar_noticias(bot, periodo_label=""):
     global _inicializado, _ids_enviados
@@ -159,12 +159,16 @@ async def disparar_noticias(bot, periodo_label=""):
         try:
             total_novas = len(novas)
             caption = f"\U0001f3e0 *Noticias do Mercado Imobiliario*\n_{periodo_label}_ — {total_novas} nova(s)"
-            await bot.send_photo(
-                chat_id=chat_id,
-                photo=IMAGEM_NOTICIAS,
-                caption=caption,
-                parse_mode="Markdown"
-            )
+            try:
+                with open(IMAGEM_NOTICIAS, "rb") as img:
+                    await bot.send_photo(
+                        chat_id=chat_id,
+                        photo=img,
+                        caption=caption,
+                        parse_mode="Markdown"
+                    )
+            except Exception:
+                await bot.send_message(chat_id=chat_id, text=caption, parse_mode="Markdown")
             for i, n in enumerate(novas, 1):
                 await bot.send_message(
                     chat_id=chat_id,

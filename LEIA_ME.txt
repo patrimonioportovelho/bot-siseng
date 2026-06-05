@@ -1,0 +1,64 @@
+============================================================
+SISENG BOT — Instruções de Instalação e Uso
+============================================================
+
+1. ESTRUTURA DA PASTA
+----------------------
+siseng_bot/
+├── bot.py            ← arquivo principal (roda aqui)
+├── config.py         ← token e configurações
+├── sheets.py         ← conexão com Google Sheets
+├── consultas.py      ← lógica de busca
+├── credentials.json  ← credenciais do Google
+└── requirements.txt  ← dependências
+
+------------------------------------------------------------
+
+2. INSTALAÇÃO (faça uma vez só)
+--------------------------------
+Abra o CMD dentro da pasta siseng_bot e rode:
+
+    pip install -r requirements.txt
+
+------------------------------------------------------------
+
+3. RODAR O BOT
+---------------
+No CMD dentro da pasta siseng_bot:
+
+    python bot.py
+
+Você vai ver:
+    🚀 SisEng Bot iniciando...
+    ✅ Bot rodando! Pressione Ctrl+C para parar.
+
+------------------------------------------------------------
+
+4. COMANDOS DO BOT
+-------------------
+/start         — apresentação e lista de comandos
+/ajuda         — mesma coisa que /start
+/cliente João  — busca cliente pelo nome
+/imovel Rua X  — busca imóvel pelo endereço
+/transacao abc — busca transação pelo ID ou nome
+/parceiros     — lista todos os parceiros
+/resumo        — resumo geral do sistema
+
+------------------------------------------------------------
+
+5. ADICIONAR MAIS USUÁRIOS AUTORIZADOS
+----------------------------------------
+Abra config.py e adicione o Chat ID do usuário:
+
+    IDS_AUTORIZADOS = [
+        27414363,   # Jota Silvestre (dono)
+        99999999,   # Novo corretor
+    ]
+
+------------------------------------------------------------
+
+6. PARAR O BOT
+---------------
+Pressione Ctrl+C no CMD.
+
+============================================================

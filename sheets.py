@@ -4,6 +4,8 @@
 
 import gspread
 import time
+import os
+import json
 from google.oauth2.service_account import Credentials
 from config import SPREADSHEET_ID, CREDENTIALS_FILE
 
@@ -14,27 +16,31 @@ SCOPES = [
 
 # Cache em memória: {nome_aba: (timestamp, dados)}
 _cache = {}
-CACHE_TTL = 300  # 5 minutos em segundos
+CACHE_TTL = 300  # 5 minutos
 
 def conectar():
-    creds = Credentials.from_service_account_file(CREDENTIALS_FILE, scopes=SCOPES)
+    # Tenta ler credenciais da variável de ambiente (Railway)
+    google_creds = os.environ.get("GOOGLE_CREDENTIALS")
+
+    if google_creds:
+        # Lê do ambiente (produção no Railway)
+        creds_dict = json.loads(google_creds)
+        creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
+    else:
+        # Lê do arquivo local (desenvolvimento no Windows)
+        creds = Credentials.from_service_account_file(CREDENTIALS_FILE, scopes=SCOPES)
+
     cliente = gspread.authorize(creds)
     return cliente.open_by_key(SPREADSHEET_ID)
 
 def ler_aba(nome_aba):
-    """
-    Retorna todos os registros de uma aba como lista de dicionários.
-    Usa cache em memória por 5 minutos para evitar leituras repetidas.
-    """
     agora = time.time()
 
-    # Verifica cache
     if nome_aba in _cache:
         timestamp, dados = _cache[nome_aba]
         if agora - timestamp < CACHE_TTL:
             return dados
 
-    # Busca dados frescos
     try:
         planilha = conectar()
         aba = planilha.worksheet(nome_aba)
@@ -44,14 +50,12 @@ def ler_aba(nome_aba):
         return dados
     except Exception as e:
         print(f"⚠️ Erro ao ler aba '{nome_aba}': {e}")
-        # Se der erro mas tiver cache antigo, usa ele
         if nome_aba in _cache:
             _, dados = _cache[nome_aba]
             return dados
         return []
 
 def limpar_cache(nome_aba=None):
-    """Limpa o cache de uma aba ou de todas."""
     if nome_aba:
         _cache.pop(nome_aba, None)
     else:

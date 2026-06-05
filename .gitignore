@@ -7,6 +7,5 @@ __pycache__/
 *.pyc
 *.pyo
 
-# Arquivos temporários
-*.txt
+# Logs
 *.log

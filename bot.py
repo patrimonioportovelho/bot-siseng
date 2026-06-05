@@ -19,6 +19,9 @@ from consultas import (
     buscar_parceiro, formatar_parceiro,
     listar_parceiros_por_funcao,
     resumo_geral,
+    resumo_periodo,
+    resumo_por_corretor,
+    resumo_por_funcao,
     FUNCOES_DISPONIVEIS
 )
 from monitor import verificar_atualizacoes
@@ -242,10 +245,65 @@ async def cmd_parceiros(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_resumo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not autorizado(update): await acesso_negado(update); return
+    periodo = context.args[0].lower() if context.args else None
+    periodos_validos = ["hoje", "semana", "mes", "ano"]
+    if periodo and periodo not in periodos_validos:
+        await update.message.reply_text(
+            "ℹ️ Períodos disponíveis:\n"
+            "`/resumo` — geral\n"
+            "`/resumo hoje` — hoje\n"
+            "`/resumo semana` — esta semana\n"
+            "`/resumo mes` — este mês\n"
+            "`/resumo ano` — este ano",
+            parse_mode="Markdown"
+        )
+        return
     await update.message.reply_text("📊 Carregando resumo...")
-    await update.message.reply_text(resumo_geral(), parse_mode="Markdown")
+    await update.message.reply_text(resumo_periodo(periodo), parse_mode="Markdown")
 
 
+
+async def cmd_corretor(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not autorizado(update): await acesso_negado(update); return
+    if not context.args:
+        await update.message.reply_text(
+            "ℹ️ Use assim:\n"
+            "`/corretor João` — todos os tempos\n"
+            "`/corretor João mes` — este mês\n"
+            "`/corretor João hoje` — hoje",
+            parse_mode="Markdown"
+        )
+        return
+    periodos = ["hoje", "semana", "mes", "ano"]
+    if len(context.args) > 1 and context.args[-1].lower() in periodos:
+        periodo = context.args[-1].lower()
+        termo = " ".join(context.args[:-1])
+    else:
+        periodo = None
+        termo = " ".join(context.args)
+    await update.message.reply_text(f"📊 Carregando resumo do corretor *{termo}*...", parse_mode="Markdown")
+    await update.message.reply_text(resumo_por_corretor(termo, periodo), parse_mode="Markdown")
+
+async def cmd_funcao(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not autorizado(update): await acesso_negado(update); return
+    if not context.args:
+        await update.message.reply_text(
+            "ℹ️ Use assim:\n"
+            "`/funcao Corretor` — todos os tempos\n"
+            "`/funcao Corretor mes` — este mês\n"
+            "`/funcao internos` — equipe interna",
+            parse_mode="Markdown"
+        )
+        return
+    periodos = ["hoje", "semana", "mes", "ano"]
+    if len(context.args) > 1 and context.args[-1].lower() in periodos:
+        periodo = context.args[-1].lower()
+        funcao = " ".join(context.args[:-1])
+    else:
+        periodo = None
+        funcao = " ".join(context.args)
+    await update.message.reply_text(f"📊 Carregando resumo por função *{funcao}*...", parse_mode="Markdown")
+    await update.message.reply_text(resumo_por_funcao(funcao, periodo), parse_mode="Markdown")
 # ─── MENSAGEM DE TEXTO LIVRE (GEMINI) ───────────────────────
 
 async def mensagem_livre(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -290,6 +348,8 @@ async def main():
     app.add_handler(CommandHandler("parceiro",  cmd_parceiro))
     app.add_handler(CommandHandler("parceiros", cmd_parceiros))
     app.add_handler(CommandHandler("resumo",    cmd_resumo))
+    app.add_handler(CommandHandler("corretor",  cmd_corretor))
+    app.add_handler(CommandHandler("funcao",    cmd_funcao))
 
     # Todas as mensagens de texto vão para o Gemini
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, mensagem_livre))

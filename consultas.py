@@ -436,3 +436,211 @@ def resumo_geral():
         f"  ↳ Porto Velho: {len(pv_vnd)}\n"
         f"  ↳ Jaru: {len(ja_vnd)}"
     )
+
+# ─── HELPERS DE DATA ────────────────────────────────────────
+
+def parsear_data(valor):
+    """Converte valor de data do Sheets para objeto date."""
+    from datetime import date, datetime
+    if not valor:
+        return None
+    if isinstance(valor, (date, datetime)):
+        return valor.date() if isinstance(valor, datetime) else valor
+    s = str(valor).strip()
+    for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%m/%d/%Y", "%d-%m-%Y"):
+        try:
+            return datetime.strptime(s, fmt).date()
+        except Exception:
+            continue
+    return None
+
+def filtrar_por_periodo(registros, campo_data, periodo):
+    """Filtra registros por período: hoje, semana, mes, ano ou None (todos)."""
+    from datetime import date, timedelta
+    if not periodo:
+        return registros
+
+    hoje = date.today()
+
+    if periodo == "hoje":
+        inicio = fim = hoje
+    elif periodo == "semana":
+        inicio = hoje - timedelta(days=hoje.weekday())
+        fim = hoje
+    elif periodo == "mes":
+        inicio = hoje.replace(day=1)
+        fim = hoje
+    elif periodo == "ano":
+        inicio = hoje.replace(month=1, day=1)
+        fim = hoje
+    else:
+        return registros
+
+    resultado = []
+    for r in registros:
+        data = parsear_data(r.get(campo_data))
+        if data and inicio <= data <= fim:
+            resultado.append(r)
+    return resultado
+
+
+def resumo_periodo(periodo=None):
+    """
+    Resumo por período: hoje, semana, mes, ano ou None (geral).
+    """
+    clientes   = ler_aba("Cliente")
+    imoveis    = ler_aba("Imovel")
+    transacoes = ler_aba("Transacao")
+    parceiros  = ler_aba("Parceiro")
+
+    internos = [p for p in parceiros if str(p.get("Funcao","")).strip() in FUNCOES_INTERNAS]
+
+    cli_filtrados  = filtrar_por_periodo(clientes,   "DataCadastro",  periodo)
+    trans_filtradas = filtrar_por_periodo(transacoes, "DataAssinatura", periodo)
+
+    locacoes = [t for t in trans_filtradas if str(t.get("Tipo","")).strip() == "Locação"]
+    vendas   = [t for t in trans_filtradas if str(t.get("Tipo","")).strip() == "Compra e Venda"]
+
+    pv_loc = [t for t in locacoes if str(t.get("Loja","")).strip() == "Porto Velho"]
+    ja_loc = [t for t in locacoes if str(t.get("Loja","")).strip() == "Jaru"]
+    pv_vnd = [t for t in vendas   if str(t.get("Loja","")).strip() == "Porto Velho"]
+    ja_vnd = [t for t in vendas   if str(t.get("Loja","")).strip() == "Jaru"]
+
+    periodo_label = {
+        None:     "Geral (todos os tempos)",
+        "hoje":   "Hoje",
+        "semana": "Esta semana",
+        "mes":    "Este mês",
+        "ano":    "Este ano"
+    }.get(periodo, periodo)
+
+    total_label = f" (total geral: {len(clientes)})" if periodo else ""
+
+    return (
+        f"📊 *Resumo SISENG — {periodo_label}*\n\n"
+        f"👥 Novos clientes: {len(cli_filtrados)}{total_label}\n"
+        f"🏠 Imóveis em carteira: {len(imoveis)}\n"
+        f"🤝 Equipe interna: {len(internos)} | Total parceiros: {len(parceiros)}\n\n"
+        f"📝 *Transações: {len(trans_filtradas)}*\n\n"
+        f"🔑 Locações: {len(locacoes)}\n"
+        f"  ↳ Porto Velho: {len(pv_loc)}\n"
+        f"  ↳ Jaru: {len(ja_loc)}\n\n"
+        f"🏡 Compra e Venda: {len(vendas)}\n"
+        f"  ↳ Porto Velho: {len(pv_vnd)}\n"
+        f"  ↳ Jaru: {len(ja_vnd)}"
+    )
+
+
+def resumo_por_corretor(termo, periodo=None):
+    """Resumo de transações de um corretor específico."""
+    transacoes = ler_aba("Transacao")
+    parceiros  = ler_aba("Parceiro")
+    mapa_clientes = carregar_mapa_clientes()
+
+    # Busca o parceiro
+    if eh_id(termo):
+        parceiro = next((p for p in parceiros
+                        if str(p.get("IdParceiro","")).strip() == termo.strip()), None)
+    else:
+        resultados = busca_inteligente(termo, parceiros, "Nome", "IdParceiro")
+        parceiro = resultados[0] if resultados else None
+
+    if not parceiro:
+        return f"❌ Corretor '{termo}' não encontrado."
+
+    id_p    = str(parceiro.get("IdParceiro","")).strip()
+    nome_p  = ou_traco(parceiro.get("Nome"))
+    funcao_p = ou_traco(parceiro.get("Funcao"))
+
+    # Filtra transações vinculadas ao corretor
+    trans_p = [
+        t for t in transacoes
+        if str(t.get("CorretorCliente","")).strip()  == id_p
+        or str(t.get("CorretorCliente1","")).strip() == id_p
+        or str(t.get("Parceiro","")).strip()          == id_p
+    ]
+
+    trans_filtradas = filtrar_por_periodo(trans_p, "DataAssinatura", periodo)
+    locacoes = [t for t in trans_filtradas if str(t.get("Tipo","")).strip() == "Locação"]
+    vendas   = [t for t in trans_filtradas if str(t.get("Tipo","")).strip() == "Compra e Venda"]
+
+    periodo_label = {
+        None:     "todos os tempos",
+        "hoje":   "hoje",
+        "semana": "esta semana",
+        "mes":    "este mês",
+        "ano":    "este ano"
+    }.get(periodo, periodo)
+
+    linhas = [
+        f"📊 *Corretor: {nome_p}*",
+        f"🏷️ Função: {funcao_p}\n",
+        f"📝 Transações ({periodo_label}): {len(trans_filtradas)}",
+        f"🔑 Locações: {len(locacoes)}",
+        f"🏡 Compra e Venda: {len(vendas)}"
+    ]
+
+    if trans_filtradas:
+        linhas.append("\n📋 *Últimas transações:*")
+        for t in trans_filtradas[:5]:
+            nome_cli = mapa_clientes.get(str(t.get("Cliente","")).strip(), "—")
+            linhas.append(
+                f"  • {ou_traco(t.get('Tipo'))} | {nome_cli} | "
+                f"{formatar_moeda(t.get('ValorTransacao'))} | "
+                f"{ou_traco(t.get('Loja'))}"
+            )
+
+    return "\n".join(linhas)
+
+
+def resumo_por_funcao(funcao, periodo=None):
+    """Resumo de transações agrupado por função de parceiro."""
+    transacoes = ler_aba("Transacao")
+    parceiros  = ler_aba("Parceiro")
+
+    funcao_lower = funcao.lower().strip()
+    if funcao_lower == "internos":
+        parceiros_filtrados = [p for p in parceiros
+                               if str(p.get("Funcao","")).strip() in FUNCOES_INTERNAS]
+    else:
+        parceiros_filtrados = [p for p in parceiros
+                               if funcao_lower in str(p.get("Funcao","")).lower()]
+
+    trans_filtradas = filtrar_por_periodo(transacoes, "DataAssinatura", periodo)
+
+    periodo_label = {
+        None:     "todos os tempos",
+        "hoje":   "hoje",
+        "semana": "esta semana",
+        "mes":    "este mês",
+        "ano":    "este ano"
+    }.get(periodo, periodo)
+
+    linhas = [f"📊 *Resumo por função: {funcao} — {periodo_label}*\n"]
+
+    for p in parceiros_filtrados:
+        id_p   = str(p.get("IdParceiro","")).strip()
+        nome_p = ou_traco(p.get("Nome"))
+
+        trans_p = [
+            t for t in trans_filtradas
+            if str(t.get("CorretorCliente","")).strip()  == id_p
+            or str(t.get("CorretorCliente1","")).strip() == id_p
+            or str(t.get("Parceiro","")).strip()          == id_p
+        ]
+
+        if not trans_p:
+            continue
+
+        loc = len([t for t in trans_p if str(t.get("Tipo","")).strip() == "Locação"])
+        vnd = len([t for t in trans_p if str(t.get("Tipo","")).strip() == "Compra e Venda"])
+
+        linhas.append(
+            f"🤝 *{nome_p}*\n"
+            f"  📝 Total: {len(trans_p)} | 🔑 Loc: {loc} | 🏡 CV: {vnd}"
+        )
+
+    if len(linhas) == 1:
+        linhas.append("Nenhuma transação encontrada para esta função no período.")
+
+    return "\n".join(linhas)

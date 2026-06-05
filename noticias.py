@@ -3,7 +3,6 @@
 # ============================================================
 
 import httpx
-from datetime import datetime, timezone
 from bs4 import BeautifulSoup
 from config import IDS_AUTORIZADOS
 
@@ -17,11 +16,11 @@ _inicializado = False
 # ─── SCRAPING ───────────────────────────────────────────────
 
 async def buscar_noticias():
-    """Busca notícias do site publicidadeimobiliaria.com"""
+    """Busca notícias do portal publicidadeimobiliaria.com"""
     try:
-        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+        async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
             response = await client.get(URL_SITE, headers={
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36"
             })
 
         if response.status_code != 200:
@@ -30,54 +29,47 @@ async def buscar_noticias():
 
         soup = BeautifulSoup(response.text, "html.parser")
         noticias = []
+        vistos = set()
 
-        # Tenta diferentes seletores comuns de blogs/portais
-        artigos = (
-            soup.select("article") or
-            soup.select(".post") or
-            soup.select(".entry") or
-            soup.select(".item-list") or
-            soup.select("div.post-item")
-        )
-
-        for artigo in artigos[:20]:
-            # Título
-            titulo_el = (
-                artigo.select_one("h1 a") or
-                artigo.select_one("h2 a") or
-                artigo.select_one("h3 a") or
-                artigo.select_one(".entry-title a") or
-                artigo.select_one(".post-title a")
-            )
-            if not titulo_el:
-                continue
-
-            titulo = titulo_el.get_text(strip=True)
-            link   = titulo_el.get("href", "")
+        # Site WordPress — busca todos os h3 com links
+        for h in soup.select("h3 a, h2 a"):
+            titulo = h.get_text(strip=True)
+            link   = h.get("href", "").strip()
 
             if not titulo or not link:
                 continue
+            if "publicidadeimobiliaria.com" not in link:
+                continue
+            if link in vistos:
+                continue
 
-            # Garante URL absoluta
-            if link.startswith("/"):
-                link = "https://publicidadeimobiliaria.com" + link
+            vistos.add(link)
 
-            # ID único da notícia baseado no link
-            id_noticia = link.strip().rstrip("/").split("/")[-1]
+            # ID único baseado no slug do link
+            slug = link.strip("/").split("/")[-1]
+            if not slug:
+                continue
 
-            # Resumo
-            resumo_el = (
-                artigo.select_one(".entry-content p") or
-                artigo.select_one(".post-excerpt") or
-                artigo.select_one("p")
-            )
-            resumo = resumo_el.get_text(strip=True)[:200] if resumo_el else ""
+            # Busca categoria/data próxima ao elemento
+            pai = h.find_parent()
+            categoria = ""
+            data_pub = ""
+
+            if pai:
+                cat_el = pai.find_previous("a", href=lambda x: x and "/category/" in str(x))
+                if cat_el:
+                    categoria = cat_el.get_text(strip=True)
+
+                data_el = pai.find_next(string=lambda t: t and "de " in t and "2026" in t)
+                if data_el:
+                    data_pub = str(data_el).strip()[:30]
 
             noticias.append({
-                "id":      id_noticia,
-                "titulo":  titulo,
-                "link":    link,
-                "resumo":  resumo
+                "id":        slug,
+                "titulo":    titulo,
+                "link":      link,
+                "categoria": categoria,
+                "data":      data_pub
             })
 
         print(f"📰 Notícias encontradas: {len(noticias)}")
@@ -91,12 +83,13 @@ async def buscar_noticias():
 # ─── FORMATAÇÃO ─────────────────────────────────────────────
 
 def formatar_noticia(n, index, total):
-    resumo = f"\n_{n['resumo']}..._" if n.get("resumo") else ""
+    categoria = f"🏷️ _{n['categoria']}_\n" if n.get("categoria") else ""
+    data      = f"📅 {n['data']}\n"        if n.get("data")      else ""
     return (
-        f"📰 *Notícia {index}/{total}*\n\n"
-        f"*{n['titulo']}*"
-        f"{resumo}\n\n"
-        f"🔗 [Leia mais]({n['link']})"
+        f"📰 *{index}/{total}* {categoria}"
+        f"*{n['titulo']}*\n"
+        f"{data}"
+        f"🔗 {n['link']}"
     )
 
 
@@ -104,7 +97,7 @@ def formatar_noticia(n, index, total):
 
 async def disparar_noticias(bot, periodo_label=""):
     """
-    Busca notícias, filtra as já enviadas e dispara para todos os IDs autorizados.
+    Busca notícias novas e dispara para todos os IDs autorizados.
     Na primeira execução apenas salva o estado sem enviar.
     """
     global _inicializado, _ids_enviados
@@ -115,37 +108,31 @@ async def disparar_noticias(bot, periodo_label=""):
         print("📰 Nenhuma notícia encontrada.")
         return
 
-    # Primeira execução — só salva IDs, não envia
     if not _inicializado:
         _ids_enviados = {n["id"] for n in noticias}
         _inicializado = True
         print(f"📰 Estado inicial salvo: {len(_ids_enviados)} notícias conhecidas.")
         return
 
-    # Filtra apenas notícias novas
     novas = [n for n in noticias if n["id"] not in _ids_enviados]
 
     if not novas:
-        print(f"📰 Nenhuma notícia nova no período.")
+        print("📰 Nenhuma notícia nova no período.")
         return
 
     print(f"📰 {len(novas)} notícia(s) nova(s) para enviar!")
 
-    # Atualiza estado
     for n in novas:
         _ids_enviados.add(n["id"])
 
-    # Envia para todos os IDs autorizados
     for chat_id in IDS_AUTORIZADOS:
         try:
-            header = (
-                f"🏠 *Notícias do Mercado Imobiliário*\n"
-                f"_{periodo_label}_\n"
-                f"{'─' * 30}"
-            )
             await bot.send_message(
                 chat_id=chat_id,
-                text=header,
+                text=(
+                    f"🏠 *Notícias do Mercado Imobiliário*\n"
+                    f"_{periodo_label}_ — {len(novas)} nova(s)"
+                ),
                 parse_mode="Markdown"
             )
 
@@ -154,8 +141,14 @@ async def disparar_noticias(bot, periodo_label=""):
                     chat_id=chat_id,
                     text=formatar_noticia(n, i, len(novas)),
                     parse_mode="Markdown",
-                    disable_web_page_preview=False
+                    disable_web_page_preview=True
                 )
 
         except Exception as e:
             print(f"⚠️ Erro ao enviar notícias para {chat_id}: {e}")
+
+
+async def buscar_uma_noticia_teste():
+    """Retorna apenas a primeira notícia para teste."""
+    noticias = await buscar_noticias()
+    return noticias[0] if noticias else None

@@ -395,22 +395,21 @@ async def mensagem_livre(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_testenoticias(update, context):
     if not autorizado(update): await acesso_negado(update); return
-    await update.message.reply_text("📰 Buscando última notícia do site...")
+    await update.message.reply_text("📰 Buscando notícias do site...")
     try:
         from noticias import buscar_noticias, formatar_noticia
         noticias = await buscar_noticias()
         if not noticias:
-            await update.message.reply_text("❌ Nenhuma notícia encontrada. Verifique o site.")
+            await update.message.reply_text("❌ Nenhuma notícia encontrada.")
             return
-        # Mostra só a primeira notícia como teste
-        n = noticias[0]
         total = len(noticias)
-        header = f"✅ *Teste de notícia — 1 de {total} encontradas*"
-        await update.message.reply_text(
-            header + "\n\n" + formatar_noticia(n, 1, total),
-            parse_mode="Markdown",
-            disable_web_page_preview=False
-        )
+        await update.message.reply_text(f"✅ {total} notícia(s) encontrada(s). Mostrando as 3 primeiras:")
+        for i, n in enumerate(noticias[:3], 1):
+            await update.message.reply_text(
+                formatar_noticia(n, i, total),
+                parse_mode="Markdown",
+                disable_web_page_preview=True
+            )
     except Exception as e:
         await update.message.reply_text(f"❌ Erro: {e}")
 

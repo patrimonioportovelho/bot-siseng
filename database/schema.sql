@@ -1,0 +1,595 @@
+-- ============================================================
+-- SisEng — Schema de banco de dados (PostgreSQL 14+)
+-- Sistema de gestão imobiliária (venda, locação, administração,
+-- correspondência bancária e financeiro).
+--
+-- Compatível com Neon, Supabase ou qualquer Postgres gerenciado.
+-- Convenções:
+--   - Todas as chaves primárias são UUID (gen_random_uuid()).
+--   - Nomes de tabela e coluna em snake_case, em português.
+--   - Colunas "enumeradas" (Funcao, TipoImovel, StatusImovel etc.)
+--     ficam como TEXT + CHECK, em vez de ENUM do Postgres, para
+--     não exigir migração de tipo toda vez que uma opção nova for
+--     adicionada. Enums de verdade (papel de usuário, tipo de
+--     transação) usam CHECK também, pelo mesmo motivo de simplicidade.
+--   - Colunas que na planilha original tinham órfãos conhecidos
+--     (ver Especificação Técnica, seção 7.2) foram deixadas como
+--     NULLABLE de propósito, para não travar a migração dos dados
+--     históricos. Ver README.md > "Migração de dados".
+-- ============================================================
+
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+-- ------------------------------------------------------------
+-- Função utilitária: atualiza updated_at automaticamente
+-- ------------------------------------------------------------
+CREATE OR REPLACE FUNCTION set_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ============================================================
+-- 1. TABELAS DE APOIO (lookups / domínio)
+-- ============================================================
+
+CREATE TABLE lojas (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  nome        TEXT NOT NULL UNIQUE,          -- 'Porto Velho' | 'Jaru'
+  cidade      TEXT,
+  estado      TEXT DEFAULT 'Rondônia',
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+COMMENT ON TABLE lojas IS 'Escritórios/franquias (dimensão comercial). Administração é sempre centralizada em Porto Velho, independente da loja de origem do imóvel.';
+
+CREATE TABLE estados (
+  id    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  nome  TEXT NOT NULL UNIQUE
+);
+
+CREATE TABLE cidades (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  nome       TEXT NOT NULL,
+  estado_id  UUID NOT NULL REFERENCES estados(id),
+  regiao     TEXT,
+  UNIQUE (nome, estado_id)
+);
+CREATE INDEX idx_cidades_estado ON cidades(estado_id);
+COMMENT ON TABLE cidades IS 'Recomenda-se popular a partir de uma base pública do IBGE, em vez de manter manualmente.';
+
+CREATE TABLE bancos (
+  id      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  nome    TEXT NOT NULL,
+  codigo  TEXT   -- código Febraban
+);
+
+CREATE TABLE categorias_financeiras (
+  id    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  nome  TEXT NOT NULL,
+  tipo  TEXT CHECK (tipo IN ('Recebimento','Pagamento'))
+);
+COMMENT ON TABLE categorias_financeiras IS 'Plano de contas usado em movimentacoes.categoria_id.';
+
+-- ============================================================
+-- 2. PARCEIROS E USUÁRIOS
+-- ============================================================
+
+CREATE TABLE parceiros (
+  id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  nome                    TEXT NOT NULL,
+  foto_url                TEXT,
+  telefone                TEXT,
+  email                   TEXT,
+  empresa                 TEXT,
+  funcao                  TEXT NOT NULL CHECK (funcao IN (
+                              'Corretor','Corretor Estagiário','Corretor Externo',
+                              'Administrativo','Prestador de Serviço','Imobiliária Parceira'
+                          )),
+  loja_id                 UUID REFERENCES lojas(id),
+  status_funcao           TEXT NOT NULL DEFAULT 'Ativo' CHECK (status_funcao IN ('Ativo','Inativo')),
+  cpf                     TEXT,
+  data_nascimento         DATE,
+  identidade              TEXT,
+  expedicao_estado        TEXT,
+  estado_civil            TEXT CHECK (estado_civil IN
+                              ('Solteiro','Casado','União Estável','Divorciado','Separado Judicialmente','Viúvo')),
+  creci                   TEXT,
+  endereco                TEXT,
+  data_entrada            DATE NOT NULL,
+  obs_funcao              TEXT,
+  fee                     NUMERIC(12,2),
+  porc_compr              NUMERIC(6,4),
+  porc_vend               NUMERIC(6,4),
+  dia_fee                 SMALLINT,
+  banco_id                UUID REFERENCES bancos(id),
+  codigo_banco            TEXT,
+  agencia                 TEXT,
+  conta                   TEXT,
+  tipo_conta              TEXT,
+  tipo_pix                TEXT,
+  pix                     TEXT,
+  created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at              TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_parceiros_loja ON parceiros(loja_id);
+CREATE INDEX idx_parceiros_nome ON parceiros(nome);
+CREATE TRIGGER trg_parceiros_updated_at BEFORE UPDATE ON parceiros
+  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+COMMENT ON TABLE parceiros IS 'Cadastro amplo: corretores internos, estagiários, prestadores de serviço, administrativo, corretores/imobiliárias parceiras externas. Nem todo parceiro tem login (ver usuarios).';
+
+CREATE TABLE usuarios (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  nome         TEXT NOT NULL,
+  email        TEXT NOT NULL UNIQUE,
+  senha_hash   TEXT NOT NULL,
+  papel        TEXT NOT NULL CHECK (papel IN ('ADMINISTRATIVO','COMERCIAL')),
+  loja_id      UUID REFERENCES lojas(id),
+  parceiro_id  UUID REFERENCES parceiros(id),
+  ativo        BOOLEAN NOT NULL DEFAULT true,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_usuarios_loja ON usuarios(loja_id);
+CREATE TRIGGER trg_usuarios_updated_at BEFORE UPDATE ON usuarios
+  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+COMMENT ON TABLE usuarios IS 'Contas de login do sistema (até 10). ADMINISTRATIVO enxerga todas as lojas e o financeiro consolidado; COMERCIAL fica restrito à própria loja.';
+
+-- ============================================================
+-- 3. CLIENTES E IMÓVEIS
+-- ============================================================
+
+CREATE TABLE clientes (
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  pasta_url        TEXT,
+  data_cadastro    DATE NOT NULL DEFAULT CURRENT_DATE,
+  parceiro_id      UUID NOT NULL REFERENCES parceiros(id),
+  loja_id          UUID NOT NULL REFERENCES lojas(id),
+  status_cadastro  TEXT,
+  tipo_vinculo     TEXT,   -- ex.: 'Cliente proprietário de locação' (dispara criação de pasta)
+  tipo_cliente     TEXT NOT NULL CHECK (tipo_cliente IN ('Pessoa Física','Pessoa Jurídica')),
+  nome             TEXT NOT NULL,
+  sexo             TEXT,
+  cpf              TEXT,
+  cnpj             TEXT,
+  rg               TEXT,
+  expedicao        TEXT,
+  telefone         TEXT,
+  email            TEXT,
+  estado_civil     TEXT CHECK (estado_civil IN
+                       ('Solteiro','Casado','União Estável','Divorciado','Separado Judicialmente','Viúvo')),
+  conjuge_id       UUID REFERENCES clientes(id),   -- autorrelacionamento
+  renda_bruta      NUMERIC(12,2),
+  data_nascimento  DATE,
+  cat_profissao    TEXT,
+  tipo_servidor    TEXT,
+  profissao        TEXT,
+  endereco         TEXT,
+  estado_id        UUID REFERENCES estados(id),
+  cidade_id        UUID REFERENCES cidades(id),
+  observacao       TEXT,
+  banco_id         UUID REFERENCES bancos(id),
+  codigo_banco     TEXT,
+  agencia          TEXT,
+  conta            TEXT,
+  tipo_conta       TEXT,
+  tipo_pix         TEXT,
+  pix              TEXT,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_clientes_parceiro ON clientes(parceiro_id);
+CREATE INDEX idx_clientes_loja ON clientes(loja_id);
+CREATE INDEX idx_clientes_conjuge ON clientes(conjuge_id);
+CREATE INDEX idx_clientes_nome ON clientes(nome);
+CREATE TRIGGER trg_clientes_updated_at BEFORE UPDATE ON clientes
+  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+COMMENT ON COLUMN clientes.conjuge_id IS
+  'Regra de negócio (validar na aplicação, não travado por CHECK para não quebrar migração de dados legados): '
+  'estado_civil Casado/União Estável deveria sempre ter conjuge_id preenchido.';
+
+CREATE TABLE imoveis (
+  id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  data_cadastro         DATE NOT NULL DEFAULT CURRENT_DATE,
+  tipo_imovel           TEXT,
+  parceiro_id           UUID REFERENCES parceiros(id),
+  cliente_vendedor_id   UUID REFERENCES clientes(id),   -- nullable: há órfãos conhecidos na base legada
+  pasta_url             TEXT,
+  inscricao             TEXT,
+  rua                   TEXT,
+  n_predial             TEXT,
+  complemento           TEXT,
+  bairro                TEXT,
+  estado_id             UUID REFERENCES estados(id),
+  cidade_id             UUID REFERENCES cidades(id),
+  endereco              TEXT,
+  matricula             TEXT,
+  status_imovel         TEXT,
+  tipo_oferta           TEXT CHECK (tipo_oferta IN ('Venda','Locação','Administração')),
+  valor_venda           NUMERIC(14,2),
+  valor_avaliacao       NUMERIC(14,2),
+  validade_avaliacao    DATE,
+  descricao             TEXT,
+  descricao_ia          TEXT,
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_imoveis_parceiro ON imoveis(parceiro_id);
+CREATE INDEX idx_imoveis_cliente_vendedor ON imoveis(cliente_vendedor_id);
+CREATE INDEX idx_imoveis_endereco ON imoveis(endereco);
+CREATE TRIGGER trg_imoveis_updated_at BEFORE UPDATE ON imoveis
+  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- ============================================================
+-- 4. FINANCIAMENTO (correspondência bancária)
+-- ============================================================
+
+CREATE TABLE avaliacoes (
+  id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tipo_avaliacao        TEXT,
+  banco_id              UUID REFERENCES bancos(id),
+  status                TEXT NOT NULL DEFAULT 'Em andamento',
+  data_avaliacao        DATE,
+  cliente_id            UUID REFERENCES clientes(id),
+  telefone              TEXT,
+  cpf                   TEXT,
+  parceiro_id           UUID REFERENCES parceiros(id),
+  data_validade         DATE,
+  tipo_imovel           TEXT,
+  produto               TEXT,
+  tabela                TEXT,
+  indexador             TEXT,
+  valor_aprovado        NUMERIC(14,2),
+  valor_financiamento   NUMERIC(14,2),
+  prestacao             NUMERIC(14,2),
+  usa_fgts              BOOLEAN NOT NULL DEFAULT false,
+  valor_fgts            NUMERIC(14,2),
+  usa_subsidio          BOOLEAN NOT NULL DEFAULT false,
+  valor_subsidio        NUMERIC(14,2),
+  imagem_consulta_url   TEXT,
+  observacao            TEXT,
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_avaliacoes_cliente ON avaliacoes(cliente_id);
+CREATE INDEX idx_avaliacoes_parceiro ON avaliacoes(parceiro_id);
+CREATE TRIGGER trg_avaliacoes_updated_at BEFORE UPDATE ON avaliacoes
+  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+CREATE TABLE andamentos (
+  id                             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  data_inicio                    DATE,
+  cliente_vendedor_id            UUID REFERENCES clientes(id),
+  abrir_conta                    BOOLEAN DEFAULT false,
+  avaliacao_id                   UUID NOT NULL REFERENCES avaliacoes(id),
+  imovel_id                      UUID REFERENCES imoveis(id),  -- nullable: há órfão conhecido na base legada
+  tipo_contrato                  TEXT,
+  status_andamento               TEXT NOT NULL DEFAULT 'Em andamento',
+  status_andamento_complementar  TEXT,
+  processo                       TEXT,
+  valor_avaliado                 NUMERIC(14,2),
+  valor_venda                    NUMERIC(14,2),
+  tem_entrada                    BOOLEAN,
+  valor_recurso                  NUMERIC(14,2),
+  valor_fgts                     NUMERIC(14,2),
+  subsidio                       NUMERIC(14,2),
+  valor_financiado               NUMERIC(14,2),
+  observacao                     TEXT,
+  data_conclusao                 DATE,
+  created_at                     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at                     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_andamentos_avaliacao ON andamentos(avaliacao_id);
+CREATE INDEX idx_andamentos_imovel ON andamentos(imovel_id);
+CREATE TRIGGER trg_andamentos_updated_at BEFORE UPDATE ON andamentos
+  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+COMMENT ON COLUMN andamentos.status_andamento IS
+  'Regra de negócio (aplicar na camada de serviço, ao salvar): quando mudar para ''Concluído'', '
+  'atualizar automaticamente avaliacoes.status da avaliacao_id vinculada para ''Concluído''.';
+
+CREATE TABLE lancamentos_financiamento (
+  id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  andamento_id       UUID NOT NULL REFERENCES andamentos(id),
+  valor_financiado   NUMERIC(14,2),
+  remuneracao        NUMERIC(14,2),
+  status             TEXT NOT NULL DEFAULT 'Pendente' CHECK (status IN ('Pendente','Pago')),
+  data_pagamento     DATE,
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_lancamentos_fin_andamento ON lancamentos_financiamento(andamento_id);
+
+-- ============================================================
+-- 5. VENDA E LOCAÇÃO
+-- ============================================================
+
+CREATE TABLE gestoes (
+  id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  parceiro_id           UUID REFERENCES parceiros(id),
+  data_cadastro         DATE NOT NULL DEFAULT CURRENT_DATE,
+  cliente_id            UUID NOT NULL REFERENCES clientes(id),   -- proprietário
+  imovel_id             UUID NOT NULL REFERENCES imoveis(id),
+  valor_venda           NUMERIC(14,2),
+  prazo_gestao_meses    SMALLINT,
+  porc_honorario        NUMERIC(6,4),
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_gestoes_cliente ON gestoes(cliente_id);
+CREATE INDEX idx_gestoes_imovel ON gestoes(imovel_id);
+CREATE TRIGGER trg_gestoes_updated_at BEFORE UPDATE ON gestoes
+  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+COMMENT ON TABLE gestoes IS 'Contrato de exclusividade de venda firmado com o proprietário (diferente de adm_imoveis, que é administração de locação).';
+
+CREATE TABLE adm_imoveis (
+  id                     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  data_entrada           DATE,
+  pasta_url              TEXT,
+  loja_id                UUID NOT NULL REFERENCES lojas(id),
+  cliente_id             UUID NOT NULL REFERENCES clientes(id),   -- proprietário
+  parceiro_id            UUID REFERENCES parceiros(id),
+  imovel_id              UUID NOT NULL REFERENCES imoveis(id),
+  status                 TEXT NOT NULL DEFAULT 'Ativo',
+  data_assinatura        DATE,
+  prazo_contrato_meses   SMALLINT,
+  valor_transacao        NUMERIC(14,2),
+  porc_honorario         NUMERIC(6,4),
+  tx_administracao       NUMERIC(6,4),
+  valor_cliente          NUMERIC(14,2),
+  valor_administracao    NUMERIC(14,2),
+  iptu                   NUMERIC(14,2),
+  tem_vistoria           BOOLEAN,
+  arquivo_vistoria_url   TEXT,
+  condominio             NUMERIC(14,2),
+  tem_agua               BOOLEAN,
+  uc_caerd               TEXT,
+  tem_energia            BOOLEAN,
+  uc_energisa            TEXT,
+  observacao             TEXT,
+  created_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at             TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_adm_imoveis_cliente ON adm_imoveis(cliente_id);
+CREATE INDEX idx_adm_imoveis_imovel ON adm_imoveis(imovel_id);
+CREATE INDEX idx_adm_imoveis_loja ON adm_imoveis(loja_id);
+CREATE TRIGGER trg_adm_imoveis_updated_at BEFORE UPDATE ON adm_imoveis
+  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+COMMENT ON TABLE adm_imoveis IS 'Contrato de administração de locação com o proprietário. Sempre operado pela loja de Porto Velho, independente de onde o imóvel foi captado.';
+
+CREATE TABLE transacoes (
+  id                          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tipo                        TEXT NOT NULL CHECK (tipo IN ('Compra e Venda','Locação')),
+  adm_imovel_id               UUID REFERENCES adm_imoveis(id),   -- nullable: há órfão conhecido na base legada
+  pasta_url                   TEXT,
+  cliente_id                  UUID NOT NULL REFERENCES clientes(id),   -- proprietário/locador
+  cliente_contraparte_id      UUID NOT NULL REFERENCES clientes(id),   -- comprador/locatário (era "Cliente1")
+  imovel_id                   UUID REFERENCES imoveis(id),             -- nullable: há órfãos conhecidos na base legada
+  status                      TEXT,
+  garantia                    TEXT,
+  valor_caucao                NUMERIC(14,2),
+  pg_caucao                   TEXT,
+  data_assinatura             DATE,
+  data_vencimento             DATE,
+  dia_vencimento              SMALLINT,
+  loja_id                     UUID NOT NULL REFERENCES lojas(id),
+  tem_parceria                BOOLEAN NOT NULL DEFAULT false,
+  porc_parceria               NUMERIC(6,4),
+  parceiro_externo_id         UUID REFERENCES parceiros(id),
+  corretor_proprietario_id    UUID REFERENCES parceiros(id),   -- era "CorretorCliente"
+  corretor_contraparte_id     UUID REFERENCES parceiros(id),   -- era "CorretorCliente1"
+  status_honorario            TEXT NOT NULL DEFAULT 'Pendente',
+  parcela                     TEXT,
+  data_pagamento              DATE,
+  valor_transacao             NUMERIC(14,2) NOT NULL,
+  chave                       TEXT,   -- momento de entrega das chaves, usado no cálculo de risco de posse
+  porc_honorario               NUMERIC(6,4) NOT NULL DEFAULT 0,
+  porc_corretor_proprietario   NUMERIC(6,4) NOT NULL DEFAULT 0,
+  porc_corretor_contraparte    NUMERIC(6,4) NOT NULL DEFAULT 0,
+  porc_imobiliaria              NUMERIC(6,4) NOT NULL DEFAULT 0,   -- NOVO: parte explícita da imobiliária no rateio (ver seção 2.5/5 da Especificação)
+  eh_administracao             BOOLEAN DEFAULT false,
+  tx_administracao             NUMERIC(6,4),
+  valor_cliente                NUMERIC(14,2),
+  valor_administracao          NUMERIC(14,2),
+  iptu                         NUMERIC(14,2),
+  encargos                     TEXT,
+  forma_pagamento              TEXT,
+  finalidade_locacao            TEXT CHECK (finalidade_locacao IN ('Residencial','Comercial','Mista')),
+  atividade                     TEXT,
+  tem_vistoria                  BOOLEAN,
+  arquivo_vistoria_url          TEXT,
+  observacao                    TEXT,
+  created_at                    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at                    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_transacoes_cliente ON transacoes(cliente_id);
+CREATE INDEX idx_transacoes_contraparte ON transacoes(cliente_contraparte_id);
+CREATE INDEX idx_transacoes_imovel ON transacoes(imovel_id);
+CREATE INDEX idx_transacoes_adm_imovel ON transacoes(adm_imovel_id);
+CREATE INDEX idx_transacoes_loja ON transacoes(loja_id);
+CREATE INDEX idx_transacoes_corretor_proprietario ON transacoes(corretor_proprietario_id);
+CREATE INDEX idx_transacoes_corretor_contraparte ON transacoes(corretor_contraparte_id);
+CREATE TRIGGER trg_transacoes_updated_at BEFORE UPDATE ON transacoes
+  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+COMMENT ON TABLE transacoes IS
+  'Entidade central: venda ou locação. cliente_id = proprietário/locador; cliente_contraparte_id = comprador/locatário. '
+  'corretor_proprietario_id e corretor_contraparte_id podem ser o mesmo parceiro (corretor único) — nesse caso a aplicação '
+  'deve somar porc_corretor_proprietario + porc_corretor_contraparte para calcular o valor devido a ele.';
+COMMENT ON COLUMN transacoes.porc_imobiliaria IS
+  'Regra de negócio (validar na aplicação antes de fechar a transação): '
+  'porc_corretor_proprietario + porc_corretor_contraparte + (porc_parceria, se tem_parceria) + porc_imobiliaria '
+  'deve fechar 100% do honorário. Se não fechar, a aplicação deve alertar em vez de deixar sobra implícita.';
+
+CREATE TABLE condicoes_pagamento (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  transacao_id      UUID NOT NULL REFERENCES transacoes(id) ON DELETE CASCADE,
+  tipo              TEXT CHECK (tipo IN ('Entrada','Saldo','Financiamento','Permuta','Parcelado')),
+  valor             NUMERIC(14,2) NOT NULL,
+  descricao         TEXT,
+  descricao_ia      TEXT,
+  forma_pagamento   TEXT,
+  parcelas          SMALLINT,
+  momento           TEXT,
+  data_pagamento    DATE,
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_condicoes_pg_transacao ON condicoes_pagamento(transacao_id);
+COMMENT ON TABLE condicoes_pagamento IS 'A soma de valor para uma transacao_id deve fechar com transacoes.valor_transacao (validar na aplicação).';
+
+CREATE TABLE chaves (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  transacao_id   UUID NOT NULL REFERENCES transacoes(id) ON DELETE CASCADE,
+  foto_url       TEXT,
+  data           DATE,
+  termo_gerado   BOOLEAN NOT NULL DEFAULT false,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_chaves_transacao ON chaves(transacao_id);
+
+CREATE TABLE recibos_locacao (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tipo              TEXT,
+  transacao_id      UUID NOT NULL REFERENCES transacoes(id) ON DELETE CASCADE,
+  desconto          NUMERIC(14,2),
+  valor_descontado  NUMERIC(14,2),
+  observacao        TEXT,
+  arquivo_url       TEXT,
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_recibos_locacao_transacao ON recibos_locacao(transacao_id);
+
+CREATE TABLE encerramentos_transacao (
+  id                     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  transacao_id           UUID NOT NULL UNIQUE REFERENCES transacoes(id) ON DELETE CASCADE,
+  tipo_transacao         TEXT,
+  status_final           TEXT CHECK (status_final IN ('Concluída','Cancelada','Distratada')),
+  data_encerramento      DATE,
+  motivo_principal       TEXT,
+  motivo_secundario      TEXT,
+  parceiro_id            UUID REFERENCES parceiros(id),
+  falha_interna          BOOLEAN,
+  falha_cliente          BOOLEAN,
+  falha_imovel           BOOLEAN,
+  falha_financeira       BOOLEAN,
+  descricao_livre        TEXT,
+  acao_corretiva         TEXT,
+  enviar_analise_ia      BOOLEAN NOT NULL DEFAULT false,
+  resumo_ia              TEXT,
+  classificacao_ia       TEXT,
+  risco_ia               TEXT,
+  observacao_risco_ia    TEXT,
+  email_enviado          BOOLEAN NOT NULL DEFAULT false,
+  data_envio_email       TIMESTAMPTZ,
+  created_at             TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- ============================================================
+-- 6. FINANCEIRO
+-- ============================================================
+
+CREATE TABLE pagamentos (
+  id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  status             TEXT NOT NULL DEFAULT 'Pendente' CHECK (status IN ('Pendente','Pago')),
+  transacao_id       UUID NOT NULL REFERENCES transacoes(id),
+  cliente_id         UUID REFERENCES clientes(id),
+  tipo               TEXT CHECK (tipo IN ('Compra e Venda','Locação')),
+  parceiro_id        UUID NOT NULL REFERENCES parceiros(id),
+  parte              TEXT,   -- 'Parte proprietária' | 'Parte interessada' | 'Imobiliária' | 'Parceiro externo'
+  porcentagem        NUMERIC(6,4),
+  desconto           NUMERIC(14,2),
+  observacao         TEXT,
+  valor_honorario    NUMERIC(14,2),
+  valor_parceiro     NUMERIC(14,2),
+  data_recebimento   DATE,
+  data_pagamento     DATE,
+  reportado          BOOLEAN NOT NULL DEFAULT false,
+  valor_report       NUMERIC(14,2),
+  data_report        DATE,
+  arquivo_url        TEXT,
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_pagamentos_transacao ON pagamentos(transacao_id);
+CREATE INDEX idx_pagamentos_parceiro ON pagamentos(parceiro_id);
+CREATE TRIGGER trg_pagamentos_updated_at BEFORE UPDATE ON pagamentos
+  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+COMMENT ON TABLE pagamentos IS 'Um recibo por perna do rateio de honorário (corretor proprietário, corretor contraparte, parceiro externo, imobiliária).';
+
+CREATE TABLE movimentacoes (
+  id                        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tipo                      TEXT NOT NULL CHECK (tipo IN ('Recebimento','Pagamento')),
+  categoria_id              UUID NOT NULL REFERENCES categorias_financeiras(id),
+  transacao_id               UUID REFERENCES transacoes(id),
+  contraparte_nome           TEXT,
+  parceiro_id                 UUID REFERENCES parceiros(id),
+  pagamento_id                UUID REFERENCES pagamentos(id),
+  descricao                   TEXT,
+  valor                        NUMERIC(14,2) NOT NULL,
+  forma_pagamento              TEXT,
+  parcelas                     SMALLINT,
+  num_parcela                  SMALLINT,
+  id_parcelamento              UUID,   -- agrupa as parcelas de um mesmo lançamento recorrente
+  vencimento                   DATE NOT NULL,
+  pago                         BOOLEAN NOT NULL DEFAULT false,
+  data_pagamento               DATE,
+  comprovante_url              TEXT,
+  gerado_automaticamente       BOOLEAN NOT NULL DEFAULT false,
+  created_at                   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at                   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_movimentacoes_transacao ON movimentacoes(transacao_id);
+CREATE INDEX idx_movimentacoes_categoria ON movimentacoes(categoria_id);
+CREATE INDEX idx_movimentacoes_parceiro ON movimentacoes(parceiro_id);
+CREATE INDEX idx_movimentacoes_parcelamento ON movimentacoes(id_parcelamento);
+CREATE TRIGGER trg_movimentacoes_updated_at BEFORE UPDATE ON movimentacoes
+  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+COMMENT ON TABLE movimentacoes IS 'Livro-caixa central: toda entrada/saída financeira, ligada ou não a uma transação.';
+
+CREATE TABLE contratos_corretor (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  status        TEXT NOT NULL DEFAULT 'Ativo',
+  parceiro_id   UUID NOT NULL REFERENCES parceiros(id),
+  funcao        TEXT,
+  fee           NUMERIC(12,2),
+  porc_compr    NUMERIC(6,4),
+  porc_vend     NUMERIC(6,4),
+  dia_fee       SMALLINT,
+  cidade_id     UUID REFERENCES cidades(id),
+  estado_id     UUID REFERENCES estados(id),
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_contratos_corretor_parceiro ON contratos_corretor(parceiro_id);
+CREATE TRIGGER trg_contratos_corretor_updated_at BEFORE UPDATE ON contratos_corretor
+  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+CREATE TABLE relatorios (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  data_inicial      DATE,
+  data_final        DATE,
+  tipo_relatorio    TEXT,
+  parceiro_id       UUID REFERENCES parceiros(id),
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- ============================================================
+-- 7. MOTOR DE DOCUMENTOS (substitui os Logs + AutoCrat do AppSheet)
+-- ============================================================
+
+CREATE TABLE documentos_gerados (
+  id                        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  entidade_tipo             TEXT NOT NULL,   -- 'transacao' | 'adm_imovel' | 'gestao' | 'parceiro' | 'contrato_corretor'
+  entidade_id               UUID NOT NULL,
+  tipo_documento            TEXT NOT NULL,   -- 'contrato_locacao' | 'contrato_compra_venda' | 'carta_preferencia' |
+                                              -- 'contrato_administracao' | 'contrato_corretor' | 'recibo'
+  arquivo_url               TEXT,
+  gerado_por_usuario_id     UUID REFERENCES usuarios(id),
+  status                    TEXT NOT NULL DEFAULT 'Sucesso' CHECK (status IN ('Sucesso','Erro')),
+  mensagem                  TEXT,
+  gerado_em                 TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_documentos_entidade ON documentos_gerados(entidade_tipo, entidade_id);
+COMMENT ON TABLE documentos_gerados IS 'Auditoria nativa de geração de documentos, substituindo LogContratoParceiro/LogContratoAdm/LogPastaImovel e a aba do AutoCrat.';
+
+-- ============================================================
+-- FIM
+-- ============================================================

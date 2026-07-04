@@ -136,7 +136,7 @@ def carregar_mapa_parceiros():
 # ─── CLIENTES ───────────────────────────────────────────────
 
 def buscar_cliente(termo):
-    registros = ler_aba("Cliente")
+    registros = [r for r in ler_aba("Cliente") if str(r.get("IdCliente","")).strip()]
     if eh_id(termo):
         return [r for r in registros
                 if str(r.get("IdCliente","")).lower().strip() == termo.lower().strip()]
@@ -370,7 +370,7 @@ FUNCOES_DISPONIVEIS = [
 ]
 
 def buscar_parceiro(termo):
-    registros = ler_aba("Parceiro")
+    registros = [r for r in ler_aba("Parceiro") if str(r.get("IdParceiro","")).strip()]
     if eh_id(termo):
         return [r for r in registros
                 if str(r.get("IdParceiro","")).lower().strip() == termo.lower().strip()]
@@ -382,7 +382,7 @@ def listar_parceiros_por_funcao(funcao):
     Lista parceiros filtrando por Funcao.
     Se funcao='internos', retorna Administrativo + Corretor + Corretor Estagiário.
     """
-    registros = ler_aba("Parceiro")
+    registros = [r for r in ler_aba("Parceiro") if str(r.get("IdParceiro","")).strip()]
     funcao_lower = funcao.lower().strip()
 
     if funcao_lower == "internos":

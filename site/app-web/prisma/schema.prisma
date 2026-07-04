@@ -1,0 +1,20 @@
+// Este arquivo é gerado automaticamente a partir do banco de dados real.
+// Depois de rodar site/database/schema.sql no Postgres (Supabase/Neon) e
+// configurar DATABASE_URL no .env, rode:
+//
+//   npx prisma db pull
+//   npx prisma generate
+//
+// Isso preenche os "model" abaixo espelhando exatamente as tabelas de
+// site/database/schema.sql, sem precisar manter duas fontes de verdade.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Os models entram aqui depois do `prisma db pull`.

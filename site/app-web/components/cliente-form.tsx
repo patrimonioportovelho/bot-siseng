@@ -1,5 +1,8 @@
+"use client";
+
+import { useState } from "react";
 import { ESTADOS_CIVIS, TIPOS_CONTA, TIPOS_PIX, TIPOS_CLIENTE } from "@/lib/clientes/opcoes";
-import { formatCpf, formatCnpj, formatTelefone } from "@/lib/format";
+import { formatCpf, formatCnpj, formatTelefone, formatValorEditavel } from "@/lib/format";
 
 type Loja = { id: string; nome: string };
 type Banco = { id: string; nome: string };
@@ -26,8 +29,6 @@ type ClienteExistente = {
   observacao: string | null;
   parceiro_id: string | null;
   loja_id: string | null;
-  status_cadastro: string | null;
-  tipo_vinculo: string | null;
   banco_id: string | null;
   codigo_banco: string | null;
   agencia: string | null;
@@ -59,6 +60,9 @@ export function ClienteForm({
   action: (formData: FormData) => void;
 }) {
   const c = cliente;
+  const [tipoCliente, setTipoCliente] = useState(c?.tipo_cliente ?? "");
+  const mostrarCpf = tipoCliente !== "Pessoa Jurídica";
+  const mostrarCnpj = tipoCliente !== "Pessoa Física";
 
   return (
     <form action={action} className="flex flex-col gap-5">
@@ -77,7 +81,13 @@ export function ClienteForm({
           </div>
           <div>
             <label className={LABEL}>Tipo de cliente</label>
-            <select className={CAMPO} name="tipo_cliente" defaultValue={c?.tipo_cliente ?? ""} required>
+            <select
+              className={CAMPO}
+              name="tipo_cliente"
+              value={tipoCliente}
+              onChange={(e) => setTipoCliente(e.target.value)}
+              required
+            >
               <option value="" disabled>
                 Selecione...
               </option>
@@ -88,24 +98,28 @@ export function ClienteForm({
               ))}
             </select>
           </div>
-          <div>
-            <label className={LABEL}>CPF</label>
-            <input
-              className={CAMPO}
-              name="cpf"
-              placeholder="000.000.000-00"
-              defaultValue={c?.cpf ? formatCpf(c.cpf) : ""}
-            />
-          </div>
-          <div>
-            <label className={LABEL}>CNPJ</label>
-            <input
-              className={CAMPO}
-              name="cnpj"
-              placeholder="00.000.000/0000-00"
-              defaultValue={c?.cnpj ? formatCnpj(c.cnpj) : ""}
-            />
-          </div>
+          {mostrarCpf && (
+            <div>
+              <label className={LABEL}>CPF</label>
+              <input
+                className={CAMPO}
+                name="cpf"
+                placeholder="000.000.000-00"
+                defaultValue={c?.cpf ? formatCpf(c.cpf) : ""}
+              />
+            </div>
+          )}
+          {mostrarCnpj && (
+            <div>
+              <label className={LABEL}>CNPJ</label>
+              <input
+                className={CAMPO}
+                name="cnpj"
+                placeholder="00.000.000/0000-00"
+                defaultValue={c?.cnpj ? formatCnpj(c.cnpj) : ""}
+              />
+            </div>
+          )}
           <div>
             <label className={LABEL}>RG</label>
             <input className={CAMPO} name="rg" defaultValue={c?.rg ?? ""} />
@@ -184,7 +198,8 @@ export function ClienteForm({
             <input
               className={CAMPO}
               name="renda_bruta"
-              defaultValue={c?.renda_bruta != null ? String(c.renda_bruta) : ""}
+              placeholder="2.500,00"
+              defaultValue={formatValorEditavel(c?.renda_bruta)}
             />
           </div>
         </div>
@@ -214,14 +229,6 @@ export function ClienteForm({
                 </option>
               ))}
             </select>
-          </div>
-          <div>
-            <label className={LABEL}>Status do cadastro</label>
-            <input className={CAMPO} name="status_cadastro" defaultValue={c?.status_cadastro ?? ""} />
-          </div>
-          <div>
-            <label className={LABEL}>Tipo de vínculo</label>
-            <input className={CAMPO} name="tipo_vinculo" defaultValue={c?.tipo_vinculo ?? ""} />
           </div>
           <div className="md:col-span-2">
             <label className={LABEL}>Observação</label>

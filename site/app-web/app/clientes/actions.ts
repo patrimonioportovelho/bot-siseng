@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireAdminSession, logAlteracao } from "@/lib/auth";
+import { valorEditavelParaDecimal } from "@/lib/format";
 
 function texto(formData: FormData, campo: string): string | null {
   const v = formData.get(campo);
@@ -29,11 +30,10 @@ function digitos(formData: FormData, campo: string): string | null {
   return d.length > 0 ? d : null;
 }
 
-function decimal(formData: FormData, campo: string): number | null {
+function rendaBruta(formData: FormData, campo: string): number | null {
   const t = texto(formData, campo);
   if (t === null) return null;
-  const n = Number(t.replace(",", "."));
-  return Number.isFinite(n) ? n : null;
+  return valorEditavelParaDecimal(t);
 }
 
 function data(formData: FormData, campo: string): Date | null {
@@ -54,7 +54,7 @@ function camposEditaveis(formData: FormData) {
     telefone: telefoneDigitos(formData, "telefone"),
     email: texto(formData, "email"),
     estado_civil: texto(formData, "estado_civil"),
-    renda_bruta: decimal(formData, "renda_bruta"),
+    renda_bruta: rendaBruta(formData, "renda_bruta"),
     data_nascimento: data(formData, "data_nascimento"),
     cat_profissao: texto(formData, "cat_profissao"),
     tipo_servidor: texto(formData, "tipo_servidor"),
@@ -63,8 +63,6 @@ function camposEditaveis(formData: FormData) {
     observacao: texto(formData, "observacao"),
     parceiro_id: texto(formData, "parceiro_id"),
     loja_id: texto(formData, "loja_id"),
-    status_cadastro: texto(formData, "status_cadastro"),
-    tipo_vinculo: texto(formData, "tipo_vinculo"),
     banco_id: texto(formData, "banco_id"),
     codigo_banco: texto(formData, "codigo_banco"),
     agencia: texto(formData, "agencia"),

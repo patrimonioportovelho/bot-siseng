@@ -76,3 +76,23 @@ export function percentualParaDecimal(texto: string): number | null {
   const n = Number(t.replace(",", "."));
   return Number.isFinite(n) ? n / 100 : null;
 }
+
+// Formata um valor decimal (ex.: 2500) como texto de input no padrão
+// brasileiro "2.500,00" — usado no campo de renda bruta do formulário.
+export function formatValorEditavel(valor: unknown): string {
+  if (valor === null || valor === undefined || valor === "") return "";
+  const n = Number(valor);
+  if (!Number.isFinite(n)) return "";
+  return n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// Caminho inverso: texto digitado pelo usuário ("2.500,00") -> número
+// (2500) para gravar no banco. Remove separador de milhar (.) antes de
+// trocar a vírgula decimal por ponto — diferente de um replace ingênuo,
+// que quebraria com múltiplos pontos de milhar.
+export function valorEditavelParaDecimal(texto: string): number | null {
+  const t = texto.trim();
+  if (!t) return null;
+  const n = Number(t.replace(/\./g, "").replace(",", "."));
+  return Number.isFinite(n) ? n : null;
+}

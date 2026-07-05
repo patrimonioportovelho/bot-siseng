@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireAdminSession, requireAdm, logAlteracao } from "@/lib/auth";
+import { percentualParaDecimal } from "@/lib/format";
 
 function texto(formData: FormData, campo: string): string | null {
   const v = formData.get(campo);
@@ -12,11 +13,28 @@ function texto(formData: FormData, campo: string): string | null {
   return t.length > 0 ? t : null;
 }
 
+// Telefone é digitado com máscara ((xx) xxxxx-xxxx) mas gravado só com
+// dígitos, no mesmo formato já usado no restante da base.
+function telefoneDigitos(formData: FormData, campo: string): string | null {
+  const t = texto(formData, campo);
+  if (t === null) return null;
+  const d = t.replace(/\D/g, "");
+  return d.length > 0 ? d : null;
+}
+
 function decimal(formData: FormData, campo: string): number | null {
   const t = texto(formData, campo);
   if (t === null) return null;
   const n = Number(t.replace(",", "."));
   return Number.isFinite(n) ? n : null;
+}
+
+// Campos de comissionamento são exibidos como percentual (22,5) mas gravados
+// como fração decimal (0.225), no mesmo formato já usado na base.
+function percentual(formData: FormData, campo: string): number | null {
+  const t = texto(formData, campo);
+  if (t === null) return null;
+  return percentualParaDecimal(t);
 }
 
 function inteiro(formData: FormData, campo: string): number | null {
@@ -39,7 +57,7 @@ function data(formData: FormData, campo: string): Date | null {
 // em Configurações — nunca por este formulário, nem por ADM.
 function camposEditaveis(formData: FormData) {
   return {
-    telefone: texto(formData, "telefone"),
+    telefone: telefoneDigitos(formData, "telefone"),
     email: texto(formData, "email"),
     empresa: texto(formData, "empresa"),
     funcao: texto(formData, "funcao") ?? undefined,
@@ -54,8 +72,8 @@ function camposEditaveis(formData: FormData) {
     data_entrada: data(formData, "data_entrada"),
     obs_funcao: texto(formData, "obs_funcao"),
     fee: decimal(formData, "fee"),
-    porc_compr: decimal(formData, "porc_compr"),
-    porc_vend: decimal(formData, "porc_vend"),
+    porc_compr: percentual(formData, "porc_compr"),
+    porc_vend: percentual(formData, "porc_vend"),
     dia_fee: inteiro(formData, "dia_fee"),
     banco_id: texto(formData, "banco_id"),
     codigo_banco: texto(formData, "codigo_banco"),

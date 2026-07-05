@@ -18,13 +18,16 @@ export const TODAS_FUNCOES = [...FUNCOES_EQUIPE, ...FUNCOES_EXTERNAS];
 
 export const STATUS_FUNCAO = ["Ativo", "Inativo", "Excluído"];
 
+// Valores em minúsculo de propósito — é exatamente como estão gravados no
+// banco (import original da planilha). O <select> usa className="capitalize"
+// para exibir com a primeira letra maiúscula sem alterar o valor salvo.
 export const ESTADOS_CIVIS = [
-  "Solteiro (a)",
-  "Casado (a)",
-  "Divorciado (a)",
-  "Separado judicialmente (a)",
-  "Viúvo (a)",
-  "Em uma união estável"
+  "solteiro (a)",
+  "casado (a)",
+  "divorciado (a)",
+  "separado judicialmente (a)",
+  "viúvo (a)",
+  "em uma união estável"
 ];
 
 export const TIPOS_CONTA = ["Conta corrente", "Conta poupança"];

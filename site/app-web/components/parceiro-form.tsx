@@ -5,6 +5,9 @@ import {
   TIPOS_CONTA,
   TIPOS_PIX
 } from "@/lib/parceiros/opcoes";
+import { formatCpf, formatTelefone, formatPercentual } from "@/lib/format";
+
+const FUNCOES_COM_COMISSIONAMENTO = ["Corretor", "Corretor Estagiário"];
 
 type Loja = { id: string; nome: string };
 type Banco = { id: string; nome: string };
@@ -91,7 +94,11 @@ export function ParceiroForm({
             <label className={LABEL}>CPF</label>
             {p ? (
               <>
-                <input className={CAMPO_DESABILITADO} value={p.cpf ?? "— ainda não cadastrado —"} disabled />
+                <input
+                  className={CAMPO_DESABILITADO}
+                  value={p.cpf ? formatCpf(p.cpf) : "— ainda não cadastrado —"}
+                  disabled
+                />
                 <p className="text-[11px] text-gray-400 mt-1">
                   Protegido — CPF é definido quando um ADM aprova o pedido de acesso.
                 </p>
@@ -140,10 +147,10 @@ export function ParceiroForm({
           </div>
           <div>
             <label className={LABEL}>Estado civil</label>
-            <select className={CAMPO} name="estado_civil" defaultValue={p?.estado_civil ?? ""}>
+            <select className={CAMPO + " capitalize"} name="estado_civil" defaultValue={p?.estado_civil ?? ""}>
               <option value="">—</option>
               {ESTADOS_CIVIS.map((e) => (
-                <option key={e} value={e}>
+                <option key={e} value={e} className="capitalize">
                   {e}
                 </option>
               ))}
@@ -183,7 +190,12 @@ export function ParceiroForm({
         <div className="grid md:grid-cols-2 gap-3">
           <div>
             <label className={LABEL}>Telefone</label>
-            <input className={CAMPO} name="telefone" defaultValue={p?.telefone ?? ""} />
+            <input
+              className={CAMPO}
+              name="telefone"
+              placeholder="(69) 99999-9999"
+              defaultValue={p?.telefone ? formatTelefone(p.telefone) : ""}
+            />
           </div>
           <div>
             <label className={LABEL}>E-mail</label>
@@ -212,27 +224,42 @@ export function ParceiroForm({
         </div>
       </div>
 
-      <div className="bg-white border border-gray-200 rounded-xl p-4">
-        <div className="text-sm font-bold text-gray-800 mb-3">Comissionamento</div>
-        <div className="grid md:grid-cols-4 gap-3">
-          <div>
-            <label className={LABEL}>Fee (R$)</label>
-            <input className={CAMPO} name="fee" defaultValue={p?.fee != null ? String(p.fee) : ""} />
-          </div>
-          <div>
-            <label className={LABEL}>% compra</label>
-            <input className={CAMPO} name="porc_compr" defaultValue={p?.porc_compr != null ? String(p.porc_compr) : ""} />
-          </div>
-          <div>
-            <label className={LABEL}>% venda</label>
-            <input className={CAMPO} name="porc_vend" defaultValue={p?.porc_vend != null ? String(p.porc_vend) : ""} />
-          </div>
-          <div>
-            <label className={LABEL}>Dia do fee</label>
-            <input className={CAMPO} name="dia_fee" defaultValue={p?.dia_fee ?? ""} />
+      {(!p || FUNCOES_COM_COMISSIONAMENTO.includes(p.funcao)) && (
+        <div className="bg-white border border-gray-200 rounded-xl p-4">
+          <div className="text-sm font-bold text-gray-800 mb-3">Comissionamento</div>
+          <p className="text-[11px] text-gray-400 mb-3 -mt-2">
+            Visível apenas para Corretor e Corretor Estagiário.
+          </p>
+          <div className="grid md:grid-cols-4 gap-3">
+            <div>
+              <label className={LABEL}>Fee (R$)</label>
+              <input className={CAMPO} name="fee" defaultValue={p?.fee != null ? String(p.fee) : ""} />
+            </div>
+            <div>
+              <label className={LABEL}>% compra</label>
+              <input
+                className={CAMPO}
+                name="porc_compr"
+                placeholder="Ex.: 22,5"
+                defaultValue={p?.porc_compr != null ? formatPercentual(p.porc_compr) : ""}
+              />
+            </div>
+            <div>
+              <label className={LABEL}>% venda</label>
+              <input
+                className={CAMPO}
+                name="porc_vend"
+                placeholder="Ex.: 22,5"
+                defaultValue={p?.porc_vend != null ? formatPercentual(p.porc_vend) : ""}
+              />
+            </div>
+            <div>
+              <label className={LABEL}>Dia do fee</label>
+              <input className={CAMPO} name="dia_fee" defaultValue={p?.dia_fee ?? ""} />
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       <div className="bg-white border border-gray-200 rounded-xl p-4">
         <div className="text-sm font-bold text-gray-800 mb-3">Dados bancários</div>
@@ -247,6 +274,12 @@ export function ParceiroForm({
                 </option>
               ))}
             </select>
+            {!p?.banco_id && p?.codigo_banco && (
+              <p className="text-[11px] text-gray-400 mt-1">
+                Código {p.codigo_banco} importado da planilha, ainda não vinculado a um banco da lista —
+                selecione acima.
+              </p>
+            )}
           </div>
           <div>
             <label className={LABEL}>Código do banco</label>

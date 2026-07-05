@@ -10,6 +10,8 @@ import { atualizarParceiroAction, apagarParceiroAction } from "../actions";
 
 export const dynamic = "force-dynamic";
 
+const FUNCOES_COM_COMISSIONAMENTO = ["Corretor", "Corretor Estagiário"];
+
 function Cartao({ titulo, children }: { titulo: string; children: ReactNode }) {
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4">
@@ -31,27 +33,23 @@ export default async function ParceiroDetalhePage({ params }: { params: Promise<
 
   if (!parceiro) notFound();
 
-  const [imoveis, clientes, avaliacoes, pagamentos, contrato, documentos] = await Promise.all([
+  const [imoveis, clientes, avaliacoes, pagamentos, contrato, documentos, primeiraTransacao] = await Promise.all([
     prisma.imoveis.findMany({
       where: { parceiro_id: id },
-      orderBy: { created_at: "desc" },
-      take: 15
+      orderBy: { created_at: "desc" }
     }),
     prisma.clientes.findMany({
       where: { parceiro_id: id },
-      orderBy: { created_at: "desc" },
-      take: 15
+      orderBy: { created_at: "desc" }
     }),
     prisma.avaliacoes.findMany({
       where: { parceiro_id: id },
       orderBy: { created_at: "desc" },
-      take: 15,
       include: { clientes: true, bancos: true }
     }),
     prisma.pagamentos.findMany({
       where: { parceiro_id: id },
-      orderBy: { created_at: "desc" },
-      take: 15
+      orderBy: { created_at: "desc" }
     }),
     prisma.contratos_corretor.findFirst({
       where: { parceiro_id: id },
@@ -61,10 +59,18 @@ export default async function ParceiroDetalhePage({ params }: { params: Promise<
       where: { entidade_tipo: "parceiro", entidade_id: id },
       orderBy: { gerado_em: "desc" },
       take: 10
+    }),
+    prisma.transacoes.findFirst({
+      where: { OR: [{ corretor_proprietario_id: id }, { corretor_contraparte_id: id }] },
+      orderBy: { data_assinatura: "asc" },
+      select: { tipo: true, data_assinatura: true, created_at: true }
     })
   ]);
 
   const totalHonorarios = pagamentos.reduce((soma, p) => soma + Number(p.valor_parceiro ?? 0), 0);
+  const mostrarComissionamento = FUNCOES_COM_COMISSIONAMENTO.includes(parceiro.funcao);
+
+  const desde = primeiraTransacao?.data_assinatura ?? primeiraTransacao?.created_at ?? parceiro.data_entrada ?? null;
 
   return (
     <div>
@@ -88,14 +94,26 @@ export default async function ParceiroDetalhePage({ params }: { params: Promise<
       </div>
 
       <div className="text-sm font-bold text-gray-800 mb-1">{parceiro.nome}</div>
-      <div className="text-xs text-gray-500 mb-4">
+      <div className="text-xs text-gray-500 mb-0.5">
         {parceiro.funcao} · {parceiro.status_funcao}
       </div>
+      <div className="text-xs text-gray-400 mb-4">
+        id - {parceiro.id}
+        {desde && (
+          <>
+            {" "}
+            · desde {formatData(desde)}
+            {primeiraTransacao?.tipo ? ` (${primeiraTransacao.tipo})` : ""}
+          </>
+        )}
+      </div>
 
-      <div className="grid lg:grid-cols-2 gap-4 mb-4">
-        <Cartao titulo="Imóveis vinculados">
+      <ParceiroForm parceiro={parceiro} lojas={lojas} bancos={bancos} action={atualizarParceiroAction} />
+
+      <div className="grid lg:grid-cols-2 gap-4 mt-6 mb-4">
+        <Cartao titulo={`Imóveis vinculados (${imoveis.length})`}>
           {imoveis.length === 0 && <p className="text-xs text-gray-400">Nenhum imóvel vinculado.</p>}
-          <div className="flex flex-col gap-1.5">
+          <div className="flex flex-col gap-1.5 max-h-72 overflow-auto">
             {imoveis.map((im) => (
               <div key={im.id} className="text-xs text-gray-600 border-b border-gray-50 pb-1.5">
                 <span className="font-medium text-gray-800">{im.endereco ?? "—"}</span>{" "}
@@ -107,9 +125,9 @@ export default async function ParceiroDetalhePage({ params }: { params: Promise<
           </div>
         </Cartao>
 
-        <Cartao titulo="Clientes cadastrados">
+        <Cartao titulo={`Clientes cadastrados (${clientes.length})`}>
           {clientes.length === 0 && <p className="text-xs text-gray-400">Nenhum cliente cadastrado.</p>}
-          <div className="flex flex-col gap-1.5">
+          <div className="flex flex-col gap-1.5 max-h-72 overflow-auto">
             {clientes.map((c) => (
               <div key={c.id} className="text-xs text-gray-600 border-b border-gray-50 pb-1.5">
                 <span className="font-medium text-gray-800">{c.nome}</span>{" "}
@@ -121,9 +139,9 @@ export default async function ParceiroDetalhePage({ params }: { params: Promise<
           </div>
         </Cartao>
 
-        <Cartao titulo="Aprovações de financiamento">
+        <Cartao titulo={`Aprovações de financiamento (${avaliacoes.length})`}>
           {avaliacoes.length === 0 && <p className="text-xs text-gray-400">Nenhuma avaliação registrada.</p>}
-          <div className="flex flex-col gap-1.5">
+          <div className="flex flex-col gap-1.5 max-h-72 overflow-auto">
             {avaliacoes.map((a) => (
               <div key={a.id} className="text-xs text-gray-600 border-b border-gray-50 pb-1.5">
                 <span className="font-medium text-gray-800">{a.clientes?.nome ?? "—"}</span>{" "}
@@ -137,7 +155,7 @@ export default async function ParceiroDetalhePage({ params }: { params: Promise<
 
         <Cartao titulo={`Honorários recebidos (${formatMoeda(totalHonorarios)})`}>
           {pagamentos.length === 0 && <p className="text-xs text-gray-400">Nenhum pagamento registrado.</p>}
-          <div className="flex flex-col gap-1.5">
+          <div className="flex flex-col gap-1.5 max-h-72 overflow-auto">
             {pagamentos.map((p) => (
               <div key={p.id} className="text-xs text-gray-600 border-b border-gray-50 pb-1.5">
                 <span className="font-medium text-gray-800">{formatMoeda(p.valor_parceiro)}</span>{" "}
@@ -150,9 +168,9 @@ export default async function ParceiroDetalhePage({ params }: { params: Promise<
         </Cartao>
       </div>
 
-      {(contrato || documentos.length > 0) && (
+      {((mostrarComissionamento && contrato) || documentos.length > 0) && (
         <div className="grid lg:grid-cols-2 gap-4 mb-4">
-          {contrato && (
+          {mostrarComissionamento && contrato && (
             <Cartao titulo="Contrato de associação">
               <div className="text-xs text-gray-600">
                 <span className="font-medium text-gray-800">{contrato.status}</span> · fee{" "}
@@ -182,8 +200,6 @@ export default async function ParceiroDetalhePage({ params }: { params: Promise<
           )}
         </div>
       )}
-
-      <ParceiroForm parceiro={parceiro} lojas={lojas} bancos={bancos} action={atualizarParceiroAction} />
     </div>
   );
 }

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Topbar } from "@/components/topbar";
 import { prisma } from "@/lib/prisma";
 import { FUNCOES_EQUIPE, FUNCOES_EXTERNAS } from "@/lib/parceiros/opcoes";
+import { formatTelefone } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -37,7 +38,7 @@ function ParceiroRow({ p }: { p: Parceiro }) {
       <span className="text-xs font-medium text-gray-800 truncate">{p.nome}</span>
       <span className="text-xs text-gray-500">{p.status_funcao}</span>
       <span className="text-xs text-gray-500 truncate">{p.lojas?.nome ?? "—"}</span>
-      <span className="text-xs text-gray-500 truncate">{p.telefone ?? "—"}</span>
+      <span className="text-xs text-gray-500 truncate">{p.telefone ? formatTelefone(p.telefone) : "—"}</span>
       <span className="text-xs text-gray-500 truncate">{p.email ?? "—"}</span>
       <span className="text-gray-300 text-xs">›</span>
     </Link>

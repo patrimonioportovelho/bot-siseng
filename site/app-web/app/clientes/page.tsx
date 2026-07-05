@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Topbar } from "@/components/topbar";
 import { Pagination } from "@/components/pagination";
 import { prisma } from "@/lib/prisma";
@@ -31,7 +32,7 @@ export default async function ClientesPage({
       orderBy: { nome: "asc" },
       skip: (page - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
-      include: { cidades: true }
+      include: { parceiros: true }
     }),
     prisma.clientes.count({ where })
   ]);
@@ -45,51 +46,51 @@ export default async function ClientesPage({
       <div className="bg-white border border-gray-200 rounded-xl p-4">
         <div className="flex items-center justify-between mb-3">
           <div className="text-sm font-bold text-gray-800">Clientes ({total})</div>
-          <form className="flex gap-2">
-            <input
-              type="text"
-              name="q"
-              defaultValue={termo}
-              placeholder="Buscar por nome, e-mail ou CPF..."
-              className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-64 outline-none focus:border-primary"
-            />
-            <button type="submit" className="text-xs bg-primary text-white rounded-lg px-3 py-1.5">
-              Buscar
-            </button>
-          </form>
+          <div className="flex gap-2">
+            <form className="flex gap-2">
+              <input
+                type="text"
+                name="q"
+                defaultValue={termo}
+                placeholder="Buscar por nome, e-mail ou CPF..."
+                className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-64 outline-none focus:border-primary"
+              />
+              <button type="submit" className="text-xs bg-white border border-gray-300 text-gray-600 rounded-lg px-3 py-1.5">
+                Buscar
+              </button>
+            </form>
+            <Link
+              href="/clientes/novo"
+              className="text-xs bg-primary text-white rounded-lg px-3 py-1.5 font-semibold whitespace-nowrap"
+            >
+              + Adicionar cliente
+            </Link>
+          </div>
         </div>
 
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="text-left text-gray-500">
-              <th className="font-normal py-1.5 border-b border-gray-100">Nome</th>
-              <th className="font-normal py-1.5 border-b border-gray-100">Tipo</th>
-              <th className="font-normal py-1.5 border-b border-gray-100">Status</th>
-              <th className="font-normal py-1.5 border-b border-gray-100">CPF/CNPJ</th>
-              <th className="font-normal py-1.5 border-b border-gray-100">Cidade</th>
-              <th className="font-normal py-1.5 border-b border-gray-100">Telefone</th>
-            </tr>
-          </thead>
-          <tbody>
-            {clientes.map((c) => (
-              <tr key={c.id}>
-                <td className="py-2 border-b border-gray-50 font-medium text-gray-800">{c.nome}</td>
-                <td className="py-2 border-b border-gray-50">{c.tipo_cliente}</td>
-                <td className="py-2 border-b border-gray-50">{c.status_cadastro ?? "—"}</td>
-                <td className="py-2 border-b border-gray-50">{c.cpf ?? c.cnpj ?? "—"}</td>
-                <td className="py-2 border-b border-gray-50">{c.cidades?.nome ?? "—"}</td>
-                <td className="py-2 border-b border-gray-50">{c.telefone ?? "—"}</td>
-              </tr>
-            ))}
-            {clientes.length === 0 && (
-              <tr>
-                <td colSpan={6} className="py-6 text-center text-gray-400">
-                  Nenhum cliente encontrado.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+        <div className="grid grid-cols-[1.2fr_2.4fr_2fr_auto] gap-3 px-3 py-1.5 text-[11px] text-gray-400 border-b border-gray-100">
+          <span>Id cliente</span>
+          <span>Nome</span>
+          <span>Parceiro responsável</span>
+          <span></span>
+        </div>
+        <div className="flex flex-col">
+          {clientes.map((c) => (
+            <Link
+              key={c.id}
+              href={`/clientes/${c.id}`}
+              className="grid grid-cols-[1.2fr_2.4fr_2fr_auto] gap-3 items-center px-3 py-2.5 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              <span className="text-xs text-gray-500 truncate">{c.id_legado ?? c.id}</span>
+              <span className="text-xs font-medium text-gray-800 truncate">{c.nome}</span>
+              <span className="text-xs text-gray-500 truncate">{c.parceiros?.nome ?? "—"}</span>
+              <span className="text-gray-300 text-xs">›</span>
+            </Link>
+          ))}
+          {clientes.length === 0 && (
+            <div className="py-6 text-center text-gray-400 text-xs">Nenhum cliente encontrado.</div>
+          )}
+        </div>
 
         <Pagination page={page} totalPages={totalPages} basePath="/clientes" q={termo} />
       </div>

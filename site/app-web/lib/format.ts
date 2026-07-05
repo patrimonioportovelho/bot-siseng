@@ -42,6 +42,14 @@ export function formatCpf(cpf: unknown): string {
   return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
 }
 
+// Formata CNPJ (14 dígitos) como 00.000.000/0000-00.
+export function formatCnpj(cnpj: unknown): string {
+  if (!cnpj) return "";
+  const d = String(cnpj).replace(/\D/g, "");
+  if (d.length !== 14) return String(cnpj);
+  return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}`;
+}
+
 // Formata telefone (10 ou 11 dígitos) como (xx) xxxxx-xxxx ou (xx) xxxx-xxxx.
 export function formatTelefone(tel: unknown): string {
   if (!tel) return "";

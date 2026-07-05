@@ -17,29 +17,12 @@ const ARQUIVO_TEMPLATE: Record<TipoDocumento, string> = {
   carta_preferencia: "carta_preferencia.docx",
   contrato_administracao: "contrato_administracao.docx",
   contrato_associacao_corretor: "contrato_associacao_corretor.docx",
+  contrato_associacao_corretor_estagiario: "contrato_associacao_corretor_estagiario.docx",
   termo_entrega_chaves: "termo_entrega_chaves.docx",
   recibo_honorarios: "recibo_honorarios.docx",
   repasse_administracao: "repasse_administracao.docx",
   repasse_primeira_locacao: "repasse_primeira_locacao.docx"
 };
-
-// Contrato de associação do corretor tem duas versões conforme a função do
-// parceiro: Corretor (contrato normal) e Corretor Estagiário (contrato de
-// estágio). O template do estagiário ainda precisa ser adicionado em
-// site/app-web/templates/ (e no bucket "templates" do Supabase Storage em
-// produção) — até lá, gerar o documento para um Corretor Estagiário falha
-// com um erro claro dizendo qual arquivo falta.
-const ARQUIVO_TEMPLATE_CORRETOR_ESTAGIARIO = "contrato_associacao_corretor_estagiario.docx";
-
-// Resolve qual arquivo .docx usar. Só contrato_associacao_corretor varia
-// conforme o registro (função do parceiro); os demais são fixos por tipo.
-async function resolverArquivoTemplate(tipoDocumento: TipoDocumento, entidadeId: string): Promise<string> {
-  if (tipoDocumento === "contrato_associacao_corretor") {
-    const p = await prisma.parceiros.findUnique({ where: { id: entidadeId }, select: { funcao: true } });
-    if (p?.funcao === "Corretor Estagiário") return ARQUIVO_TEMPLATE_CORRETOR_ESTAGIARIO;
-  }
-  return ARQUIVO_TEMPLATE[tipoDocumento];
-}
 
 // URL do serviço de conversão docx -> PDF (Gotenberg rodando no Railway).
 // Ex.: DOCUMENT_CONVERTER_URL=https://gotenberg-production.up.railway.app
@@ -53,19 +36,31 @@ function supabaseAdmin() {
 
 export type GerarDocumentoParams = {
   tipoDocumento: TipoDocumento;
-  entidadeTipo: "transacao" | "adm_imovel" | "cont_corretor" | "parceiro" | "chaves" | "movimentacao" | "gestao";
+  entidadeTipo:
+    | "transacao"
+    | "adm_imovel"
+    | "cont_corretor"
+    | "cont_corretor_estagiario"
+    | "parceiro"
+    | "chaves"
+    | "movimentacao"
+    | "gestao";
   entidadeId: string;
   usuarioId?: string;
 };
 
 // Qual entidadeTipo cada modelo de documento espera (usado pela tela de
 // geração em Configurações para saber que tipo de registro buscar).
+// cont_corretor e cont_corretor_estagiario são dois modelos distintos: cada
+// um busca só parceiros com a função correspondente (ver buscarRegistrosAction
+// em lib/documentos/actions.ts).
 export const ENTIDADE_POR_DOCUMENTO: Record<TipoDocumento, GerarDocumentoParams["entidadeTipo"]> = {
   contrato_locacao: "transacao",
   contrato_compra_venda: "transacao",
   carta_preferencia: "gestao",
   contrato_administracao: "adm_imovel",
   contrato_associacao_corretor: "cont_corretor",
+  contrato_associacao_corretor_estagiario: "cont_corretor_estagiario",
   termo_entrega_chaves: "chaves",
   recibo_honorarios: "movimentacao",
   repasse_administracao: "movimentacao",
@@ -77,8 +72,7 @@ export async function gerarDocumento(params: GerarDocumentoParams): Promise<stri
 
   try {
     const dados = await montarDadosDoMerge(tipoDocumento, entidadeId);
-    const nomeArquivo = await resolverArquivoTemplate(tipoDocumento, entidadeId);
-    const docxBuffer = await preencherTemplate(nomeArquivo, dados);
+    const docxBuffer = await preencherTemplate(ARQUIVO_TEMPLATE[tipoDocumento], dados);
     const arquivoFinal = DOCUMENT_CONVERTER_URL
       ? await converterParaPdf(docxBuffer)
       : { buffer: docxBuffer, extensao: "docx" as const };
@@ -214,6 +208,7 @@ async function montarDadosDoMerge(
     case "contrato_administracao":
       return montarDadosAdmImovel(entidadeId);
     case "contrato_associacao_corretor":
+    case "contrato_associacao_corretor_estagiario":
       return montarDadosContratoCorretor(entidadeId);
     case "termo_entrega_chaves":
       return montarDadosChaves(entidadeId);

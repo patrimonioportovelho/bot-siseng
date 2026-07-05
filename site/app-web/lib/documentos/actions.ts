@@ -76,20 +76,32 @@ export async function buscarRegistrosAction(
     }
     case "cont_corretor": {
       // Busca direto em parceiros (não em contratos_corretor): o contrato de
-      // associação usa os dados de comissionamento já cadastrados na própria
-      // ficha do parceiro (fee/%compra/%venda/dia do fee), então qualquer
-      // Corretor ou Corretor Estagiário aparece aqui, tenha ou não um
-      // contrato antigo registrado em contratos_corretor. Demais funções
-      // (Administrativo, Corretor Externo, Desligado etc.) não aparecem.
+      // associação do corretor usa os dados de comissionamento já
+      // cadastrados na própria ficha do parceiro (fee/%compra/%venda/dia do
+      // fee), então qualquer parceiro com função Corretor aparece aqui,
+      // tenha ou não um contrato antigo registrado em contratos_corretor.
       const rows = await prisma.parceiros.findMany({
         where: {
-          funcao: { in: ["Corretor", "Corretor Estagiário"] },
+          funcao: "Corretor",
           ...(termo ? { nome: { contains: termo, mode: "insensitive" as const } } : {})
         },
         orderBy: { nome: "asc" },
         take: 20
       });
-      return rows.map((p) => ({ id: p.id, label: `${p.nome} · ${p.funcao}` }));
+      return rows.map((p) => ({ id: p.id, label: p.nome }));
+    }
+    case "cont_corretor_estagiario": {
+      // Mesma lógica do caso acima, mas só para função Corretor Estagiário —
+      // modelo de contrato separado (contrato_associacao_corretor_estagiario.docx).
+      const rows = await prisma.parceiros.findMany({
+        where: {
+          funcao: "Corretor Estagiário",
+          ...(termo ? { nome: { contains: termo, mode: "insensitive" as const } } : {})
+        },
+        orderBy: { nome: "asc" },
+        take: 20
+      });
+      return rows.map((p) => ({ id: p.id, label: p.nome }));
     }
     case "chaves": {
       const rows = await prisma.chaves.findMany({

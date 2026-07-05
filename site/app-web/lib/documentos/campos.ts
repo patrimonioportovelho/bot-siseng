@@ -4,6 +4,7 @@ export type TipoDocumento =
   | "carta_preferencia"
   | "contrato_administracao"
   | "contrato_associacao_corretor"
+  | "contrato_associacao_corretor_estagiario"
   | "termo_entrega_chaves"
   | "recibo_honorarios"
   | "repasse_administracao"
@@ -68,17 +69,33 @@ export const CAMPOS_DOCUMENTO: Record<TipoDocumento, CampoDocumento[]> = {
     { campo: "prazo_contrato_meses", descricao: "Duração do contrato em meses" },
     { campo: "data_assinatura", descricao: "Data de assinatura (dd/mm/aaaa)" }
   ],
-  // Dois arquivos de template (ver ARQUIVO_TEMPLATE_CORRETOR_ESTAGIARIO em
-  // gerar.ts): contrato_associacao_corretor.docx (função Corretor) e
-  // contrato_associacao_corretor_estagiario.docx (função Corretor
-  // Estagiário) — mesmo conjunto de campos disponível para os dois; o
-  // template do estagiário simplesmente não usa {{Creci}}.
+  // Dois modelos distintos, cada um com seu próprio arquivo .docx e sua
+  // própria busca (só aparece parceiro com a função correspondente): Corretor
+  // usa contrato_associacao_corretor.docx, Corretor Estagiário usa
+  // contrato_associacao_corretor_estagiario.docx. Mesmo conjunto de campos
+  // nos dois — o template do estagiário simplesmente não usa {{Creci}}.
   contrato_associacao_corretor: [
     { campo: "Parceiro", descricao: "Nome completo do corretor parceiro" },
     { campo: "EstadoCivil", descricao: "Estado civil do parceiro" },
     { campo: "DataNascimento", descricao: "Data de nascimento (dd/mm/aaaa)" },
     { campo: "CPF", descricao: "CPF formatado do corretor" },
-    { campo: "Creci", descricao: "Número do CRECI (só no contrato de Corretor)" },
+    { campo: "Creci", descricao: "Número do CRECI" },
+    { campo: "Email", descricao: "E-mail do parceiro" },
+    { campo: "Telefone", descricao: "Telefone formatado do parceiro" },
+    { campo: "Endereco", descricao: "Endereço residencial do parceiro" },
+    { campo: "Fee", descricao: "Valor de fee mensal, se houver" },
+    { campo: "PorcCompr", descricao: "Percentual em transações de compra" },
+    { campo: "PorcVend", descricao: "Percentual em transações de venda" },
+    { campo: "DiaFee", descricao: "Dia do mês de cobrança do fee" },
+    { campo: "Cidade", descricao: "Cidade da loja do parceiro" },
+    { campo: "Estado", descricao: "Estado da loja do parceiro" },
+    { campo: "DataEntrada", descricao: "Data de início da associação" }
+  ],
+  contrato_associacao_corretor_estagiario: [
+    { campo: "Parceiro", descricao: "Nome completo do corretor estagiário" },
+    { campo: "EstadoCivil", descricao: "Estado civil do parceiro" },
+    { campo: "DataNascimento", descricao: "Data de nascimento (dd/mm/aaaa)" },
+    { campo: "CPF", descricao: "CPF formatado do parceiro" },
     { campo: "Email", descricao: "E-mail do parceiro" },
     { campo: "Telefone", descricao: "Telefone formatado do parceiro" },
     { campo: "Endereco", descricao: "Endereço residencial do parceiro" },

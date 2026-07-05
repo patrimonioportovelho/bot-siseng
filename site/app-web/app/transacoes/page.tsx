@@ -4,7 +4,7 @@ export default function TransacoesPage() {
   return (
     <PlaceholderPage
       title="Transações"
-      description="Venda e locação: Gestão, AdmImóvel, condições de pagamento, chaves e recibos entram aqui."
+      description="Duas abas — Locações e Compra e Venda —, agrupadas por Loja e depois por Status (igual ao AppSheet). Formulário 'Nova Transação' com condições de pagamento, chaves e recibos entram aqui."
     />
   );
 }

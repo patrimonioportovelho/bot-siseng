@@ -4,7 +4,7 @@ export default function FinanceiroPage() {
   return (
     <PlaceholderPage
       title="Financeiro"
-      description="Movimentação (livro-caixa) e Pagamento (rateio de honorário) entram aqui."
+      description="Movimentações: livro-caixa agrupado por Tipo (Despesa/Recebimento) e depois Pago?, somando o valor, ordenado por vencimento. Honorários: pagamentos por corretor (Parte/Tipo), somando o valor devido a cada um."
     />
   );
 }

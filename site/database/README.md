@@ -39,6 +39,12 @@ A planilha `Administrativo` tem cerca de 4.500 linhas em 29 abas. Pontos de aten
 
 Campos como `funcao`, `tipo_imovel`, `status_imovel` foram implementados como `TEXT` + `CHECK` (nos poucos casos que já têm uma lista fechada e estável), em vez de `ENUM` nativo do Postgres — assim, adicionar uma opção nova é só um `ALTER TABLE ... DROP CONSTRAINT / ADD CONSTRAINT`, sem precisar de migração de tipo. Onde a lista ainda pode crescer bastante (`status_imovel`, `status` de contrato etc.), deixei como `TEXT` livre, para não travar o cadastro.
 
+Os valores de cada `CHECK` foram conferidos direto no editor do AppSheet (não só na planilha), então refletem exatamente as listas configuradas hoje — inclusive correções em relação à primeira versão do schema: `movimentacoes.tipo`/`categorias_financeiras.tipo` são `Despesa`/`Recebimento` (não `Pagamento`), `imoveis.tipo_oferta` é o estágio do funil (`Rascunho`/`Em análise`/`Administração`/`Em negociação`/`Inativo`/`Arquivado`, não `Venda`/`Locação`/`Administração`), e `adm_imoveis.agua`/`energia` viraram `TEXT` (origem/situação da ligação) em vez de `BOOLEAN`. Campos como `transacoes.status` e `encerramentos_transacao.status_final` ficaram sem `CHECK` de propósito: no AppSheet são referências a uma tabela de domínio (`Status`) com lista aberta, não um Enum fixo.
+
+## Módulo de Metas (novo, não existia no AppSheet)
+
+`metas` guarda metas individuais (por corretor) ou coletivas (por loja) de vendas, locações, honorários, captação de imóveis, avaliações aprovadas ou novos clientes, por período (mensal/trimestral/semestral/anual). O valor realizado nunca é gravado à mão: a view `vw_metas_progresso` calcula ao vivo a partir de `transacoes`/`pagamentos`/`imoveis`/`avaliacoes`/`clientes`, e `vw_ranking_mes_atual` monta o leaderboard do mês corrente. Ver a página `/metas` no `app-web` para o primeiro recorte de UI (barras de progresso + ranking).
+
 ## Regras de negócio que ficam por conta da aplicação (não são CHECK no banco)
 
 Para não travar a migração de dados históricos imperfeitos, as regras abaixo devem ser validadas na camada de aplicação (API), não como `CHECK` rígido no banco:

@@ -41,12 +41,13 @@ INSERT INTO bancos (nome, codigo) VALUES
   ('Banco Original', '212');
 
 -- Categorias financeiras de partida (ajustar conforme plano de contas real)
+-- OBS: tipo segue o enum real do AppSheet (Categoria.Tipo) — 'Despesa' | 'Recebimento', não 'Pagamento'
 INSERT INTO categorias_financeiras (nome, tipo) VALUES
   ('Honorário de venda', 'Recebimento'),
   ('Honorário de locação', 'Recebimento'),
   ('Taxa de administração', 'Recebimento'),
   ('Remuneração de correspondência bancária', 'Recebimento'),
-  ('Comissão de corretor', 'Pagamento'),
-  ('Repasse a proprietário', 'Pagamento'),
-  ('Despesa administrativa', 'Pagamento'),
+  ('Comissão de corretor', 'Despesa'),
+  ('Repasse a proprietário', 'Despesa'),
+  ('Despesa administrativa', 'Despesa'),
   ('Fee de corretor (mensalidade)', 'Recebimento');

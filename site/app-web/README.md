@@ -42,6 +42,16 @@ Ao importar o repositório na Vercel, configurar em **Settings → General →
 Root Directory**: `site/app-web`. Adicionar `DATABASE_URL` nas
 Environment Variables do projeto (mesma connection string do `.env` local).
 
+## Motor de documentos
+
+`lib/documentos/` + `app/api/documentos/gerar/` geram contratos, recibos e
+termos a partir de modelos `.docx` (mantendo o timbrado original). Os 9
+arquivos `.docx` ficam fora desta pasta, em `bot-siseng/templates/` — ver
+o README lá para como editá-los, e `lib/documentos/campos.ts` para a lista
+de placeholders de cada um. Falta apenas implementar `montarDadosDoMerge`
+em `lib/documentos/gerar.ts` (hoje lança erro de "não implementado") assim
+que o `prisma db pull` gerar os models reais.
+
 ## Próximos passos (por módulo)
 
 Ver o documento *Especificação Técnica* e o plano de implementação por

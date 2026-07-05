@@ -1,11 +1,22 @@
-# Credenciais e arquivos sensíveis
-credentials.json
-estado_monitor.json
+# Bot — credenciais e arquivos sensíveis
+bot/credentials.json
+bot/estado_monitor.json
 
-# Cache do Python
-__pycache__/
+# Bot — cache do Python
+bot/__pycache__/
+**/__pycache__/
 *.pyc
 *.pyo
+
+# Site — Next.js / Node
+site/app-web/node_modules/
+site/app-web/.next/
+site/app-web/.env
+site/app-web/.env.local
+site/app-web/out/
+
+# Banco — segredos locais
+site/database/.env
 
 # Logs
 *.log

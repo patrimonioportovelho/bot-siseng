@@ -6,6 +6,7 @@ import { createClient } from "@supabase/supabase-js";
 import { prisma } from "@/lib/prisma";
 import type { TipoDocumento } from "./campos";
 import { valorPorExtenso, dataPorExtenso, formatarCpf } from "./extenso";
+import { formatTelefone } from "@/lib/format";
 
 // Nome do arquivo .docx (com o timbrado já formatado) que corresponde a cada
 // tipo de documento. Os arquivos ficam em site/app-web/templates/ — ver
@@ -322,19 +323,31 @@ async function montarDadosAdmImovel(admImovelId: string): Promise<Record<string,
 // de um registro de contratos_corretor: os dados de comissionamento (fee,
 // %compra, %venda, dia do fee) já vivem direto na ficha do parceiro e são
 // editados por lá, então a geração do contrato lê sempre o valor atual.
+// Campos no formato exato usado nos dois templates reais (ver
+// campos.ts e templates/contrato_associacao_corretor*.docx).
 async function montarDadosContratoCorretor(parceiroId: string): Promise<Record<string, unknown>> {
-  const p = await prisma.parceiros.findUnique({ where: { id: parceiroId } });
+  const p = await prisma.parceiros.findUnique({
+    where: { id: parceiroId },
+    include: { lojas: true }
+  });
   if (!p) throw new Error(`Parceiro "${parceiroId}" não encontrado.`);
 
   return {
-    corretor_nome: p.nome,
-    corretor_cpf: formatarCpf(p.cpf ?? ""),
-    corretor_creci: p.creci ?? "",
-    fee: p.fee != null ? numero(p.fee) : "",
-    porc_compr: percentual(p.porc_compr),
-    porc_vend: percentual(p.porc_vend),
-    dia_fee: p.dia_fee ?? "",
-    data_entrada: dataCurta(p.data_entrada)
+    Parceiro: p.nome,
+    EstadoCivil: p.estado_civil ?? "",
+    DataNascimento: dataCurta(p.data_nascimento),
+    CPF: formatarCpf(p.cpf ?? ""),
+    Creci: p.creci ?? "",
+    Email: p.email ?? "",
+    Telefone: formatTelefone(p.telefone),
+    Endereco: p.endereco ?? "",
+    Fee: p.fee != null ? numero(p.fee) : "",
+    PorcCompr: percentual(p.porc_compr),
+    PorcVend: percentual(p.porc_vend),
+    DiaFee: p.dia_fee ?? "",
+    Cidade: p.lojas?.cidade ?? "",
+    Estado: p.lojas?.estado ?? "",
+    DataEntrada: dataCurta(p.data_entrada)
   };
 }
 

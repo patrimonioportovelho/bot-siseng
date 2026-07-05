@@ -194,8 +194,8 @@ export function ParceiroForm({
                 defaultValue={inputDate(p?.data_saida ?? null)}
               />
               <p className="text-[11px] text-gray-400 mt-1">
-                Preencher quando o status virar Inativo — Administrativo, Corretor e Corretor
-                Estagiário.
+                Preenchida automaticamente com a data de hoje ao salvar com status Inativo
+                (Administrativo, Corretor e Corretor Estagiário) — pode ajustar depois.
               </p>
             </div>
           )}

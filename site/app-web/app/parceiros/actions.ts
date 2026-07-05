@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireAdminSession, requireAdm, logAlteracao } from "@/lib/auth";
 import { percentualParaDecimal } from "@/lib/format";
+import { FUNCOES_EQUIPE } from "@/lib/parceiros/opcoes";
 
 function texto(formData: FormData, campo: string): string | null {
   const v = formData.get(campo);
@@ -129,9 +130,24 @@ export async function atualizarParceiroAction(formData: FormData) {
   const antes = await prisma.parceiros.findUnique({ where: { id } });
   if (!antes) throw new Error("Parceiro não encontrado.");
 
+  const campos = camposEditaveis(formData);
+
+  // Quando Administrativo/Corretor/Corretor Estagiário muda para Inativo, a
+  // função sai automaticamente da equipe: vira Corretor Externo se tiver
+  // CRECI (continua atuando de forma externa) ou Desligado se não tiver.
+  // A data de saída, se ainda não informada, é preenchida com a data de hoje.
+  const funcaoAtual = campos.funcao ?? antes.funcao;
+  if (campos.status_funcao === "Inativo" && FUNCOES_EQUIPE.includes(funcaoAtual)) {
+    const creciAtual = campos.creci ?? antes.creci;
+    campos.funcao = creciAtual ? "Corretor Externo" : "Desligado";
+    if (!campos.data_saida && !antes.data_saida) {
+      campos.data_saida = new Date();
+    }
+  }
+
   const depois = await prisma.parceiros.update({
     where: { id },
-    data: camposEditaveis(formData)
+    data: campos
   });
 
   await logAlteracao({

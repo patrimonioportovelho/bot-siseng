@@ -22,6 +22,24 @@ const ARQUIVO_TEMPLATE: Record<TipoDocumento, string> = {
   repasse_primeira_locacao: "repasse_primeira_locacao.docx"
 };
 
+// Contrato de associação do corretor tem duas versões conforme a função do
+// parceiro: Corretor (contrato normal) e Corretor Estagiário (contrato de
+// estágio). O template do estagiário ainda precisa ser adicionado em
+// site/app-web/templates/ (e no bucket "templates" do Supabase Storage em
+// produção) — até lá, gerar o documento para um Corretor Estagiário falha
+// com um erro claro dizendo qual arquivo falta.
+const ARQUIVO_TEMPLATE_CORRETOR_ESTAGIARIO = "contrato_associacao_corretor_estagiario.docx";
+
+// Resolve qual arquivo .docx usar. Só contrato_associacao_corretor varia
+// conforme o registro (função do parceiro); os demais são fixos por tipo.
+async function resolverArquivoTemplate(tipoDocumento: TipoDocumento, entidadeId: string): Promise<string> {
+  if (tipoDocumento === "contrato_associacao_corretor") {
+    const p = await prisma.parceiros.findUnique({ where: { id: entidadeId }, select: { funcao: true } });
+    if (p?.funcao === "Corretor Estagiário") return ARQUIVO_TEMPLATE_CORRETOR_ESTAGIARIO;
+  }
+  return ARQUIVO_TEMPLATE[tipoDocumento];
+}
+
 // URL do serviço de conversão docx -> PDF (Gotenberg rodando no Railway).
 // Ex.: DOCUMENT_CONVERTER_URL=https://gotenberg-production.up.railway.app
 // Se não estiver configurado, o motor devolve o .docx preenchido sem converter,
@@ -58,7 +76,8 @@ export async function gerarDocumento(params: GerarDocumentoParams): Promise<stri
 
   try {
     const dados = await montarDadosDoMerge(tipoDocumento, entidadeId);
-    const docxBuffer = await preencherTemplate(tipoDocumento, dados);
+    const nomeArquivo = await resolverArquivoTemplate(tipoDocumento, entidadeId);
+    const docxBuffer = await preencherTemplate(nomeArquivo, dados);
     const arquivoFinal = DOCUMENT_CONVERTER_URL
       ? await converterParaPdf(docxBuffer)
       : { buffer: docxBuffer, extensao: "docx" as const };
@@ -111,8 +130,7 @@ export async function gerarDocumento(params: GerarDocumentoParams): Promise<stri
 // diretório não existe no build da Vercel — busca do bucket "templates" no
 // Supabase Storage, onde uma cópia de cada .docx deve ser mantida sincronizada
 // (ver bot-siseng/templates/README.md).
-async function carregarTemplate(tipoDocumento: TipoDocumento): Promise<Buffer> {
-  const nomeArquivo = ARQUIVO_TEMPLATE[tipoDocumento];
+async function carregarTemplate(nomeArquivo: string): Promise<Buffer> {
   const pastaLocal = process.env.TEMPLATES_LOCAL_DIR;
 
   if (pastaLocal) {
@@ -131,10 +149,10 @@ async function carregarTemplate(tipoDocumento: TipoDocumento): Promise<Buffer> {
 }
 
 async function preencherTemplate(
-  tipoDocumento: TipoDocumento,
+  nomeArquivo: string,
   dados: Record<string, unknown>
 ): Promise<Buffer> {
-  const conteudoTemplate = await carregarTemplate(tipoDocumento);
+  const conteudoTemplate = await carregarTemplate(nomeArquivo);
   const zip = new PizZip(conteudoTemplate);
   const doc = new Docxtemplater(zip, {
     paragraphLoop: true,
@@ -300,22 +318,23 @@ async function montarDadosAdmImovel(admImovelId: string): Promise<Record<string,
   };
 }
 
-async function montarDadosContratoCorretor(contratoId: string): Promise<Record<string, unknown>> {
-  const c = await prisma.contratos_corretor.findUnique({
-    where: { id: contratoId },
-    include: { parceiros: true }
-  });
-  if (!c) throw new Error(`Contrato de corretor "${contratoId}" não encontrado.`);
+// entidadeId aqui é o id do parceiro (Corretor ou Corretor Estagiário), não
+// de um registro de contratos_corretor: os dados de comissionamento (fee,
+// %compra, %venda, dia do fee) já vivem direto na ficha do parceiro e são
+// editados por lá, então a geração do contrato lê sempre o valor atual.
+async function montarDadosContratoCorretor(parceiroId: string): Promise<Record<string, unknown>> {
+  const p = await prisma.parceiros.findUnique({ where: { id: parceiroId } });
+  if (!p) throw new Error(`Parceiro "${parceiroId}" não encontrado.`);
 
   return {
-    corretor_nome: c.parceiros.nome,
-    corretor_cpf: formatarCpf(c.parceiros.cpf ?? ""),
-    corretor_creci: c.parceiros.creci ?? "",
-    fee: c.fee != null ? numero(c.fee) : "",
-    porc_compr: percentual(c.porc_compr),
-    porc_vend: percentual(c.porc_vend),
-    dia_fee: c.dia_fee ?? "",
-    data_entrada: dataCurta(c.parceiros.data_entrada)
+    corretor_nome: p.nome,
+    corretor_cpf: formatarCpf(p.cpf ?? ""),
+    corretor_creci: p.creci ?? "",
+    fee: p.fee != null ? numero(p.fee) : "",
+    porc_compr: percentual(p.porc_compr),
+    porc_vend: percentual(p.porc_vend),
+    dia_fee: p.dia_fee ?? "",
+    data_entrada: dataCurta(p.data_entrada)
   };
 }
 

@@ -75,13 +75,21 @@ export async function buscarRegistrosAction(
       return rows.map((a) => ({ id: a.id, label: `${a.imoveis.endereco ?? "—"} · ${a.clientes.nome}` }));
     }
     case "cont_corretor": {
-      const rows = await prisma.contratos_corretor.findMany({
-        where: termo ? { parceiros: { nome: { contains: termo, mode: "insensitive" } } } : undefined,
-        include: { parceiros: true },
-        orderBy: { created_at: "desc" },
+      // Busca direto em parceiros (não em contratos_corretor): o contrato de
+      // associação usa os dados de comissionamento já cadastrados na própria
+      // ficha do parceiro (fee/%compra/%venda/dia do fee), então qualquer
+      // Corretor ou Corretor Estagiário aparece aqui, tenha ou não um
+      // contrato antigo registrado em contratos_corretor. Demais funções
+      // (Administrativo, Corretor Externo, Desligado etc.) não aparecem.
+      const rows = await prisma.parceiros.findMany({
+        where: {
+          funcao: { in: ["Corretor", "Corretor Estagiário"] },
+          ...(termo ? { nome: { contains: termo, mode: "insensitive" as const } } : {})
+        },
+        orderBy: { nome: "asc" },
         take: 20
       });
-      return rows.map((c) => ({ id: c.id, label: `${c.parceiros.nome} · ${c.status}` }));
+      return rows.map((p) => ({ id: p.id, label: `${p.nome} · ${p.funcao}` }));
     }
     case "chaves": {
       const rows = await prisma.chaves.findMany({

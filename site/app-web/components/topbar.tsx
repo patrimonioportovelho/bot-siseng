@@ -21,7 +21,9 @@ export async function Topbar() {
         <div className="w-7 h-7 rounded-full bg-primary text-white text-xs font-bold flex items-center justify-center">
           {iniciais(session?.nome)}
         </div>
-        <span className="text-xs text-gray-700">{session?.nome ?? "Não identificado"} · Administrativo</span>
+        <span className="text-xs text-gray-700">
+          {session?.nome ?? "Não identificado"} {session?.isAdm ? "· ADM" : ""}
+        </span>
         <form action={logoutAction}>
           <button type="submit" className="text-xs text-gray-400 hover:text-gray-700">
             Sair

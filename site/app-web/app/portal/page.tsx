@@ -34,7 +34,7 @@ export default async function PortalPage() {
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <div className="text-lg font-bold text-gray-900">SisEng · Portal do corretor</div>
+          <div className="text-lg font-bold text-gray-900">Acesso SisEng · Portal do corretor</div>
           <div className="text-xs text-gray-500">
             {session.nome ? `Olá, ${session.nome}` : "Acesso sem identificação"}
           </div>

@@ -3,19 +3,25 @@ import { loginAction } from "./actions";
 export default async function LoginPage({
   searchParams
 }: {
-  searchParams: Promise<{ erro?: string; next?: string }>;
+  searchParams: Promise<{ erro?: string; pendente?: string; next?: string }>;
 }) {
-  const { erro, next } = await searchParams;
+  const { erro, pendente, next } = await searchParams;
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
       <form action={loginAction} className="bg-white border border-gray-200 rounded-xl p-8 w-full max-w-sm shadow-sm">
-        <div className="text-lg font-bold text-gray-900 mb-1">SisEng</div>
-        <div className="text-sm text-gray-500 mb-6">Acesso administrativo</div>
+        <div className="text-lg font-bold text-gray-900 mb-1">Acesso administrativo</div>
+        <div className="text-sm text-gray-500 mb-6">SisEng</div>
 
         {erro && (
           <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
             {erro}
+          </div>
+        )}
+
+        {pendente && (
+          <div className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+            {pendente}
           </div>
         )}
 
@@ -46,7 +52,8 @@ export default async function LoginPage({
         </button>
 
         <p className="text-[11px] text-gray-400 mt-4 leading-relaxed">
-          Acesso restrito à equipe administrativa cadastrada. Toda ação realizada no sistema fica
+          O nome precisa estar cadastrado como parceiro ativo. Se for seu primeiro acesso, sua
+          solicitação fica pendente até um administrador aprovar. Toda ação no sistema fica
           registrada nos logs de auditoria.
         </p>
       </form>

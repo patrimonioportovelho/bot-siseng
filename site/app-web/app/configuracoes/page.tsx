@@ -1,6 +1,7 @@
 import { Topbar } from "@/components/topbar";
 import { prisma } from "@/lib/prisma";
-import { atualizarCpfAdministrativoAction } from "./actions";
+import { getAdminSession } from "@/lib/auth";
+import { atualizarCpfParceiroAction, aprovarAcessoAction, rejeitarAcessoAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -15,11 +16,47 @@ function formatDataHora(data: Date) {
   return new Date(data).toLocaleString("pt-BR");
 }
 
-export default async function ConfiguracoesPage() {
-  const [administrativos, lojas, acessos, alteracoes] = await Promise.all([
+export default async function ConfiguracoesPage({
+  searchParams
+}: {
+  searchParams: Promise<{ q?: string }>;
+}) {
+  const session = await getAdminSession();
+  const { q } = await searchParams;
+  const termo = (q ?? "").trim();
+
+  if (!session?.isAdm) {
+    return (
+      <div>
+        <Topbar />
+        <div className="bg-white border border-gray-200 rounded-xl p-8 text-center">
+          <div className="text-sm font-bold text-gray-800 mb-2">Configurações</div>
+          <p className="text-sm text-gray-500">
+            Seu acesso ao SisEng está liberado. As configurações avançadas (aprovação de acessos,
+            CPFs e logs de auditoria) ficam visíveis apenas para administradores.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const [pendentes, parceiros, lojas, acessos, alteracoes] = await Promise.all([
+    prisma.solicitacoes_acesso.findMany({
+      where: { status: "pendente" },
+      orderBy: { criado_em: "asc" },
+      include: { parceiros_solicitacoes_acesso_parceiro_idToparceiros: true }
+    }),
     prisma.parceiros.findMany({
-      where: { funcao: "Administrativo" },
-      orderBy: { nome: "asc" }
+      where: termo
+        ? {
+            OR: [
+              { nome: { contains: termo, mode: "insensitive" } },
+              { funcao: { contains: termo, mode: "insensitive" } }
+            ]
+          }
+        : undefined,
+      orderBy: { nome: "asc" },
+      take: 100
     }),
     prisma.lojas.findMany({ orderBy: { nome: "asc" } }),
     prisma.logs_acesso.findMany({
@@ -39,29 +76,93 @@ export default async function ConfiguracoesPage() {
       <Topbar />
 
       <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4">
-        <div className="text-sm font-bold text-gray-800 mb-1">Acesso administrativo (login por CPF)</div>
+        <div className="text-sm font-bold text-gray-800 mb-1">Solicitações de acesso pendentes</div>
         <p className="text-xs text-gray-500 mb-3">
-          O login exige nome completo + CPF batendo com o cadastro abaixo. Enquanto o CPF de alguém
-          ainda estiver em branco, essa pessoa consegue entrar só com o nome (pra poder cadastrar o
-          próprio CPF aqui) — depois de preenchido, o CPF passa a ser exigido de verdade.
+          Qualquer parceiro ativo pode pedir acesso (nome + CPF na tela de login). Aqui você confirma
+          se o CPF informado é mesmo da pessoa antes de liberar — uma vez aprovado, o CPF fica
+          registrado no cadastro do parceiro e o acesso passa a ser direto.
         </p>
+        {pendentes.length === 0 ? (
+          <p className="text-xs text-gray-400">Nenhuma solicitação pendente.</p>
+        ) : (
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-left text-gray-500">
+                <th className="font-normal py-1.5 border-b border-gray-100">Parceiro cadastrado</th>
+                <th className="font-normal py-1.5 border-b border-gray-100">Nome informado</th>
+                <th className="font-normal py-1.5 border-b border-gray-100">CPF informado</th>
+                <th className="font-normal py-1.5 border-b border-gray-100">Pedido em</th>
+                <th className="font-normal py-1.5 border-b border-gray-100 w-40">Ação</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pendentes.map((s) => (
+                <tr key={s.id}>
+                  <td className="py-2 border-b border-gray-50 font-medium text-gray-800">
+                    {s.parceiros_solicitacoes_acesso_parceiro_idToparceiros.nome}{" "}
+                    <span className="text-gray-400">
+                      · {s.parceiros_solicitacoes_acesso_parceiro_idToparceiros.funcao}
+                    </span>
+                  </td>
+                  <td className="py-2 border-b border-gray-50">{s.nome_informado}</td>
+                  <td className="py-2 border-b border-gray-50">{formatCpf(s.cpf_informado)}</td>
+                  <td className="py-2 border-b border-gray-50">{formatDataHora(s.criado_em)}</td>
+                  <td className="py-2 border-b border-gray-50">
+                    <div className="flex gap-1.5">
+                      <form action={aprovarAcessoAction}>
+                        <input type="hidden" name="solicitacaoId" value={s.id} />
+                        <button type="submit" className="text-xs bg-primary text-white rounded-lg px-2 py-1">
+                          Aprovar
+                        </button>
+                      </form>
+                      <form action={rejeitarAcessoAction}>
+                        <input type="hidden" name="solicitacaoId" value={s.id} />
+                        <button type="submit" className="text-xs border border-gray-300 text-gray-600 rounded-lg px-2 py-1">
+                          Rejeitar
+                        </button>
+                      </form>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4">
+        <div className="flex items-center justify-between mb-3">
+          <div className="text-sm font-bold text-gray-800">Parceiros e acesso ({parceiros.length})</div>
+          <form className="flex gap-2">
+            <input
+              type="text"
+              name="q"
+              defaultValue={termo}
+              placeholder="Buscar por nome ou função..."
+              className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-64 outline-none focus:border-primary"
+            />
+            <button type="submit" className="text-xs bg-primary text-white rounded-lg px-3 py-1.5">
+              Buscar
+            </button>
+          </form>
+        </div>
         <table className="w-full text-xs">
           <thead>
             <tr className="text-left text-gray-500">
               <th className="font-normal py-1.5 border-b border-gray-100">Nome</th>
-              <th className="font-normal py-1.5 border-b border-gray-100">E-mail</th>
+              <th className="font-normal py-1.5 border-b border-gray-100">Função</th>
               <th className="font-normal py-1.5 border-b border-gray-100">Status</th>
               <th className="font-normal py-1.5 border-b border-gray-100 w-56">CPF</th>
             </tr>
           </thead>
           <tbody>
-            {administrativos.map((p) => (
+            {parceiros.map((p) => (
               <tr key={p.id}>
                 <td className="py-2 border-b border-gray-50 font-medium text-gray-800">{p.nome}</td>
-                <td className="py-2 border-b border-gray-50">{p.email ?? "—"}</td>
+                <td className="py-2 border-b border-gray-50">{p.funcao}</td>
                 <td className="py-2 border-b border-gray-50">{p.status_funcao}</td>
                 <td className="py-2 border-b border-gray-50">
-                  <form action={atualizarCpfAdministrativoAction} className="flex gap-1.5">
+                  <form action={atualizarCpfParceiroAction} className="flex gap-1.5">
                     <input type="hidden" name="parceiroId" value={p.id} />
                     <input
                       name="cpf"
@@ -76,10 +177,10 @@ export default async function ConfiguracoesPage() {
                 </td>
               </tr>
             ))}
-            {administrativos.length === 0 && (
+            {parceiros.length === 0 && (
               <tr>
                 <td colSpan={4} className="py-6 text-center text-gray-400">
-                  Nenhum parceiro com função Administrativo.
+                  Nenhum parceiro encontrado.
                 </td>
               </tr>
             )}
@@ -92,8 +193,7 @@ export default async function ConfiguracoesPage() {
         <p className="text-xs text-gray-500">
           A senha de acesso do portal (<code>/portal</code>) fica na variável{" "}
           <code>PORTAL_CORRETOR_SENHA</code> do arquivo <code>.env</code> (e nas variáveis de ambiente da
-          Vercel em produção). Para trocar, edite lá e reinicie o servidor — não dá pra mudar por aqui
-          ainda.
+          Vercel em produção). Para trocar, edite lá e reinicie o servidor.
         </p>
       </div>
 

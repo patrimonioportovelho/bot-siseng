@@ -19,7 +19,7 @@ export default async function PortalLoginPage({
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
       <form action={loginPortalAction} className="bg-white border border-gray-200 rounded-xl p-8 w-full max-w-sm shadow-sm">
-        <div className="text-lg font-bold text-gray-900 mb-1">SisEng</div>
+        <div className="text-lg font-bold text-gray-900 mb-1">Acesso SisEng</div>
         <div className="text-sm text-gray-500 mb-6">Portal do corretor</div>
 
         {erro && (

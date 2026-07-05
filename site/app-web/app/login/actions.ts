@@ -10,7 +10,8 @@ export async function loginAction(formData: FormData) {
 
   const result = await loginAdmin(nome, cpf);
   if (!result.ok) {
-    redirect(`/login?erro=${encodeURIComponent(result.error)}`);
+    const campo = result.pendente ? "pendente" : "erro";
+    redirect(`/login?${campo}=${encodeURIComponent(result.error)}`);
   }
   redirect(next || "/dashboard");
 }

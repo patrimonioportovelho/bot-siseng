@@ -544,6 +544,7 @@ model parceiros {
   tipo_conta                                                                  String?
   tipo_pix                                                                    String?
   pix                                                                         String?
+  link_drive                                                                  String?
   created_at                                                                  DateTime                  @default(now()) @db.Timestamptz(6)
   updated_at                                                                  DateTime                  @default(now()) @db.Timestamptz(6)
   adm_imoveis                                                                 adm_imoveis[]

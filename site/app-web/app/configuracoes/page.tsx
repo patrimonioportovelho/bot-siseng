@@ -1,7 +1,9 @@
+import Link from "next/link";
 import { Topbar } from "@/components/topbar";
 import { prisma } from "@/lib/prisma";
 import { getAdminSession } from "@/lib/auth";
 import { atualizarCpfParceiroAction, aprovarAcessoAction, rejeitarAcessoAction } from "./actions";
+import { GerarDocumentoForm } from "@/components/gerar-documento-form";
 
 export const dynamic = "force-dynamic";
 
@@ -16,47 +18,43 @@ function formatDataHora(data: Date) {
   return new Date(data).toLocaleString("pt-BR");
 }
 
-export default async function ConfiguracoesPage({
-  searchParams
-}: {
-  searchParams: Promise<{ q?: string }>;
-}) {
+export default async function ConfiguracoesPage() {
   const session = await getAdminSession();
-  const { q } = await searchParams;
-  const termo = (q ?? "").trim();
 
   if (!session?.isAdm) {
     return (
       <div>
         <Topbar />
-        <div className="bg-white border border-gray-200 rounded-xl p-8 text-center">
-          <div className="text-sm font-bold text-gray-800 mb-2">Configurações</div>
-          <p className="text-sm text-gray-500">
-            Seu acesso ao SisEng está liberado. As configurações avançadas (aprovação de acessos,
-            CPFs e logs de auditoria) ficam visíveis apenas para administradores.
+
+        <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4">
+          <div className="text-sm font-bold text-gray-800 mb-1">Gerar documentos</div>
+          <p className="text-xs text-gray-500 mb-3">
+            Selecione o modelo e o registro (pela chave da transação, endereço do imóvel ou nome do
+            parceiro) para gerar o documento preenchido automaticamente.
+          </p>
+          <GerarDocumentoForm />
+        </div>
+
+        <div className="bg-white border border-gray-200 rounded-xl p-6 text-center">
+          <p className="text-xs text-gray-500">
+            Aprovação de acessos, edição de CPF e logs de auditoria ficam visíveis apenas para
+            administradores.
           </p>
         </div>
       </div>
     );
   }
 
-  const [pendentes, parceiros, lojas, acessos, alteracoes] = await Promise.all([
+  const [pendentes, parceirosAtivos, lojas, acessos, alteracoes] = await Promise.all([
     prisma.solicitacoes_acesso.findMany({
       where: { status: "pendente" },
       orderBy: { criado_em: "asc" },
       include: { parceiros_solicitacoes_acesso_parceiro_idToparceiros: true }
     }),
     prisma.parceiros.findMany({
-      where: termo
-        ? {
-            OR: [
-              { nome: { contains: termo, mode: "insensitive" } },
-              { funcao: { contains: termo, mode: "insensitive" } }
-            ]
-          }
-        : undefined,
+      where: { status_funcao: "Ativo" },
       orderBy: { nome: "asc" },
-      take: 100
+      select: { id: true, nome: true, funcao: true }
     }),
     prisma.lojas.findMany({ orderBy: { nome: "asc" } }),
     prisma.logs_acesso.findMany({
@@ -76,11 +74,20 @@ export default async function ConfiguracoesPage({
       <Topbar />
 
       <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4">
+        <div className="text-sm font-bold text-gray-800 mb-1">Gerar documentos</div>
+        <p className="text-xs text-gray-500 mb-3">
+          Selecione o modelo e o registro (pela chave da transação, endereço do imóvel ou nome do
+          parceiro) para gerar o documento preenchido automaticamente.
+        </p>
+        <GerarDocumentoForm />
+      </div>
+
+      <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4">
         <div className="text-sm font-bold text-gray-800 mb-1">Solicitações de acesso pendentes</div>
         <p className="text-xs text-gray-500 mb-3">
           Qualquer parceiro ativo pode pedir acesso (nome + CPF na tela de login). Aqui você confirma
           se o CPF informado é mesmo da pessoa antes de liberar — uma vez aprovado, o CPF fica
-          registrado no cadastro do parceiro e o acesso passa a ser direto.
+          registrado no cadastro do parceiro (ver ficha completa em <Link href="/parceiros" className="text-primary">Parceiros</Link>) e o acesso passa a ser direto.
         </p>
         {pendentes.length === 0 ? (
           <p className="text-xs text-gray-400">Nenhuma solicitação pendente.</p>
@@ -131,61 +138,42 @@ export default async function ConfiguracoesPage({
       </div>
 
       <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4">
-        <div className="flex items-center justify-between mb-3">
-          <div className="text-sm font-bold text-gray-800">Parceiros e acesso ({parceiros.length})</div>
-          <form className="flex gap-2">
+        <div className="text-sm font-bold text-gray-800 mb-1">Definir CPF manualmente</div>
+        <p className="text-xs text-gray-500 mb-3">
+          Para liberar o acesso de alguém sem passar pela solicitação (ex.: cadastro inicial). O nome e
+          os demais dados de cada parceiro ficam em <Link href="/parceiros" className="text-primary">Parceiros</Link>.
+        </p>
+        <form action={atualizarCpfParceiroAction} className="flex gap-2 items-end flex-wrap">
+          <div>
+            <label className="text-xs text-gray-600 block mb-1">Parceiro</label>
+            <select
+              name="parceiroId"
+              required
+              defaultValue=""
+              className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-72 outline-none focus:border-primary bg-white"
+            >
+              <option value="" disabled>
+                Selecione...
+              </option>
+              {parceirosAtivos.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.nome} — {p.funcao}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-gray-600 block mb-1">CPF</label>
             <input
-              type="text"
-              name="q"
-              defaultValue={termo}
-              placeholder="Buscar por nome ou função..."
-              className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-64 outline-none focus:border-primary"
+              name="cpf"
+              placeholder="000.000.000-00"
+              className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-40 outline-none focus:border-primary"
             />
-            <button type="submit" className="text-xs bg-primary text-white rounded-lg px-3 py-1.5">
-              Buscar
-            </button>
-          </form>
-        </div>
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="text-left text-gray-500">
-              <th className="font-normal py-1.5 border-b border-gray-100">Nome</th>
-              <th className="font-normal py-1.5 border-b border-gray-100">Função</th>
-              <th className="font-normal py-1.5 border-b border-gray-100">Status</th>
-              <th className="font-normal py-1.5 border-b border-gray-100 w-56">CPF</th>
-            </tr>
-          </thead>
-          <tbody>
-            {parceiros.map((p) => (
-              <tr key={p.id}>
-                <td className="py-2 border-b border-gray-50 font-medium text-gray-800">{p.nome}</td>
-                <td className="py-2 border-b border-gray-50">{p.funcao}</td>
-                <td className="py-2 border-b border-gray-50">{p.status_funcao}</td>
-                <td className="py-2 border-b border-gray-50">
-                  <form action={atualizarCpfParceiroAction} className="flex gap-1.5">
-                    <input type="hidden" name="parceiroId" value={p.id} />
-                    <input
-                      name="cpf"
-                      defaultValue={formatCpf(p.cpf)}
-                      placeholder="000.000.000-00"
-                      className="text-xs border border-gray-300 rounded-lg px-2 py-1 w-36 outline-none focus:border-primary"
-                    />
-                    <button type="submit" className="text-xs bg-primary text-white rounded-lg px-2 py-1">
-                      Salvar
-                    </button>
-                  </form>
-                </td>
-              </tr>
-            ))}
-            {parceiros.length === 0 && (
-              <tr>
-                <td colSpan={4} className="py-6 text-center text-gray-400">
-                  Nenhum parceiro encontrado.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+          </div>
+          <button type="submit" className="text-xs bg-primary text-white rounded-lg px-3 py-1.5">
+            Salvar
+          </button>
+        </form>
       </div>
 
       <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4">

@@ -5,6 +5,7 @@ import Docxtemplater from "docxtemplater";
 import { createClient } from "@supabase/supabase-js";
 import { prisma } from "@/lib/prisma";
 import type { TipoDocumento } from "./campos";
+import { valorPorExtenso, dataPorExtenso, formatarCpf } from "./extenso";
 
 // Nome do arquivo .docx (com o timbrado já formatado) que corresponde a cada
 // tipo de documento. Os arquivos ficam em site/app-web/templates/ — ver
@@ -33,9 +34,23 @@ function supabaseAdmin() {
 
 export type GerarDocumentoParams = {
   tipoDocumento: TipoDocumento;
-  entidadeTipo: "transacao" | "adm_imovel" | "cont_corretor" | "parceiro" | "chaves" | "movimentacao";
+  entidadeTipo: "transacao" | "adm_imovel" | "cont_corretor" | "parceiro" | "chaves" | "movimentacao" | "gestao";
   entidadeId: string;
   usuarioId?: string;
+};
+
+// Qual entidadeTipo cada modelo de documento espera (usado pela tela de
+// geração em Configurações para saber que tipo de registro buscar).
+export const ENTIDADE_POR_DOCUMENTO: Record<TipoDocumento, GerarDocumentoParams["entidadeTipo"]> = {
+  contrato_locacao: "transacao",
+  contrato_compra_venda: "transacao",
+  carta_preferencia: "gestao",
+  contrato_administracao: "adm_imovel",
+  contrato_associacao_corretor: "cont_corretor",
+  termo_entrega_chaves: "chaves",
+  recibo_honorarios: "movimentacao",
+  repasse_administracao: "movimentacao",
+  repasse_primeira_locacao: "movimentacao"
 };
 
 export async function gerarDocumento(params: GerarDocumentoParams): Promise<string> {
@@ -144,21 +159,247 @@ async function converterParaPdf(docxBuffer: Buffer): Promise<{ buffer: Buffer; e
   return { buffer, extensao: "pdf" };
 }
 
+// Formata um valor decimal como número brasileiro simples (sem "R$"), do
+// jeito que costuma aparecer dentro do corpo de um contrato: "1.850,00".
+function numero(valor: unknown): string {
+  const n = Number(valor ?? 0);
+  return n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function percentual(valor: unknown): string {
+  const n = Number(valor ?? 0) * 100;
+  return `${n.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%`;
+}
+
+function dataCurta(d: Date | null | undefined): string {
+  return d ? new Date(d).toLocaleDateString("pt-BR") : "";
+}
+
+function mesReferencia(d: Date | null | undefined): string {
+  if (!d) return "";
+  return new Date(d).toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+}
+
 // Busca os dados da entidade e monta o objeto plano de placeholders (ver
 // lib/documentos/campos.ts) que o Docxtemplater usa para preencher o .docx.
-//
-// TODO: implementar cada caso assim que `npx prisma db pull` gerar os models
-// a partir de site/database/schema.sql. A estrutura de cada consulta já está
-// desenhada na Especificação Técnica e no diagrama de Transações — em geral é
-// buscar a transação/entidade com os relacionamentos (cliente, imóvel,
-// parceiro) via `include`, formatar CPF/datas/valores com os helpers de
-// extenso.ts, e devolver um objeto { [placeholder]: valor }.
 async function montarDadosDoMerge(
   tipoDocumento: TipoDocumento,
   entidadeId: string
 ): Promise<Record<string, unknown>> {
-  throw new Error(
-    `montarDadosDoMerge("${tipoDocumento}", "${entidadeId}") ainda não implementado — ` +
-      "requer o schema do Prisma gerado via `npx prisma db pull` contra o banco Supabase."
-  );
+  switch (tipoDocumento) {
+    case "contrato_locacao":
+    case "contrato_compra_venda":
+      return montarDadosTransacao(tipoDocumento, entidadeId);
+    case "carta_preferencia":
+      return montarDadosGestao(entidadeId);
+    case "contrato_administracao":
+      return montarDadosAdmImovel(entidadeId);
+    case "contrato_associacao_corretor":
+      return montarDadosContratoCorretor(entidadeId);
+    case "termo_entrega_chaves":
+      return montarDadosChaves(entidadeId);
+    case "recibo_honorarios":
+    case "repasse_administracao":
+    case "repasse_primeira_locacao":
+      return montarDadosMovimentacao(tipoDocumento, entidadeId);
+  }
+}
+
+async function montarDadosTransacao(
+  tipoDocumento: "contrato_locacao" | "contrato_compra_venda",
+  transacaoId: string
+): Promise<Record<string, unknown>> {
+  const t = await prisma.transacoes.findUnique({
+    where: { id: transacaoId },
+    include: {
+      clientes_transacoes_cliente_idToclientes: true,
+      clientes_transacoes_cliente_contraparte_idToclientes: true,
+      imoveis: true,
+      lojas: true,
+      condicoes_pagamento: true
+    }
+  });
+  if (!t) throw new Error(`Transação "${transacaoId}" não encontrada.`);
+
+  const parte = t.clientes_transacoes_cliente_idToclientes;
+  const contraparte = t.clientes_transacoes_cliente_contraparte_idToclientes;
+  const hoje = new Date();
+
+  if (tipoDocumento === "contrato_locacao") {
+    return {
+      loja_nome: t.lojas.nome,
+      proprietario_nome: parte.nome,
+      proprietario_cpf: formatarCpf(parte.cpf ?? ""),
+      proprietario_estado_civil: parte.estado_civil ?? "",
+      locatario_nome: contraparte.nome,
+      locatario_cpf: formatarCpf(contraparte.cpf ?? ""),
+      imovel_endereco: t.imoveis?.endereco ?? "",
+      finalidade_locacao: t.finalidade_locacao ?? "",
+      valor_transacao: numero(t.valor_transacao),
+      valor_transacao_extenso: valorPorExtenso(Number(t.valor_transacao)),
+      dia_vencimento: t.dia_vencimento ?? "",
+      prazo_contrato_meses: "",
+      garantia: t.garantia ?? "",
+      encargos_lista: (t.encargos ?? []).join(", "),
+      data_assinatura: dataCurta(t.data_assinatura ?? hoje),
+      data_assinatura_extenso: dataPorExtenso(t.data_assinatura ?? hoje)
+    };
+  }
+
+  return {
+    loja_nome: t.lojas.nome,
+    vendedor_nome: parte.nome,
+    vendedor_cpf: formatarCpf(parte.cpf ?? ""),
+    comprador_nome: contraparte.nome,
+    comprador_cpf: formatarCpf(contraparte.cpf ?? ""),
+    imovel_endereco: t.imoveis?.endereco ?? "",
+    imovel_matricula: t.imoveis?.matricula ?? "",
+    valor_transacao: numero(t.valor_transacao),
+    valor_transacao_extenso: valorPorExtenso(Number(t.valor_transacao)),
+    condicoes_pagamento_lista: t.condicoes_pagamento
+      .map((c) => `${c.tipo ?? "Parcela"}: R$ ${numero(c.valor)} (${c.forma_pagamento ?? "—"})`)
+      .join("\n"),
+    data_assinatura: dataCurta(t.data_assinatura ?? hoje),
+    data_assinatura_extenso: dataPorExtenso(t.data_assinatura ?? hoje)
+  };
+}
+
+async function montarDadosGestao(gestaoId: string): Promise<Record<string, unknown>> {
+  const g = await prisma.gestoes.findUnique({
+    where: { id: gestaoId },
+    include: { clientes: true, imoveis: true }
+  });
+  if (!g) throw new Error(`Gestão "${gestaoId}" não encontrada.`);
+
+  return {
+    proprietario_nome: g.clientes.nome,
+    imovel_endereco: g.imoveis.endereco ?? "",
+    valor_venda: numero(g.valor_venda),
+    prazo_gestao_meses: g.prazo_gestao_meses ?? "",
+    porc_honorario: percentual(g.porc_honorario),
+    data_emissao: dataCurta(new Date())
+  };
+}
+
+async function montarDadosAdmImovel(admImovelId: string): Promise<Record<string, unknown>> {
+  const a = await prisma.adm_imoveis.findUnique({
+    where: { id: admImovelId },
+    include: { clientes: true, imoveis: true, lojas: true }
+  });
+  if (!a) throw new Error(`Administração "${admImovelId}" não encontrada.`);
+
+  return {
+    loja_nome: a.lojas.nome,
+    proprietario_nome: a.clientes.nome,
+    proprietario_cpf: formatarCpf(a.clientes.cpf ?? ""),
+    imovel_endereco: a.imoveis.endereco ?? "",
+    tx_administracao: percentual(a.tx_administracao),
+    valor_administracao: numero(a.valor_administracao),
+    prazo_contrato_meses: a.prazo_contrato_meses ?? "",
+    data_assinatura: dataCurta(a.data_assinatura ?? new Date())
+  };
+}
+
+async function montarDadosContratoCorretor(contratoId: string): Promise<Record<string, unknown>> {
+  const c = await prisma.contratos_corretor.findUnique({
+    where: { id: contratoId },
+    include: { parceiros: true }
+  });
+  if (!c) throw new Error(`Contrato de corretor "${contratoId}" não encontrado.`);
+
+  return {
+    corretor_nome: c.parceiros.nome,
+    corretor_cpf: formatarCpf(c.parceiros.cpf ?? ""),
+    corretor_creci: c.parceiros.creci ?? "",
+    fee: c.fee != null ? numero(c.fee) : "",
+    porc_compr: percentual(c.porc_compr),
+    porc_vend: percentual(c.porc_vend),
+    dia_fee: c.dia_fee ?? "",
+    data_entrada: dataCurta(c.parceiros.data_entrada)
+  };
+}
+
+async function montarDadosChaves(chavesId: string): Promise<Record<string, unknown>> {
+  const k = await prisma.chaves.findUnique({
+    where: { id: chavesId },
+    include: {
+      transacoes: {
+        include: {
+          clientes_transacoes_cliente_contraparte_idToclientes: true,
+          imoveis: true,
+          parceiros_transacoes_corretor_proprietario_idToparceiros: true,
+          parceiros_transacoes_corretor_contraparte_idToparceiros: true
+        }
+      }
+    }
+  });
+  if (!k) throw new Error(`Registro de chaves "${chavesId}" não encontrado.`);
+
+  const t = k.transacoes;
+  const corretorResponsavel =
+    t.parceiros_transacoes_corretor_contraparte_idToparceiros?.nome ??
+    t.parceiros_transacoes_corretor_proprietario_idToparceiros?.nome ??
+    "";
+
+  return {
+    transacao_tipo: t.tipo,
+    imovel_endereco: t.imoveis?.endereco ?? "",
+    recebedor_nome: t.clientes_transacoes_cliente_contraparte_idToclientes.nome,
+    corretor_responsavel: corretorResponsavel,
+    data_entrega: dataCurta(k.data ?? new Date())
+  };
+}
+
+async function montarDadosMovimentacao(
+  tipoDocumento: "recibo_honorarios" | "repasse_administracao" | "repasse_primeira_locacao",
+  movimentacaoId: string
+): Promise<Record<string, unknown>> {
+  const m = await prisma.movimentacoes.findUnique({
+    where: { id: movimentacaoId },
+    include: {
+      parceiros: true,
+      categorias_financeiras: true,
+      transacoes: {
+        include: {
+          clientes_transacoes_cliente_idToclientes: true,
+          clientes_transacoes_cliente_contraparte_idToclientes: true,
+          imoveis: true
+        }
+      }
+    }
+  });
+  if (!m) throw new Error(`Movimentação "${movimentacaoId}" não encontrada.`);
+
+  const t = m.transacoes;
+
+  if (tipoDocumento === "recibo_honorarios") {
+    return {
+      parceiro_nome: m.parceiros?.nome ?? "",
+      transacao_referencia: t?.chave ?? t?.id ?? "",
+      valor_honorario: numero(m.valor),
+      valor_honorario_extenso: valorPorExtenso(Number(m.valor)),
+      categoria: m.categorias_financeiras.nome,
+      data_pagamento: dataCurta(m.data_pagamento ?? new Date())
+    };
+  }
+
+  if (tipoDocumento === "repasse_administracao") {
+    return {
+      proprietario_nome: t?.clientes_transacoes_cliente_idToclientes.nome ?? "",
+      imovel_endereco: t?.imoveis?.endereco ?? "",
+      mes_referencia: mesReferencia(m.vencimento),
+      valor_administracao: numero(t?.valor_administracao),
+      valor_repasse: numero(m.valor),
+      data_repasse: dataCurta(m.data_pagamento ?? new Date())
+    };
+  }
+
+  return {
+    proprietario_nome: t?.clientes_transacoes_cliente_idToclientes.nome ?? "",
+    locatario_nome: t?.clientes_transacoes_cliente_contraparte_idToclientes.nome ?? "",
+    imovel_endereco: t?.imoveis?.endereco ?? "",
+    mes_referencia: mesReferencia(m.vencimento),
+    valor_repasse: numero(m.valor),
+    data_repasse: dataCurta(m.data_pagamento ?? new Date())
+  };
 }

@@ -1,26 +1,60 @@
 import { Topbar } from "@/components/topbar";
 import { KpiCard } from "@/components/kpi-card";
 import { StatusBadge } from "@/components/status-badge";
+import { prisma } from "@/lib/prisma";
+import { formatMoeda, statusTone, STATUS_TRANSACAO_EM_ABERTO } from "@/lib/format";
 
-// Dados de exemplo — trocar por consulta ao banco (Prisma) quando o
-// schema estiver puxado via `npx prisma db pull`.
-const TRANSACOES_RECENTES = [
-  { imovel: "R. das Flores, 481", cliente: "Ana Souza", tipo: "Locação", status: "Ativa", tone: "ativa", valor: "R$ 1.700" },
-  { imovel: "Av. Rio Madeira, 5064", cliente: "Willian Guedes", tipo: "Compra e venda", status: "Pendente", tone: "pendente", valor: "R$ 285.000" },
-  { imovel: "R. Chirleane, 7202", cliente: "Elizelia Pinto", tipo: "Locação", status: "Concluída", tone: "concluida", valor: "R$ 1.000" },
-  { imovel: "R. Carlos Gomes, 1695", cliente: "Thyago Medeiros", tipo: "Compra e venda", status: "Cancelada", tone: "cancelada", valor: "R$ 190.000" }
-] as const;
+export const dynamic = "force-dynamic";
 
-export default function DashboardPage() {
+export default async function DashboardPage() {
+  const inicioMes = new Date();
+  inicioMes.setDate(1);
+  inicioMes.setHours(0, 0, 0, 0);
+  const inicioProxMes = new Date(inicioMes);
+  inicioProxMes.setMonth(inicioProxMes.getMonth() + 1);
+
+  const hoje = new Date();
+  const em30Dias = new Date();
+  em30Dias.setDate(em30Dias.getDate() + 30);
+
+  const [totalImoveis, transacoesAbertas, comissaoMes, contratosAVencer, transacoesRecentes] =
+    await Promise.all([
+      prisma.imoveis.count(),
+      prisma.transacoes.count({ where: { status: STATUS_TRANSACAO_EM_ABERTO } }),
+      prisma.pagamentos.aggregate({
+        _sum: { valor_honorario: true },
+        where: { data_pagamento: { gte: inicioMes, lt: inicioProxMes } }
+      }),
+      prisma.transacoes.count({
+        where: {
+          tipo: "Locação",
+          status: STATUS_TRANSACAO_EM_ABERTO,
+          data_vencimento: { gte: hoje, lte: em30Dias }
+        }
+      }),
+      prisma.transacoes.findMany({
+        take: 4,
+        orderBy: { created_at: "desc" },
+        include: {
+          imoveis: true,
+          clientes_transacoes_cliente_idToclientes: true
+        }
+      })
+    ]);
+
   return (
     <div>
       <Topbar />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-        <KpiCard label="Imóveis ativos" value="187" />
-        <KpiCard label="Transações em andamento" value="23" />
-        <KpiCard label="Comissão do mês" value="R$ 42.300" accent />
-        <KpiCard label="Contratos a vencer" value="5" />
+        <KpiCard label="Imóveis cadastrados" value={String(totalImoveis)} />
+        <KpiCard label="Transações em andamento" value={String(transacoesAbertas)} />
+        <KpiCard
+          label="Comissão do mês"
+          value={formatMoeda(comissaoMes._sum.valor_honorario ?? 0)}
+          accent
+        />
+        <KpiCard label="Contratos a vencer (30 dias)" value={String(contratosAVencer)} />
       </div>
 
       <div className="bg-white border border-gray-200 rounded-xl p-4">
@@ -36,15 +70,19 @@ export default function DashboardPage() {
             </tr>
           </thead>
           <tbody>
-            {TRANSACOES_RECENTES.map((t) => (
-              <tr key={t.imovel}>
-                <td className="py-2 border-b border-gray-50">{t.imovel}</td>
-                <td className="py-2 border-b border-gray-50">{t.cliente}</td>
+            {transacoesRecentes.map((t) => (
+              <tr key={t.id}>
+                <td className="py-2 border-b border-gray-50">{t.imoveis?.endereco ?? "—"}</td>
+                <td className="py-2 border-b border-gray-50">
+                  {t.clientes_transacoes_cliente_idToclientes?.nome ?? "—"}
+                </td>
                 <td className="py-2 border-b border-gray-50">{t.tipo}</td>
                 <td className="py-2 border-b border-gray-50">
-                  <StatusBadge status={t.status} tone={t.tone} />
+                  <StatusBadge status={t.status ?? "—"} tone={statusTone(t.status)} />
                 </td>
-                <td className="py-2 border-b border-gray-50 text-right">{t.valor}</td>
+                <td className="py-2 border-b border-gray-50 text-right">
+                  {formatMoeda(t.valor_transacao)}
+                </td>
               </tr>
             ))}
           </tbody>

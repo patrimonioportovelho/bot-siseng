@@ -78,6 +78,7 @@ COMMENT ON TABLE categorias_financeiras IS 'Plano de contas usado em movimentaco
 
 CREATE TABLE parceiros (
   id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id_legado               TEXT UNIQUE,   -- Id* original da planilha AppSheet, mantido para rastreabilidade/migração
   nome                    TEXT NOT NULL,
   foto_url                TEXT,
   telefone                TEXT,
@@ -97,7 +98,7 @@ CREATE TABLE parceiros (
                               ('solteiro (a)','em uma união estável','casado (a)','divorciado (a)','separado judicialmente (a)','viúvo (a)')),
   creci                   TEXT,
   endereco                TEXT,
-  data_entrada            DATE NOT NULL,
+  data_entrada            DATE,   -- CORRIGIDO: ~70% dos parceiros reais na planilha não têm essa data preenchida
   obs_funcao              TEXT,
   fee                     NUMERIC(12,2),
   porc_compr              NUMERIC(6,4),
@@ -142,14 +143,18 @@ COMMENT ON TABLE usuarios IS 'Contas de login do sistema (até 10). ADMINISTRATI
 
 CREATE TABLE clientes (
   id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id_legado        TEXT UNIQUE,   -- Id* original da planilha AppSheet, mantido para rastreabilidade/migração
   pasta_url        TEXT,
   data_cadastro    DATE NOT NULL DEFAULT CURRENT_DATE,
-  parceiro_id      UUID NOT NULL REFERENCES parceiros(id),
-  loja_id          UUID NOT NULL REFERENCES lojas(id),
+  -- CORRIGIDO: ~27% dos clientes reais não têm Parceiro preenchido e ~87% não têm Loja preenchida
+  -- na planilha (cadastros antigos/importados). Ficam nullable para não travar a migração histórica.
+  parceiro_id      UUID REFERENCES parceiros(id),
+  loja_id          UUID REFERENCES lojas(id),
   status_cadastro  TEXT CHECK (status_cadastro IN ('Rascunho','Completo','Bloqueado','Arquivado')),
   tipo_vinculo     TEXT CHECK (tipo_vinculo IN (
                        'Cliente inquilino','Cliente proprietário de locação','Cliente proprietário de compra e venda',
-                       'Cliente interessado em compra e venda','Cliente correspondência caixa','Cliente regularizações'
+                       'Cliente interessado em compra e venda','Cliente correspondência caixa','Cliente regularizações',
+                       'Cliente proprietário'   -- CORRIGIDO: valor real encontrado na planilha, além dos 2 subtipos já mapeados
                    )),   -- dispara criação de pasta
   tipo_cliente     TEXT NOT NULL CHECK (tipo_cliente IN ('Pessoa Física','Pessoa Jurídica')),
   nome             TEXT NOT NULL,
@@ -197,6 +202,7 @@ COMMENT ON COLUMN clientes.conjuge_id IS
 
 CREATE TABLE imoveis (
   id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id_legado             TEXT UNIQUE,
   data_cadastro         DATE NOT NULL DEFAULT CURRENT_DATE,
   tipo_imovel           TEXT CHECK (tipo_imovel IN ('Residencial','Comercial','Terreno','Rural','Multifamiliar','Misto')),
   parceiro_id           UUID REFERENCES parceiros(id),
@@ -234,6 +240,7 @@ CREATE TRIGGER trg_imoveis_updated_at BEFORE UPDATE ON imoveis
 
 CREATE TABLE avaliacoes (
   id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id_legado             TEXT UNIQUE,
   tipo_avaliacao        TEXT CHECK (tipo_avaliacao IN ('Financiamento','Locação','Analise de crédito')),
   banco_id              UUID REFERENCES bancos(id),
   status                TEXT NOT NULL DEFAULT 'Montagem de processo' CHECK (status IN (
@@ -275,6 +282,7 @@ CREATE TRIGGER trg_avaliacoes_updated_at BEFORE UPDATE ON avaliacoes
 
 CREATE TABLE andamentos (
   id                             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id_legado                      TEXT UNIQUE,
   data_inicio                    DATE,
   cliente_vendedor_id            UUID REFERENCES clientes(id),
   abrir_conta                    BOOLEAN DEFAULT false,
@@ -309,6 +317,7 @@ COMMENT ON COLUMN andamentos.status_andamento IS
 
 CREATE TABLE lancamentos_financiamento (
   id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id_legado          TEXT UNIQUE,
   andamento_id       UUID NOT NULL REFERENCES andamentos(id),
   valor_financiado   NUMERIC(14,2),
   remuneracao        NUMERIC(14,2),
@@ -324,6 +333,7 @@ CREATE INDEX idx_lancamentos_fin_andamento ON lancamentos_financiamento(andament
 
 CREATE TABLE gestoes (
   id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id_legado             TEXT UNIQUE,
   parceiro_id           UUID REFERENCES parceiros(id),
   data_cadastro         DATE NOT NULL DEFAULT CURRENT_DATE,
   cliente_id            UUID NOT NULL REFERENCES clientes(id),   -- proprietário
@@ -342,6 +352,7 @@ COMMENT ON TABLE gestoes IS 'Contrato de exclusividade de venda firmado com o pr
 
 CREATE TABLE adm_imoveis (
   id                     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id_legado              TEXT UNIQUE,
   data_entrada           DATE,
   pasta_url              TEXT,
   loja_id                UUID NOT NULL REFERENCES lojas(id),
@@ -379,6 +390,7 @@ COMMENT ON TABLE adm_imoveis IS 'Contrato de administração de locação com o 
 
 CREATE TABLE transacoes (
   id                          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id_legado                   TEXT UNIQUE,
   tipo                        TEXT NOT NULL CHECK (tipo IN ('Compra e Venda','Locação')),
   adm_imovel_id               UUID REFERENCES adm_imoveis(id),   -- nullable: há órfão conhecido na base legada
   pasta_url                   TEXT,
@@ -449,6 +461,7 @@ COMMENT ON COLUMN transacoes.porc_imobiliaria IS
 
 CREATE TABLE condicoes_pagamento (
   id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id_legado         TEXT UNIQUE,
   transacao_id      UUID NOT NULL REFERENCES transacoes(id) ON DELETE CASCADE,
   tipo              TEXT CHECK (tipo IN ('Entrada','Saldo','Financiamento','Permuta','Parcelado')),
   valor             NUMERIC(14,2) NOT NULL,
@@ -467,6 +480,7 @@ COMMENT ON TABLE condicoes_pagamento IS 'A soma de valor para uma transacao_id d
 
 CREATE TABLE chaves (
   id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id_legado      TEXT UNIQUE,
   transacao_id   UUID NOT NULL REFERENCES transacoes(id) ON DELETE CASCADE,
   foto_url       TEXT,
   data           DATE,
@@ -477,6 +491,7 @@ CREATE INDEX idx_chaves_transacao ON chaves(transacao_id);
 
 CREATE TABLE recibos_locacao (
   id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id_legado         TEXT UNIQUE,
   tipo              TEXT,
   transacao_id      UUID NOT NULL REFERENCES transacoes(id) ON DELETE CASCADE,
   desconto          NUMERIC(14,2),
@@ -489,6 +504,7 @@ CREATE INDEX idx_recibos_locacao_transacao ON recibos_locacao(transacao_id);
 
 CREATE TABLE encerramentos_transacao (
   id                     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id_legado              TEXT UNIQUE,
   transacao_id           UUID NOT NULL UNIQUE REFERENCES transacoes(id) ON DELETE CASCADE,
   tipo_transacao         TEXT,
   status_final           TEXT,   -- referência a tabela de domínio "Status" no AppSheet (lista aberta, sem CHECK aqui)
@@ -524,6 +540,7 @@ CREATE TABLE encerramentos_transacao (
 
 CREATE TABLE pagamentos (
   id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id_legado          TEXT UNIQUE,
   status             TEXT NOT NULL DEFAULT 'Pendente' CHECK (status IN ('Pendente','Pago')),
   transacao_id       UUID NOT NULL REFERENCES transacoes(id),
   cliente_id         UUID REFERENCES clientes(id),
@@ -554,6 +571,7 @@ COMMENT ON TABLE pagamentos IS 'Um recibo por perna do rateio de honorário (cor
 
 CREATE TABLE movimentacoes (
   id                        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id_legado                 TEXT UNIQUE,
   tipo                      TEXT NOT NULL CHECK (tipo IN ('Despesa','Recebimento')),
   categoria_id              UUID NOT NULL REFERENCES categorias_financeiras(id),
   transacao_id               UUID REFERENCES transacoes(id),
@@ -584,6 +602,7 @@ COMMENT ON TABLE movimentacoes IS 'Livro-caixa central: toda entrada/saída fina
 
 CREATE TABLE contratos_corretor (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  id_legado     TEXT UNIQUE,
   status        TEXT NOT NULL DEFAULT 'Contrato ativo' CHECK (status IN ('Contrato ativo','Contrato distratado')),
   parceiro_id   UUID NOT NULL REFERENCES parceiros(id),
   funcao        TEXT,

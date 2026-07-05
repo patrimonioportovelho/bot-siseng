@@ -1,13 +1,3 @@
-// Este arquivo é gerado automaticamente a partir do banco de dados real.
-// Depois de rodar site/database/schema.sql no Postgres (Supabase/Neon) e
-// configurar DATABASE_URL no .env, rode:
-//
-//   npx prisma db pull
-//   npx prisma generate
-//
-// Isso preenche os "model" abaixo espelhando exatamente as tabelas de
-// site/database/schema.sql, sem precisar manter duas fontes de verdade.
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -18,4 +8,742 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
-// Os models entram aqui depois do `prisma db pull`.
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model adm_imoveis {
+  id                   String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id_legado            String?      @unique
+  data_entrada         DateTime?    @db.Date
+  pasta_url            String?
+  loja_id              String       @db.Uuid
+  cliente_id           String       @db.Uuid
+  parceiro_id          String?      @db.Uuid
+  imovel_id            String       @db.Uuid
+  status               String       @default("Ativo")
+  data_assinatura      DateTime?    @db.Date
+  prazo_contrato_meses Int?         @db.SmallInt
+  valor_transacao      Decimal?     @db.Decimal(14, 2)
+  porc_honorario       Decimal?     @db.Decimal(6, 4)
+  tx_administracao     Decimal?     @db.Decimal(6, 4)
+  valor_cliente        Decimal?     @db.Decimal(14, 2)
+  valor_administracao  Decimal?     @db.Decimal(14, 2)
+  iptu                 Decimal?     @db.Decimal(14, 2)
+  tem_vistoria         Boolean?
+  arquivo_vistoria_url String?
+  tem_condominio       Boolean?
+  condominio           Decimal?     @db.Decimal(14, 2)
+  agua                 String?
+  uc_caerd             String?
+  energia              String?
+  uc_energisa          String?
+  observacao           String?
+  created_at           DateTime     @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime     @default(now()) @db.Timestamptz(6)
+  clientes             clientes     @relation(fields: [cliente_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  imoveis              imoveis      @relation(fields: [imovel_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  lojas                lojas        @relation(fields: [loja_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  parceiros            parceiros?   @relation(fields: [parceiro_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  transacoes           transacoes[]
+
+  @@index([cliente_id], map: "idx_adm_imoveis_cliente")
+  @@index([imovel_id], map: "idx_adm_imoveis_imovel")
+  @@index([loja_id], map: "idx_adm_imoveis_loja")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model andamentos {
+  id                            String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id_legado                     String?                     @unique
+  data_inicio                   DateTime?                   @db.Date
+  cliente_vendedor_id           String?                     @db.Uuid
+  abrir_conta                   Boolean?                    @default(false)
+  avaliacao_id                  String                      @db.Uuid
+  imovel_id                     String?                     @db.Uuid
+  tipo_contrato                 String?
+  status_andamento              String                      @default("Em andamento")
+  status_andamento_complementar String?
+  processo                      String?
+  valor_avaliado                Decimal?                    @db.Decimal(14, 2)
+  valor_venda                   Decimal?                    @db.Decimal(14, 2)
+  tem_entrada                   Boolean?
+  valor_recurso                 Decimal?                    @db.Decimal(14, 2)
+  valor_fgts                    Decimal?                    @db.Decimal(14, 2)
+  subsidio                      Decimal?                    @db.Decimal(14, 2)
+  valor_financiado              Decimal?                    @db.Decimal(14, 2)
+  observacao                    String?
+  data_conclusao                DateTime?                   @db.Date
+  created_at                    DateTime                    @default(now()) @db.Timestamptz(6)
+  updated_at                    DateTime                    @default(now()) @db.Timestamptz(6)
+  avaliacoes                    avaliacoes                  @relation(fields: [avaliacao_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  clientes                      clientes?                   @relation(fields: [cliente_vendedor_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  imoveis                       imoveis?                    @relation(fields: [imovel_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  lancamentos_financiamento     lancamentos_financiamento[]
+
+  @@index([avaliacao_id], map: "idx_andamentos_avaliacao")
+  @@index([imovel_id], map: "idx_andamentos_imovel")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model avaliacoes {
+  id                  String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id_legado           String?      @unique
+  tipo_avaliacao      String?
+  banco_id            String?      @db.Uuid
+  status              String       @default("Montagem de processo")
+  data_avaliacao      DateTime?    @db.Date
+  cliente_id          String?      @db.Uuid
+  telefone            String?
+  cpf                 String?
+  parceiro_id         String?      @db.Uuid
+  data_validade       DateTime?    @db.Date
+  tipo_imovel         String?
+  produto             String?
+  tabela              String?
+  indexador           String?
+  valor_aprovado      Decimal?     @db.Decimal(14, 2)
+  valor_financiamento Decimal?     @db.Decimal(14, 2)
+  prestacao           Decimal?     @db.Decimal(14, 2)
+  usa_fgts            Boolean      @default(false)
+  valor_fgts          Decimal?     @db.Decimal(14, 2)
+  usa_subsidio        Boolean      @default(false)
+  valor_subsidio      Decimal?     @db.Decimal(14, 2)
+  imagem_consulta_url String?
+  observacao          String?
+  created_at          DateTime     @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime     @default(now()) @db.Timestamptz(6)
+  andamentos          andamentos[]
+  bancos              bancos?      @relation(fields: [banco_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  clientes            clientes?    @relation(fields: [cliente_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  parceiros           parceiros?   @relation(fields: [parceiro_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([cliente_id], map: "idx_avaliacoes_cliente")
+  @@index([parceiro_id], map: "idx_avaliacoes_parceiro")
+}
+
+model bancos {
+  id         String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nome       String
+  codigo     String?
+  avaliacoes avaliacoes[]
+  clientes   clientes[]
+  parceiros  parceiros[]
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model categorias_financeiras {
+  id            String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nome          String
+  tipo          String?
+  movimentacoes movimentacoes[]
+}
+
+model chaves {
+  id           String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id_legado    String?    @unique
+  transacao_id String     @db.Uuid
+  foto_url     String?
+  data         DateTime?  @db.Date
+  termo_gerado Boolean    @default(false)
+  created_at   DateTime   @default(now()) @db.Timestamptz(6)
+  transacoes   transacoes @relation(fields: [transacao_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([transacao_id], map: "idx_chaves_transacao")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model cidades {
+  id                 String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nome               String
+  estado_id          String               @db.Uuid
+  regiao             String?
+  estados            estados              @relation(fields: [estado_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  clientes           clientes[]
+  contratos_corretor contratos_corretor[]
+  imoveis            imoveis[]
+
+  @@unique([nome, estado_id])
+  @@index([estado_id], map: "idx_cidades_estado")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model clientes {
+  id                                                     String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id_legado                                              String?       @unique
+  pasta_url                                              String?
+  data_cadastro                                          DateTime      @default(dbgenerated("CURRENT_DATE")) @db.Date
+  parceiro_id                                            String?       @db.Uuid
+  loja_id                                                String?       @db.Uuid
+  status_cadastro                                        String?
+  tipo_vinculo                                           String?
+  tipo_cliente                                           String
+  nome                                                   String
+  sexo                                                   String?
+  cpf                                                    String?
+  cnpj                                                   String?
+  rg                                                     String?
+  expedicao                                              String?
+  telefone                                               String?
+  email                                                  String?
+  estado_civil                                           String?
+  conjuge_id                                             String?       @db.Uuid
+  renda_bruta                                            Decimal?      @db.Decimal(12, 2)
+  data_nascimento                                        DateTime?     @db.Date
+  cat_profissao                                          String?
+  tipo_servidor                                          String?
+  profissao                                              String?
+  endereco                                               String?
+  estado_id                                              String?       @db.Uuid
+  cidade_id                                              String?       @db.Uuid
+  observacao                                             String?
+  banco_id                                               String?       @db.Uuid
+  codigo_banco                                           String?
+  agencia                                                String?
+  conta                                                  String?
+  tipo_conta                                             String?
+  tipo_pix                                               String?
+  pix                                                    String?
+  created_at                                             DateTime      @default(now()) @db.Timestamptz(6)
+  updated_at                                             DateTime      @default(now()) @db.Timestamptz(6)
+  adm_imoveis                                            adm_imoveis[]
+  andamentos                                             andamentos[]
+  avaliacoes                                             avaliacoes[]
+  bancos                                                 bancos?       @relation(fields: [banco_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  cidades                                                cidades?      @relation(fields: [cidade_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  clientes                                               clientes?     @relation("clientesToclientes", fields: [conjuge_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  other_clientes                                         clientes[]    @relation("clientesToclientes")
+  estados                                                estados?      @relation(fields: [estado_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  lojas                                                  lojas?        @relation(fields: [loja_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  parceiros                                              parceiros?    @relation(fields: [parceiro_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  gestoes                                                gestoes[]
+  imoveis                                                imoveis[]
+  pagamentos                                             pagamentos[]
+  transacoes_transacoes_cliente_contraparte_idToclientes transacoes[]  @relation("transacoes_cliente_contraparte_idToclientes")
+  transacoes_transacoes_cliente_idToclientes             transacoes[]  @relation("transacoes_cliente_idToclientes")
+
+  @@index([conjuge_id], map: "idx_clientes_conjuge")
+  @@index([loja_id], map: "idx_clientes_loja")
+  @@index([nome], map: "idx_clientes_nome")
+  @@index([parceiro_id], map: "idx_clientes_parceiro")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model condicoes_pagamento {
+  id              String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id_legado       String?    @unique
+  transacao_id    String     @db.Uuid
+  tipo            String?
+  valor           Decimal    @db.Decimal(14, 2)
+  descricao       String?
+  descricao_ia    String?
+  forma_pagamento String?
+  parcelas        Int?       @db.SmallInt
+  momento         String?
+  data_pagamento  DateTime?  @db.Date
+  created_at      DateTime   @default(now()) @db.Timestamptz(6)
+  transacoes      transacoes @relation(fields: [transacao_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([transacao_id], map: "idx_condicoes_pg_transacao")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model contratos_corretor {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id_legado   String?   @unique
+  status      String    @default("Contrato ativo")
+  parceiro_id String    @db.Uuid
+  funcao      String?
+  fee         Decimal?  @db.Decimal(12, 2)
+  porc_compr  Decimal?  @db.Decimal(6, 4)
+  porc_vend   Decimal?  @db.Decimal(6, 4)
+  dia_fee     Int?      @db.SmallInt
+  cidade_id   String?   @db.Uuid
+  estado_id   String?   @db.Uuid
+  created_at  DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime  @default(now()) @db.Timestamptz(6)
+  cidades     cidades?  @relation(fields: [cidade_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  estados     estados?  @relation(fields: [estado_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  parceiros   parceiros @relation(fields: [parceiro_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([parceiro_id], map: "idx_contratos_corretor_parceiro")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model documentos_gerados {
+  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  entidade_tipo         String
+  entidade_id           String    @db.Uuid
+  tipo_documento        String
+  arquivo_url           String?
+  gerado_por_usuario_id String?   @db.Uuid
+  status                String    @default("Sucesso")
+  mensagem              String?
+  gerado_em             DateTime  @default(now()) @db.Timestamptz(6)
+  usuarios              usuarios? @relation(fields: [gerado_por_usuario_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([entidade_tipo, entidade_id], map: "idx_documentos_entidade")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model encerramentos_transacao {
+  id                  String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id_legado           String?    @unique
+  transacao_id        String     @unique @db.Uuid
+  tipo_transacao      String?
+  status_final        String?
+  data_encerramento   DateTime?  @db.Date
+  motivo_principal    String?
+  motivo_secundario   String?
+  parceiro_id         String?    @db.Uuid
+  falha_interna       Boolean?
+  falha_cliente       Boolean?
+  falha_imovel        Boolean?
+  falha_financeira    Boolean?
+  descricao_livre     String?
+  acao_corretiva      String?
+  enviar_analise_ia   Boolean    @default(false)
+  resumo_ia           String?
+  classificacao_ia    String?
+  risco_ia            String?
+  observacao_risco_ia String?
+  email_enviado       Boolean    @default(false)
+  data_envio_email    DateTime?  @db.Timestamptz(6)
+  created_at          DateTime   @default(now()) @db.Timestamptz(6)
+  parceiros           parceiros? @relation(fields: [parceiro_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  transacoes          transacoes @relation(fields: [transacao_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model estados {
+  id                 String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nome               String               @unique
+  cidades            cidades[]
+  clientes           clientes[]
+  contratos_corretor contratos_corretor[]
+  imoveis            imoveis[]
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model gestoes {
+  id                 String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id_legado          String?    @unique
+  parceiro_id        String?    @db.Uuid
+  data_cadastro      DateTime   @default(dbgenerated("CURRENT_DATE")) @db.Date
+  cliente_id         String     @db.Uuid
+  imovel_id          String     @db.Uuid
+  valor_venda        Decimal?   @db.Decimal(14, 2)
+  prazo_gestao_meses Int?       @db.SmallInt
+  porc_honorario     Decimal?   @db.Decimal(6, 4)
+  created_at         DateTime   @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime   @default(now()) @db.Timestamptz(6)
+  clientes           clientes   @relation(fields: [cliente_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  imoveis            imoveis    @relation(fields: [imovel_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  parceiros          parceiros? @relation(fields: [parceiro_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([cliente_id], map: "idx_gestoes_cliente")
+  @@index([imovel_id], map: "idx_gestoes_imovel")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model imoveis {
+  id                  String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id_legado           String?       @unique
+  data_cadastro       DateTime      @default(dbgenerated("CURRENT_DATE")) @db.Date
+  tipo_imovel         String?
+  parceiro_id         String?       @db.Uuid
+  cliente_vendedor_id String?       @db.Uuid
+  pasta_url           String?
+  inscricao           String?
+  rua                 String?
+  n_predial           String?
+  complemento         String?
+  bairro              String?
+  estado_id           String?       @db.Uuid
+  cidade_id           String?       @db.Uuid
+  endereco            String?
+  matricula           String?
+  status_imovel       String?
+  tipo_oferta         String?
+  valor_venda         Decimal?      @db.Decimal(14, 2)
+  valor_avaliacao     Decimal?      @db.Decimal(14, 2)
+  validade_avaliacao  DateTime?     @db.Date
+  descricao           String?
+  descricao_ia        String?
+  created_at          DateTime      @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime      @default(now()) @db.Timestamptz(6)
+  adm_imoveis         adm_imoveis[]
+  andamentos          andamentos[]
+  gestoes             gestoes[]
+  cidades             cidades?      @relation(fields: [cidade_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  clientes            clientes?     @relation(fields: [cliente_vendedor_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  estados             estados?      @relation(fields: [estado_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  parceiros           parceiros?    @relation(fields: [parceiro_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  transacoes          transacoes[]
+
+  @@index([cliente_vendedor_id], map: "idx_imoveis_cliente_vendedor")
+  @@index([endereco], map: "idx_imoveis_endereco")
+  @@index([parceiro_id], map: "idx_imoveis_parceiro")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model lancamentos_financiamento {
+  id               String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id_legado        String?    @unique
+  andamento_id     String     @db.Uuid
+  valor_financiado Decimal?   @db.Decimal(14, 2)
+  remuneracao      Decimal?   @db.Decimal(14, 2)
+  status           String     @default("Previsão")
+  data_pagamento   DateTime?  @db.Date
+  created_at       DateTime   @default(now()) @db.Timestamptz(6)
+  andamentos       andamentos @relation(fields: [andamento_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([andamento_id], map: "idx_lancamentos_fin_andamento")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model lojas {
+  id          String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nome        String        @unique
+  cidade      String?
+  estado      String?       @default("Rondônia")
+  created_at  DateTime      @default(now()) @db.Timestamptz(6)
+  adm_imoveis adm_imoveis[]
+  clientes    clientes[]
+  metas       metas[]
+  parceiros   parceiros[]
+  transacoes  transacoes[]
+  usuarios    usuarios[]
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model metas {
+  id                    String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  parceiro_id           String?    @db.Uuid
+  loja_id               String?    @db.Uuid
+  tipo_meta             String
+  unidade               String
+  periodo_tipo          String
+  periodo_inicio        DateTime   @db.Date
+  periodo_fim           DateTime   @db.Date
+  valor_meta            Decimal    @db.Decimal(14, 2)
+  observacao            String?
+  criado_por_usuario_id String?    @db.Uuid
+  created_at            DateTime   @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime   @default(now()) @db.Timestamptz(6)
+  usuarios              usuarios?  @relation(fields: [criado_por_usuario_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  lojas                 lojas?     @relation(fields: [loja_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  parceiros             parceiros? @relation(fields: [parceiro_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([loja_id], map: "idx_metas_loja")
+  @@index([parceiro_id], map: "idx_metas_parceiro")
+  @@index([periodo_inicio, periodo_fim], map: "idx_metas_periodo")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model movimentacoes {
+  id                     String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id_legado              String?                @unique
+  tipo                   String
+  categoria_id           String                 @db.Uuid
+  transacao_id           String?                @db.Uuid
+  contraparte_nome       String?
+  parceiro_id            String?                @db.Uuid
+  pagamento_id           String?                @db.Uuid
+  descricao              String?
+  valor                  Decimal                @db.Decimal(14, 2)
+  forma_pagamento        String?
+  parcelas               Int?                   @db.SmallInt
+  num_parcela            Int?                   @db.SmallInt
+  id_parcelamento        String?                @db.Uuid
+  vencimento             DateTime               @db.Date
+  pago                   Boolean                @default(false)
+  data_pagamento         DateTime?              @db.Date
+  comprovante_url        String?
+  gerado_automaticamente Boolean                @default(false)
+  created_at             DateTime               @default(now()) @db.Timestamptz(6)
+  updated_at             DateTime               @default(now()) @db.Timestamptz(6)
+  categorias_financeiras categorias_financeiras @relation(fields: [categoria_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  pagamentos             pagamentos?            @relation(fields: [pagamento_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  parceiros              parceiros?             @relation(fields: [parceiro_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  transacoes             transacoes?            @relation(fields: [transacao_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([categoria_id], map: "idx_movimentacoes_categoria")
+  @@index([parceiro_id], map: "idx_movimentacoes_parceiro")
+  @@index([id_parcelamento], map: "idx_movimentacoes_parcelamento")
+  @@index([transacao_id], map: "idx_movimentacoes_transacao")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model pagamentos {
+  id               String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id_legado        String?         @unique
+  status           String          @default("Pendente")
+  transacao_id     String          @db.Uuid
+  cliente_id       String?         @db.Uuid
+  tipo             String?
+  parceiro_id      String          @db.Uuid
+  parte            String?
+  porcentagem      Decimal?        @db.Decimal(6, 4)
+  desconto         Decimal?        @db.Decimal(14, 2)
+  observacao       String?
+  valor_honorario  Decimal?        @db.Decimal(14, 2)
+  valor_parceiro   Decimal?        @db.Decimal(14, 2)
+  data_recebimento DateTime?       @db.Date
+  data_pagamento   DateTime?       @db.Date
+  reportado        Boolean         @default(false)
+  valor_report     Decimal?        @db.Decimal(14, 2)
+  data_report      DateTime?       @db.Date
+  arquivo_url      String?
+  created_at       DateTime        @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime        @default(now()) @db.Timestamptz(6)
+  movimentacoes    movimentacoes[]
+  clientes         clientes?       @relation(fields: [cliente_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  parceiros        parceiros       @relation(fields: [parceiro_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  transacoes       transacoes      @relation(fields: [transacao_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([parceiro_id], map: "idx_pagamentos_parceiro")
+  @@index([transacao_id], map: "idx_pagamentos_transacao")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model parceiros {
+  id                                                        String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id_legado                                                 String?                   @unique
+  nome                                                      String
+  foto_url                                                  String?
+  telefone                                                  String?
+  email                                                     String?
+  empresa                                                   String?
+  funcao                                                    String
+  loja_id                                                   String?                   @db.Uuid
+  status_funcao                                             String                    @default("Ativo")
+  cpf                                                       String?
+  data_nascimento                                           DateTime?                 @db.Date
+  identidade                                                String?
+  expedicao_estado                                          String?
+  estado_civil                                              String?
+  creci                                                     String?
+  endereco                                                  String?
+  data_entrada                                              DateTime?                 @db.Date
+  obs_funcao                                                String?
+  fee                                                       Decimal?                  @db.Decimal(12, 2)
+  porc_compr                                                Decimal?                  @db.Decimal(6, 4)
+  porc_vend                                                 Decimal?                  @db.Decimal(6, 4)
+  dia_fee                                                   Int?                      @db.SmallInt
+  banco_id                                                  String?                   @db.Uuid
+  codigo_banco                                              String?
+  agencia                                                   String?
+  conta                                                     String?
+  tipo_conta                                                String?
+  tipo_pix                                                  String?
+  pix                                                       String?
+  created_at                                                DateTime                  @default(now()) @db.Timestamptz(6)
+  updated_at                                                DateTime                  @default(now()) @db.Timestamptz(6)
+  adm_imoveis                                               adm_imoveis[]
+  avaliacoes                                                avaliacoes[]
+  checklist_conclusoes                                      checklist_conclusoes[]
+  clientes                                                  clientes[]
+  contratos_corretor                                        contratos_corretor[]
+  encerramentos_transacao                                   encerramentos_transacao[]
+  gestoes                                                   gestoes[]
+  imoveis                                                   imoveis[]
+  logs_acesso                                               logs_acesso[]
+  logs_alteracao                                            logs_alteracao[]
+  metas                                                     metas[]
+  movimentacoes                                             movimentacoes[]
+  noticias                                                  noticias[]
+  pagamentos                                                pagamentos[]
+  bancos                                                    bancos?                   @relation(fields: [banco_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  lojas                                                     lojas?                    @relation(fields: [loja_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  relatorios                                                relatorios[]
+  transacoes_transacoes_corretor_contraparte_idToparceiros  transacoes[]              @relation("transacoes_corretor_contraparte_idToparceiros")
+  transacoes_transacoes_corretor_proprietario_idToparceiros transacoes[]              @relation("transacoes_corretor_proprietario_idToparceiros")
+  transacoes_transacoes_parceiro_externo_idToparceiros      transacoes[]              @relation("transacoes_parceiro_externo_idToparceiros")
+  usuarios                                                  usuarios[]
+
+  @@index([loja_id], map: "idx_parceiros_loja")
+  @@index([nome], map: "idx_parceiros_nome")
+}
+
+model recibos_locacao {
+  id               String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id_legado        String?    @unique
+  tipo             String?
+  transacao_id     String     @db.Uuid
+  desconto         Decimal?   @db.Decimal(14, 2)
+  valor_descontado Decimal?   @db.Decimal(14, 2)
+  observacao       String?
+  arquivo_url      String?
+  created_at       DateTime   @default(now()) @db.Timestamptz(6)
+  transacoes       transacoes @relation(fields: [transacao_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([transacao_id], map: "idx_recibos_locacao_transacao")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model relatorios {
+  id             String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  data_inicial   DateTime?  @db.Date
+  data_final     DateTime?  @db.Date
+  tipo_relatorio String?
+  parceiro_id    String?    @db.Uuid
+  created_at     DateTime   @default(now()) @db.Timestamptz(6)
+  parceiros      parceiros? @relation(fields: [parceiro_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model transacoes {
+  id                                                       String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id_legado                                                String?                  @unique
+  tipo                                                     String
+  adm_imovel_id                                            String?                  @db.Uuid
+  pasta_url                                                String?
+  cliente_id                                               String                   @db.Uuid
+  cliente_contraparte_id                                   String                   @db.Uuid
+  imovel_id                                                String?                  @db.Uuid
+  status                                                   String?
+  garantia                                                 String?
+  valor_caucao                                             Decimal?                 @db.Decimal(14, 2)
+  pg_caucao                                                String?
+  data_assinatura                                          DateTime?                @db.Date
+  data_vencimento                                          DateTime?                @db.Date
+  dia_vencimento                                           Int?                     @db.SmallInt
+  loja_id                                                  String                   @db.Uuid
+  tem_parceria                                             Boolean                  @default(false)
+  porc_parceria                                            Decimal?                 @db.Decimal(6, 4)
+  parceiro_externo_id                                      String?                  @db.Uuid
+  corretor_proprietario_id                                 String?                  @db.Uuid
+  corretor_contraparte_id                                  String?                  @db.Uuid
+  status_honorario                                         String                   @default("Pendente")
+  parcela                                                  String?
+  data_pagamento                                           DateTime?                @db.Date
+  valor_transacao                                          Decimal                  @db.Decimal(14, 2)
+  chave                                                    String?
+  porc_honorario                                           Decimal                  @default(0) @db.Decimal(6, 4)
+  porc_corretor_proprietario                               Decimal                  @default(0) @db.Decimal(6, 4)
+  porc_corretor_contraparte                                Decimal                  @default(0) @db.Decimal(6, 4)
+  porc_imobiliaria                                         Decimal                  @default(0) @db.Decimal(6, 4)
+  eh_administracao                                         Boolean?                 @default(false)
+  tx_administracao                                         Decimal?                 @db.Decimal(6, 4)
+  valor_cliente                                            Decimal?                 @db.Decimal(14, 2)
+  valor_administracao                                      Decimal?                 @db.Decimal(14, 2)
+  iptu                                                     Decimal?                 @db.Decimal(14, 2)
+  encargos                                                 String[]
+  forma_pagamento                                          String?
+  finalidade_locacao                                       String?
+  atividade                                                String?
+  tem_vistoria                                             Boolean?
+  arquivo_vistoria_url                                     String?
+  observacao                                               String?
+  created_at                                               DateTime                 @default(now()) @db.Timestamptz(6)
+  updated_at                                               DateTime                 @default(now()) @db.Timestamptz(6)
+  chaves                                                   chaves[]
+  condicoes_pagamento                                      condicoes_pagamento[]
+  encerramentos_transacao                                  encerramentos_transacao?
+  movimentacoes                                            movimentacoes[]
+  pagamentos                                               pagamentos[]
+  recibos_locacao                                          recibos_locacao[]
+  adm_imoveis                                              adm_imoveis?             @relation(fields: [adm_imovel_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  clientes_transacoes_cliente_contraparte_idToclientes     clientes                 @relation("transacoes_cliente_contraparte_idToclientes", fields: [cliente_contraparte_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  clientes_transacoes_cliente_idToclientes                 clientes                 @relation("transacoes_cliente_idToclientes", fields: [cliente_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  parceiros_transacoes_corretor_contraparte_idToparceiros  parceiros?               @relation("transacoes_corretor_contraparte_idToparceiros", fields: [corretor_contraparte_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  parceiros_transacoes_corretor_proprietario_idToparceiros parceiros?               @relation("transacoes_corretor_proprietario_idToparceiros", fields: [corretor_proprietario_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  imoveis                                                  imoveis?                 @relation(fields: [imovel_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  lojas                                                    lojas                    @relation(fields: [loja_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  parceiros_transacoes_parceiro_externo_idToparceiros      parceiros?               @relation("transacoes_parceiro_externo_idToparceiros", fields: [parceiro_externo_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([adm_imovel_id], map: "idx_transacoes_adm_imovel")
+  @@index([cliente_id], map: "idx_transacoes_cliente")
+  @@index([cliente_contraparte_id], map: "idx_transacoes_contraparte")
+  @@index([corretor_contraparte_id], map: "idx_transacoes_corretor_contraparte")
+  @@index([corretor_proprietario_id], map: "idx_transacoes_corretor_proprietario")
+  @@index([imovel_id], map: "idx_transacoes_imovel")
+  @@index([loja_id], map: "idx_transacoes_loja")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model usuarios {
+  id                 String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nome               String
+  email              String               @unique
+  senha_hash         String
+  papel              String
+  loja_id            String?              @db.Uuid
+  parceiro_id        String?              @db.Uuid
+  ativo              Boolean              @default(true)
+  created_at         DateTime             @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime             @default(now()) @db.Timestamptz(6)
+  documentos_gerados documentos_gerados[]
+  metas              metas[]
+  lojas              lojas?               @relation(fields: [loja_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  parceiros          parceiros?           @relation(fields: [parceiro_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([loja_id], map: "idx_usuarios_loja")
+}
+
+model checklist_conclusoes {
+  id              String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  item_id         String          @db.Uuid
+  parceiro_id     String          @db.Uuid
+  concluido_em    DateTime        @default(now()) @db.Timestamptz(6)
+  checklist_itens checklist_itens @relation(fields: [item_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  parceiros       parceiros       @relation(fields: [parceiro_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([item_id, parceiro_id])
+}
+
+model checklist_itens {
+  id                   String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  titulo               String
+  descricao            String?
+  ordem                Int                    @default(0)
+  ativo                Boolean                @default(true)
+  created_at           DateTime               @default(now()) @db.Timestamptz(6)
+  checklist_conclusoes checklist_conclusoes[]
+}
+
+model logs_acesso {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  parceiro_id String    @db.Uuid
+  tipo_portal String    @default("admin")
+  acao        String    @default("login")
+  ip          String?
+  user_agent  String?
+  criado_em   DateTime  @default(now()) @db.Timestamptz(6)
+  parceiros   parceiros @relation(fields: [parceiro_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model logs_alteracao {
+  id            String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  parceiro_id   String?    @db.Uuid
+  entidade_tipo String
+  entidade_id   String?    @db.Uuid
+  acao          String
+  dados_antes   Json?
+  dados_depois  Json?
+  criado_em     DateTime   @default(now()) @db.Timestamptz(6)
+  parceiros     parceiros? @relation(fields: [parceiro_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([entidade_tipo, entidade_id], map: "idx_logs_alteracao_entidade")
+  @@index([parceiro_id], map: "idx_logs_alteracao_parceiro")
+}
+
+model noticias {
+  id                String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  titulo            String
+  corpo             String
+  publicado_em      DateTime   @default(now()) @db.Timestamptz(6)
+  autor_parceiro_id String?    @db.Uuid
+  ativo             Boolean    @default(true)
+  created_at        DateTime   @default(now()) @db.Timestamptz(6)
+  parceiros         parceiros? @relation(fields: [autor_parceiro_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}

@@ -95,6 +95,14 @@ export function dataPorExtenso(data: Date | string): string {
   return `${d.getDate()} de ${MESES[d.getMonth()]} de ${d.getFullYear()}`;
 }
 
+// Mesma ideia, mas com o dia sempre em 2 dígitos (ex.: "05 de julho de 2026")
+// — usado só na linha de local/data de assinatura dos contratos de corretor.
+export function dataPorExtensoComZero(data: Date | string | null | undefined): string {
+  if (!data) return "";
+  const d = typeof data === "string" ? new Date(data) : data;
+  return `${String(d.getDate()).padStart(2, "0")} de ${MESES[d.getMonth()]} de ${d.getFullYear()}`;
+}
+
 // Formata CPF (11 dígitos) como 000.000.000-00. Aceita string só com números.
 export function formatarCpf(cpf: string): string {
   const digitos = cpf.replace(/\D/g, "").padStart(11, "0");

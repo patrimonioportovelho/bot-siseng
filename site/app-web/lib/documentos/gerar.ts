@@ -5,7 +5,7 @@ import Docxtemplater from "docxtemplater";
 import { createClient } from "@supabase/supabase-js";
 import { prisma } from "@/lib/prisma";
 import type { TipoDocumento } from "./campos";
-import { valorPorExtenso, dataPorExtenso, formatarCpf } from "./extenso";
+import { valorPorExtenso, dataPorExtenso, dataPorExtensoComZero, formatarCpf } from "./extenso";
 import { formatTelefone } from "@/lib/format";
 
 // Nome do arquivo .docx (com o timbrado já formatado) que corresponde a cada
@@ -342,7 +342,10 @@ async function montarDadosContratoCorretor(parceiroId: string): Promise<Record<s
     DiaFee: p.dia_fee ?? "",
     Cidade: p.lojas?.cidade ?? "",
     Estado: p.lojas?.estado ?? "",
-    DataEntrada: dataCurta(p.data_entrada)
+    // Só esse campo (linha de local/data perto da assinatura) usa data por
+    // extenso com dia em 2 dígitos — os demais usos de Cidade/Estado nesses
+    // templates (ex.: cláusula de foro) continuam normais.
+    DataEntrada: dataPorExtensoComZero(p.data_entrada)
   };
 }
 

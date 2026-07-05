@@ -121,7 +121,7 @@ export async function buscarRegistrosAction(
       });
       return rows.map((m) => ({
         id: m.id,
-        label: `${m.tipo} · R$ ${Number(m.valor).toLocaleString("pt-BR")} · ${
+        label: `${m.tipo} · R$ ${Number(m.valor).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} · ${
           m.parceiros?.nome ?? m.contraparte_nome ?? "—"
         }${m.transacoes?.chave ? " · " + m.transacoes.chave : ""}`
       }));

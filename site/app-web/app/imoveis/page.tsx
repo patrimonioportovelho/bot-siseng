@@ -9,7 +9,7 @@ const PAGE_SIZE = 50;
 function formatMoeda(valor: unknown) {
   const n = Number(valor ?? 0);
   if (!n) return "—";
-  return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+  return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 export default async function ImoveisPage({

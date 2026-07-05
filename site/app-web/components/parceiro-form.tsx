@@ -3,7 +3,8 @@ import {
   STATUS_FUNCAO,
   ESTADOS_CIVIS,
   TIPOS_CONTA,
-  TIPOS_PIX
+  TIPOS_PIX,
+  FUNCOES_EQUIPE
 } from "@/lib/parceiros/opcoes";
 import { formatCpf, formatTelefone, formatPercentual } from "@/lib/format";
 
@@ -29,6 +30,7 @@ type ParceiroExistente = {
   creci: string | null;
   endereco: string | null;
   data_entrada: Date | null;
+  data_saida: Date | null;
   obs_funcao: string | null;
   fee: unknown;
   porc_compr: unknown;
@@ -182,6 +184,21 @@ export function ParceiroForm({
               defaultValue={inputDate(p?.data_entrada ?? null)}
             />
           </div>
+          {(!p || FUNCOES_EQUIPE.includes(p.funcao)) && (
+            <div>
+              <label className={LABEL}>Data de saída</label>
+              <input
+                type="date"
+                className={CAMPO}
+                name="data_saida"
+                defaultValue={inputDate(p?.data_saida ?? null)}
+              />
+              <p className="text-[11px] text-gray-400 mt-1">
+                Preencher quando o status virar Inativo — Administrativo, Corretor e Corretor
+                Estagiário.
+              </p>
+            </div>
+          )}
         </div>
       </div>
 

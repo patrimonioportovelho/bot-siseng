@@ -22,7 +22,7 @@ export const STATUS_TRANSACAO_EM_ABERTO = { notIn: [...STATUS_CONCLUIDA, ...STAT
 
 export function formatMoeda(valor: unknown) {
   const n = Number(valor ?? 0);
-  return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+  return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 export function formatData(data: unknown) {
@@ -31,9 +31,13 @@ export function formatData(data: unknown) {
 }
 
 // Formata CPF (qualquer string com 11 dígitos) como 000.000.000-00.
+// Alguns registros foram importados de planilha e ficaram com sufixo ".0"
+// (ex.: "884264752720" após tirar o ponto) — removemos esse resto de float
+// antes de validar o tamanho.
 export function formatCpf(cpf: unknown): string {
   if (!cpf) return "";
-  const d = String(cpf).replace(/\D/g, "");
+  const semSufixoFloat = String(cpf).replace(/\.0$/, "");
+  const d = semSufixoFloat.replace(/\D/g, "");
   if (d.length !== 11) return String(cpf);
   return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
 }

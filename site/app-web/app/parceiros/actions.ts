@@ -70,6 +70,7 @@ function camposEditaveis(formData: FormData) {
     creci: texto(formData, "creci"),
     endereco: texto(formData, "endereco"),
     data_entrada: data(formData, "data_entrada"),
+    data_saida: data(formData, "data_saida"),
     obs_funcao: texto(formData, "obs_funcao"),
     fee: decimal(formData, "fee"),
     porc_compr: percentual(formData, "porc_compr"),

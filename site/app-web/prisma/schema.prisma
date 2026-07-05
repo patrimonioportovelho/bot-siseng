@@ -532,6 +532,7 @@ model parceiros {
   creci                                                                       String?
   endereco                                                                    String?
   data_entrada                                                                DateTime?                 @db.Date
+  data_saida                                                                  DateTime?                 @db.Date
   obs_funcao                                                                  String?
   fee                                                                         Decimal?                  @db.Decimal(12, 2)
   porc_compr                                                                  Decimal?                  @db.Decimal(6, 4)

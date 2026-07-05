@@ -12,7 +12,7 @@ Precisa de Node.js 20+ instalado.
 
 ```bash
 npm install
-cp .env.example .env      # cole a DATABASE_URL do Supabase/Neon
+cp .env.example .env      # troca [YOUR-PASSWORD] pela senha do banco e cola a secret key
 npx prisma db pull        # importa o schema real (site/database/schema.sql)
 npx prisma generate
 npm run dev

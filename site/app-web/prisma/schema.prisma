@@ -541,6 +541,10 @@ model parceiros {
   loja_id                                                                     String?                   @db.Uuid
   status_funcao                                                               String                    @default("Ativo")
   cpf                                                                         String?
+  // Login do admin/colaborador passou a ser por email (único, case-insensitive
+  // via índice funcional criado direto no banco) + senha_hash (PBKDF2, ver
+  // lib/auth.ts). cpf continua existindo só como dado cadastral/de contrato.
+  senha_hash                                                                  String?
   data_nascimento                                                             DateTime?                 @db.Date
   identidade                                                                  String?
   expedicao_estado                                                            String?
@@ -793,7 +797,11 @@ model solicitacoes_acesso {
   id                                                                String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   parceiro_id                                                       String     @db.Uuid
   nome_informado                                                    String
-  cpf_informado                                                     String
+  // cpf_informado é resquício do login antigo (nome + CPF) — segue no banco
+  // como opcional só pra não perder o histórico das solicitações antigas.
+  cpf_informado                                                     String?
+  email_informado                                                   String?
+  senha_hash_informada                                              String?
   status                                                            String     @default("pendente")
   criado_em                                                         DateTime   @default(now()) @db.Timestamptz(6)
   decidido_em                                                       DateTime?  @db.Timestamptz(6)

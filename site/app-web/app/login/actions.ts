@@ -5,10 +5,11 @@ import { loginAdmin, logoutAdmin } from "@/lib/auth";
 
 export async function loginAction(formData: FormData) {
   const nome = String(formData.get("nome") ?? "");
-  const cpf = String(formData.get("cpf") ?? "");
+  const email = String(formData.get("email") ?? "");
+  const senha = String(formData.get("senha") ?? "");
   const next = String(formData.get("next") ?? "/dashboard");
 
-  const result = await loginAdmin(nome, cpf);
+  const result = await loginAdmin(nome, email, senha);
   if (!result.ok) {
     const campo = result.pendente ? "pendente" : "erro";
     redirect(`/login?${campo}=${encodeURIComponent(result.error)}`);

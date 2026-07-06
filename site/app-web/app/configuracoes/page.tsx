@@ -2,16 +2,9 @@ import Link from "next/link";
 import { Topbar } from "@/components/topbar";
 import { prisma } from "@/lib/prisma";
 import { getAdminSession } from "@/lib/auth";
-import { atualizarCpfParceiroAction, aprovarAcessoAction, rejeitarAcessoAction } from "./actions";
+import { definirSenhaParceiroAction, aprovarAcessoAction, rejeitarAcessoAction } from "./actions";
 
 export const dynamic = "force-dynamic";
-
-function formatCpf(cpf: string | null) {
-  if (!cpf) return "";
-  const d = cpf.replace(/\D/g, "");
-  if (d.length !== 11) return cpf;
-  return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
-}
 
 function formatDataHora(data: Date) {
   return new Date(data).toLocaleString("pt-BR");
@@ -66,9 +59,9 @@ export default async function ConfiguracoesPage() {
       <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4">
         <div className="text-sm font-bold text-gray-800 mb-1">Solicitações de acesso pendentes</div>
         <p className="text-xs text-gray-500 mb-3">
-          Qualquer parceiro ativo pode pedir acesso (nome + CPF na tela de login). Aqui você confirma
-          se o CPF informado é mesmo da pessoa antes de liberar — uma vez aprovado, o CPF fica
-          registrado no cadastro do parceiro (ver ficha completa em <Link href="/parceiros" className="text-primary">Parceiros</Link>) e o acesso passa a ser direto.
+          Qualquer parceiro ativo pode pedir acesso (nome, email e uma senha escolhida na tela de
+          login). Aqui você confirma se é mesmo a pessoa antes de liberar — uma vez aprovado, a senha
+          escolhida fica valendo no cadastro do parceiro (ver ficha completa em <Link href="/parceiros" className="text-primary">Parceiros</Link>) e o acesso passa a ser direto.
         </p>
         {pendentes.length === 0 ? (
           <p className="text-xs text-gray-400">Nenhuma solicitação pendente.</p>
@@ -78,7 +71,7 @@ export default async function ConfiguracoesPage() {
               <tr className="text-left text-gray-500">
                 <th className="font-normal py-1.5 border-b border-gray-100">Parceiro cadastrado</th>
                 <th className="font-normal py-1.5 border-b border-gray-100">Nome informado</th>
-                <th className="font-normal py-1.5 border-b border-gray-100">CPF informado</th>
+                <th className="font-normal py-1.5 border-b border-gray-100">Email informado</th>
                 <th className="font-normal py-1.5 border-b border-gray-100">Pedido em</th>
                 <th className="font-normal py-1.5 border-b border-gray-100 w-40">Ação</th>
               </tr>
@@ -93,7 +86,7 @@ export default async function ConfiguracoesPage() {
                     </span>
                   </td>
                   <td className="py-2 border-b border-gray-50">{s.nome_informado}</td>
-                  <td className="py-2 border-b border-gray-50">{formatCpf(s.cpf_informado)}</td>
+                  <td className="py-2 border-b border-gray-50">{s.email_informado}</td>
                   <td className="py-2 border-b border-gray-50">{formatDataHora(s.criado_em)}</td>
                   <td className="py-2 border-b border-gray-50">
                     <div className="flex gap-1.5">
@@ -119,12 +112,14 @@ export default async function ConfiguracoesPage() {
       </div>
 
       <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4">
-        <div className="text-sm font-bold text-gray-800 mb-1">Definir CPF manualmente</div>
+        <div className="text-sm font-bold text-gray-800 mb-1">Definir senha manualmente</div>
         <p className="text-xs text-gray-500 mb-3">
-          Para liberar o acesso de alguém sem passar pela solicitação (ex.: cadastro inicial). O nome e
-          os demais dados de cada parceiro ficam em <Link href="/parceiros" className="text-primary">Parceiros</Link>.
+          Para liberar (ou trocar) o acesso de alguém sem passar pela solicitação — inclusive a sua
+          própria senha. Lembre-se: a pessoa faz login com o <strong>email</strong> já cadastrado na
+          ficha dela em <Link href="/parceiros" className="text-primary">Parceiros</Link> + a senha que
+          você definir aqui.
         </p>
-        <form action={atualizarCpfParceiroAction} className="flex gap-2 items-end flex-wrap">
+        <form action={definirSenhaParceiroAction} className="flex gap-2 items-end flex-wrap">
           <div>
             <label className="text-xs text-gray-600 block mb-1">Parceiro</label>
             <select
@@ -144,10 +139,11 @@ export default async function ConfiguracoesPage() {
             </select>
           </div>
           <div>
-            <label className="text-xs text-gray-600 block mb-1">CPF</label>
+            <label className="text-xs text-gray-600 block mb-1">Nova senha</label>
             <input
-              name="cpf"
-              placeholder="000.000.000-00"
+              name="senha"
+              required
+              placeholder="senha"
               className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-40 outline-none focus:border-primary"
             />
           </div>

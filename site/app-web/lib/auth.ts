@@ -27,49 +27,38 @@ export type AdminSession = {
   exp: number;
 };
 
-function normalizeCpf(cpf: string) {
-  return cpf.replace(/\D/g, "");
+function normalizeEmail(email: string) {
+  return email.trim().toLowerCase();
 }
 
-function cpfValido(cpf: string | null | undefined) {
-  return !!cpf && normalizeCpf(cpf).length === 11;
+// Hash de senha com PBKDF2 (Web Crypto, já disponível no runtime do Node —
+// sem precisar adicionar bcrypt/argon2 como dependência nova). Formato
+// salvo: "<salt em hex>:<hash em hex>".
+const PBKDF2_ITERACOES = 100_000;
+
+export async function hashSenha(senha: string): Promise<string> {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const chave = await crypto.subtle.importKey("raw", new TextEncoder().encode(senha), "PBKDF2", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits(
+    { name: "PBKDF2", salt, iterations: PBKDF2_ITERACOES, hash: "SHA-256" },
+    chave,
+    256
+  );
+  return `${Buffer.from(salt).toString("hex")}:${Buffer.from(bits).toString("hex")}`;
 }
 
-// Remove acentos, baixa caixa e junta espaços — pra aceitar variações de
-// digitação (maiúsculas, acentos, espaços extras).
-function normalizeNome(nome: string) {
-  return nome
-    .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, " ");
-}
-
-function tokensNome(nome: string) {
-  return normalizeNome(nome).split(" ").filter(Boolean);
-}
-
-// Compara dois nomes de forma tolerante: bate exato (já normalizado) ou,
-// se um for uma versão parcial do outro (faltando sobrenome, por exemplo),
-// aceita desde que todas as palavras do menor apareçam no maior, na mesma
-// ordem relativa (evita "Ana Paula" bater com "Paula Ana", por ex.).
-function nomesCompativeis(nomeCadastro: string, nomeDigitado: string) {
-  const a = normalizeNome(nomeCadastro);
-  const b = normalizeNome(nomeDigitado);
-  if (a === b) return true;
-
-  const tokensA = tokensNome(nomeCadastro);
-  const tokensB = tokensNome(nomeDigitado);
-  const [menor, maior] = tokensA.length <= tokensB.length ? [tokensA, tokensB] : [tokensB, tokensA];
-  if (menor.length === 0) return false;
-
-  let i = 0;
-  for (const palavra of maior) {
-    if (palavra === menor[i]) i++;
-    if (i === menor.length) return true;
-  }
-  return false;
+async function verificarSenha(senha: string, hashArmazenado: string | null): Promise<boolean> {
+  if (!hashArmazenado) return false;
+  const [saltHex, hashHex] = hashArmazenado.split(":");
+  if (!saltHex || !hashHex) return false;
+  const salt = Buffer.from(saltHex, "hex");
+  const chave = await crypto.subtle.importKey("raw", new TextEncoder().encode(senha), "PBKDF2", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits(
+    { name: "PBKDF2", salt, iterations: PBKDF2_ITERACOES, hash: "SHA-256" },
+    chave,
+    256
+  );
+  return Buffer.from(bits).toString("hex") === hashHex;
 }
 
 export async function getAdminSession(): Promise<AdminSession | null> {
@@ -96,59 +85,52 @@ type LoginResult =
   | { ok: false; pendente: true; error: string }
   | { ok: false; pendente: false; error: string };
 
-export async function loginAdmin(nomeCompleto: string, cpf: string): Promise<LoginResult> {
-  const nomeNorm = normalizeNome(nomeCompleto);
-  const cpfDigits = normalizeCpf(cpf);
+// Login por Email + Senha (substituiu o antigo Nome + CPF — bater CPF
+// exigia que a pessoa já tivesse CPF cadastrado, o que travava quem ainda
+// não tinha, ex.: colaborador administrativo recém-entrado). O e-mail
+// identifica o parceiro sem ambiguidade (sem a comparação "tolerante" de
+// nomes de antes); a senha só existe depois de aprovada por um admin — no
+// primeiro acesso, vira uma solicitação pendente.
+export async function loginAdmin(nomeCompleto: string, email: string, senha: string): Promise<LoginResult> {
+  const nomeInformado = nomeCompleto.trim();
+  const emailNorm = normalizeEmail(email);
 
-  if (!nomeNorm || !cpfDigits) {
-    return { ok: false, pendente: false, error: "Informe nome completo e CPF." };
+  if (!nomeInformado || !emailNorm || !senha) {
+    return { ok: false, pendente: false, error: "Informe nome completo, email e senha." };
   }
 
   // Não limitamos mais por função — qualquer parceiro ativo pode pedir acesso,
-  // desde que o nome já esteja cadastrado.
-  const candidatos = await prisma.parceiros.findMany({
-    where: { status_funcao: "Ativo" },
-    select: { id: true, nome: true, cpf: true }
+  // desde que o email já esteja cadastrado na ficha dele.
+  const parceiro = await prisma.parceiros.findFirst({
+    where: {
+      status_funcao: "Ativo",
+      email: { equals: emailNorm, mode: "insensitive" }
+    },
+    select: { id: true, nome: true, senha_hash: true }
   });
 
-  const encontrados = candidatos.filter((p) => nomesCompativeis(p.nome, nomeCompleto));
-
-  if (encontrados.length === 0) {
+  if (!parceiro) {
     return {
       ok: false,
       pendente: false,
-      error: "Nome não encontrado no cadastro de parceiros. O nome precisa estar cadastrado para pedir acesso."
+      error:
+        "Email não encontrado no cadastro de parceiros. Peça para um administrador cadastrar seu email na ficha de parceiro."
     };
   }
 
-  // Se mais de um parceiro bateu com o nome digitado, prioriza quem já tem
-  // CPF válido cadastrado e confere com o CPF informado (login direto).
-  const comCpfBatendo = encontrados.find(
-    (p) => cpfValido(p.cpf) && normalizeCpf(p.cpf!) === cpfDigits
-  );
-
-  if (comCpfBatendo) {
-    return await concederAcesso(comCpfBatendo.id, comCpfBatendo.nome);
+  // Parceiro já tem senha definida (aprovada antes, ou definida manualmente
+  // por um admin) -> login direto, senha precisa bater.
+  if (parceiro.senha_hash) {
+    const senhaOk = await verificarSenha(senha, parceiro.senha_hash);
+    if (!senhaOk) {
+      return { ok: false, pendente: false, error: "Senha incorreta." };
+    }
+    return await concederAcesso(parceiro.id, parceiro.nome);
   }
 
-  // Nenhum CPF bateu. Se algum encontrado já tem CPF válido cadastrado
-  // (diferente do informado), é erro de CPF mesmo.
-  const algumComCpfValido = encontrados.some((p) => cpfValido(p.cpf));
-  if (algumComCpfValido) {
-    return { ok: false, pendente: false, error: "CPF não confere com o cadastro." };
-  }
-
-  if (encontrados.length > 1) {
-    return {
-      ok: false,
-      pendente: false,
-      error: "Encontrei mais de um cadastro com esse nome. Peça para um administrador liberar seu acesso manualmente."
-    };
-  }
-
-  // Único encontrado, sem CPF válido cadastrado ainda -> abre/atualiza
-  // solicitação de acesso pendente, pra um ADM aprovar depois.
-  const parceiro = encontrados[0];
+  // Ainda sem senha definida -> primeiro acesso. Guarda a senha escolhida
+  // (já com hash) numa solicitação pendente, pra um ADM aprovar depois.
+  const senhaHash = await hashSenha(senha);
   const pendente = await prisma.solicitacoes_acesso.findFirst({
     where: { parceiro_id: parceiro.id, status: "pendente" }
   });
@@ -156,11 +138,21 @@ export async function loginAdmin(nomeCompleto: string, cpf: string): Promise<Log
   if (pendente) {
     await prisma.solicitacoes_acesso.update({
       where: { id: pendente.id },
-      data: { nome_informado: nomeCompleto, cpf_informado: cpfDigits, criado_em: new Date() }
+      data: {
+        nome_informado: nomeInformado,
+        email_informado: emailNorm,
+        senha_hash_informada: senhaHash,
+        criado_em: new Date()
+      }
     });
   } else {
     await prisma.solicitacoes_acesso.create({
-      data: { parceiro_id: parceiro.id, nome_informado: nomeCompleto, cpf_informado: cpfDigits }
+      data: {
+        parceiro_id: parceiro.id,
+        nome_informado: nomeInformado,
+        email_informado: emailNorm,
+        senha_hash_informada: senhaHash
+      }
     });
   }
 
@@ -168,7 +160,7 @@ export async function loginAdmin(nomeCompleto: string, cpf: string): Promise<Log
     ok: false,
     pendente: true,
     error:
-      "Solicitação enviada! Assim que um administrador aprovar, seu CPF fica registrado e você já consegue entrar normalmente."
+      "Solicitação enviada! Assim que um administrador aprovar, você já consegue entrar com esse email e senha."
   };
 }
 
@@ -230,7 +222,7 @@ export async function aprovarSolicitacaoAction(solicitacaoId: string) {
   await prisma.$transaction([
     prisma.parceiros.update({
       where: { id: solicitacao.parceiro_id },
-      data: { cpf: solicitacao.cpf_informado }
+      data: { senha_hash: solicitacao.senha_hash_informada }
     }),
     prisma.solicitacoes_acesso.update({
       where: { id: solicitacaoId },
@@ -242,7 +234,7 @@ export async function aprovarSolicitacaoAction(solicitacaoId: string) {
     entidadeTipo: "parceiros",
     entidadeId: solicitacao.parceiro_id,
     acao: "aprovar_acesso",
-    dadosDepois: { cpf: solicitacao.cpf_informado }
+    dadosDepois: { email: solicitacao.email_informado }
   });
 }
 

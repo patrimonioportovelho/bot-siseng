@@ -2,35 +2,29 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { logAlteracao, requireAdm, aprovarSolicitacaoAction, rejeitarSolicitacaoAction } from "@/lib/auth";
+import { logAlteracao, requireAdm, aprovarSolicitacaoAction, rejeitarSolicitacaoAction, hashSenha } from "@/lib/auth";
 
-function normalizeCpf(cpf: string) {
-  return cpf.replace(/\D/g, "");
-}
-
-export async function atualizarCpfParceiroAction(formData: FormData) {
+// Libera (ou troca) o acesso de alguém direto, sem passar pela fila de
+// solicitação — útil pro cadastro inicial de cada parceiro e também pra você
+// mesmo (admin) trocar sua própria senha quando precisar.
+export async function definirSenhaParceiroAction(formData: FormData) {
   await requireAdm();
 
   const parceiroId = String(formData.get("parceiroId") ?? "");
-  const cpfInformado = normalizeCpf(String(formData.get("cpf") ?? ""));
-  if (!parceiroId) return;
+  const senha = String(formData.get("senha") ?? "").trim();
+  if (!parceiroId || !senha) return;
 
-  const antes = await prisma.parceiros.findUnique({
-    where: { id: parceiroId },
-    select: { cpf: true }
-  });
+  const senhaHash = await hashSenha(senha);
 
   await prisma.parceiros.update({
     where: { id: parceiroId },
-    data: { cpf: cpfInformado || null }
+    data: { senha_hash: senhaHash }
   });
 
   await logAlteracao({
     entidadeTipo: "parceiros",
     entidadeId: parceiroId,
-    acao: "editar_cpf",
-    dadosAntes: { cpf: antes?.cpf ?? null },
-    dadosDepois: { cpf: cpfInformado || null }
+    acao: "definir_senha_manual"
   });
 
   revalidatePath("/configuracoes");

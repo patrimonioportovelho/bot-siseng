@@ -36,12 +36,22 @@ export default async function LoginPage({
           placeholder="Seu nome completo"
         />
 
-        <label className="text-xs text-gray-600 block mb-1">CPF</label>
+        <label className="text-xs text-gray-600 block mb-1">Email</label>
         <input
-          name="cpf"
+          name="email"
+          type="email"
+          required
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-4 outline-none focus:border-primary"
+          placeholder="seuemail@exemplo.com"
+        />
+
+        <label className="text-xs text-gray-600 block mb-1">Senha</label>
+        <input
+          name="senha"
+          type="password"
           required
           className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-6 outline-none focus:border-primary"
-          placeholder="000.000.000-00"
+          placeholder="Sua senha"
         />
 
         <button
@@ -52,9 +62,10 @@ export default async function LoginPage({
         </button>
 
         <p className="text-[11px] text-gray-400 mt-4 leading-relaxed">
-          O nome precisa estar cadastrado como parceiro ativo. Se for seu primeiro acesso, sua
-          solicitação fica pendente até um administrador aprovar. Toda ação no sistema fica
-          registrada nos logs de auditoria.
+          O email precisa estar cadastrado na ficha de parceiro ativo. Se for seu primeiro acesso,
+          escolha a senha que quiser aqui — sua solicitação fica pendente até um administrador
+          aprovar, e depois disso essa mesma senha já funciona. Toda ação no sistema fica registrada
+          nos logs de auditoria.
         </p>
       </form>
     </div>

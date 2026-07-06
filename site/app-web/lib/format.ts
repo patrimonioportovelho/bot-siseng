@@ -133,3 +133,15 @@ export function calcularPrazoRestante(
   if (mesesRestantes === 1) return "1 mês";
   return `${mesesRestantes} meses`;
 }
+
+// Soma meses a uma data no formato do <input type="date"> (yyyy-mm-dd) e
+// devolve no mesmo formato — usado para calcular a Data de vencimento de uma
+// locação a partir da Data de assinatura + Tempo de contrato (meses), sem
+// depender de digitação manual.
+export function somarMeses(dataYYYYMMDD: string, meses: number | null): string {
+  if (!dataYYYYMMDD || !meses) return "";
+  const d = new Date(dataYYYYMMDD + "T00:00:00");
+  if (Number.isNaN(d.getTime())) return "";
+  d.setMonth(d.getMonth() + meses);
+  return d.toISOString().slice(0, 10);
+}

@@ -23,19 +23,20 @@ export default async function TransacaoDetalhePage({
   const { id } = await params;
   const { salvo } = await searchParams;
 
-  const [transacao, lojas, clientes, imoveis, parceiros] = await Promise.all([
+  const [transacao, lojas, clientes, imoveis, parceiros, admImoveisAtivos] = await Promise.all([
     prisma.transacoes.findUnique({
       where: { id },
       include: {
         imoveis: { include: { imoveis_proprietarios: { include: { clientes: true }, orderBy: { ordem: "asc" } } } },
         transacoes_contrapartes: { include: { clientes: true }, orderBy: { ordem: "asc" } },
-        condicoes_pagamento: { orderBy: { created_at: "asc" } }
+        condicoes_pagamento: { orderBy: { created_at: "asc" } },
+        adm_imoveis: { select: { id: true, id_legado: true, parceiro_id: true, imovel_id: true, status: true, clientes: { select: { nome: true } } } }
       }
     }),
     prisma.lojas.findMany({ orderBy: { nome: "asc" } }),
     prisma.clientes.findMany({
       orderBy: { nome: "asc" },
-      select: { id: true, nome: true, id_legado: true }
+      select: { id: true, nome: true, id_legado: true, parceiro_id: true }
     }),
     prisma.imoveis.findMany({
       orderBy: { created_at: "desc" },
@@ -44,32 +45,94 @@ export default async function TransacaoDetalhePage({
         id_legado: true,
         endereco: true,
         inscricao: true,
+        parceiro_id: true,
         imoveis_proprietarios: {
           orderBy: { ordem: "asc" },
-          select: { clientes: { select: { id: true, nome: true } } }
+          select: { clientes: { select: { id: true, nome: true, parceiro_id: true } } }
         }
       }
     }),
     prisma.parceiros.findMany({
       orderBy: { nome: "asc" },
       select: { id: true, nome: true, funcao: true }
+    }),
+    prisma.adm_imoveis.findMany({
+      where: { status: "Ativo" },
+      orderBy: { created_at: "desc" },
+      select: {
+        id: true,
+        id_legado: true,
+        parceiro_id: true,
+        imovel_id: true,
+        imoveis: { select: { endereco: true, inscricao: true } },
+        clientes: { select: { nome: true } }
+      }
     })
   ]);
 
   if (!transacao) notFound();
+
+  const clientesComParceiro = clientes.map((c) => ({
+    id: c.id,
+    nome: c.nome,
+    id_legado: c.id_legado,
+    parceiroId: c.parceiro_id
+  }));
 
   const imoveisComProprietarios = imoveis.map((i) => ({
     id: i.id,
     id_legado: i.id_legado,
     endereco: i.endereco,
     inscricao: i.inscricao,
-    proprietarios: i.imoveis_proprietarios.map((v) => v.clientes)
+    parceiroId: i.parceiro_id,
+    proprietarios: i.imoveis_proprietarios.map((v) => ({
+      id: v.clientes.id,
+      nome: v.clientes.nome,
+      parceiroId: v.clientes.parceiro_id
+    }))
   }));
+
+  let administracoes = admImoveisAtivos.map((a) => ({
+    id: a.id,
+    id_legado: a.id_legado,
+    parceiroId: a.parceiro_id,
+    imovelId: a.imovel_id,
+    imovelEndereco: a.imoveis.endereco,
+    imovelInscricao: a.imoveis.inscricao,
+    clienteNome: a.clientes.nome
+  }));
+
+  // Se a transação já está presa a uma administração que não está mais
+  // "Ativo" (ex.: virou "Locado" depois que essa locação foi criada), mantém
+  // ela na lista pra não sumir do formulário ao editar.
+  if (transacao.adm_imoveis && !administracoes.some((a) => a.id === transacao.adm_imoveis!.id)) {
+    administracoes = [
+      {
+        id: transacao.adm_imoveis.id,
+        id_legado: transacao.adm_imoveis.id_legado,
+        parceiroId: transacao.adm_imoveis.parceiro_id,
+        imovelId: transacao.adm_imoveis.imovel_id,
+        imovelEndereco: transacao.imoveis?.endereco ?? null,
+        imovelInscricao: transacao.imoveis?.inscricao ?? null,
+        clienteNome: transacao.adm_imoveis.clientes.nome
+      },
+      ...administracoes
+    ];
+  }
+
+  const imoveisComAdmAtivaIds = admImoveisAtivos.map((a) => a.imovel_id);
 
   const proprietarios = transacao.imoveis?.imoveis_proprietarios.map((v) => v.clientes) ?? [];
   const nomesProprietarios = proprietarios.map((c) => c.nome).join(", ");
   const interessados = transacao.transacoes_contrapartes.map((v) => v.clientes);
   const nomesInteressados = interessados.map((c) => c.nome).join(", ");
+
+  const interessadosComParceiro = interessados.map((c) => ({
+    id: c.id,
+    nome: c.nome,
+    id_legado: c.id_legado,
+    parceiroId: c.parceiro_id
+  }));
 
   const condicoesIniciais = transacao.condicoes_pagamento.map((c) => ({
     tipo: c.tipo ?? "",
@@ -116,10 +179,12 @@ export default async function TransacaoDetalhePage({
       <TransacaoForm
         transacao={transacao}
         lojas={lojas}
-        clientes={clientes}
+        clientes={clientesComParceiro}
         imoveis={imoveisComProprietarios}
         parceiros={parceiros}
-        interessadosIniciais={interessados}
+        administracoes={administracoes}
+        imoveisComAdmAtivaIds={imoveisComAdmAtivaIds}
+        interessadosIniciais={interessadosComParceiro}
         condicoesIniciais={condicoesIniciais}
         action={atualizarTransacaoAction}
       />

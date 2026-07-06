@@ -85,6 +85,7 @@ async function proprietarioDoImovel(imovelId: string): Promise<string> {
 function camposEditaveis(formData: FormData) {
   return {
     status: texto(formData, "status"),
+    adm_imovel_id: texto(formData, "adm_imovel_id"),
     garantia: texto(formData, "garantia"),
     valor_caucao: valorMonetario(formData, "valor_caucao"),
     pg_caucao: texto(formData, "pg_caucao"),

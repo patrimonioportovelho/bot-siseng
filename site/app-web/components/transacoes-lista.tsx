@@ -83,9 +83,13 @@ export async function TransacoesLista({ tipo, q, novoHref }: { tipo: "Locação"
   // sempre visível, mesmo padrão usado em Administrações. Locação tem mais
   // colunas pra acompanhamento diário: assinatura, vencimento do contrato,
   // dia de pagamento e prazo (com alerta de renovação/cancelamento).
+  // Importante: cada linha (e o cabeçalho) é um grid independente, então
+  // colunas com largura "auto" ficam do tamanho do conteúdo daquela linha
+  // específica e desalinham tudo entre as linhas — por isso as colunas de
+  // data/valor usam px fixo, garantindo a mesma largura em todas as linhas.
   const colunas = somenteLocacao
-    ? "grid-cols-[0.6fr_1fr_1fr_1fr_auto_auto_auto_auto_auto]"
-    : "grid-cols-[0.8fr_1.6fr_1.4fr_1.4fr_auto_auto]";
+    ? "grid-cols-[0.6fr_1fr_1fr_1fr_84px_84px_56px_190px_100px]"
+    : "grid-cols-[0.8fr_1.6fr_1.4fr_1.4fr_90px_110px]";
 
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-4">

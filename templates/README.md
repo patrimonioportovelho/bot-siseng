@@ -16,11 +16,21 @@ sistema troca pelos dados reais.
 | `contrato_compra_venda.docx` | Transação (Compra e Venda) |
 | `carta_preferencia.docx` | Transação |
 | `contrato_administracao.docx` | AdmImóvel |
-| `contrato_associacao_corretor.docx` | ContCorretor / Parceiro |
+| `contrato_associacao_corretor.docx` | Parceiro (função Corretor) |
+| `contrato_associacao_corretor_estagiario.docx` | Parceiro (função Corretor Estagiário) |
 | `termo_entrega_chaves.docx` | Chaves |
 | `recibo_honorarios.docx` | Movimentação |
 | `repasse_administracao.docx` | Movimentação |
 | `repasse_primeira_locacao.docx` | Movimentação |
+
+O sistema escolhe automaticamente entre os dois contratos de corretor
+conforme a função do parceiro (Corretor ou Corretor Estagiário). Os dois já
+estão preenchidos com o texto oficial e usam os placeholders
+`{{Parceiro}}`, `{{EstadoCivil}}`, `{{DataNascimento}}`, `{{CPF}}`,
+`{{Creci}}` (só no contrato de Corretor), `{{Email}}`, `{{Telefone}}`,
+`{{Endereco}}`, `{{Fee}}`, `{{PorcCompr}}`, `{{PorcVend}}`, `{{DiaFee}}`,
+`{{Cidade}}`, `{{Estado}}` e `{{DataEntrada}}` — lembre de enviar os dois
+também ao bucket `templates` do Supabase Storage quando forem atualizados.
 
 ## Como editar
 

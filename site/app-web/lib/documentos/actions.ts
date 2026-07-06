@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAdminSession, logAlteracao } from "@/lib/auth";
 import { gerarDocumento, ENTIDADE_POR_DOCUMENTO } from "./gerar";
 import type { TipoDocumento } from "./campos";
+import { formatInscricao } from "@/lib/format";
 
 export type OpcaoRegistro = { id: string; label: string };
 
@@ -59,20 +60,34 @@ export async function buscarRegistrosAction(
       return rows.map((g) => ({ id: g.id, label: `${g.imoveis.endereco ?? "—"} · ${g.clientes.nome}` }));
     }
     case "adm_imovel": {
+      // Só entra aqui quem está em Captação: gerar o contrato de
+      // administração é justamente o passo que "ativa" a administração (ver
+      // gerarDocumento, que faz a transição automática para Ativo).
       const rows = await prisma.adm_imoveis.findMany({
-        where: termo
-          ? {
-              OR: [
-                { imoveis: { endereco: { contains: termo, mode: "insensitive" } } },
-                { clientes: { nome: { contains: termo, mode: "insensitive" } } }
-              ]
-            }
-          : undefined,
+        where: {
+          status: "Captação",
+          ...(termo
+            ? {
+                OR: [
+                  { id_legado: { contains: termo, mode: "insensitive" as const } },
+                  { imoveis: { endereco: { contains: termo, mode: "insensitive" as const } } },
+                  { imoveis: { inscricao: { contains: termo, mode: "insensitive" as const } } },
+                  { clientes: { nome: { contains: termo, mode: "insensitive" as const } } }
+                ]
+              }
+            : {})
+        },
         include: { imoveis: true, clientes: true },
         orderBy: { created_at: "desc" },
         take: 20
       });
-      return rows.map((a) => ({ id: a.id, label: `${a.imoveis.endereco ?? "—"} · ${a.clientes.nome}` }));
+      // Id é a chave (usada para localizar a administração certa), mas o
+      // label sempre mostra a inscrição do imóvel ao lado, pra dar pra
+      // reconhecer de qual imóvel se trata.
+      return rows.map((a) => ({
+        id: a.id,
+        label: `${a.id_legado ?? a.id} — ${formatInscricao(a.imoveis.inscricao) || "sem inscrição"} — ${a.clientes.nome}`
+      }));
     }
     case "cont_corretor": {
       // Busca direto em parceiros (não em contratos_corretor): o contrato de

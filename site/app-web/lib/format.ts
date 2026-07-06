@@ -20,6 +20,10 @@ export function statusTone(status: string | null): Tone {
 
 export const STATUS_TRANSACAO_EM_ABERTO = { notIn: [...STATUS_CONCLUIDA, ...STATUS_CANCELADA] };
 
+// Lista fechada com todos os status reais já vistos em transacoes.status —
+// usada no select de troca rápida de status dentro da Administração.
+export const STATUS_TRANSACAO_TODOS = [...STATUS_ABERTA, ...STATUS_CONCLUIDA, ...STATUS_CANCELADA];
+
 export function formatMoeda(valor: unknown) {
   const n = Number(valor ?? 0);
   return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 2, maximumFractionDigits: 2 });

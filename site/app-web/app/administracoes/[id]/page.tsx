@@ -1,0 +1,111 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { Topbar } from "@/components/topbar";
+import { prisma } from "@/lib/prisma";
+import { AdministracaoForm } from "@/components/administracao-form";
+import { StatusTransacaoSelect } from "@/components/status-transacao-select";
+import { FUNCOES_CAPTADOR } from "@/lib/administracoes/opcoes";
+import { formatMoeda, formatData } from "@/lib/format";
+import { atualizarAdministracaoAction } from "../actions";
+
+export const dynamic = "force-dynamic";
+
+export default async function AdministracaoDetalhePage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+
+  const [administracao, lojas, clientes, imoveis, parceiros, transacoes] = await Promise.all([
+    prisma.adm_imoveis.findUnique({
+      where: { id },
+      include: { clientes: true, imoveis: true, lojas: true }
+    }),
+    prisma.lojas.findMany({ orderBy: { nome: "asc" } }),
+    prisma.clientes.findMany({
+      orderBy: { nome: "asc" },
+      select: { id: true, nome: true, id_legado: true, parceiro_id: true }
+    }),
+    prisma.imoveis.findMany({
+      orderBy: { created_at: "desc" },
+      select: { id: true, id_legado: true, endereco: true, inscricao: true }
+    }),
+    prisma.parceiros.findMany({
+      where: { funcao: { in: FUNCOES_CAPTADOR } },
+      orderBy: { nome: "asc" },
+      select: { id: true, nome: true }
+    }),
+    prisma.transacoes.findMany({
+      where: { adm_imovel_id: id },
+      orderBy: { created_at: "desc" },
+      include: {
+        clientes_transacoes_cliente_contraparte_idToclientes: { select: { nome: true } }
+      }
+    })
+  ]);
+
+  if (!administracao) notFound();
+
+  return (
+    <div>
+      <Topbar />
+
+      <Link href="/administracoes" className="text-xs text-gray-500 hover:text-gray-800 inline-block mb-3">
+        ← Voltar para Administrações
+      </Link>
+
+      <div className="text-sm font-bold text-gray-800 mb-1">
+        {administracao.imoveis?.endereco ?? "Imóvel sem endereço"}
+      </div>
+      <div className="text-xs text-gray-500 mb-0.5">
+        {administracao.lojas?.nome}
+        {administracao.clientes?.nome && <> · Proprietário: {administracao.clientes.nome}</>}
+        {" · "}
+        {administracao.status}
+      </div>
+      <div className="text-xs text-gray-400 mb-4">
+        Id administração: {administracao.id_legado ?? administracao.id}
+      </div>
+
+      <div className="bg-white border border-gray-200 rounded-xl p-4 mb-5">
+        <div className="text-sm font-bold text-gray-800 mb-3">
+          Transações de locação ({transacoes.length})
+        </div>
+        {transacoes.length === 0 && (
+          <p className="text-xs text-gray-400 py-3">Nenhuma transação vinculada a esta administração ainda.</p>
+        )}
+        {transacoes.length > 0 && (
+          <div className="flex flex-col">
+            <div className="grid grid-cols-[1fr_1fr_auto_auto] gap-3 px-1 py-1.5 text-[11px] text-gray-400 border-b border-gray-100">
+              <span>Locatário</span>
+              <span>Assinatura</span>
+              <span className="text-right">Valor</span>
+              <span>Status</span>
+            </div>
+            {transacoes.map((t) => (
+              <div
+                key={t.id}
+                className="grid grid-cols-[1fr_1fr_auto_auto] gap-3 items-center px-1 py-2 border-b border-gray-50 last:border-0"
+              >
+                <span className="text-xs font-medium text-gray-800 truncate">
+                  {t.clientes_transacoes_cliente_contraparte_idToclientes?.nome ?? "—"}
+                </span>
+                <span className="text-xs text-gray-500">{formatData(t.data_assinatura)}</span>
+                <span className="text-xs text-gray-600 text-right whitespace-nowrap">
+                  {formatMoeda(t.valor_transacao)}
+                </span>
+                <StatusTransacaoSelect transacaoId={t.id} admImovelId={administracao.id} statusAtual={t.status} />
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <AdministracaoForm
+        administracao={administracao}
+        lojas={lojas}
+        clientes={clientes}
+        imoveis={imoveis}
+        parceiros={parceiros}
+        action={atualizarAdministracaoAction}
+      />
+    </div>
+  );
+}

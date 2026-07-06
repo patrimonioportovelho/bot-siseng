@@ -21,7 +21,8 @@ const DICA_BUSCA: Record<TipoDocumento, string> = {
   contrato_locacao: "Busque pela chave da transação, endereço do imóvel ou nome do cliente",
   contrato_compra_venda: "Busque pela chave da transação, endereço do imóvel ou nome do cliente",
   carta_preferencia: "Busque pelo endereço do imóvel ou nome do proprietário",
-  contrato_administracao: "Busque pelo endereço do imóvel ou nome do proprietário",
+  contrato_administracao:
+    "Busque pelo Id, inscrição do imóvel, endereço ou nome do proprietário — só aparece quem está em Captação",
   contrato_associacao_corretor: "Busque pelo nome do corretor",
   contrato_associacao_corretor_estagiario: "Busque pelo nome do corretor estagiário",
   termo_entrega_chaves: "Busque pela chave da transação ou endereço do imóvel",

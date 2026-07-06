@@ -6,7 +6,7 @@ import { createClient } from "@supabase/supabase-js";
 import { prisma } from "@/lib/prisma";
 import type { TipoDocumento } from "./campos";
 import { valorPorExtenso, dataPorExtenso, dataPorExtensoComZero, formatarCpf } from "./extenso";
-import { formatTelefone } from "@/lib/format";
+import { formatTelefone, formatInscricao } from "@/lib/format";
 
 // Nome do arquivo .docx (com o timbrado já formatado) que corresponde a cada
 // tipo de documento. Os arquivos ficam em site/app-web/templates/ — ver
@@ -102,6 +102,15 @@ export async function gerarDocumento(params: GerarDocumentoParams): Promise<stri
         status: "Sucesso"
       }
     });
+
+    // Gerar o contrato de administração é o que "ativa" a administração:
+    // some da lista de Captação e passa a aparecer como Ativo.
+    if (tipoDocumento === "contrato_administracao") {
+      await prisma.adm_imoveis.updateMany({
+        where: { id: entidadeId, status: "Captação" },
+        data: { status: "Ativo", updated_at: new Date() }
+      });
+    }
 
     return urlPublica.publicUrl;
   } catch (erro) {
@@ -298,19 +307,64 @@ async function montarDadosGestao(gestaoId: string): Promise<Record<string, unkno
 async function montarDadosAdmImovel(admImovelId: string): Promise<Record<string, unknown>> {
   const a = await prisma.adm_imoveis.findUnique({
     where: { id: admImovelId },
-    include: { clientes: true, imoveis: true, lojas: true }
+    include: {
+      clientes: {
+        include: {
+          clientes: true, // cônjuge, via conjuge_id (auto-relacionamento "clientesToclientes")
+          bancos: true,
+          cidades: true,
+          estados: true
+        }
+      },
+      imoveis: true,
+      lojas: true
+    }
   });
   if (!a) throw new Error(`Administração "${admImovelId}" não encontrada.`);
 
+  const c = a.clientes;
+  const conjuge = c.clientes; // null se não tiver cônjuge cadastrado
+
+  // Texto livre inserido logo após o estado civil (ex.: "Casado e seu(sua)
+  // cônjuge, Fulano, portador(a) do CPF nº 000.000.000-00,"). Fica vazio se
+  // o cliente não tiver cônjuge vinculado.
+  const textoConjuge = conjuge
+    ? ` e seu(sua) cônjuge, ${conjuge.nome}, portador(a) do CPF nº ${formatarCpf(conjuge.cpf ?? "")}`
+    : "";
+
   return {
-    loja_nome: a.lojas.nome,
-    proprietario_nome: a.clientes.nome,
-    proprietario_cpf: formatarCpf(a.clientes.cpf ?? ""),
-    imovel_endereco: a.imoveis.endereco ?? "",
-    tx_administracao: percentual(a.tx_administracao),
-    valor_administracao: numero(a.valor_administracao),
-    prazo_contrato_meses: a.prazo_contrato_meses ?? "",
-    data_assinatura: dataCurta(a.data_assinatura ?? new Date())
+    Cliente: c.nome,
+    DataNascimento: dataCurta(c.data_nascimento),
+    Cpf: formatarCpf(c.cpf ?? ""),
+    Email: c.email ?? "",
+    EstadoCivil: c.estado_civil ?? "",
+    TextoConjuge: textoConjuge,
+    Endereco: c.endereco ?? "",
+    Cidade: c.cidades?.nome ?? "",
+    Estado: c.estados?.nome ?? "",
+    Banco: c.bancos?.nome ?? "",
+    Codigo: c.bancos?.codigo ?? c.codigo_banco ?? "",
+    Agencia: c.agencia ?? "",
+    Conta: c.conta ?? "",
+    TipoPix: c.tipo_pix ?? "",
+    Pix: c.pix ?? "",
+    Imovel_Endereco: a.imoveis.endereco ?? "",
+    Imovel_Matricula: a.imoveis.matricula ?? "",
+    InscricaoFormatada: formatInscricao(a.imoveis.inscricao),
+    Imovel_Descricao: a.imoveis.descricao ?? "",
+    PorcHonorario: percentual(a.porc_honorario),
+    TxAdm: percentual(a.tx_administracao),
+    Loja: a.lojas.nome,
+    // Mesmo padrão de data por extenso com dia em 2 dígitos usado nos
+    // contratos de corretor, na linha de local/data perto da assinatura.
+    DataAssinatura: dataPorExtensoComZero(a.data_assinatura ?? new Date()),
+    // Bloco de assinatura do cônjuge: preenchido só quando existir cônjuge.
+    // O template não tem uma seção condicional de verdade (é substituição
+    // simples de texto), então sem cônjuge esses campos ficam em branco.
+    AssinaturaConjugeInicio: "",
+    ConjugeNomeAss: conjuge?.nome ?? "",
+    ConjugeCpfAss: conjuge ? formatarCpf(conjuge.cpf ?? "") : "",
+    AssinaturaConjugeFim: ""
   };
 }
 

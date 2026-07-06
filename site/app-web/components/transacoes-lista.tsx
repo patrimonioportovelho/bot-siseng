@@ -1,6 +1,29 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { formatMoeda, formatData, calcularPrazoRestante, STATUS_TRANSACAO_TODOS } from "@/lib/format";
+import {
+  formatMoeda,
+  formatData,
+  calcularPrazoRestante,
+  diasParaVencimento,
+  situacaoContratoLocacao,
+  statusTone,
+  STATUS_TRANSACAO_TODOS,
+  type Tone
+} from "@/lib/format";
+
+// Elaboração de Contrato de Locação precisa aparecer primeiro no dashboard
+// de Locação (é o que precisa de atenção pra virar contrato) — o resto dos
+// status segue a mesma ordem de sempre (STATUS_TRANSACAO_TODOS).
+const PRIORIDADE_LOCACAO = "Elaboração de Contrato de Locação";
+
+// Cor de destaque do cabeçalho de cada grupo de Status, pra separar
+// visualmente as locações em andamento das finalizadas/canceladas.
+const TONE_CLASSES: Record<Tone, string> = {
+  ativa: "bg-blue-50 text-blue-700 border-blue-200",
+  concluida: "bg-green-50 text-green-700 border-green-200",
+  pendente: "bg-gray-50 text-gray-600 border-gray-200",
+  cancelada: "bg-red-50 text-red-600 border-red-200"
+};
 
 // Listagem compartilhada por /transacoes/locacao e /transacoes/venda — cada
 // uma chama isso com o Tipo já fixo (menu separado, sem aba de trocar tipo).
@@ -57,9 +80,11 @@ export async function TransacoesLista({ tipo, q, novoHref }: { tipo: "Locação"
   });
 
   // Id é o identificador que sai no rodapé do contrato — primeira coluna,
-  // sempre visível, mesmo padrão usado em Administrações.
+  // sempre visível, mesmo padrão usado em Administrações. Locação tem mais
+  // colunas pra acompanhamento diário: assinatura, vencimento do contrato,
+  // dia de pagamento e prazo (com alerta de renovação/cancelamento).
   const colunas = somenteLocacao
-    ? "grid-cols-[0.8fr_1.3fr_1.1fr_1.1fr_auto_auto_auto_auto]"
+    ? "grid-cols-[0.6fr_1fr_1fr_1fr_auto_auto_auto_auto_auto]"
     : "grid-cols-[0.8fr_1.6fr_1.4fr_1.4fr_auto_auto]";
 
   return (
@@ -103,6 +128,10 @@ export async function TransacoesLista({ tipo, q, novoHref }: { tipo: "Locação"
           porStatus.get(s)!.push(t);
         }
         const statusOrdenados = [...porStatus.keys()].sort((x, y) => {
+          if (somenteLocacao) {
+            if (x === PRIORIDADE_LOCACAO) return -1;
+            if (y === PRIORIDADE_LOCACAO) return 1;
+          }
           const ix = STATUS_TRANSACAO_TODOS.indexOf(x);
           const iy = STATUS_TRANSACAO_TODOS.indexOf(y);
           if (ix === -1 && iy === -1) return x.localeCompare(y);
@@ -119,9 +148,12 @@ export async function TransacoesLista({ tipo, q, novoHref }: { tipo: "Locação"
 
             {statusOrdenados.map((status) => {
               const doStatus = porStatus.get(status)!;
+              const tone = statusTone(status === "Sem status" ? null : status);
               return (
                 <div key={status} className="mb-3 last:mb-0">
-                  <div className="text-[11px] font-semibold text-gray-500 px-3 py-1">
+                  <div
+                    className={`text-xs font-bold px-3 py-1.5 mb-1 rounded-lg border ${TONE_CLASSES[tone]}`}
+                  >
                     {status} ({doStatus.length})
                   </div>
                   <div className={`grid ${colunas} gap-3 px-3 py-1 text-[11px] text-gray-400 border-b border-gray-100`}>
@@ -130,44 +162,91 @@ export async function TransacoesLista({ tipo, q, novoHref }: { tipo: "Locação"
                     <span>Cliente Proprietário</span>
                     <span>Cliente Interessado</span>
                     <span>Assinatura</span>
-                    {somenteLocacao && <span>Dia venc.</span>}
-                    {somenteLocacao && <span>Prazo restante</span>}
+                    {somenteLocacao && <span>Vencimento</span>}
+                    {somenteLocacao && <span>Dia pgto.</span>}
+                    {somenteLocacao && <span>Prazo do contrato</span>}
                     <span className="text-right">Valor</span>
                   </div>
                   <div className="flex flex-col">
                     {doStatus.map((t) => {
                       const proprietarios = t.imoveis?.imoveis_proprietarios.map((v) => v.clientes) ?? [];
                       const interessados = t.transacoes_contrapartes.map((v) => v.clientes);
+
+                      // Vencido/alerta só faz sentido pra locação em andamento
+                      // (não destaca contrato já finalizado/cancelado).
+                      const situacao =
+                        somenteLocacao && tone === "ativa" ? situacaoContratoLocacao(t.data_vencimento) : null;
+
+                      const corLinha =
+                        situacao === "vencido"
+                          ? "bg-red-50 border border-red-200 hover:bg-red-100"
+                          : situacao === "alerta"
+                          ? "bg-amber-50 border border-amber-200 hover:bg-amber-100"
+                          : "hover:bg-gray-50";
+
                       return (
                         <Link
                           key={t.id}
                           href={`/transacoes/${t.id}`}
-                          className={`grid ${colunas} gap-3 items-center px-3 py-2.5 rounded-lg hover:bg-gray-50 transition-colors`}
+                          className={`grid ${colunas} gap-3 items-center px-3 py-2.5 rounded-lg transition-colors ${corLinha}`}
                         >
-                          <span className="text-xs text-gray-500 truncate">{t.id_legado ?? t.id}</span>
-                          <span className="text-xs text-gray-500 truncate">{t.imoveis?.endereco ?? "—"}</span>
-                          <span className="text-xs font-medium text-gray-800 truncate">
+                          <span className={`text-xs truncate ${situacao === "vencido" ? "text-red-700" : "text-gray-500"}`}>
+                            {t.id_legado ?? t.id}
+                          </span>
+                          <span className={`text-xs truncate ${situacao === "vencido" ? "text-red-700" : "text-gray-500"}`}>
+                            {t.imoveis?.endereco ?? "—"}
+                          </span>
+                          <span
+                            className={`text-xs font-medium truncate ${situacao === "vencido" ? "text-red-800" : "text-gray-800"}`}
+                          >
                             {proprietarios[0]?.nome ?? "—"}
                             {proprietarios.length > 1 && (
                               <span className="text-gray-400 font-normal"> +{proprietarios.length - 1}</span>
                             )}
                           </span>
-                          <span className="text-xs text-gray-700 truncate">
+                          <span className={`text-xs truncate ${situacao === "vencido" ? "text-red-700" : "text-gray-700"}`}>
                             {interessados[0]?.nome ?? "—"}
                             {interessados.length > 1 && (
                               <span className="text-gray-400 font-normal"> +{interessados.length - 1}</span>
                             )}
                           </span>
-                          <span className="text-xs text-gray-500 whitespace-nowrap">{formatData(t.data_assinatura)}</span>
+                          <span className={`text-xs whitespace-nowrap ${situacao === "vencido" ? "text-red-700" : "text-gray-500"}`}>
+                            {formatData(t.data_assinatura)}
+                          </span>
                           {somenteLocacao && (
-                            <span className="text-xs text-gray-500 whitespace-nowrap">{t.dia_vencimento ?? "—"}</span>
-                          )}
-                          {somenteLocacao && (
-                            <span className="text-xs text-gray-500 whitespace-nowrap">
-                              {calcularPrazoRestante(t.data_assinatura, t.prazo_contrato_meses)}
+                            <span
+                              className={`text-xs whitespace-nowrap ${situacao === "vencido" ? "text-red-700" : "text-gray-500"}`}
+                            >
+                              {formatData(t.data_vencimento)}
                             </span>
                           )}
-                          <span className="text-xs text-gray-600 text-right whitespace-nowrap">
+                          {somenteLocacao && (
+                            <span
+                              className={`text-xs whitespace-nowrap ${situacao === "vencido" ? "text-red-700" : "text-gray-500"}`}
+                            >
+                              {t.dia_vencimento ?? "—"}
+                            </span>
+                          )}
+                          {somenteLocacao && (
+                            <span
+                              className={`text-xs whitespace-nowrap font-medium ${
+                                situacao === "vencido"
+                                  ? "text-red-700"
+                                  : situacao === "alerta"
+                                  ? "text-amber-700"
+                                  : "text-gray-500 font-normal"
+                              }`}
+                            >
+                              {situacao === "vencido"
+                                ? "Vencido"
+                                : situacao === "alerta"
+                                ? `${diasParaVencimento(t.data_vencimento)} dia(s) — renovar/cancelar`
+                                : calcularPrazoRestante(t.data_assinatura, t.prazo_contrato_meses)}
+                            </span>
+                          )}
+                          <span
+                            className={`text-xs text-right whitespace-nowrap ${situacao === "vencido" ? "text-red-800 font-medium" : "text-gray-600"}`}
+                          >
                             {formatMoeda(t.valor_transacao)}
                           </span>
                         </Link>

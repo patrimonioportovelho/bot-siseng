@@ -145,3 +145,30 @@ export function somarMeses(dataYYYYMMDD: string, meses: number | null): string {
   d.setMonth(d.getMonth() + meses);
   return d.toISOString().slice(0, 10);
 }
+
+// Quantos dias faltam (ou já passaram, negativo) até a Data de vencimento
+// real de uma locação — base pro destaque de contrato vencido/alerta no
+// dashboard de Locação.
+export function diasParaVencimento(dataVencimento: Date | string | null): number | null {
+  if (!dataVencimento) return null;
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+  const fim = new Date(dataVencimento);
+  fim.setHours(0, 0, 0, 0);
+  if (Number.isNaN(fim.getTime())) return null;
+  return Math.round((fim.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+// Situação do prazo de uma locação a partir da Data de vencimento real do
+// contrato: "vencido" (já passou — linha vermelha no dashboard), "alerta"
+// (30 dias ou menos pra vencer — precisa decidir renovar ou cancelar) ou
+// "normal".
+export type SituacaoContrato = "vencido" | "alerta" | "normal";
+
+export function situacaoContratoLocacao(dataVencimento: Date | string | null): SituacaoContrato | null {
+  const dias = diasParaVencimento(dataVencimento);
+  if (dias === null) return null;
+  if (dias < 0) return "vencido";
+  if (dias <= 30) return "alerta";
+  return "normal";
+}

@@ -137,6 +137,53 @@ async function sincronizarInteressados(transacaoId: string, formData: FormData) 
   ]);
 }
 
+// Condições de pagamento (o "negócio": entrada, saldo financiado, parcelado,
+// permuta etc.) — o formulário manda a lista inteira serializada em JSON num
+// campo hidden só, aqui apaga tudo e recria (mesmo padrão dos Interessados).
+// Linha sem valor numérico válido é descartada (valor é NOT NULL na tabela).
+async function sincronizarCondicoesPagamento(transacaoId: string, formData: FormData) {
+  const bruto = texto(formData, "condicoes_pagamento_json");
+  let lista: Array<Record<string, unknown>> = [];
+  if (bruto) {
+    try {
+      const parsed = JSON.parse(bruto);
+      if (Array.isArray(parsed)) lista = parsed;
+    } catch {
+      lista = [];
+    }
+  }
+
+  const linhas = lista
+    .map((c) => {
+      const valor = valorEditavelParaDecimal(String(c.valor ?? "").trim());
+      const parcelasTxt = String(c.parcelas ?? "").trim();
+      const parcelasNum = parcelasTxt ? Number(parcelasTxt) : NaN;
+      const dataTxt = String(c.data_pagamento ?? "").trim();
+      const dataPagamento = dataTxt ? new Date(dataTxt) : null;
+      return {
+        tipo: String(c.tipo ?? "").trim() || null,
+        valor,
+        forma_pagamento: String(c.forma_pagamento ?? "").trim() || null,
+        parcelas: Number.isFinite(parcelasNum) ? Math.trunc(parcelasNum) : null,
+        momento: String(c.momento ?? "").trim() || null,
+        data_pagamento: dataPagamento && !Number.isNaN(dataPagamento.getTime()) ? dataPagamento : null,
+        descricao: String(c.descricao ?? "").trim() || null
+      };
+    })
+    .filter((c): c is typeof c & { valor: number } => c.valor !== null);
+
+  await prisma.$transaction([
+    prisma.condicoes_pagamento.deleteMany({ where: { transacao_id: transacaoId } }),
+    ...(linhas.length > 0
+      ? [
+          prisma.condicoes_pagamento.createMany({
+            data: linhas.map((c) => ({ transacao_id: transacaoId, ...c }))
+          })
+        ]
+      : [])
+  ]);
+}
+
 export async function criarTransacaoAction(formData: FormData) {
   await requireAdminSession();
 
@@ -171,6 +218,7 @@ export async function criarTransacaoAction(formData: FormData) {
   });
 
   await sincronizarInteressados(novo.id, formData);
+  await sincronizarCondicoesPagamento(novo.id, formData);
 
   await logAlteracao({
     entidadeTipo: "transacoes",
@@ -179,7 +227,8 @@ export async function criarTransacaoAction(formData: FormData) {
     dadosDepois: { id_legado: novo.id_legado, tipo: novo.tipo, status: novo.status }
   });
 
-  revalidatePath("/transacoes");
+  revalidatePath("/transacoes/locacao");
+  revalidatePath("/transacoes/venda");
   redirect(`/transacoes/${novo.id}?salvo=1`);
 }
 
@@ -216,6 +265,7 @@ export async function atualizarTransacaoAction(formData: FormData) {
   });
 
   await sincronizarInteressados(id, formData);
+  await sincronizarCondicoesPagamento(id, formData);
 
   await logAlteracao({
     entidadeTipo: "transacoes",
@@ -226,7 +276,8 @@ export async function atualizarTransacaoAction(formData: FormData) {
   });
 
   revalidatePath(`/transacoes/${id}`);
-  revalidatePath("/transacoes");
+  revalidatePath("/transacoes/locacao");
+  revalidatePath("/transacoes/venda");
   redirect(`/transacoes/${id}?salvo=1`);
 }
 
@@ -261,5 +312,6 @@ export async function atualizarStatusTransacaoAction(formData: FormData) {
   if (typeof admImovelId === "string" && admImovelId) {
     revalidatePath(`/administracoes/${admImovelId}`);
   }
-  revalidatePath("/transacoes");
+  revalidatePath("/transacoes/locacao");
+  revalidatePath("/transacoes/venda");
 }

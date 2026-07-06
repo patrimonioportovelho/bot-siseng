@@ -9,9 +9,10 @@ import {
   ENCARGOS_OPCOES,
   CHAVE_OPCOES,
   STATUS_HONORARIO_OPCOES,
-  FUNCOES_CORRETOR
+  FUNCOES_CORRETOR,
+  TIPO_CONDICAO_OPCOES,
+  statusOpcoesPorTipo
 } from "@/lib/transacoes/opcoes";
-import { STATUS_TRANSACAO_TODOS } from "@/lib/format";
 import { formatValorEditavel, formatPercentual, formatInscricao } from "@/lib/format";
 
 type ClienteOpcao = { id: string; nome: string; id_legado: string | null };
@@ -60,6 +61,16 @@ type TransacaoExistente = {
   pasta_url: string | null;
 };
 
+export type CondicaoPagamento = {
+  tipo: string;
+  valor: string;
+  forma_pagamento: string;
+  parcelas: string;
+  momento: string;
+  data_pagamento: string;
+  descricao: string;
+};
+
 function inputDate(d: Date | null) {
   if (!d) return "";
   return new Date(d).toISOString().slice(0, 10);
@@ -82,6 +93,8 @@ export function TransacaoForm({
   imoveis,
   parceiros,
   interessadosIniciais,
+  condicoesIniciais,
+  tipoInicial,
   action
 }: {
   transacao: TransacaoExistente | null;
@@ -90,11 +103,13 @@ export function TransacaoForm({
   imoveis: ImovelOpcao[];
   parceiros: ParceiroOpcao[];
   interessadosIniciais: ClienteOpcao[];
+  condicoesIniciais: CondicaoPagamento[];
+  tipoInicial?: string;
   action: (formData: FormData) => void;
 }) {
   const t = transacao;
 
-  const [tipo, setTipo] = useState(t?.tipo ?? "Locação");
+  const [tipo, setTipo] = useState(t?.tipo ?? tipoInicial ?? "Locação");
   const eLocacao = tipo === "Locação";
 
   const imovelInicial = imoveis.find((i) => i.id === t?.imovel_id) ?? null;
@@ -117,6 +132,32 @@ export function TransacaoForm({
   const [temParceria, setTemParceria] = useState(t?.tem_parceria ?? false);
   const [temVistoria, setTemVistoria] = useState(t?.tem_vistoria ?? false);
   const [encargos, setEncargos] = useState<string[]>(t?.encargos ?? []);
+
+  // Condições de pagamento (o "negócio" em si — entrada, saldo financiado,
+  // parcelado, permuta etc.). Cada uma vira uma linha na tabela
+  // condicoes_pagamento; aqui monta a lista e manda tudo num único campo
+  // hidden em JSON pro action sincronizar (mesmo padrão de
+  // apagar-tudo-e-recriar já usado nos Interessados).
+  const [condicoes, setCondicoes] = useState<CondicaoPagamento[]>(condicoesIniciais);
+  const [novaCondicao, setNovaCondicao] = useState<CondicaoPagamento>({
+    tipo: TIPO_CONDICAO_OPCOES[0],
+    valor: "",
+    forma_pagamento: "",
+    parcelas: "",
+    momento: "",
+    data_pagamento: "",
+    descricao: ""
+  });
+
+  function adicionarCondicao() {
+    if (!novaCondicao.valor.trim()) return;
+    setCondicoes((atual) => [...atual, novaCondicao]);
+    setNovaCondicao({ tipo: TIPO_CONDICAO_OPCOES[0], valor: "", forma_pagamento: "", parcelas: "", momento: "", data_pagamento: "", descricao: "" });
+  }
+
+  function removerCondicao(indice: number) {
+    setCondicoes((atual) => atual.filter((_, i) => i !== indice));
+  }
 
   const corretores = useMemo(() => parceiros.filter((p) => FUNCOES_CORRETOR.includes(p.funcao ?? "")), [parceiros]);
 
@@ -163,9 +204,15 @@ export function TransacaoForm({
       {interessados.map((c) => (
         <input key={c.id} type="hidden" name="interessado_id" value={c.id} />
       ))}
+      <input type="hidden" name="condicoes_pagamento_json" value={JSON.stringify(condicoes)} />
 
       <div className="bg-white border border-gray-200 rounded-xl p-4">
-        <div className="text-sm font-bold text-gray-800 mb-3">Identificação</div>
+        <div className="flex items-center justify-between mb-3">
+          <div className="text-sm font-bold text-gray-800">Identificação</div>
+          <div className="text-xs text-gray-400">
+            Id: <span className="font-semibold text-gray-600">{t ? t.id_legado ?? t.id : "gerado ao salvar"}</span>
+          </div>
+        </div>
         <div className="grid md:grid-cols-2 gap-3">
           <div>
             <label className={LABEL}>Tipo de transação</label>
@@ -198,18 +245,16 @@ export function TransacaoForm({
           </div>
           <div>
             <label className={LABEL}>Status</label>
-            <input
-              className={CAMPO}
-              name="status"
-              list="status-transacao-opcoes"
-              defaultValue={t?.status ?? ""}
-              placeholder="Digite ou escolha..."
-            />
-            <datalist id="status-transacao-opcoes">
-              {STATUS_TRANSACAO_TODOS.map((s) => (
-                <option key={s} value={s} />
+            <select className={CAMPO} name="status" defaultValue={t?.status ?? ""} required>
+              <option value="" disabled>
+                Selecione...
+              </option>
+              {statusOpcoesPorTipo(tipo).map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
               ))}
-            </datalist>
+            </select>
           </div>
           <div>
             <label className={LABEL}>Pasta (link)</label>
@@ -471,6 +516,111 @@ export function TransacaoForm({
           </div>
         </div>
       )}
+
+      <div className="bg-white border border-gray-200 rounded-xl p-4">
+        <div className="text-sm font-bold text-gray-800 mb-1">Negócio — condições de pagamento</div>
+        <p className="text-xs text-gray-400 mb-3">
+          Como o valor da transação é pago (entrada, saldo financiado, parcelado direto, permuta etc.). Pode ter
+          mais de uma etapa — adicione quantas forem necessárias.
+        </p>
+
+        {condicoes.length > 0 && (
+          <div className="flex flex-col gap-1.5 mb-3">
+            {condicoes.map((c, i) => (
+              <div
+                key={i}
+                className="flex items-center justify-between text-xs bg-gray-50 border border-gray-200 rounded-lg px-3 py-2"
+              >
+                <span className="text-gray-700">
+                  <span className="font-semibold text-gray-800">{c.tipo}</span> — {formatValorEditavel(c.valor) || c.valor}
+                  {c.forma_pagamento && <span className="text-gray-500"> · {c.forma_pagamento}</span>}
+                  {c.parcelas && <span className="text-gray-500"> · {c.parcelas}x</span>}
+                  {c.momento && <span className="text-gray-500"> · {c.momento}</span>}
+                  {c.data_pagamento && <span className="text-gray-500"> · {c.data_pagamento}</span>}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => removerCondicao(i)}
+                  className="text-gray-400 hover:text-red-600 ml-2 shrink-0"
+                >
+                  remover
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="grid md:grid-cols-3 gap-3 items-end bg-gray-50/50 border border-dashed border-gray-200 rounded-lg p-3">
+          <div>
+            <label className={LABEL}>Tipo</label>
+            <select
+              className={CAMPO}
+              value={novaCondicao.tipo}
+              onChange={(e) => setNovaCondicao((a) => ({ ...a, tipo: e.target.value }))}
+            >
+              {TIPO_CONDICAO_OPCOES.map((op) => (
+                <option key={op} value={op}>
+                  {op}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className={LABEL}>Valor (R$)</label>
+            <input
+              className={CAMPO}
+              placeholder="35.000,00"
+              value={novaCondicao.valor}
+              onChange={(e) => setNovaCondicao((a) => ({ ...a, valor: e.target.value }))}
+            />
+          </div>
+          <div>
+            <label className={LABEL}>Forma de pagamento</label>
+            <input
+              className={CAMPO}
+              placeholder="transferência bancária"
+              value={novaCondicao.forma_pagamento}
+              onChange={(e) => setNovaCondicao((a) => ({ ...a, forma_pagamento: e.target.value }))}
+            />
+          </div>
+          <div>
+            <label className={LABEL}>Parcelas</label>
+            <input
+              className={CAMPO}
+              placeholder="6"
+              value={novaCondicao.parcelas}
+              onChange={(e) => setNovaCondicao((a) => ({ ...a, parcelas: e.target.value }))}
+            />
+          </div>
+          <div>
+            <label className={LABEL}>Momento</label>
+            <input
+              className={CAMPO}
+              placeholder="assinatura do contrato"
+              value={novaCondicao.momento}
+              onChange={(e) => setNovaCondicao((a) => ({ ...a, momento: e.target.value }))}
+            />
+          </div>
+          <div>
+            <label className={LABEL}>Data de pagamento</label>
+            <input
+              type="date"
+              className={CAMPO}
+              value={novaCondicao.data_pagamento}
+              onChange={(e) => setNovaCondicao((a) => ({ ...a, data_pagamento: e.target.value }))}
+            />
+          </div>
+          <div className="md:col-span-3">
+            <button
+              type="button"
+              onClick={adicionarCondicao}
+              className="text-xs bg-white border border-gray-300 text-gray-700 rounded-lg px-3 py-1.5 font-semibold"
+            >
+              + Adicionar condição
+            </button>
+          </div>
+        </div>
+      </div>
 
       <div className="bg-white border border-gray-200 rounded-xl p-4">
         <div className="text-sm font-bold text-gray-800 mb-3">Comissionamento</div>

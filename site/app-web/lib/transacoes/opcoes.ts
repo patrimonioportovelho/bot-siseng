@@ -34,3 +34,30 @@ export const STATUS_HONORARIO_OPCOES = ["Pago", "Pendente", "Parcelado"];
 // Parceiro captador (corretor responsável) — mesmo domínio usado em
 // Imóveis/Administrações: só faz sentido para quem atua como corretor.
 export const FUNCOES_CORRETOR = ["Corretor", "Corretor Estagiário"];
+
+// Status separados por Tipo de transação — levantamento real feito em cima
+// dos 263 registros vindos da planilha (coluna Status, ex.: "Imóvel em
+// Locação: Locação" / "Transação Finalizada: Compra e Venda" — o sufixo
+// depois dos dois-pontos indica o tipo, removido na importação). Usado pra
+// o Status do cadastro virar um select fechado (igual ao StatusTransacaoSelect
+// da tela de Administração) em vez de texto livre.
+export const STATUS_LOCACAO_OPCOES = [
+  "Elaboração de Contrato de Locação",
+  "Imóvel em locação sem administração",
+  "Imóvel em Locação",
+  "Transação Finalizada",
+  "Distrato",
+  "Locação cancelada"
+];
+
+export const STATUS_COMPRA_VENDA_OPCOES = ["Elaboração do Contrato de Compra e Venda", "Transação Finalizada", "Distrato"];
+
+export function statusOpcoesPorTipo(tipo: string): string[] {
+  return tipo === "Locação" ? STATUS_LOCACAO_OPCOES : STATUS_COMPRA_VENDA_OPCOES;
+}
+
+// Condições de pagamento (o "negócio" em si) — Tipo de cada parcela/etapa do
+// pagamento, levantado em cima dos 30 registros já existentes na tabela
+// condicoes_pagamento (majoritariamente Compra e Venda: entrada + saldo
+// financiado, às vezes parcelado direto com o vendedor ou permuta).
+export const TIPO_CONDICAO_OPCOES = ["Entrada", "Financiamento", "Parcelado", "Saldo", "Permuta", "Outro"];

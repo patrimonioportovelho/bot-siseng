@@ -6,7 +6,15 @@ import { criarTransacaoAction } from "../actions";
 
 export const dynamic = "force-dynamic";
 
-export default async function NovaTransacaoPage() {
+export default async function NovaTransacaoPage({
+  searchParams
+}: {
+  searchParams: Promise<{ tipo?: string }>;
+}) {
+  const { tipo } = await searchParams;
+  const tipoInicial = tipo === "Compra e Venda" ? "Compra e Venda" : "Locação";
+  const voltarHref = tipoInicial === "Locação" ? "/transacoes/locacao" : "/transacoes/venda";
+
   const [lojas, clientes, imoveis, parceiros] = await Promise.all([
     prisma.lojas.findMany({ orderBy: { nome: "asc" } }),
     prisma.clientes.findMany({
@@ -44,11 +52,11 @@ export default async function NovaTransacaoPage() {
     <div>
       <Topbar />
 
-      <Link href="/transacoes" className="text-xs text-gray-500 hover:text-gray-800 inline-block mb-3">
-        ← Voltar para Transações
+      <Link href={voltarHref} className="text-xs text-gray-500 hover:text-gray-800 inline-block mb-3">
+        ← Voltar para {tipoInicial}
       </Link>
 
-      <div className="text-sm font-bold text-gray-800 mb-4">Nova transação</div>
+      <div className="text-sm font-bold text-gray-800 mb-4">Nova transação — {tipoInicial}</div>
 
       <TransacaoForm
         transacao={null}
@@ -57,6 +65,8 @@ export default async function NovaTransacaoPage() {
         imoveis={imoveisComProprietarios}
         parceiros={parceiros}
         interessadosIniciais={[]}
+        condicoesIniciais={[]}
+        tipoInicial={tipoInicial}
         action={criarTransacaoAction}
       />
     </div>

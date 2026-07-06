@@ -8,6 +8,11 @@ import { atualizarTransacaoAction } from "../actions";
 
 export const dynamic = "force-dynamic";
 
+function dataInput(d: Date | null) {
+  if (!d) return "";
+  return new Date(d).toISOString().slice(0, 10);
+}
+
 export default async function TransacaoDetalhePage({
   params,
   searchParams
@@ -23,7 +28,8 @@ export default async function TransacaoDetalhePage({
       where: { id },
       include: {
         imoveis: { include: { imoveis_proprietarios: { include: { clientes: true }, orderBy: { ordem: "asc" } } } },
-        transacoes_contrapartes: { include: { clientes: true }, orderBy: { ordem: "asc" } }
+        transacoes_contrapartes: { include: { clientes: true }, orderBy: { ordem: "asc" } },
+        condicoes_pagamento: { orderBy: { created_at: "asc" } }
       }
     }),
     prisma.lojas.findMany({ orderBy: { nome: "asc" } }),
@@ -65,12 +71,24 @@ export default async function TransacaoDetalhePage({
   const interessados = transacao.transacoes_contrapartes.map((v) => v.clientes);
   const nomesInteressados = interessados.map((c) => c.nome).join(", ");
 
+  const condicoesIniciais = transacao.condicoes_pagamento.map((c) => ({
+    tipo: c.tipo ?? "",
+    valor: c.valor != null ? String(c.valor) : "",
+    forma_pagamento: c.forma_pagamento ?? "",
+    parcelas: c.parcelas != null ? String(c.parcelas) : "",
+    momento: c.momento ?? "",
+    data_pagamento: dataInput(c.data_pagamento),
+    descricao: c.descricao ?? ""
+  }));
+
+  const voltarHref = transacao.tipo === "Locação" ? "/transacoes/locacao" : "/transacoes/venda";
+
   return (
     <div>
       <Topbar />
 
-      <Link href="/transacoes" className="text-xs text-gray-500 hover:text-gray-800 inline-block mb-3">
-        ← Voltar para Transações
+      <Link href={voltarHref} className="text-xs text-gray-500 hover:text-gray-800 inline-block mb-3">
+        ← Voltar para {transacao.tipo === "Locação" ? "Locação" : "Compra e Venda"}
       </Link>
 
       {salvo === "1" && (
@@ -79,8 +97,11 @@ export default async function TransacaoDetalhePage({
         </div>
       )}
 
-      <div className="text-sm font-bold text-gray-800 mb-1">
-        {transacao.imoveis?.endereco ?? "Imóvel sem endereço"}
+      <div className="flex items-center gap-2 mb-1">
+        <div className="text-sm font-bold text-gray-800">{transacao.imoveis?.endereco ?? "Imóvel sem endereço"}</div>
+        <span className="text-[11px] font-semibold text-primary bg-primary/10 rounded-full px-2 py-0.5">
+          Id: {transacao.id_legado ?? transacao.id}
+        </span>
       </div>
       <div className="text-xs text-gray-500 mb-0.5">
         {transacao.tipo}
@@ -88,8 +109,7 @@ export default async function TransacaoDetalhePage({
         {nomesInteressados && <> · Interessado{interessados.length > 1 ? "s" : ""}: {nomesInteressados}</>}
       </div>
       <div className="text-xs text-gray-400 mb-4">
-        Id transação: {transacao.id_legado ?? transacao.id}
-        {" · "}Assinatura: {formatData(transacao.data_assinatura)}
+        Assinatura: {formatData(transacao.data_assinatura)}
         {" · "}Valor: {formatMoeda(transacao.valor_transacao)}
       </div>
 
@@ -100,6 +120,7 @@ export default async function TransacaoDetalhePage({
         imoveis={imoveisComProprietarios}
         parceiros={parceiros}
         interessadosIniciais={interessados}
+        condicoesIniciais={condicoesIniciais}
         action={atualizarTransacaoAction}
       />
     </div>

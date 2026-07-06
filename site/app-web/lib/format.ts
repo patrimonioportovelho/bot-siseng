@@ -111,3 +111,25 @@ export function valorEditavelParaDecimal(texto: string): number | null {
   const n = Number(t.replace(/\./g, "").replace(",", "."));
   return Number.isFinite(n) ? n : null;
 }
+
+// "Prazo restante" de uma locação: Data de assinatura + Tempo de contrato
+// (em meses) menos hoje, em meses cheios. Só faz sentido para transações de
+// Locação — Compra e Venda não tem prazo de contrato corrente.
+export function calcularPrazoRestante(
+  dataAssinatura: Date | string | null,
+  prazoContratoMeses: number | null
+): string {
+  if (!dataAssinatura || !prazoContratoMeses) return "—";
+
+  const inicio = new Date(dataAssinatura);
+  const fim = new Date(inicio);
+  fim.setMonth(fim.getMonth() + prazoContratoMeses);
+
+  const hoje = new Date();
+  const mesesRestantes =
+    (fim.getFullYear() - hoje.getFullYear()) * 12 + (fim.getMonth() - hoje.getMonth());
+
+  if (mesesRestantes <= 0) return "Vencido";
+  if (mesesRestantes === 1) return "1 mês";
+  return `${mesesRestantes} meses`;
+}

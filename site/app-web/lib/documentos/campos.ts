@@ -19,37 +19,67 @@ export type CampoDocumento = {
 // (em site/app-web/templates/) precisa conter, no formato {{campo}}.
 // Ver templates/README.md para instruções de como editar o Word sem mexer em código.
 export const CAMPOS_DOCUMENTO: Record<TipoDocumento, CampoDocumento[]> = {
+  // Modelo novo com QUADRO-RESUMO — Locador(es) e Locatário(s) podem ser mais
+  // de um (herdeiros, compra em conjunto etc.); os campos de texto único
+  // (Cliente/Cliente1) trazem os nomes/CPFs de todos juntos, e TipoCliente/
+  // TipoClienteCliente1 trazem a qualificação completa de todos (loop feito
+  // em JS antes de preencher o docx, não é um loop nativo do Docxtemplater).
   contrato_locacao: [
-    { campo: "loja_nome", descricao: "Porto Velho ou Jaru" },
-    { campo: "proprietario_nome", descricao: "Nome completo do locador" },
-    { campo: "proprietario_cpf", descricao: "CPF formatado do locador" },
-    { campo: "proprietario_estado_civil", descricao: "Estado civil do locador" },
-    { campo: "locatario_nome", descricao: "Nome completo do locatário" },
-    { campo: "locatario_cpf", descricao: "CPF formatado do locatário" },
-    { campo: "imovel_endereco", descricao: "Endereço completo do imóvel" },
-    { campo: "finalidade_locacao", descricao: "Residencial, Comercial ou Mista" },
-    { campo: "valor_transacao", descricao: "Valor do aluguel em R$ (número)" },
-    { campo: "valor_transacao_extenso", descricao: "Valor do aluguel por extenso" },
-    { campo: "dia_vencimento", descricao: "Dia do mês de vencimento do aluguel" },
-    { campo: "prazo_contrato_meses", descricao: "Duração do contrato em meses" },
-    { campo: "garantia", descricao: "Fiador, Caução, Seguro fiança ou Sem garantias" },
-    { campo: "encargos_lista", descricao: "Lista de encargos por conta do locatário" },
-    { campo: "data_assinatura", descricao: "Data de assinatura (dd/mm/aaaa)" },
-    { campo: "data_assinatura_extenso", descricao: "Data de assinatura por extenso" }
+    { campo: "TipoCliente", descricao: "Qualificação completa do(s) Locador(es) — Nome, nacionalidade, profissão, estado civil, CPF/CNPJ, endereço" },
+    { campo: "TipoClienteCliente1", descricao: "Qualificação completa do(s) Locatário(s)" },
+    { campo: "Cliente", descricao: "Nome(s) do(s) Locador(es), separados por vírgula" },
+    { campo: "Cpf/Cnpj", descricao: "CPF/CNPJ do(s) Locador(es), separados por vírgula" },
+    { campo: "Cliente1", descricao: "Nome(s) do(s) Locatário(s), separados por vírgula" },
+    { campo: "Cpf/CnpjCliente1", descricao: "CPF/CNPJ do(s) Locatário(s), separados por vírgula" },
+    { campo: "EstadoCivilCliente1", descricao: "Estado civil do primeiro Locatário da lista" },
+    { campo: "ProficaoCliente1", descricao: "Profissão do primeiro Locatário da lista" },
+    { campo: "EmailCliente1", descricao: "E-mail do primeiro Locatário da lista" },
+    { campo: "TelefoneCliente1", descricao: "Telefone formatado do primeiro Locatário da lista" },
+    { campo: "TipoImovel", descricao: "Tipo do imóvel" },
+    { campo: "EnderecoImovel", descricao: "Endereço completo do imóvel" },
+    { campo: "Inscricao", descricao: "Inscrição imobiliária formatada" },
+    { campo: "Matricula", descricao: "Número de matrícula do imóvel" },
+    { campo: "UcEnergisa", descricao: "Medidor de energia — vem da Administração vinculada, se houver" },
+    { campo: "UcCaerd", descricao: "Medidor de água — vem da Administração vinculada, se houver" },
+    { campo: "Observacao", descricao: "Observação da transação" },
+    { campo: "TextoFinalidadeLocacao", descricao: "Residencial, Comercial ou Mista" },
+    { campo: "PrazoContrato", descricao: "Tempo de contrato em meses" },
+    { campo: "DataAssinatura", descricao: "Data de assinatura (dd/mm/aaaa)" },
+    { campo: "DataVencimento", descricao: "Data de término do contrato (dd/mm/aaaa)" },
+    { campo: "ValorTransacao", descricao: "Valor do aluguel em R$ (número)" },
+    { campo: "DiaVencimento", descricao: "Dia do mês de vencimento do aluguel" },
+    { campo: "FormaPagamento", descricao: "Pix ou Boleto" },
+    { campo: "Encargos", descricao: "Lista de encargos por conta do locatário" },
+    { campo: "Garantia", descricao: "Fiador, Caução, Seguro fiança ou Sem garantias" },
+    { campo: "ValorCaucao", descricao: "Valor da caução em R$, se houver" },
+    { campo: "PgCaucao", descricao: "Forma de pagamento da caução" },
+    { campo: "Loja", descricao: "Porto Velho ou Jaru" },
+    { campo: "DataAssinaturaExtenso", descricao: "Data de assinatura por extenso" },
+    { campo: "IdTransacao", descricao: "Id da transação (id_legado, ex.: LOC-0004), usado no rodapé" },
+    { campo: "IdAdmImovel", descricao: "Id da administração vinculada, se houver (usado no rodapé)" }
   ],
+  // Vendedor(es) e Comprador(es) também podem ser mais de um — mesma lógica
+  // de qualificação em JS (QualificacaoVendedor/QualificacaoComprador já
+  // vêm com todos os nomes juntos, unidos por "e").
   contrato_compra_venda: [
-    { campo: "loja_nome", descricao: "Porto Velho ou Jaru" },
-    { campo: "vendedor_nome", descricao: "Nome completo do vendedor" },
-    { campo: "vendedor_cpf", descricao: "CPF formatado do vendedor" },
-    { campo: "comprador_nome", descricao: "Nome completo do comprador" },
-    { campo: "comprador_cpf", descricao: "CPF formatado do comprador" },
-    { campo: "imovel_endereco", descricao: "Endereço completo do imóvel" },
-    { campo: "imovel_matricula", descricao: "Número de matrícula do imóvel" },
-    { campo: "valor_transacao", descricao: "Valor da venda em R$ (número)" },
-    { campo: "valor_transacao_extenso", descricao: "Valor da venda por extenso" },
-    { campo: "condicoes_pagamento_lista", descricao: "Entrada, saldo, financiamento etc., um por linha" },
-    { campo: "data_assinatura", descricao: "Data de assinatura (dd/mm/aaaa)" },
-    { campo: "data_assinatura_extenso", descricao: "Data de assinatura por extenso" }
+    { campo: "QualificacaoVendedor", descricao: "Qualificação completa do(s) Vendedor(es)" },
+    { campo: "QualificacaoComprador", descricao: "Qualificação completa do(s) Comprador(es)" },
+    { campo: "TextoObjetoImovel", descricao: "Descrição do imóvel objeto da venda (endereço, matrícula, inscrição, descrição)" },
+    { campo: "ValorTransacao", descricao: "Valor da venda em R$, número e por extenso" },
+    { campo: "CondicoesPagamento", descricao: "Entrada, saldo, financiamento etc., um por linha" },
+    { campo: "BancoVendedor", descricao: "Banco do primeiro Vendedor da lista" },
+    { campo: "CodigoBancoVendedor", descricao: "Código do banco do primeiro Vendedor" },
+    { campo: "AgenciaVendedor", descricao: "Agência do primeiro Vendedor" },
+    { campo: "ContaVendedor", descricao: "Conta do primeiro Vendedor" },
+    { campo: "TipoPixVendedor", descricao: "Tipo de chave PIX do primeiro Vendedor" },
+    { campo: "PixVendedor", descricao: "Chave PIX do primeiro Vendedor" },
+    { campo: "TextoHonorarios", descricao: "Dados bancários dos corretores para pagamento da comissão" },
+    { campo: "Chave", descricao: "Momento de entrega das chaves" },
+    { campo: "Loja", descricao: "Porto Velho ou Jaru" },
+    { campo: "DataAssinaturaExtenso", descricao: "Data de assinatura por extenso" },
+    { campo: "TextoAssinaturas", descricao: "Bloco de assinatura de todos os vendedores e compradores" },
+    { campo: "TextoAssinaturasCorretores", descricao: "Bloco de assinatura dos corretores envolvidos" },
+    { campo: "IdTransacao", descricao: "Id da transação (id_legado, ex.: CV-0004), usado no rodapé" }
   ],
   carta_preferencia: [
     { campo: "proprietario_nome", descricao: "Nome completo do proprietário" },
@@ -79,7 +109,8 @@ export const CAMPOS_DOCUMENTO: Record<TipoDocumento, CampoDocumento[]> = {
     { campo: "PorcHonorario", descricao: "Percentual do honorário na intermediação" },
     { campo: "TxAdm", descricao: "Percentual da taxa de administração" },
     { campo: "Loja", descricao: "Porto Velho ou Jaru" },
-    { campo: "DataAssinatura", descricao: "Data de assinatura por extenso, dia em 2 dígitos" }
+    { campo: "DataAssinatura", descricao: "Data de assinatura por extenso, dia em 2 dígitos" },
+    { campo: "IdAdmImovel", descricao: "Id da administração (id_legado, ex.: ADM-0004), usado no rodapé" }
   ],
   // Dois modelos distintos, cada um com seu próprio arquivo .docx e sua
   // própria busca (só aparece parceiro com a função correspondente): Corretor

@@ -6,7 +6,7 @@ import { createClient } from "@supabase/supabase-js";
 import { prisma } from "@/lib/prisma";
 import type { TipoDocumento } from "./campos";
 import { valorPorExtenso, dataPorExtenso, dataPorExtensoComZero, formatarCpf } from "./extenso";
-import { formatTelefone, formatInscricao } from "@/lib/format";
+import { formatTelefone, formatInscricao, formatCnpj } from "@/lib/format";
 
 // Nome do arquivo .docx (com o timbrado já formatado) que corresponde a cada
 // tipo de documento. Os arquivos ficam em site/app-web/templates/ — ver
@@ -228,6 +228,66 @@ async function montarDadosDoMerge(
   }
 }
 
+// Junta uma lista em português com "e" antes do último item — usado nos
+// blocos de qualificação (ex.: "João, brasileiro, ... e Maria, brasileira, ...").
+function listaComE(itens: string[]): string {
+  const validos = itens.filter((i) => i.trim().length > 0);
+  if (validos.length === 0) return "";
+  if (validos.length === 1) return validos[0];
+  return `${validos.slice(0, -1).join(", ")} e ${validos[validos.length - 1]}`;
+}
+
+function docTexto(c: { cpf: string | null; cnpj: string | null }): string {
+  if (c.cpf) return formatarCpf(c.cpf);
+  if (c.cnpj) return formatCnpj(c.cnpj);
+  return "";
+}
+
+type ClienteComEndereco = {
+  nome: string;
+  sexo: string | null;
+  profissao: string | null;
+  cat_profissao: string | null;
+  estado_civil: string | null;
+  cpf: string | null;
+  cnpj: string | null;
+  endereco: string | null;
+  cidades: { nome: string } | null;
+  estados: { nome: string } | null;
+};
+
+function enderecoClienteCompleto(c: ClienteComEndereco): string {
+  return [c.endereco, c.cidades?.nome, c.estados?.nome].filter((p): p is string => Boolean(p)).join(" - ");
+}
+
+// Parágrafo de qualificação completo de uma parte (vendedor/comprador,
+// locador/locatário): "Nome, nacionalidade, profissão, estado civil, CPF nº
+// ..., residente e domiciliado(a) em ...". Usado tanto sozinho (um só
+// proprietário) quanto unido com "e" quando há mais de um (herdeiros etc.).
+function qualificacaoTexto(c: ClienteComEndereco): string {
+  const nacionalidade = c.sexo === "Mulher" ? "brasileira" : "brasileiro";
+  const profissao = c.profissao ?? c.cat_profissao ?? "";
+  const estadoCivil = (c.estado_civil ?? "").toLowerCase();
+  const doc = c.cpf ? `CPF nº ${formatarCpf(c.cpf)}` : c.cnpj ? `CNPJ nº ${formatCnpj(c.cnpj)}` : "";
+  const endereco = enderecoClienteCompleto(c);
+  const partes = [
+    c.nome,
+    nacionalidade,
+    profissao || null,
+    estadoCivil || null,
+    doc || null,
+    endereco ? `residente e domiciliado(a) em ${endereco}` : null
+  ].filter((p): p is string => Boolean(p));
+  return partes.join(", ");
+}
+
+// Bloco de assinatura de uma parte: linha em branco + nome + documento +
+// papel (VENDEDOR(A), COMPRADOR(A) etc.), um por parágrafo (linebreaks:
+// true já está configurado no Docxtemplater, então "\n" vira quebra real).
+function blocoAssinatura(nome: string, documento: string, papel: string): string {
+  return `___________________________\n${nome}\n${documento}\n${papel}`;
+}
+
 async function montarDadosTransacao(
   tipoDocumento: "contrato_locacao" | "contrato_compra_venda",
   transacaoId: string
@@ -235,55 +295,130 @@ async function montarDadosTransacao(
   const t = await prisma.transacoes.findUnique({
     where: { id: transacaoId },
     include: {
-      clientes_transacoes_cliente_idToclientes: true,
-      clientes_transacoes_cliente_contraparte_idToclientes: true,
-      imoveis: true,
+      imoveis: {
+        include: {
+          imoveis_proprietarios: {
+            orderBy: { ordem: "asc" },
+            include: { clientes: { include: { cidades: true, estados: true, bancos: true } } }
+          }
+        }
+      },
+      transacoes_contrapartes: {
+        orderBy: { ordem: "asc" },
+        include: { clientes: { include: { cidades: true, estados: true, bancos: true } } }
+      },
       lojas: true,
-      condicoes_pagamento: true
+      adm_imoveis: true,
+      condicoes_pagamento: true,
+      parceiros_transacoes_corretor_proprietario_idToparceiros: { include: { bancos: true } },
+      parceiros_transacoes_corretor_contraparte_idToparceiros: { include: { bancos: true } }
     }
   });
   if (!t) throw new Error(`Transação "${transacaoId}" não encontrada.`);
 
-  const parte = t.clientes_transacoes_cliente_idToclientes;
-  const contraparte = t.clientes_transacoes_cliente_contraparte_idToclientes;
+  const proprietarios = t.imoveis?.imoveis_proprietarios.map((v) => v.clientes) ?? [];
+  const interessados = t.transacoes_contrapartes.map((v) => v.clientes);
+  if (proprietarios.length === 0) {
+    throw new Error(
+      "O imóvel desta transação não tem nenhum proprietário cadastrado — adicione ao menos um em Imóveis antes de gerar o contrato."
+    );
+  }
+  if (interessados.length === 0) {
+    throw new Error("Esta transação não tem nenhum Cliente Interessado cadastrado — adicione ao menos um.");
+  }
+
   const hoje = new Date();
+  const idTransacao = t.id_legado ?? t.id;
 
   if (tipoDocumento === "contrato_locacao") {
+    const primeiroInteressado = interessados[0];
     return {
-      loja_nome: t.lojas.nome,
-      proprietario_nome: parte.nome,
-      proprietario_cpf: formatarCpf(parte.cpf ?? ""),
-      proprietario_estado_civil: parte.estado_civil ?? "",
-      locatario_nome: contraparte.nome,
-      locatario_cpf: formatarCpf(contraparte.cpf ?? ""),
-      imovel_endereco: t.imoveis?.endereco ?? "",
-      finalidade_locacao: t.finalidade_locacao ?? "",
-      valor_transacao: numero(t.valor_transacao),
-      valor_transacao_extenso: valorPorExtenso(Number(t.valor_transacao)),
-      dia_vencimento: t.dia_vencimento ?? "",
-      prazo_contrato_meses: "",
-      garantia: t.garantia ?? "",
-      encargos_lista: (t.encargos ?? []).join(", "),
-      data_assinatura: dataCurta(t.data_assinatura ?? hoje),
-      data_assinatura_extenso: dataPorExtenso(t.data_assinatura ?? hoje)
+      TipoCliente: listaComE(proprietarios.map(qualificacaoTexto)),
+      TipoClienteCliente1: listaComE(interessados.map(qualificacaoTexto)),
+      Cliente: proprietarios.map((c) => c.nome).join(", "),
+      "Cpf/Cnpj": proprietarios.map(docTexto).join(", "),
+      Cliente1: interessados.map((c) => c.nome).join(", "),
+      "Cpf/CnpjCliente1": interessados.map(docTexto).join(", "),
+      EstadoCivilCliente1: primeiroInteressado.estado_civil ?? "",
+      ProficaoCliente1: primeiroInteressado.profissao ?? primeiroInteressado.cat_profissao ?? "",
+      EmailCliente1: primeiroInteressado.email ?? "",
+      TelefoneCliente1: formatTelefone(primeiroInteressado.telefone),
+      TipoImovel: t.imoveis?.tipo_imovel ?? "",
+      EnderecoImovel: t.imoveis?.endereco ?? "",
+      Inscricao: formatInscricao(t.imoveis?.inscricao),
+      Matricula: t.imoveis?.matricula ?? "",
+      // uc_caerd/uc_energisa vivem no cadastro da Administração (quando essa
+      // locação está vinculada a uma) — a transação de locação em si não
+      // tem esses campos.
+      UcEnergisa: t.adm_imoveis?.uc_energisa ?? "",
+      UcCaerd: t.adm_imoveis?.uc_caerd ?? "",
+      Observacao: t.observacao ?? "",
+      TextoFinalidadeLocacao: t.finalidade_locacao ?? "",
+      PrazoContrato: t.prazo_contrato_meses ?? "",
+      DataAssinatura: dataCurta(t.data_assinatura ?? hoje),
+      DataVencimento: dataCurta(t.data_vencimento),
+      ValorTransacao: numero(t.valor_transacao),
+      DiaVencimento: t.dia_vencimento ?? "",
+      FormaPagamento: t.forma_pagamento ?? "",
+      Encargos: (t.encargos ?? []).length > 0 ? ` ${(t.encargos ?? []).join(", ")}.` : " nenhum encargo adicional.",
+      Garantia: t.garantia ?? "",
+      ValorCaucao: t.valor_caucao != null ? numero(t.valor_caucao) : "",
+      PgCaucao: t.pg_caucao ?? "",
+      Loja: t.lojas.nome,
+      DataAssinaturaExtenso: dataPorExtenso(t.data_assinatura ?? hoje),
+      // Rodapé: identificador da transação e, se vinculada a uma
+      // administração, o identificador dela também.
+      IdTransacao: idTransacao,
+      IdAdmImovel: t.adm_imoveis?.id_legado ?? t.adm_imoveis?.id ?? ""
     };
   }
 
+  const corretorProprietario = t.parceiros_transacoes_corretor_proprietario_idToparceiros;
+  const corretorContraparte = t.parceiros_transacoes_corretor_contraparte_idToparceiros;
+  const primeiroVendedor = proprietarios[0];
+
+  const linhasHonorario: string[] = [];
+  for (const corretor of [corretorProprietario, corretorContraparte]) {
+    if (!corretor) continue;
+    linhasHonorario.push(
+      `${corretor.nome} — Banco ${corretor.bancos?.nome ?? corretor.codigo_banco ?? "—"}, Ag. ${
+        corretor.agencia ?? "—"
+      }, Conta ${corretor.conta ?? "—"}${corretor.pix ? `, Pix (${corretor.tipo_pix ?? "—"}): ${corretor.pix}` : ""}`
+    );
+  }
+
   return {
-    loja_nome: t.lojas.nome,
-    vendedor_nome: parte.nome,
-    vendedor_cpf: formatarCpf(parte.cpf ?? ""),
-    comprador_nome: contraparte.nome,
-    comprador_cpf: formatarCpf(contraparte.cpf ?? ""),
-    imovel_endereco: t.imoveis?.endereco ?? "",
-    imovel_matricula: t.imoveis?.matricula ?? "",
-    valor_transacao: numero(t.valor_transacao),
-    valor_transacao_extenso: valorPorExtenso(Number(t.valor_transacao)),
-    condicoes_pagamento_lista: t.condicoes_pagamento
+    QualificacaoVendedor: listaComE(proprietarios.map(qualificacaoTexto)),
+    QualificacaoComprador: listaComE(interessados.map(qualificacaoTexto)),
+    TextoObjetoImovel:
+      `O imóvel objeto deste contrato é o localizado em ${t.imoveis?.endereco ?? "endereço não informado"}` +
+      `${t.imoveis?.matricula ? `, matrícula nº ${t.imoveis.matricula}` : ""}` +
+      `${t.imoveis?.inscricao ? `, inscrição imobiliária ${formatInscricao(t.imoveis.inscricao)}` : ""}` +
+      `${t.imoveis?.descricao ? `, com a seguinte descrição: ${t.imoveis.descricao}` : ""}`,
+    ValorTransacao: `${numero(t.valor_transacao)} (${valorPorExtenso(Number(t.valor_transacao))})`,
+    CondicoesPagamento: t.condicoes_pagamento
       .map((c) => `${c.tipo ?? "Parcela"}: R$ ${numero(c.valor)} (${c.forma_pagamento ?? "—"})`)
       .join("\n"),
-    data_assinatura: dataCurta(t.data_assinatura ?? hoje),
-    data_assinatura_extenso: dataPorExtenso(t.data_assinatura ?? hoje)
+    BancoVendedor: primeiroVendedor.bancos?.nome ?? "",
+    CodigoBancoVendedor: primeiroVendedor.bancos?.codigo ?? primeiroVendedor.codigo_banco ?? "",
+    AgenciaVendedor: primeiroVendedor.agencia ?? "",
+    ContaVendedor: primeiroVendedor.conta ?? "",
+    TipoPixVendedor: primeiroVendedor.tipo_pix ?? "",
+    PixVendedor: primeiroVendedor.pix ?? "",
+    TextoHonorarios: linhasHonorario.length > 0 ? linhasHonorario.join("\n") : "A combinar entre as partes.",
+    Chave: t.chave ?? "",
+    Loja: t.lojas.nome,
+    DataAssinaturaExtenso: dataPorExtenso(t.data_assinatura ?? hoje),
+    TextoAssinaturas: [
+      ...proprietarios.map((c) => blocoAssinatura(c.nome, docTexto(c), "VENDEDOR(A)")),
+      ...interessados.map((c) => blocoAssinatura(c.nome, docTexto(c), "COMPRADOR(A)"))
+    ].join("\n\n"),
+    TextoAssinaturasCorretores: [corretorProprietario, corretorContraparte]
+      .filter((p, i, arr): p is NonNullable<typeof p> => Boolean(p) && arr.findIndex((x) => x?.id === p?.id) === i)
+      .map((p) => blocoAssinatura(p.nome, `CRECI ${p.creci ?? "—"}`, "CORRETOR(A)"))
+      .join("\n\n"),
+    // Rodapé.
+    IdTransacao: idTransacao
   };
 }
 
@@ -367,7 +502,10 @@ async function montarDadosAdmImovel(admImovelId: string): Promise<Record<string,
     Loja: a.lojas.nome,
     // Mesmo padrão de data por extenso com dia em 2 dígitos usado nos
     // contratos de corretor, na linha de local/data perto da assinatura.
-    DataAssinatura: dataPorExtensoComZero(a.data_assinatura ?? new Date())
+    DataAssinatura: dataPorExtensoComZero(a.data_assinatura ?? new Date()),
+    // Usado só no rodapé ("Página X de Y — Identificado da administração
+    // ..."), pra dar pra saber de qual administração é aquela página solta.
+    IdAdmImovel: a.id_legado ?? a.id
   };
 }
 

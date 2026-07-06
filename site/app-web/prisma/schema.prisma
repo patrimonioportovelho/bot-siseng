@@ -220,6 +220,7 @@ model clientes {
   gestoes                                                gestoes[]
   imoveis_proprietarios                                  imoveis_proprietarios[]
   pagamentos                                             pagamentos[]
+  transacoes_contrapartes                                transacoes_contrapartes[]
   transacoes_transacoes_cliente_contraparte_idToclientes transacoes[]  @relation("transacoes_cliente_contraparte_idToclientes")
   transacoes_transacoes_cliente_idToclientes             transacoes[]  @relation("transacoes_cliente_idToclientes")
 
@@ -635,6 +636,7 @@ model transacoes {
   data_assinatura                                          DateTime?                @db.Date
   data_vencimento                                          DateTime?                @db.Date
   dia_vencimento                                           Int?                     @db.SmallInt
+  prazo_contrato_meses                                     Int?                     @db.SmallInt
   loja_id                                                  String                   @db.Uuid
   tem_parceria                                             Boolean                  @default(false)
   porc_parceria                                            Decimal?                 @db.Decimal(6, 4)
@@ -670,6 +672,7 @@ model transacoes {
   movimentacoes                                            movimentacoes[]
   pagamentos                                               pagamentos[]
   recibos_locacao                                          recibos_locacao[]
+  transacoes_contrapartes                                  transacoes_contrapartes[]
   adm_imoveis                                              adm_imoveis?             @relation(fields: [adm_imovel_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   clientes_transacoes_cliente_contraparte_idToclientes     clientes                 @relation("transacoes_cliente_contraparte_idToclientes", fields: [cliente_contraparte_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   clientes_transacoes_cliente_idToclientes                 clientes                 @relation("transacoes_cliente_idToclientes", fields: [cliente_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -686,6 +689,25 @@ model transacoes {
   @@index([corretor_proprietario_id], map: "idx_transacoes_corretor_proprietario")
   @@index([imovel_id], map: "idx_transacoes_imovel")
   @@index([loja_id], map: "idx_transacoes_loja")
+}
+
+/// Clientes interessados (compradores/locatários) vinculados a uma
+/// transação — pode ser mais de um (ex.: compra em conjunto, cônjuges).
+/// cliente_contraparte_id em transacoes continua guardando o primeiro da
+/// lista, para compatibilidade com o restante do sistema. Ordem define a
+/// sequência em que aparecem no corpo e na assinatura do contrato.
+model transacoes_contrapartes {
+  id           String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  transacao_id String     @db.Uuid
+  cliente_id   String     @db.Uuid
+  ordem        Int        @default(0) @db.SmallInt
+  created_at   DateTime   @default(now()) @db.Timestamptz(6)
+  transacoes   transacoes @relation(fields: [transacao_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  clientes     clientes   @relation(fields: [cliente_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([transacao_id, cliente_id])
+  @@index([transacao_id], map: "idx_transacoes_contrapartes_transacao")
+  @@index([cliente_id], map: "idx_transacoes_contrapartes_cliente")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.

@@ -1,21 +1,18 @@
+import Link from "next/link";
 import { Topbar } from "@/components/topbar";
-import { StatusBadge } from "@/components/status-badge";
-import { Pagination } from "@/components/pagination";
 import { prisma } from "@/lib/prisma";
-import { formatMoeda, formatData, statusTone } from "@/lib/format";
+import { formatMoeda, formatData, calcularPrazoRestante, STATUS_TRANSACAO_TODOS } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
-
-const PAGE_SIZE = 50;
 
 export default async function TransacoesPage({
   searchParams
 }: {
-  searchParams: Promise<{ q?: string; page?: string; tipo?: string }>;
+  searchParams: Promise<{ q?: string; tipo?: string }>;
 }) {
-  const { q, page: pageParam, tipo } = await searchParams;
+  const { q, tipo } = await searchParams;
   const termo = (q ?? "").trim();
-  const page = Math.max(1, Number(pageParam ?? "1") || 1);
+  const somenteLocacao = tipo === "Locação";
 
   const where = {
     ...(tipo ? { tipo } : {}),
@@ -23,27 +20,51 @@ export default async function TransacoesPage({
       ? {
           OR: [
             { imoveis: { endereco: { contains: termo, mode: "insensitive" as const } } },
-            { clientes_transacoes_cliente_idToclientes: { nome: { contains: termo, mode: "insensitive" as const } } }
+            {
+              imoveis: {
+                imoveis_proprietarios: { some: { clientes: { nome: { contains: termo, mode: "insensitive" as const } } } }
+              }
+            },
+            {
+              transacoes_contrapartes: { some: { clientes: { nome: { contains: termo, mode: "insensitive" as const } } } }
+            },
+            { id_legado: { contains: termo, mode: "insensitive" as const } }
           ]
         }
       : {})
   };
 
-  const [transacoes, total] = await Promise.all([
-    prisma.transacoes.findMany({
-      where,
-      orderBy: { created_at: "desc" },
-      skip: (page - 1) * PAGE_SIZE,
-      take: PAGE_SIZE,
-      include: {
-        imoveis: true,
-        clientes_transacoes_cliente_idToclientes: true
-      }
-    }),
-    prisma.transacoes.count({ where })
-  ]);
+  const transacoes = await prisma.transacoes.findMany({
+    where,
+    orderBy: { created_at: "desc" },
+    include: {
+      lojas: true,
+      imoveis: { include: { imoveis_proprietarios: { include: { clientes: true }, orderBy: { ordem: "asc" } } } },
+      transacoes_contrapartes: { include: { clientes: true }, orderBy: { ordem: "asc" } }
+    }
+  });
 
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  // Agrupa por Loja e, dentro de cada loja, por Status — mesmo padrão da
+  // tela de Administrações, pra ficar fácil de bater o olho.
+  const porLoja = new Map<string, typeof transacoes>();
+  for (const t of transacoes) {
+    const nomeLoja = t.lojas?.nome ?? "Sem loja";
+    if (!porLoja.has(nomeLoja)) porLoja.set(nomeLoja, []);
+    porLoja.get(nomeLoja)!.push(t);
+  }
+  const lojasOrdenadas = [...porLoja.keys()].sort((x, y) => {
+    const ordem = ["Porto Velho", "Jaru"];
+    const ix = ordem.indexOf(x);
+    const iy = ordem.indexOf(y);
+    if (ix === -1 && iy === -1) return x.localeCompare(y);
+    if (ix === -1) return 1;
+    if (iy === -1) return -1;
+    return ix - iy;
+  });
+
+  const colunas = somenteLocacao
+    ? "grid-cols-[1.4fr_1.2fr_1.2fr_auto_auto_auto_auto]"
+    : "grid-cols-[1.6fr_1.4fr_1.4fr_auto_auto]";
 
   return (
     <div>
@@ -51,80 +72,139 @@ export default async function TransacoesPage({
 
       <div className="bg-white border border-gray-200 rounded-xl p-4">
         <div className="flex items-center justify-between mb-3">
-          <div className="text-sm font-bold text-gray-800">Transações ({total})</div>
-          <form className="flex gap-2">
-            {tipo && <input type="hidden" name="tipo" value={tipo} />}
-            <input
-              type="text"
-              name="q"
-              defaultValue={termo}
-              placeholder="Buscar por imóvel ou cliente..."
-              className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-64 outline-none focus:border-primary"
-            />
-            <button type="submit" className="text-xs bg-primary text-white rounded-lg px-3 py-1.5">
-              Buscar
-            </button>
-          </form>
+          <div className="text-sm font-bold text-gray-800">Transações ({transacoes.length})</div>
+          <div className="flex gap-2">
+            <form className="flex gap-2">
+              {tipo && <input type="hidden" name="tipo" value={tipo} />}
+              <input
+                type="text"
+                name="q"
+                defaultValue={termo}
+                placeholder="Buscar por imóvel, cliente ou Id..."
+                className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-64 outline-none focus:border-primary"
+              />
+              <button type="submit" className="text-xs bg-white border border-gray-300 text-gray-600 rounded-lg px-3 py-1.5">
+                Buscar
+              </button>
+            </form>
+            <Link
+              href="/transacoes/novo"
+              className="text-xs bg-primary text-white rounded-lg px-3 py-1.5 font-semibold whitespace-nowrap"
+            >
+              + Adicionar transação
+            </Link>
+          </div>
         </div>
 
-        <div className="flex gap-2 mb-3">
+        <div className="flex gap-2 mb-4">
           <a
-            href="/transacoes"
+            href={termo ? `/transacoes?q=${encodeURIComponent(termo)}` : "/transacoes"}
             className={"text-xs px-3 py-1 rounded-full border " + (!tipo ? "bg-primary text-white border-primary" : "border-gray-200 text-gray-600")}
           >
             Todas
           </a>
           <a
-            href="/transacoes?tipo=Loca%C3%A7%C3%A3o"
+            href={`/transacoes?tipo=${encodeURIComponent("Locação")}${termo ? `&q=${encodeURIComponent(termo)}` : ""}`}
             className={"text-xs px-3 py-1 rounded-full border " + (tipo === "Locação" ? "bg-primary text-white border-primary" : "border-gray-200 text-gray-600")}
           >
             Locação
           </a>
           <a
-            href="/transacoes?tipo=Compra+e+Venda"
+            href={`/transacoes?tipo=${encodeURIComponent("Compra e Venda")}${termo ? `&q=${encodeURIComponent(termo)}` : ""}`}
             className={"text-xs px-3 py-1 rounded-full border " + (tipo === "Compra e Venda" ? "bg-primary text-white border-primary" : "border-gray-200 text-gray-600")}
           >
             Compra e Venda
           </a>
         </div>
 
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="text-left text-gray-500">
-              <th className="font-normal py-1.5 border-b border-gray-100">Imóvel</th>
-              <th className="font-normal py-1.5 border-b border-gray-100">Cliente</th>
-              <th className="font-normal py-1.5 border-b border-gray-100">Tipo</th>
-              <th className="font-normal py-1.5 border-b border-gray-100">Status</th>
-              <th className="font-normal py-1.5 border-b border-gray-100">Assinatura</th>
-              <th className="font-normal py-1.5 border-b border-gray-100 text-right">Valor</th>
-            </tr>
-          </thead>
-          <tbody>
-            {transacoes.map((t) => (
-              <tr key={t.id}>
-                <td className="py-2 border-b border-gray-50">{t.imoveis?.endereco ?? "—"}</td>
-                <td className="py-2 border-b border-gray-50">
-                  {t.clientes_transacoes_cliente_idToclientes?.nome ?? "—"}
-                </td>
-                <td className="py-2 border-b border-gray-50">{t.tipo}</td>
-                <td className="py-2 border-b border-gray-50">
-                  <StatusBadge status={t.status ?? "—"} tone={statusTone(t.status)} />
-                </td>
-                <td className="py-2 border-b border-gray-50">{formatData(t.data_assinatura)}</td>
-                <td className="py-2 border-b border-gray-50 text-right">{formatMoeda(t.valor_transacao)}</td>
-              </tr>
-            ))}
-            {transacoes.length === 0 && (
-              <tr>
-                <td colSpan={6} className="py-6 text-center text-gray-400">
-                  Nenhuma transação encontrada.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+        {transacoes.length === 0 && (
+          <div className="py-6 text-center text-gray-400 text-xs">Nenhuma transação encontrada.</div>
+        )}
 
-        <Pagination page={page} totalPages={totalPages} basePath="/transacoes" q={termo} />
+        {lojasOrdenadas.map((nomeLoja) => {
+          const doLoja = porLoja.get(nomeLoja)!;
+          const porStatus = new Map<string, typeof transacoes>();
+          for (const t of doLoja) {
+            const s = t.status ?? "Sem status";
+            if (!porStatus.has(s)) porStatus.set(s, []);
+            porStatus.get(s)!.push(t);
+          }
+          const statusOrdenados = [...porStatus.keys()].sort((x, y) => {
+            const ix = STATUS_TRANSACAO_TODOS.indexOf(x);
+            const iy = STATUS_TRANSACAO_TODOS.indexOf(y);
+            if (ix === -1 && iy === -1) return x.localeCompare(y);
+            if (ix === -1) return 1;
+            if (iy === -1) return -1;
+            return ix - iy;
+          });
+
+          return (
+            <div key={nomeLoja} className="mb-6 last:mb-0">
+              <div className="text-xs font-bold text-gray-700 bg-gray-50 rounded-lg px-3 py-2 mb-2">
+                {nomeLoja} ({doLoja.length})
+              </div>
+
+              {statusOrdenados.map((status) => {
+                const doStatus = porStatus.get(status)!;
+                return (
+                  <div key={status} className="mb-3 last:mb-0">
+                    <div className="text-[11px] font-semibold text-gray-500 px-3 py-1">
+                      {status} ({doStatus.length})
+                    </div>
+                    <div className={`grid ${colunas} gap-3 px-3 py-1 text-[11px] text-gray-400 border-b border-gray-100`}>
+                      <span>Imóvel</span>
+                      <span>Cliente Proprietário</span>
+                      <span>Cliente Interessado</span>
+                      <span>Assinatura</span>
+                      {somenteLocacao && <span>Dia venc.</span>}
+                      {somenteLocacao && <span>Prazo restante</span>}
+                      <span className="text-right">Valor</span>
+                    </div>
+                    <div className="flex flex-col">
+                      {doStatus.map((t) => {
+                        const proprietarios = t.imoveis?.imoveis_proprietarios.map((v) => v.clientes) ?? [];
+                        const interessados = t.transacoes_contrapartes.map((v) => v.clientes);
+                        return (
+                          <Link
+                            key={t.id}
+                            href={`/transacoes/${t.id}`}
+                            className={`grid ${colunas} gap-3 items-center px-3 py-2.5 rounded-lg hover:bg-gray-50 transition-colors`}
+                          >
+                            <span className="text-xs text-gray-500 truncate">{t.imoveis?.endereco ?? "—"}</span>
+                            <span className="text-xs font-medium text-gray-800 truncate">
+                              {proprietarios[0]?.nome ?? "—"}
+                              {proprietarios.length > 1 && (
+                                <span className="text-gray-400 font-normal"> +{proprietarios.length - 1}</span>
+                              )}
+                            </span>
+                            <span className="text-xs text-gray-700 truncate">
+                              {interessados[0]?.nome ?? "—"}
+                              {interessados.length > 1 && (
+                                <span className="text-gray-400 font-normal"> +{interessados.length - 1}</span>
+                              )}
+                            </span>
+                            <span className="text-xs text-gray-500 whitespace-nowrap">{formatData(t.data_assinatura)}</span>
+                            {somenteLocacao && (
+                              <span className="text-xs text-gray-500 whitespace-nowrap">{t.dia_vencimento ?? "—"}</span>
+                            )}
+                            {somenteLocacao && (
+                              <span className="text-xs text-gray-500 whitespace-nowrap">
+                                {calcularPrazoRestante(t.data_assinatura, t.prazo_contrato_meses)}
+                              </span>
+                            )}
+                            <span className="text-xs text-gray-600 text-right whitespace-nowrap">
+                              {formatMoeda(t.valor_transacao)}
+                            </span>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

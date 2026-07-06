@@ -7,7 +7,13 @@ import { formatValorEditavel, formatPercentual, formatInscricao } from "@/lib/fo
 type LojaOpcao = { id: string; nome: string };
 type ParceiroOpcao = { id: string; nome: string };
 type ClienteOpcao = { id: string; nome: string; id_legado: string | null; parceiro_id: string | null };
-type ImovelOpcao = { id: string; id_legado: string | null; endereco: string | null; inscricao: string | null };
+type ImovelOpcao = {
+  id: string;
+  id_legado: string | null;
+  endereco: string | null;
+  inscricao: string | null;
+  proprietarios: { id: string; nome: string }[];
+};
 
 type AdministracaoExistente = {
   id: string;
@@ -45,7 +51,8 @@ function inputDate(d: Date | null) {
 
 function labelImovel(i: ImovelOpcao): string {
   const insc = formatInscricao(i.inscricao);
-  const partes = [i.endereco ?? "(sem endereço)", insc ? `Insc. ${insc}` : null].filter(Boolean);
+  const qtdProprietarios = i.proprietarios.length > 1 ? `${i.proprietarios.length} proprietários` : null;
+  const partes = [i.endereco ?? "(sem endereço)", insc ? `Insc. ${insc}` : null, qtdProprietarios].filter(Boolean);
   return partes.join(" — ");
 }
 
@@ -89,13 +96,21 @@ export function AdministracaoForm({
     return clientes.filter((c) => c.nome.toLowerCase().includes(t)).slice(0, 30);
   }, [buscaCliente, clientes]);
 
+  // Depois de escolher o Cliente em Vínculo, a lista de Imóvel só mostra os
+  // imóveis vinculados àquele cliente como proprietário — evita ter que
+  // procurar entre todos os imóveis cadastrados.
+  const imoveisDoCliente = useMemo(() => {
+    if (!clienteId) return imoveis;
+    return imoveis.filter((i) => i.proprietarios.some((p) => p.id === clienteId));
+  }, [clienteId, imoveis]);
+
   const imoveisFiltrados = useMemo(() => {
     const t = buscaImovel.trim().toLowerCase();
-    if (!t) return imoveis.slice(0, 30);
-    return imoveis
+    if (!t) return imoveisDoCliente.slice(0, 30);
+    return imoveisDoCliente
       .filter((i) => (i.endereco ?? "").toLowerCase().includes(t) || (i.inscricao ?? "").toLowerCase().includes(t))
       .slice(0, 30);
-  }, [buscaImovel, imoveis]);
+  }, [buscaImovel, imoveisDoCliente]);
 
   function selecionarCliente(c: ClienteOpcao) {
     setClienteId(c.id);
@@ -104,6 +119,13 @@ export function AdministracaoForm({
     // Mesma lógica de Imóveis: o parceiro captador tende a ser o mesmo
     // parceiro responsável pelo cliente — pré-preenche, mas fica editável.
     if (c.parceiro_id) setParceiroId(c.parceiro_id);
+    // Se o imóvel já escolhido não pertence a esse cliente, limpa a escolha
+    // para forçar selecionar um dos imóveis vinculados a ele.
+    const imovelAtual = imoveis.find((i) => i.id === imovelId);
+    if (imovelAtual && !imovelAtual.proprietarios.some((p) => p.id === c.id)) {
+      setImovelId("");
+      setBuscaImovel("");
+    }
   }
 
   function selecionarImovel(i: ImovelOpcao) {
@@ -204,6 +226,9 @@ export function AdministracaoForm({
           </div>
           <div className="relative">
             <label className={LABEL}>Imóvel</label>
+            {clienteId && (
+              <p className="text-[11px] text-gray-400 mb-1">Mostrando só os imóveis vinculados a esse cliente.</p>
+            )}
             <input
               className={CAMPO}
               placeholder="Digite endereço ou inscrição..."

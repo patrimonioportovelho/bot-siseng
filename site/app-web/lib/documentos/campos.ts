@@ -60,21 +60,18 @@ export const CAMPOS_DOCUMENTO: Record<TipoDocumento, CampoDocumento[]> = {
     { campo: "data_emissao", descricao: "Data de emissão da carta" }
   ],
   contrato_administracao: [
-    { campo: "Cliente", descricao: "Nome completo do proprietário (LOCADORA)" },
-    { campo: "DataNascimento", descricao: "Data de nascimento do proprietário" },
-    { campo: "Cpf", descricao: "CPF formatado do proprietário" },
-    { campo: "Email", descricao: "E-mail do proprietário" },
-    { campo: "EstadoCivil", descricao: "Estado civil do proprietário" },
-    { campo: "TextoConjuge", descricao: "Texto do cônjuge (vazio se não houver)" },
-    { campo: "Endereco", descricao: "Endereço residencial do proprietário" },
-    { campo: "Cidade", descricao: "Cidade de residência do proprietário" },
-    { campo: "Estado", descricao: "Estado de residência do proprietário" },
-    { campo: "Banco", descricao: "Banco do proprietário" },
-    { campo: "Codigo", descricao: "Código do banco" },
-    { campo: "Agencia", descricao: "Agência" },
-    { campo: "Conta", descricao: "Conta corrente" },
-    { campo: "TipoPix", descricao: "Tipo de chave PIX" },
-    { campo: "Pix", descricao: "Chave PIX" },
+    {
+      campo: "Proprietarios",
+      descricao:
+        "Lista de proprietários do imóvel (loop — um bloco de qualificação e um bloco de assinatura por item: Nome, Nacionalidade, Profissao, EstadoCivil, Cpf, Endereco). Se houver cônjuge, ele entra como mais um item da lista."
+    },
+    { campo: "Cliente", descricao: "Nome do primeiro proprietário da lista (usado no Favorecido dos dados bancários)" },
+    { campo: "Banco", descricao: "Banco do primeiro proprietário da lista" },
+    { campo: "Codigo", descricao: "Código do banco do primeiro proprietário" },
+    { campo: "Agencia", descricao: "Agência do primeiro proprietário" },
+    { campo: "Conta", descricao: "Conta corrente do primeiro proprietário" },
+    { campo: "TipoPix", descricao: "Tipo de chave PIX do primeiro proprietário" },
+    { campo: "Pix", descricao: "Chave PIX do primeiro proprietário" },
     { campo: "Imovel_Endereco", descricao: "Endereço completo do imóvel" },
     { campo: "Imovel_Matricula", descricao: "Número de matrícula do imóvel" },
     { campo: "InscricaoFormatada", descricao: "Inscrição imobiliária formatada" },
@@ -82,11 +79,7 @@ export const CAMPOS_DOCUMENTO: Record<TipoDocumento, CampoDocumento[]> = {
     { campo: "PorcHonorario", descricao: "Percentual do honorário na intermediação" },
     { campo: "TxAdm", descricao: "Percentual da taxa de administração" },
     { campo: "Loja", descricao: "Porto Velho ou Jaru" },
-    { campo: "DataAssinatura", descricao: "Data de assinatura por extenso, dia em 2 dígitos" },
-    { campo: "AssinaturaConjugeInicio", descricao: "Sempre vazio (reservado)" },
-    { campo: "ConjugeNomeAss", descricao: "Nome do cônjuge, se houver" },
-    { campo: "ConjugeCpfAss", descricao: "CPF do cônjuge, se houver" },
-    { campo: "AssinaturaConjugeFim", descricao: "Sempre vazio (reservado)" }
+    { campo: "DataAssinatura", descricao: "Data de assinatura por extenso, dia em 2 dígitos" }
   ],
   // Dois modelos distintos, cada um com seu próprio arquivo .docx e sua
   // própria busca (só aparece parceiro com a função correspondente): Corretor

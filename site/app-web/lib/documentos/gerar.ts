@@ -304,50 +304,60 @@ async function montarDadosGestao(gestaoId: string): Promise<Record<string, unkno
   };
 }
 
+// O imóvel pode ter mais de um proprietário cadastrado (ex.: herdeiros) — o
+// template tem um loop {{#Proprietarios}}...{{/Proprietarios}} tanto no
+// parágrafo de qualificação quanto no bloco de assinatura, então todos
+// entram na mesma lista. Quando há cônjuge, ele é cadastrado como mais um
+// Cliente e adicionado à lista de proprietários do imóvel (não há mais um
+// campo de cônjuge separado).
 async function montarDadosAdmImovel(admImovelId: string): Promise<Record<string, unknown>> {
   const a = await prisma.adm_imoveis.findUnique({
     where: { id: admImovelId },
     include: {
-      clientes: {
+      imoveis: {
         include: {
-          clientes: true, // cônjuge, via conjuge_id (auto-relacionamento "clientesToclientes")
-          bancos: true,
-          cidades: true,
-          estados: true
+          imoveis_proprietarios: {
+            orderBy: { ordem: "asc" },
+            include: {
+              clientes: { include: { bancos: true, cidades: true, estados: true } }
+            }
+          }
         }
       },
-      imoveis: true,
       lojas: true
     }
   });
   if (!a) throw new Error(`Administração "${admImovelId}" não encontrada.`);
 
-  const c = a.clientes;
-  const conjuge = c.clientes; // null se não tiver cônjuge cadastrado
+  const proprietarios = a.imoveis.imoveis_proprietarios.map((v) => v.clientes);
+  if (proprietarios.length === 0) {
+    throw new Error(
+      "O imóvel desta administração não tem nenhum proprietário cadastrado — adicione ao menos um antes de gerar o contrato."
+    );
+  }
+  // Dados bancários do repasse usam sempre o primeiro proprietário da lista.
+  const primeiro = proprietarios[0];
 
-  // Texto livre inserido logo após o estado civil (ex.: "Casado e seu(sua)
-  // cônjuge, Fulano, portador(a) do CPF nº 000.000.000-00,"). Fica vazio se
-  // o cliente não tiver cônjuge vinculado.
-  const textoConjuge = conjuge
-    ? ` e seu(sua) cônjuge, ${conjuge.nome}, portador(a) do CPF nº ${formatarCpf(conjuge.cpf ?? "")}`
-    : "";
+  function enderecoCompleto(c: (typeof proprietarios)[number]): string {
+    return [c.endereco, c.cidades?.nome, c.estados?.nome].filter((p): p is string => Boolean(p)).join(" - ");
+  }
 
   return {
-    Cliente: c.nome,
-    DataNascimento: dataCurta(c.data_nascimento),
-    Cpf: formatarCpf(c.cpf ?? ""),
-    Email: c.email ?? "",
-    EstadoCivil: c.estado_civil ?? "",
-    TextoConjuge: textoConjuge,
-    Endereco: c.endereco ?? "",
-    Cidade: c.cidades?.nome ?? "",
-    Estado: c.estados?.nome ?? "",
-    Banco: c.bancos?.nome ?? "",
-    Codigo: c.bancos?.codigo ?? c.codigo_banco ?? "",
-    Agencia: c.agencia ?? "",
-    Conta: c.conta ?? "",
-    TipoPix: c.tipo_pix ?? "",
-    Pix: c.pix ?? "",
+    Proprietarios: proprietarios.map((c) => ({
+      Nome: c.nome,
+      Nacionalidade: c.sexo === "Mulher" ? "brasileira" : "brasileiro",
+      Profissao: c.profissao ?? c.cat_profissao ?? "",
+      EstadoCivil: c.estado_civil ?? "",
+      Cpf: formatarCpf(c.cpf ?? ""),
+      Endereco: enderecoCompleto(c)
+    })),
+    Cliente: primeiro.nome,
+    Banco: primeiro.bancos?.nome ?? "",
+    Codigo: primeiro.bancos?.codigo ?? primeiro.codigo_banco ?? "",
+    Agencia: primeiro.agencia ?? "",
+    Conta: primeiro.conta ?? "",
+    TipoPix: primeiro.tipo_pix ?? "",
+    Pix: primeiro.pix ?? "",
     Imovel_Endereco: a.imoveis.endereco ?? "",
     Imovel_Matricula: a.imoveis.matricula ?? "",
     InscricaoFormatada: formatInscricao(a.imoveis.inscricao),
@@ -357,14 +367,7 @@ async function montarDadosAdmImovel(admImovelId: string): Promise<Record<string,
     Loja: a.lojas.nome,
     // Mesmo padrão de data por extenso com dia em 2 dígitos usado nos
     // contratos de corretor, na linha de local/data perto da assinatura.
-    DataAssinatura: dataPorExtensoComZero(a.data_assinatura ?? new Date()),
-    // Bloco de assinatura do cônjuge: preenchido só quando existir cônjuge.
-    // O template não tem uma seção condicional de verdade (é substituição
-    // simples de texto), então sem cônjuge esses campos ficam em branco.
-    AssinaturaConjugeInicio: "",
-    ConjugeNomeAss: conjuge?.nome ?? "",
-    ConjugeCpfAss: conjuge ? formatarCpf(conjuge.cpf ?? "") : "",
-    AssinaturaConjugeFim: ""
+    DataAssinatura: dataPorExtensoComZero(a.data_assinatura ?? new Date())
   };
 }
 

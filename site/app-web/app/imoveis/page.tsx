@@ -23,7 +23,11 @@ export default async function ImoveisPage({
           { endereco: { contains: termo, mode: "insensitive" as const } },
           { bairro: { contains: termo, mode: "insensitive" as const } },
           { rua: { contains: termo, mode: "insensitive" as const } },
-          { clientes: { nome: { contains: termo, mode: "insensitive" as const } } }
+          {
+            imoveis_proprietarios: {
+              some: { clientes: { nome: { contains: termo, mode: "insensitive" as const } } }
+            }
+          }
         ]
       }
     : undefined;
@@ -34,7 +38,10 @@ export default async function ImoveisPage({
       orderBy: { created_at: "desc" },
       skip: (page - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
-      include: { clientes: { include: { parceiros: true } }, parceiros: true }
+      include: {
+        parceiros: true,
+        imoveis_proprietarios: { include: { clientes: true }, orderBy: { ordem: "asc" } }
+      }
     }),
     prisma.imoveis.count({ where })
   ]);
@@ -78,7 +85,10 @@ export default async function ImoveisPage({
         </div>
         <div className="flex flex-col">
           {imoveis.map((i) => {
-            const parceiroNome = i.clientes?.parceiros?.nome ?? i.parceiros?.nome ?? null;
+            const parceiroNome = i.parceiros?.nome ?? null;
+            const proprietarios = i.imoveis_proprietarios;
+            const primeiroProprietario = proprietarios[0]?.clientes.nome ?? "—";
+            const outrosProprietarios = proprietarios.length > 1 ? ` +${proprietarios.length - 1}` : "";
             return (
               <Link
                 key={i.id}
@@ -87,7 +97,10 @@ export default async function ImoveisPage({
               >
                 <span className="text-xs text-gray-500 truncate">{i.id_legado ?? i.id}</span>
                 <span className="text-xs truncate">
-                  <span className="font-medium text-gray-800">{i.clientes?.nome ?? "—"}</span>
+                  <span className="font-medium text-gray-800">
+                    {primeiroProprietario}
+                    {outrosProprietarios}
+                  </span>
                   <span className="text-gray-400"> · {parceiroNome ?? "sem parceiro"}</span>
                 </span>
                 <span className="text-xs text-right text-gray-600">

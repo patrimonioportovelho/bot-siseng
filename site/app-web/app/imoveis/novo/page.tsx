@@ -35,6 +35,7 @@ export default async function NovoImovelPage() {
       <ImovelForm
         imovel={null}
         clientes={clientes}
+        proprietariosIniciais={[]}
         parceiros={parceiros}
         estados={estados}
         cidades={cidades}

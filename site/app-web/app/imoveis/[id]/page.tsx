@@ -14,7 +14,12 @@ export default async function ImovelDetalhePage({ params }: { params: Promise<{ 
   const [imovel, clientes, parceiros, estados, cidades] = await Promise.all([
     prisma.imoveis.findUnique({
       where: { id },
-      include: { clientes: { include: { parceiros: true } }, parceiros: true, cidades: true, estados: true }
+      include: {
+        parceiros: true,
+        cidades: true,
+        estados: true,
+        imoveis_proprietarios: { include: { clientes: true }, orderBy: { ordem: "asc" } }
+      }
     }),
     prisma.clientes.findMany({
       orderBy: { nome: "asc" },
@@ -33,6 +38,8 @@ export default async function ImovelDetalhePage({ params }: { params: Promise<{ 
 
   const enderecoMontado = [imovel.rua, imovel.n_predial].filter(Boolean).join(", ");
   const titulo = imovel.endereco || enderecoMontado || "Imóvel sem endereço";
+  const proprietarios = imovel.imoveis_proprietarios.map((v) => v.clientes);
+  const nomesProprietarios = proprietarios.map((c) => c.nome).join(", ");
 
   return (
     <div>
@@ -45,13 +52,24 @@ export default async function ImovelDetalhePage({ params }: { params: Promise<{ 
       <div className="text-sm font-bold text-gray-800 mb-1">{titulo}</div>
       <div className="text-xs text-gray-500 mb-0.5">
         {imovel.tipo_imovel ?? "—"}
-        {imovel.clientes?.nome && <> · Proprietário: {imovel.clientes.nome}</>}
+        {nomesProprietarios && (
+          <>
+            {" "}
+            · {proprietarios.length > 1 ? "Proprietários" : "Proprietário"}: {nomesProprietarios}
+          </>
+        )}
       </div>
       <div className="text-xs text-gray-400 mb-4">Id imóvel: {imovel.id_legado ?? imovel.id}</div>
 
       <ImovelForm
         imovel={imovel}
         clientes={clientes}
+        proprietariosIniciais={proprietarios.map((c) => ({
+          id: c.id,
+          nome: c.nome,
+          id_legado: c.id_legado,
+          parceiro_id: c.parceiro_id
+        }))}
         parceiros={parceiros}
         estados={estados}
         cidades={cidades}

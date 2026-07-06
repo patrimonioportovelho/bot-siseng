@@ -79,7 +79,6 @@ async function camposEditaveis(formData: FormData) {
     estado_id: texto(formData, "estado_id"),
     cidade_id: texto(formData, "cidade_id"),
     endereco: await montarEndereco(formData),
-    cliente_vendedor_id: texto(formData, "cliente_vendedor_id"),
     parceiro_id: texto(formData, "parceiro_id"),
     valor_venda: valorMonetario(formData, "valor_venda"),
     valor_avaliacao: valorMonetario(formData, "valor_avaliacao"),
@@ -89,12 +88,36 @@ async function camposEditaveis(formData: FormData) {
   };
 }
 
+// Um imóvel pode ter mais de um proprietário (ex.: herdeiros) — a lista vem
+// do formulário como vários campos "proprietario_id" repetidos. Sincroniza
+// a tabela imoveis_proprietarios apagando os vínculos atuais e recriando na
+// ordem em que foram adicionados no formulário (ordem usada no contrato).
+async function sincronizarProprietarios(imovelId: string, formData: FormData) {
+  const ids = formData
+    .getAll("proprietario_id")
+    .map((v) => String(v).trim())
+    .filter((v) => v.length > 0);
+
+  await prisma.$transaction([
+    prisma.imoveis_proprietarios.deleteMany({ where: { imovel_id: imovelId } }),
+    ...(ids.length > 0
+      ? [
+          prisma.imoveis_proprietarios.createMany({
+            data: ids.map((clienteId, ordem) => ({ imovel_id: imovelId, cliente_id: clienteId, ordem }))
+          })
+        ]
+      : [])
+  ]);
+}
+
 export async function criarImovelAction(formData: FormData) {
   await requireAdminSession();
 
   const novo = await prisma.imoveis.create({
     data: await camposEditaveis(formData)
   });
+
+  await sincronizarProprietarios(novo.id, formData);
 
   await logAlteracao({
     entidadeTipo: "imoveis",
@@ -120,6 +143,8 @@ export async function atualizarImovelAction(formData: FormData) {
     where: { id },
     data: await camposEditaveis(formData)
   });
+
+  await sincronizarProprietarios(id, formData);
 
   await logAlteracao({
     entidadeTipo: "imoveis",

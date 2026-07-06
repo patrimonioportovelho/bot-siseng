@@ -16,7 +16,16 @@ export default async function NovaAdministracaoPage() {
     }),
     prisma.imoveis.findMany({
       orderBy: { created_at: "desc" },
-      select: { id: true, id_legado: true, endereco: true, inscricao: true }
+      select: {
+        id: true,
+        id_legado: true,
+        endereco: true,
+        inscricao: true,
+        imoveis_proprietarios: {
+          orderBy: { ordem: "asc" },
+          select: { clientes: { select: { id: true, nome: true } } }
+        }
+      }
     }),
     prisma.parceiros.findMany({
       where: { funcao: { in: FUNCOES_CAPTADOR } },
@@ -24,6 +33,14 @@ export default async function NovaAdministracaoPage() {
       select: { id: true, nome: true }
     })
   ]);
+
+  const imoveisComProprietarios = imoveis.map((i) => ({
+    id: i.id,
+    id_legado: i.id_legado,
+    endereco: i.endereco,
+    inscricao: i.inscricao,
+    proprietarios: i.imoveis_proprietarios.map((v) => v.clientes)
+  }));
 
   return (
     <div>
@@ -39,7 +56,7 @@ export default async function NovaAdministracaoPage() {
         administracao={null}
         lojas={lojas}
         clientes={clientes}
-        imoveis={imoveis}
+        imoveis={imoveisComProprietarios}
         parceiros={parceiros}
         action={criarAdministracaoAction}
       />

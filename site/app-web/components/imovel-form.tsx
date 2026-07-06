@@ -14,7 +14,6 @@ type ImovelExistente = {
   id_legado: string | null;
   tipo_imovel: string | null;
   parceiro_id: string | null;
-  cliente_vendedor_id: string | null;
   pasta_url: string | null;
   inscricao: string | null;
   rua: string | null;
@@ -44,6 +43,7 @@ const LABEL = "text-xs text-gray-600 block mb-1";
 export function ImovelForm({
   imovel,
   clientes,
+  proprietariosIniciais,
   parceiros,
   estados,
   cidades,
@@ -51,6 +51,7 @@ export function ImovelForm({
 }: {
   imovel: ImovelExistente | null;
   clientes: ClienteOpcao[];
+  proprietariosIniciais: ClienteOpcao[];
   parceiros: ParceiroOpcao[];
   estados: EstadoOpcao[];
   cidades: CidadeOpcao[];
@@ -58,34 +59,44 @@ export function ImovelForm({
 }) {
   const i = imovel;
 
-  const clienteInicial = clientes.find((c) => c.id === i?.cliente_vendedor_id) ?? null;
-  const [clienteId, setClienteId] = useState(i?.cliente_vendedor_id ?? "");
-  const [buscaCliente, setBuscaCliente] = useState(clienteInicial ? clienteInicial.nome : "");
+  // Um imóvel pode ter mais de um proprietário (ex.: herdeiros) — cada um é
+  // um Cliente cadastrado separadamente, adicionado aqui à lista.
+  const [proprietarios, setProprietarios] = useState<ClienteOpcao[]>(proprietariosIniciais);
+  const [buscaCliente, setBuscaCliente] = useState("");
   const [mostrarLista, setMostrarLista] = useState(false);
   const [parceiroId, setParceiroId] = useState(i?.parceiro_id ?? "");
   const [estadoId, setEstadoId] = useState(i?.estado_id ?? "");
 
   const clientesFiltrados = useMemo(() => {
     const t = buscaCliente.trim().toLowerCase();
-    if (!t) return clientes.slice(0, 30);
-    return clientes.filter((c) => c.nome.toLowerCase().includes(t)).slice(0, 30);
-  }, [buscaCliente, clientes]);
+    const idsJaAdicionados = new Set(proprietarios.map((p) => p.id));
+    const disponiveis = clientes.filter((c) => !idsJaAdicionados.has(c.id));
+    if (!t) return disponiveis.slice(0, 30);
+    return disponiveis.filter((c) => c.nome.toLowerCase().includes(t)).slice(0, 30);
+  }, [buscaCliente, clientes, proprietarios]);
 
   const cidadesDoEstado = useMemo(() => cidades.filter((c) => c.estado_id === estadoId), [cidades, estadoId]);
 
-  function selecionarCliente(c: ClienteOpcao) {
-    setClienteId(c.id);
-    setBuscaCliente(c.nome);
+  function adicionarProprietario(c: ClienteOpcao) {
+    const eraOPrimeiro = proprietarios.length === 0;
+    setProprietarios((atual) => [...atual, c]);
+    setBuscaCliente("");
     setMostrarLista(false);
-    // Todo imóvel tem o mesmo parceiro do cliente que trouxe — pré-preenche,
-    // mas continua editável caso precise de ajuste manual.
-    if (c.parceiro_id) setParceiroId(c.parceiro_id);
+    // Todo imóvel tende a ter o mesmo parceiro do primeiro cliente
+    // adicionado — pré-preenche, mas continua editável caso precise ajustar.
+    if (eraOPrimeiro && c.parceiro_id) setParceiroId(c.parceiro_id);
+  }
+
+  function removerProprietario(id: string) {
+    setProprietarios((atual) => atual.filter((p) => p.id !== id));
   }
 
   return (
     <form action={action} className="flex flex-col gap-5">
       {i && <input type="hidden" name="imovelId" value={i.id} />}
-      <input type="hidden" name="cliente_vendedor_id" value={clienteId} />
+      {proprietarios.map((p) => (
+        <input key={p.id} type="hidden" name="proprietario_id" value={p.id} />
+      ))}
 
       <div className="bg-white border border-gray-200 rounded-xl p-4">
         <div className="text-sm font-bold text-gray-800 mb-3">Identificação</div>
@@ -197,13 +208,34 @@ export function ImovelForm({
         <div className="grid md:grid-cols-2 gap-3">
           <div className="relative">
             <label className={LABEL}>Cliente (proprietário)</label>
+            <p className="text-[11px] text-gray-400 mb-1">
+              Pode ter mais de um proprietário (ex.: herdeiros) — adicione quantos forem necessários.
+            </p>
+            {proprietarios.length > 0 && (
+              <div className="flex flex-col gap-1 mb-2">
+                {proprietarios.map((p) => (
+                  <div
+                    key={p.id}
+                    className="flex items-center justify-between text-xs bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5"
+                  >
+                    <span className="text-gray-800 font-medium truncate">{p.nome}</span>
+                    <button
+                      type="button"
+                      onClick={() => removerProprietario(p.id)}
+                      className="text-gray-400 hover:text-red-600 ml-2"
+                    >
+                      remover
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
             <input
               className={CAMPO}
-              placeholder="Digite para buscar..."
+              placeholder="+ Adicionar proprietário — digite para buscar..."
               value={buscaCliente}
               onChange={(e) => {
                 setBuscaCliente(e.target.value);
-                setClienteId("");
                 setMostrarLista(true);
               }}
               onFocus={() => setMostrarLista(true)}
@@ -218,7 +250,7 @@ export function ImovelForm({
                   <button
                     key={c.id}
                     type="button"
-                    onMouseDown={() => selecionarCliente(c)}
+                    onMouseDown={() => adicionarProprietario(c)}
                     className="block w-full text-left text-xs px-3 py-2 border-b border-gray-50 last:border-0 hover:bg-gray-50 text-gray-700"
                   >
                     {c.nome}
@@ -243,7 +275,7 @@ export function ImovelForm({
               ))}
             </select>
             <p className="text-[11px] text-gray-400 mt-1">
-              Preenchido automaticamente com o parceiro do cliente selecionado — pode ajustar se necessário.
+              Preenchido automaticamente com o parceiro do primeiro proprietário adicionado — pode ajustar se necessário.
             </p>
           </div>
         </div>

@@ -16,7 +16,15 @@ export default async function AdministracaoDetalhePage({ params }: { params: Pro
   const [administracao, lojas, clientes, imoveis, parceiros, transacoes] = await Promise.all([
     prisma.adm_imoveis.findUnique({
       where: { id },
-      include: { clientes: true, imoveis: true, lojas: true }
+      include: {
+        clientes: true,
+        lojas: true,
+        imoveis: {
+          include: {
+            imoveis_proprietarios: { orderBy: { ordem: "asc" }, include: { clientes: true } }
+          }
+        }
+      }
     }),
     prisma.lojas.findMany({ orderBy: { nome: "asc" } }),
     prisma.clientes.findMany({
@@ -25,7 +33,16 @@ export default async function AdministracaoDetalhePage({ params }: { params: Pro
     }),
     prisma.imoveis.findMany({
       orderBy: { created_at: "desc" },
-      select: { id: true, id_legado: true, endereco: true, inscricao: true }
+      select: {
+        id: true,
+        id_legado: true,
+        endereco: true,
+        inscricao: true,
+        imoveis_proprietarios: {
+          orderBy: { ordem: "asc" },
+          select: { clientes: { select: { id: true, nome: true } } }
+        }
+      }
     }),
     prisma.parceiros.findMany({
       where: { funcao: { in: FUNCOES_CAPTADOR } },
@@ -43,6 +60,17 @@ export default async function AdministracaoDetalhePage({ params }: { params: Pro
 
   if (!administracao) notFound();
 
+  const proprietariosImovel = administracao.imoveis?.imoveis_proprietarios.map((v) => v.clientes) ?? [];
+  const nomesProprietarios = proprietariosImovel.map((c) => c.nome).join(", ");
+
+  const imoveisComProprietarios = imoveis.map((i) => ({
+    id: i.id,
+    id_legado: i.id_legado,
+    endereco: i.endereco,
+    inscricao: i.inscricao,
+    proprietarios: i.imoveis_proprietarios.map((v) => v.clientes)
+  }));
+
   return (
     <div>
       <Topbar />
@@ -56,7 +84,13 @@ export default async function AdministracaoDetalhePage({ params }: { params: Pro
       </div>
       <div className="text-xs text-gray-500 mb-0.5">
         {administracao.lojas?.nome}
-        {administracao.clientes?.nome && <> · Proprietário: {administracao.clientes.nome}</>}
+        {nomesProprietarios && (
+          <>
+            {" · "}
+            {proprietariosImovel.length > 1 ? `Proprietários (${proprietariosImovel.length})` : "Proprietário"}:{" "}
+            {nomesProprietarios}
+          </>
+        )}
         {" · "}
         {administracao.status}
       </div>
@@ -102,7 +136,7 @@ export default async function AdministracaoDetalhePage({ params }: { params: Pro
         administracao={administracao}
         lojas={lojas}
         clientes={clientes}
-        imoveis={imoveis}
+        imoveis={imoveisComProprietarios}
         parceiros={parceiros}
         action={atualizarAdministracaoAction}
       />

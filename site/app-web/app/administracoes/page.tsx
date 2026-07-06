@@ -27,7 +27,11 @@ export default async function AdministracoesPage({
   const administracoes = await prisma.adm_imoveis.findMany({
     where,
     orderBy: { created_at: "desc" },
-    include: { clientes: true, imoveis: true, lojas: true }
+    include: {
+      clientes: true,
+      lojas: true,
+      imoveis: { include: { _count: { select: { imoveis_proprietarios: true } } } }
+    }
   });
 
   // Agrupa por Loja e, dentro de cada loja, por Status — na ordem do funil
@@ -119,22 +123,28 @@ export default async function AdministracoesPage({
                       <span className="text-right">Valor</span>
                     </div>
                     <div className="flex flex-col">
-                      {doStatus.map((a) => (
-                        <Link
-                          key={a.id}
-                          href={`/administracoes/${a.id}`}
-                          className="grid grid-cols-[1fr_1.4fr_1.6fr_auto] gap-3 items-center px-3 py-2.5 rounded-lg hover:bg-gray-50 transition-colors"
-                        >
-                          <span className="text-xs text-gray-500 truncate">{a.id_legado ?? a.id}</span>
-                          <span className="text-xs font-medium text-gray-800 truncate">
-                            {a.clientes?.nome ?? "—"}
-                          </span>
-                          <span className="text-xs text-gray-500 truncate">{a.imoveis?.endereco ?? "—"}</span>
-                          <span className="text-xs text-gray-600 text-right whitespace-nowrap">
-                            {a.valor_transacao != null ? formatMoeda(a.valor_transacao) : "—"}
-                          </span>
-                        </Link>
-                      ))}
+                      {doStatus.map((a) => {
+                        const qtdProprietarios = a.imoveis?._count.imoveis_proprietarios ?? 0;
+                        return (
+                          <Link
+                            key={a.id}
+                            href={`/administracoes/${a.id}`}
+                            className="grid grid-cols-[1fr_1.4fr_1.6fr_auto] gap-3 items-center px-3 py-2.5 rounded-lg hover:bg-gray-50 transition-colors"
+                          >
+                            <span className="text-xs text-gray-500 truncate">{a.id_legado ?? a.id}</span>
+                            <span className="text-xs font-medium text-gray-800 truncate">
+                              {a.clientes?.nome ?? "—"}
+                              {qtdProprietarios > 1 && (
+                                <span className="text-gray-400 font-normal"> +{qtdProprietarios - 1}</span>
+                              )}
+                            </span>
+                            <span className="text-xs text-gray-500 truncate">{a.imoveis?.endereco ?? "—"}</span>
+                            <span className="text-xs text-gray-600 text-right whitespace-nowrap">
+                              {a.valor_transacao != null ? formatMoeda(a.valor_transacao) : "—"}
+                            </span>
+                          </Link>
+                        );
+                      })}
                     </div>
                   </div>
                 );

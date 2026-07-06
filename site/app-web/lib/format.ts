@@ -50,6 +50,17 @@ export function formatCnpj(cnpj: unknown): string {
   return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}`;
 }
 
+// Formata inscrição imobiliária (14 dígitos) como xx.xx.xxx.xxxx.xxx. Se não
+// tiver exatamente 14 dígitos (ex.: texto livre tipo "sem inscrição" ou
+// "Lote 30 quadra 4", vindos da planilha antiga), devolve o valor original
+// sem mexer — não é todo registro que tem um código completo.
+export function formatInscricao(valor: unknown): string {
+  if (!valor) return "";
+  const d = String(valor).replace(/\D/g, "");
+  if (d.length !== 14) return String(valor);
+  return `${d.slice(0, 2)}.${d.slice(2, 4)}.${d.slice(4, 7)}.${d.slice(7, 11)}.${d.slice(11, 14)}`;
+}
+
 // Formata telefone (10 ou 11 dígitos) como (xx) xxxxx-xxxx ou (xx) xxxx-xxxx.
 export function formatTelefone(tel: unknown): string {
   if (!tel) return "";

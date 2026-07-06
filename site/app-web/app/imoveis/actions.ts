@@ -26,12 +26,50 @@ function data(formData: FormData, campo: string): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-function camposEditaveis(formData: FormData) {
+// Inscrição imobiliária tem formato fixo de 14 dígitos, mas registros antigos
+// da planilha às vezes só têm uma anotação em texto livre (ex.: "sem
+// inscrição", "Lote 30 quadra 4"). Só reduz a só-dígitos quando o valor
+// digitado já fecha em 14 dígitos — caso contrário mantém o texto como foi
+// digitado, sem forçar um formato que não existe.
+function inscricaoValor(formData: FormData, campo: string): string | null {
+  const t = texto(formData, campo);
+  if (t === null) return null;
+  const d = t.replace(/\D/g, "");
+  return d.length === 14 ? d : t;
+}
+
+// Endereço é sempre concatenado a partir de rua/número/complemento/bairro/
+// cidade/estado — não é um campo digitado à parte no formulário.
+async function montarEndereco(formData: FormData): Promise<string | null> {
+  const rua = texto(formData, "rua");
+  const nPredial = texto(formData, "n_predial");
+  const complemento = texto(formData, "complemento");
+  const bairro = texto(formData, "bairro");
+  const cidadeId = texto(formData, "cidade_id");
+  const estadoId = texto(formData, "estado_id");
+
+  const [cidade, estado] = await Promise.all([
+    cidadeId ? prisma.cidades.findUnique({ where: { id: cidadeId } }) : Promise.resolve(null),
+    estadoId ? prisma.estados.findUnique({ where: { id: estadoId } }) : Promise.resolve(null)
+  ]);
+
+  const partes = [
+    [rua, nPredial].filter(Boolean).join(", ") || null,
+    complemento,
+    bairro,
+    cidade?.nome ?? null,
+    estado?.nome ?? null
+  ].filter((p): p is string => Boolean(p));
+
+  return partes.length > 0 ? partes.join(" - ") : null;
+}
+
+async function camposEditaveis(formData: FormData) {
   return {
     tipo_imovel: texto(formData, "tipo_imovel"),
     status_imovel: texto(formData, "status_imovel"),
     tipo_oferta: texto(formData, "tipo_oferta"),
-    inscricao: texto(formData, "inscricao"),
+    inscricao: inscricaoValor(formData, "inscricao"),
     matricula: texto(formData, "matricula"),
     pasta_url: texto(formData, "pasta_url"),
     rua: texto(formData, "rua"),
@@ -40,7 +78,7 @@ function camposEditaveis(formData: FormData) {
     bairro: texto(formData, "bairro"),
     estado_id: texto(formData, "estado_id"),
     cidade_id: texto(formData, "cidade_id"),
-    endereco: texto(formData, "endereco"),
+    endereco: await montarEndereco(formData),
     cliente_vendedor_id: texto(formData, "cliente_vendedor_id"),
     parceiro_id: texto(formData, "parceiro_id"),
     valor_venda: valorMonetario(formData, "valor_venda"),
@@ -55,7 +93,7 @@ export async function criarImovelAction(formData: FormData) {
   await requireAdminSession();
 
   const novo = await prisma.imoveis.create({
-    data: camposEditaveis(formData)
+    data: await camposEditaveis(formData)
   });
 
   await logAlteracao({
@@ -80,7 +118,7 @@ export async function atualizarImovelAction(formData: FormData) {
 
   const depois = await prisma.imoveis.update({
     where: { id },
-    data: camposEditaveis(formData)
+    data: await camposEditaveis(formData)
   });
 
   await logAlteracao({

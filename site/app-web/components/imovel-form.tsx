@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { TIPOS_IMOVEL, STATUS_IMOVEL, TIPOS_OFERTA } from "@/lib/imoveis/opcoes";
-import { formatValorEditavel } from "@/lib/format";
+import { formatValorEditavel, formatInscricao } from "@/lib/format";
 
 type ClienteOpcao = { id: string; nome: string; id_legado: string | null; parceiro_id: string | null };
 type ParceiroOpcao = { id: string; nome: string };
@@ -125,7 +125,12 @@ export function ImovelForm({
           </div>
           <div>
             <label className={LABEL}>Inscrição</label>
-            <input className={CAMPO} name="inscricao" defaultValue={i?.inscricao ?? ""} />
+            <input
+              className={CAMPO}
+              name="inscricao"
+              placeholder="01.23.456.7890.123"
+              defaultValue={formatInscricao(i?.inscricao)}
+            />
           </div>
           <div>
             <label className={LABEL}>Matrícula</label>
@@ -183,10 +188,6 @@ export function ImovelForm({
                 </option>
               ))}
             </select>
-          </div>
-          <div className="md:col-span-2">
-            <label className={LABEL}>Endereço completo</label>
-            <input className={CAMPO} name="endereco" defaultValue={i?.endereco ?? ""} />
           </div>
         </div>
       </div>

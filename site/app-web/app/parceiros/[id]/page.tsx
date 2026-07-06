@@ -21,8 +21,15 @@ function Cartao({ titulo, children }: { titulo: string; children: ReactNode }) {
   );
 }
 
-export default async function ParceiroDetalhePage({ params }: { params: Promise<{ id: string }> }) {
+export default async function ParceiroDetalhePage({
+  params,
+  searchParams
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ salvo?: string }>;
+}) {
   const { id } = await params;
+  const { salvo } = await searchParams;
   const session = await getAdminSession();
 
   const [parceiro, lojas, bancos] = await Promise.all([
@@ -92,6 +99,12 @@ export default async function ParceiroDetalhePage({ params }: { params: Promise<
           </form>
         )}
       </div>
+
+      {salvo === "1" && (
+        <div className="bg-green-50 border border-green-200 text-green-700 text-xs rounded-lg px-3 py-2 mb-4">
+          Parceiro salvo com sucesso.
+        </div>
+      )}
 
       <div className="text-sm font-bold text-gray-800 mb-1">{parceiro.nome}</div>
       <div className="text-xs text-gray-500 mb-0.5">

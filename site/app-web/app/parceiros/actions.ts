@@ -118,7 +118,7 @@ export async function criarParceiroAction(formData: FormData) {
   });
 
   revalidatePath("/parceiros");
-  redirect(`/parceiros/${novo.id}`);
+  redirect(`/parceiros/${novo.id}?salvo=1`);
 }
 
 export async function atualizarParceiroAction(formData: FormData) {
@@ -160,6 +160,7 @@ export async function atualizarParceiroAction(formData: FormData) {
 
   revalidatePath(`/parceiros/${id}`);
   revalidatePath("/parceiros");
+  redirect(`/parceiros/${id}?salvo=1`);
 }
 
 // "Apagar" aqui é sempre um soft-delete (status_funcao = Excluído): a maior
@@ -189,5 +190,5 @@ export async function apagarParceiroAction(formData: FormData) {
   });
 
   revalidatePath("/parceiros");
-  redirect("/parceiros");
+  redirect("/parceiros?excluido=1");
 }

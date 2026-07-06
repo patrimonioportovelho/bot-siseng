@@ -10,7 +10,12 @@ function formatDataHora(data: Date) {
   return new Date(data).toLocaleString("pt-BR");
 }
 
-export default async function ConfiguracoesPage() {
+export default async function ConfiguracoesPage({
+  searchParams
+}: {
+  searchParams: Promise<{ salvo?: string; erro?: string; aprovado?: string; rejeitado?: string }>;
+}) {
+  const { salvo, erro, aprovado, rejeitado } = await searchParams;
   const session = await getAdminSession();
 
   if (!session?.isAdm) {
@@ -55,6 +60,25 @@ export default async function ConfiguracoesPage() {
   return (
     <div>
       <Topbar />
+
+      {salvo === "1" && (
+        <div className="bg-green-50 border border-green-200 text-green-700 text-xs rounded-lg px-3 py-2 mb-4">
+          Senha salva com sucesso.
+        </div>
+      )}
+      {aprovado === "1" && (
+        <div className="bg-green-50 border border-green-200 text-green-700 text-xs rounded-lg px-3 py-2 mb-4">
+          Acesso aprovado com sucesso.
+        </div>
+      )}
+      {rejeitado === "1" && (
+        <div className="bg-green-50 border border-green-200 text-green-700 text-xs rounded-lg px-3 py-2 mb-4">
+          Solicitação rejeitada.
+        </div>
+      )}
+      {erro && (
+        <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg px-3 py-2 mb-4">{erro}</div>
+      )}
 
       <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4">
         <div className="text-sm font-bold text-gray-800 mb-1">Solicitações de acesso pendentes</div>

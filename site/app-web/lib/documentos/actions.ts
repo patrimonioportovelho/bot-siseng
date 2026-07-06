@@ -22,32 +22,49 @@ export async function buscarRegistrosAction(
 
   switch (entidadeTipo) {
     case "transacao": {
-      // Contrato de compra e venda só faz sentido pra transação que ainda
-      // está em elaboração — depois de "Transação Finalizada" o contrato já
-      // foi gerado, não tem por que aparecer de novo aqui.
+      // Contrato de locação/compra e venda só faz sentido pra transação que
+      // ainda está em elaboração — depois de "Transação Finalizada" o
+      // contrato já foi gerado, não tem por que aparecer de novo aqui.
       const filtroStatus =
-        tipoDocumento === "contrato_compra_venda" ? { status: "Elaboração do Contrato de Compra e Venda" } : {};
+        tipoDocumento === "contrato_compra_venda"
+          ? { status: "Elaboração do Contrato de Compra e Venda" }
+          : tipoDocumento === "contrato_locacao"
+          ? { status: "Elaboração de Contrato de Locação" }
+          : {};
       const rows = await prisma.transacoes.findMany({
         where: {
           ...filtroStatus,
           ...(termo
             ? {
                 OR: [
-                  { chave: { contains: termo, mode: "insensitive" } },
+                  { id_legado: { contains: termo, mode: "insensitive" } },
                   { imoveis: { endereco: { contains: termo, mode: "insensitive" } } },
-                  { clientes_transacoes_cliente_idToclientes: { nome: { contains: termo, mode: "insensitive" } } }
+                  { clientes_transacoes_cliente_idToclientes: { nome: { contains: termo, mode: "insensitive" } } },
+                  {
+                    clientes_transacoes_cliente_contraparte_idToclientes: {
+                      nome: { contains: termo, mode: "insensitive" }
+                    }
+                  }
                 ]
               }
             : {})
         },
-        include: { imoveis: true, clientes_transacoes_cliente_idToclientes: true },
+        include: {
+          imoveis: true,
+          clientes_transacoes_cliente_idToclientes: true,
+          clientes_transacoes_cliente_contraparte_idToclientes: true
+        },
         orderBy: { created_at: "desc" },
         take: 20
       });
+      // Label: Id — Cliente Proprietário x Cliente Interessado (só o
+      // principal, primeiro da lista — mesma convenção usada no resto do
+      // sistema) — muito mais fácil de reconhecer do que o antigo campo
+      // "chave" (que na verdade guarda o momento de entrega das chaves).
       return rows.map((t) => ({
         id: t.id,
-        label: `${t.chave ?? "sem chave"} · ${t.tipo} · ${t.imoveis?.endereco ?? "—"} · ${
-          t.clientes_transacoes_cliente_idToclientes.nome
+        label: `${t.id_legado ?? t.id} — ${t.clientes_transacoes_cliente_idToclientes.nome} x ${
+          t.clientes_transacoes_cliente_contraparte_idToclientes?.nome ?? "sem interessado"
         }`
       }));
     }

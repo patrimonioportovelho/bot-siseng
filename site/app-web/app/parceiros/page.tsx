@@ -73,9 +73,9 @@ function GrupoFuncao({ titulo, parceiros }: { titulo: string; parceiros: Parceir
 export default async function ParceirosPage({
   searchParams
 }: {
-  searchParams: Promise<{ q?: string }>;
+  searchParams: Promise<{ q?: string; excluido?: string }>;
 }) {
-  const { q } = await searchParams;
+  const { q, excluido } = await searchParams;
   const termo = (q ?? "").trim();
   const parceiros = await buscarParceiros(termo);
 
@@ -95,6 +95,12 @@ export default async function ParceirosPage({
   return (
     <div>
       <Topbar />
+
+      {excluido === "1" && (
+        <div className="bg-green-50 border border-green-200 text-green-700 text-xs rounded-lg px-3 py-2 mb-4">
+          Cadastro apagado com sucesso.
+        </div>
+      )}
 
       <div className="flex items-center justify-between mb-3">
         <div className="text-sm font-bold text-gray-800">Parceiros ({parceiros.length})</div>

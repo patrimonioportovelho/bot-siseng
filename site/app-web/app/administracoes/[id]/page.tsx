@@ -10,8 +10,15 @@ import { atualizarAdministracaoAction } from "../actions";
 
 export const dynamic = "force-dynamic";
 
-export default async function AdministracaoDetalhePage({ params }: { params: Promise<{ id: string }> }) {
+export default async function AdministracaoDetalhePage({
+  params,
+  searchParams
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ salvo?: string }>;
+}) {
   const { id } = await params;
+  const { salvo } = await searchParams;
 
   const [administracao, lojas, clientes, imoveis, parceiros, transacoes] = await Promise.all([
     prisma.adm_imoveis.findUnique({
@@ -78,6 +85,12 @@ export default async function AdministracaoDetalhePage({ params }: { params: Pro
       <Link href="/administracoes" className="text-xs text-gray-500 hover:text-gray-800 inline-block mb-3">
         ← Voltar para Administrações
       </Link>
+
+      {salvo === "1" && (
+        <div className="bg-green-50 border border-green-200 text-green-700 text-xs rounded-lg px-3 py-2 mb-4">
+          Administração salva com sucesso.
+        </div>
+      )}
 
       <div className="text-sm font-bold text-gray-800 mb-1">
         {administracao.imoveis?.endereco ?? "Imóvel sem endereço"}

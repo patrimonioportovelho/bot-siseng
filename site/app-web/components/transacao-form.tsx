@@ -388,6 +388,13 @@ export function TransacaoForm({
         <div className="grid md:grid-cols-2 gap-3">
           <div className="relative">
             <label className={LABEL}>{precisaAdministracao ? "Administração (status Ativo)" : "Imóvel"}</label>
+            <p className="text-[11px] text-gray-400 mb-1">
+              {precisaAdministracao
+                ? "Só mostra administrações com status Ativo — o imóvel e o proprietário vêm dela automaticamente."
+                : semAdministracao
+                ? "Não mostra imóveis com administração ativa — esses precisam ser vinculados por lá."
+                : "Digite endereço, inscrição, Id ou nome do proprietário para localizar o imóvel."}
+            </p>
 
             {precisaAdministracao ? (
               <>
@@ -421,9 +428,6 @@ export function TransacaoForm({
                     ))}
                   </div>
                 )}
-                <p className="text-[11px] text-gray-400 mt-1.5">
-                  Só mostra administrações com status Ativo — o imóvel e o proprietário vêm dela automaticamente.
-                </p>
               </>
             ) : (
               <>
@@ -455,11 +459,6 @@ export function TransacaoForm({
                       </button>
                     ))}
                   </div>
-                )}
-                {semAdministracao && (
-                  <p className="text-[11px] text-gray-400 mt-1.5">
-                    Não mostra imóveis com administração ativa — esses precisam ser vinculados por lá.
-                  </p>
                 )}
               </>
             )}

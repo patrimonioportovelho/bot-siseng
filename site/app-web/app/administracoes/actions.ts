@@ -124,7 +124,7 @@ export async function criarAdministracaoAction(formData: FormData) {
   });
 
   revalidatePath("/administracoes");
-  redirect(`/administracoes/${novo.id}`);
+  redirect(`/administracoes/${novo.id}?salvo=1`);
 }
 
 export async function atualizarAdministracaoAction(formData: FormData) {
@@ -151,4 +151,5 @@ export async function atualizarAdministracaoAction(formData: FormData) {
 
   revalidatePath(`/administracoes/${id}`);
   revalidatePath("/administracoes");
+  redirect(`/administracoes/${id}?salvo=1`);
 }

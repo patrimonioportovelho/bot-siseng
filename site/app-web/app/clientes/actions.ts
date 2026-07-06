@@ -99,7 +99,7 @@ export async function criarClienteAction(formData: FormData) {
   });
 
   revalidatePath("/clientes");
-  redirect(`/clientes/${novo.id}`);
+  redirect(`/clientes/${novo.id}?salvo=1`);
 }
 
 export async function atualizarClienteAction(formData: FormData) {
@@ -126,4 +126,5 @@ export async function atualizarClienteAction(formData: FormData) {
 
   revalidatePath(`/clientes/${id}`);
   revalidatePath("/clientes");
+  redirect(`/clientes/${id}?salvo=1`);
 }

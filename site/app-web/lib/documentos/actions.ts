@@ -22,16 +22,24 @@ export async function buscarRegistrosAction(
 
   switch (entidadeTipo) {
     case "transacao": {
+      // Contrato de compra e venda só faz sentido pra transação que ainda
+      // está em elaboração — depois de "Transação Finalizada" o contrato já
+      // foi gerado, não tem por que aparecer de novo aqui.
+      const filtroStatus =
+        tipoDocumento === "contrato_compra_venda" ? { status: "Elaboração do Contrato de Compra e Venda" } : {};
       const rows = await prisma.transacoes.findMany({
-        where: termo
-          ? {
-              OR: [
-                { chave: { contains: termo, mode: "insensitive" } },
-                { imoveis: { endereco: { contains: termo, mode: "insensitive" } } },
-                { clientes_transacoes_cliente_idToclientes: { nome: { contains: termo, mode: "insensitive" } } }
-              ]
-            }
-          : undefined,
+        where: {
+          ...filtroStatus,
+          ...(termo
+            ? {
+                OR: [
+                  { chave: { contains: termo, mode: "insensitive" } },
+                  { imoveis: { endereco: { contains: termo, mode: "insensitive" } } },
+                  { clientes_transacoes_cliente_idToclientes: { nome: { contains: termo, mode: "insensitive" } } }
+                ]
+              }
+            : {})
+        },
         include: { imoveis: true, clientes_transacoes_cliente_idToclientes: true },
         orderBy: { created_at: "desc" },
         take: 20

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import {
   formatMoeda,
   formatData,
+  formatInscricao,
   calcularPrazoRestante,
   diasParaVencimento,
   situacaoContratoLocacao,
@@ -39,6 +40,7 @@ export async function TransacoesLista({ tipo, q, novoHref }: { tipo: "Locação"
       ? {
           OR: [
             { imoveis: { endereco: { contains: termo, mode: "insensitive" as const } } },
+            { imoveis: { inscricao: { contains: termo, mode: "insensitive" as const } } },
             {
               imoveis: {
                 imoveis_proprietarios: { some: { clientes: { nome: { contains: termo, mode: "insensitive" as const } } } }
@@ -162,7 +164,7 @@ export async function TransacoesLista({ tipo, q, novoHref }: { tipo: "Locação"
                   </div>
                   <div className={`grid ${colunas} gap-3 px-3 py-1 text-[11px] text-gray-400 border-b border-gray-100`}>
                     <span>Id</span>
-                    <span>Imóvel</span>
+                    <span>{somenteLocacao ? "Imóvel" : "Inscrição"}</span>
                     <span>Cliente Proprietário</span>
                     <span>Cliente Interessado</span>
                     <span>Assinatura</span>
@@ -198,7 +200,7 @@ export async function TransacoesLista({ tipo, q, novoHref }: { tipo: "Locação"
                             {t.id_legado ?? t.id}
                           </span>
                           <span className={`text-xs truncate ${situacao === "vencido" ? "text-red-700" : "text-gray-500"}`}>
-                            {t.imoveis?.endereco ?? "—"}
+                            {somenteLocacao ? t.imoveis?.endereco ?? "—" : formatInscricao(t.imoveis?.inscricao) || "—"}
                           </span>
                           <span
                             className={`text-xs font-medium truncate ${situacao === "vencido" ? "text-red-800" : "text-gray-800"}`}

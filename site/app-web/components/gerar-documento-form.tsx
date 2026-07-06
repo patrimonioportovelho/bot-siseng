@@ -19,7 +19,8 @@ const MODELOS: { valor: TipoDocumento; label: string }[] = [
 
 const DICA_BUSCA: Record<TipoDocumento, string> = {
   contrato_locacao: "Busque pela chave da transação, endereço do imóvel ou nome do cliente",
-  contrato_compra_venda: "Busque pela chave da transação, endereço do imóvel ou nome do cliente",
+  contrato_compra_venda:
+    "Busque pela chave da transação, endereço do imóvel ou nome do cliente — só aparece quem está em Elaboração de Contrato de Compra e Venda",
   carta_preferencia: "Busque pelo endereço do imóvel ou nome do proprietário",
   contrato_administracao:
     "Busque pelo Id, inscrição do imóvel, endereço ou nome do proprietário — só aparece quem está em Captação",

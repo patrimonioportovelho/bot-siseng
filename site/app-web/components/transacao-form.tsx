@@ -98,10 +98,12 @@ function inputDate(d: Date | null) {
   return new Date(d).toISOString().slice(0, 10);
 }
 
+// Busca do Imóvel no Vínculo lidera com Id - Cliente Proprietário — mais
+// fácil de achar de cabeça do que decorar endereço ou inscrição.
 function labelImovel(i: ImovelOpcao): string {
-  const insc = formatInscricao(i.inscricao);
-  const qtdProprietarios = i.proprietarios.length > 1 ? `${i.proprietarios.length} proprietários` : null;
-  const partes = [i.endereco ?? "(sem endereço)", insc ? `Insc. ${insc}` : null, qtdProprietarios].filter(Boolean);
+  const idExibicao = i.id_legado ?? i.id;
+  const nomesProprietarios = i.proprietarios.map((p) => p.nome).join(", ") || "sem proprietário";
+  const partes = [`${idExibicao} - ${nomesProprietarios}`, i.endereco ?? null].filter(Boolean);
   return partes.join(" — ");
 }
 
@@ -255,7 +257,13 @@ export function TransacaoForm({
     const base = semAdministracao ? imoveis.filter((i) => !idsComAdmAtiva.has(i.id)) : imoveis;
     if (!b) return base.slice(0, 30);
     return base
-      .filter((i) => (i.endereco ?? "").toLowerCase().includes(b) || (i.inscricao ?? "").toLowerCase().includes(b))
+      .filter(
+        (i) =>
+          (i.id_legado ?? "").toLowerCase().includes(b) ||
+          i.proprietarios.some((p) => p.nome.toLowerCase().includes(b)) ||
+          (i.endereco ?? "").toLowerCase().includes(b) ||
+          (i.inscricao ?? "").toLowerCase().includes(b)
+      )
       .slice(0, 30);
   }, [buscaImovel, imoveis, semAdministracao, idsComAdmAtiva]);
 

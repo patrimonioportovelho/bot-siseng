@@ -218,7 +218,6 @@ model clientes {
   lojas                                                  lojas?        @relation(fields: [loja_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   parceiros                                              parceiros?    @relation(fields: [parceiro_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   gestoes                                                gestoes[]
-  imoveis                                                imoveis[]
   imoveis_proprietarios                                  imoveis_proprietarios[]
   pagamentos                                             pagamentos[]
   transacoes_transacoes_cliente_contraparte_idToclientes transacoes[]  @relation("transacoes_cliente_contraparte_idToclientes")

@@ -169,7 +169,7 @@ async function preencherTemplate(
 
 async function converterParaPdf(docxBuffer: Buffer): Promise<{ buffer: Buffer; extensao: "pdf" }> {
   const form = new FormData();
-  form.append("files", new Blob([docxBuffer]), "documento.docx");
+  form.append("files", new Blob([new Uint8Array(docxBuffer)]), "documento.docx");
   const resposta = await fetch(`${DOCUMENT_CONVERTER_URL}/forms/libreoffice/convert`, {
     method: "POST",
     body: form

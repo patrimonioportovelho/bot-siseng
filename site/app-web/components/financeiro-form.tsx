@@ -57,7 +57,6 @@ export function FinanceiroForm({
   const [pago, setPago] = useState(false);
 
   const [valor, setValor] = useState("");
-  const [valorParcela, setValorParcela] = useState("");
   const [parcelasQtd, setParcelasQtd] = useState("");
 
   const [transacaoId, setTransacaoId] = useState("");
@@ -125,8 +124,14 @@ export function FinanceiroForm({
     setListaProprietarioAberta(false);
   }
 
-  const totalParcelado =
-    parcelasQtd && valorParcela ? Number(parcelasQtd) * (Number(valorParcela.replace(/\./g, "").replace(",", ".")) || 0) : null;
+  // Aqui "Valor" é sempre o valor total da dívida (à vista ou parcelada) —
+  // no modo Parcelado, o valor de cada parcela é o total dividido pela
+  // quantidade informada, não um valor digitado à parte. O preview abaixo é
+  // só ilustrativo; quem calcula de verdade (com o resto da divisão jogado
+  // na última parcela) é criarMovimentacaoAction, no servidor.
+  const valorTotalNum = Number(valor.replace(/\./g, "").replace(",", ".")) || 0;
+  const parcelasNum = Number(parcelasQtd) || 0;
+  const valorParcelaPreview = parcelasNum > 0 ? valorTotalNum / parcelasNum : null;
 
   return (
     <form action={action} className="flex flex-col gap-5">
@@ -337,6 +342,17 @@ export function FinanceiroForm({
         ) : (
           <div className="grid md:grid-cols-3 gap-3">
             <div>
+              <label className={LABEL}>Valor total da dívida</label>
+              <input
+                className={CAMPO}
+                name="valor"
+                value={valor}
+                onChange={(e) => setValor(e.target.value)}
+                placeholder="0,00"
+                required
+              />
+            </div>
+            <div>
               <label className={LABEL}>Quantidade de parcelas</label>
               <input
                 className={CAMPO}
@@ -349,24 +365,13 @@ export function FinanceiroForm({
               />
             </div>
             <div>
-              <label className={LABEL}>Valor de cada parcela</label>
-              <input
-                className={CAMPO}
-                name="valor_parcela"
-                value={valorParcela}
-                onChange={(e) => setValorParcela(e.target.value)}
-                placeholder="0,00"
-                required
-              />
-            </div>
-            <div>
               <label className={LABEL}>Vencimento da 1ª parcela</label>
               <input className={CAMPO} type="date" name="vencimento" defaultValue={hoje()} required />
             </div>
-            {totalParcelado !== null && (
+            {valorParcelaPreview !== null && (
               <p className="text-[11px] text-gray-500 md:col-span-3">
-                Total: {formatMoeda(totalParcelado)} — vão ser lançadas {parcelasQtd || 0} parcelas, uma por mês a partir do
-                vencimento informado.
+                {parcelasQtd || 0} parcelas de {formatMoeda(valorParcelaPreview)} (a última pode variar poucos centavos
+                por causa do arredondamento), uma por mês a partir do vencimento informado.
               </p>
             )}
           </div>

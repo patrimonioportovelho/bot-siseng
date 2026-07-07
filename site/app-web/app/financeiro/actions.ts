@@ -71,12 +71,21 @@ export async function criarMovimentacaoAction(formData: FormData) {
 
   if (formaPagamento === "Parcelado") {
     const parcelas = inteiro(formData, "parcelas");
-    const valorParcela = valorMonetario(formData, "valor_parcela");
-    if (!parcelas || parcelas < 1 || !valorParcela) {
-      throw new Error("Informe a quantidade de parcelas e o valor de cada parcela.");
+    const valorTotal = valorMonetario(formData, "valor");
+    if (!parcelas || parcelas < 1 || !valorTotal) {
+      throw new Error("Informe o valor total da dívida e a quantidade de parcelas.");
     }
 
     const idParcelamento = randomUUID();
+
+    // Divide o valor total em centavos pra não acumular erro de ponto
+    // flutuante (ex.: 500 / 3 não fecha exato em decimal) — todas as
+    // parcelas ficam iguais e o resto da divisão (poucos centavos) cai na
+    // última, garantindo que a soma das parcelas bate exatamente o total
+    // informado.
+    const totalCentavos = Math.round(valorTotal * 100);
+    const baseCentavos = Math.floor(totalCentavos / parcelas);
+    const restoCentavos = totalCentavos - baseCentavos * parcelas;
 
     for (let i = 1; i <= parcelas; i++) {
       // A 1ª parcela usa o Vencimento informado; as seguintes somam 1 mês a
@@ -84,6 +93,7 @@ export async function criarMovimentacaoAction(formData: FormData) {
       // o valor base direto em vez de chamar a função com 0).
       const vencimentoParcelaTexto = i === 1 ? vencimentoBase : somarMeses(vencimentoBase, i - 1) || vencimentoBase;
       const vencimentoParcela = new Date(vencimentoParcelaTexto + "T00:00:00");
+      const valorParcela = (baseCentavos + (i === parcelas ? restoCentavos : 0)) / 100;
 
       const criada = await prisma.movimentacoes
         .create({

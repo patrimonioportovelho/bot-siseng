@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireAdminSession, requireAdm, logAlteracao } from "@/lib/auth";
 import { valorEditavelParaDecimal, percentualParaDecimal } from "@/lib/format";
+import { registrarEJogarErro } from "@/lib/erros";
 
 function texto(formData: FormData, campo: string): string | null {
   const v = formData.get(campo);
@@ -105,16 +106,18 @@ export async function criarAdministracaoAction(formData: FormData) {
 
   const idLegado = await gerarProximoId();
 
-  const novo = await prisma.adm_imoveis.create({
-    data: {
-      ...camposEditaveis(formData),
-      loja_id: lojaId,
-      cliente_id: clienteId,
-      imovel_id: imovelId,
-      id_legado: idLegado,
-      status: texto(formData, "status") ?? "Captação"
-    }
-  });
+  const novo = await prisma.adm_imoveis
+    .create({
+      data: {
+        ...camposEditaveis(formData),
+        loja_id: lojaId,
+        cliente_id: clienteId,
+        imovel_id: imovelId,
+        id_legado: idLegado,
+        status: texto(formData, "status") ?? "Captação"
+      }
+    })
+    .catch((erro) => registrarEJogarErro({ entidadeTipo: "adm_imoveis", acao: "criar", erro }));
 
   await logAlteracao({
     entidadeTipo: "adm_imoveis",
@@ -136,10 +139,12 @@ export async function atualizarAdministracaoAction(formData: FormData) {
   const antes = await prisma.adm_imoveis.findUnique({ where: { id } });
   if (!antes) throw new Error("Administração não encontrada.");
 
-  const depois = await prisma.adm_imoveis.update({
-    where: { id },
-    data: camposEditaveis(formData)
-  });
+  const depois = await prisma.adm_imoveis
+    .update({
+      where: { id },
+      data: camposEditaveis(formData)
+    })
+    .catch((erro) => registrarEJogarErro({ entidadeTipo: "adm_imoveis", entidadeId: id, acao: "editar", erro }));
 
   await logAlteracao({
     entidadeTipo: "adm_imoveis",

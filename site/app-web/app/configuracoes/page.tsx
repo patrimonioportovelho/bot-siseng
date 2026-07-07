@@ -10,13 +10,16 @@ import {
   criarPublicacaoAction,
   atualizarPublicacaoAction,
   alternarAtivoPublicacaoAction,
-  excluirPublicacaoAction
+  excluirPublicacaoAction,
+  marcarErroVistoAction
 } from "./actions";
 
 export const dynamic = "force-dynamic";
 
+// O servidor roda em UTC, então sem timeZone explícito o horário aparecia
+// adiantado (Porto Velho é UTC-4, sem horário de verão).
 function formatDataHora(data: Date) {
-  return new Date(data).toLocaleString("pt-BR");
+  return new Date(data).toLocaleString("pt-BR", { timeZone: "America/Porto_Velho" });
 }
 
 const TIPOS_PUBLICACAO = ["Noticia", "Edital"];
@@ -50,7 +53,7 @@ export default async function ConfiguracoesPage({
     );
   }
 
-  const [pendentes, parceirosAtivos, lojas, acessos, alteracoes, publicacoes, mensagensSac] = await Promise.all([
+  const [pendentes, parceirosAtivos, lojas, acessos, alteracoes, publicacoes, mensagensSac, errosCadastro] = await Promise.all([
     prisma.solicitacoes_acesso.findMany({
       where: { status: "pendente" },
       orderBy: { criado_em: "asc" },
@@ -73,7 +76,12 @@ export default async function ConfiguracoesPage({
       include: { parceiros: true }
     }),
     prisma.publicacoes_site.findMany({ orderBy: { publicado_em: "desc" } }),
-    prisma.mensagens_sac.findMany({ orderBy: { criado_em: "desc" }, take: 100 })
+    prisma.mensagens_sac.findMany({ orderBy: { criado_em: "desc" }, take: 100 }),
+    prisma.logs_erro.findMany({
+      orderBy: { criado_em: "desc" },
+      take: 100,
+      include: { parceiros: true }
+    })
   ]);
 
   return (
@@ -479,6 +487,61 @@ export default async function ConfiguracoesPage({
                   <p className="whitespace-pre-line bg-gray-50 border border-gray-100 rounded-lg p-2">
                     {m.mensagem}
                   </p>
+                </div>
+              </details>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="bg-white border border-gray-200 rounded-xl p-4 mt-4">
+        <div className="text-sm font-bold text-gray-800 mb-1">Erros de cadastro</div>
+        <p className="text-xs text-gray-500 mb-3">
+          Erros de salvamento em Clientes, Imóveis, Transações, Administrações e Parceiros ficam
+          registrados aqui — antes disso, um erro só aparecia na tela na hora e sumia. Marque como
+          visto depois de conferir e resolver.
+        </p>
+        {errosCadastro.length === 0 ? (
+          <p className="text-xs text-gray-400">Nenhum erro registrado ainda.</p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {errosCadastro.map((e) => (
+              <details key={e.id} className="border border-gray-200 rounded-lg">
+                <summary className="flex items-center justify-between gap-2 px-3 py-2 cursor-pointer text-xs">
+                  <span className="flex items-center gap-2 min-w-0">
+                    <span
+                      className={`text-[10px] font-semibold uppercase rounded-full px-2 py-0.5 border shrink-0 ${
+                        e.visto
+                          ? "bg-gray-50 text-gray-500 border-gray-200"
+                          : "bg-red-50 text-red-700 border-red-200"
+                      }`}
+                    >
+                      {e.visto ? "Visto" : "Novo"}
+                    </span>
+                    <span className="text-gray-400 shrink-0">
+                      {e.acao} em {e.entidade_tipo}
+                    </span>
+                    <span className="font-medium text-gray-800 truncate">{e.mensagem}</span>
+                  </span>
+                  <span className="text-gray-400 shrink-0">{formatDataHora(e.criado_em)}</span>
+                </summary>
+                <div className="px-3 pb-3 text-xs text-gray-600">
+                  <div className="mb-1">
+                    <span className="text-gray-400">Quem tentou:</span> {e.parceiros?.nome ?? "—"}
+                  </div>
+                  {e.mensagem_tecnica && (
+                    <p className="whitespace-pre-line bg-gray-50 border border-gray-100 rounded-lg p-2 font-mono text-[11px] mb-2">
+                      {e.mensagem_tecnica}
+                    </p>
+                  )}
+                  {!e.visto && (
+                    <form action={marcarErroVistoAction}>
+                      <input type="hidden" name="erroId" value={e.id} />
+                      <button type="submit" className="text-xs border border-gray-300 text-gray-600 rounded-lg px-2 py-1">
+                        Marcar como visto
+                      </button>
+                    </form>
+                  )}
                 </div>
               </details>
             ))}

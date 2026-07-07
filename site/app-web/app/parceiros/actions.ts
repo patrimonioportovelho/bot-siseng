@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAdminSession, requireAdm, logAlteracao } from "@/lib/auth";
 import { percentualParaDecimal } from "@/lib/format";
 import { FUNCOES_EQUIPE } from "@/lib/parceiros/opcoes";
+import { registrarEJogarErro } from "@/lib/erros";
 
 function texto(formData: FormData, campo: string): string | null {
   const v = formData.get(campo);
@@ -101,14 +102,16 @@ export async function criarParceiroAction(formData: FormData) {
   const cpfDigitado = texto(formData, "cpf");
   const cpf = cpfDigitado ? cpfDigitado.replace(/\D/g, "") : null;
 
-  const novo = await prisma.parceiros.create({
-    data: {
-      nome,
-      cpf,
-      ...camposEditaveis(formData),
-      funcao
-    }
-  });
+  const novo = await prisma.parceiros
+    .create({
+      data: {
+        nome,
+        cpf,
+        ...camposEditaveis(formData),
+        funcao
+      }
+    })
+    .catch((erro) => registrarEJogarErro({ entidadeTipo: "parceiros", acao: "criar", erro }));
 
   await logAlteracao({
     entidadeTipo: "parceiros",
@@ -145,10 +148,12 @@ export async function atualizarParceiroAction(formData: FormData) {
     }
   }
 
-  const depois = await prisma.parceiros.update({
-    where: { id },
-    data: campos
-  });
+  const depois = await prisma.parceiros
+    .update({
+      where: { id },
+      data: campos
+    })
+    .catch((erro) => registrarEJogarErro({ entidadeTipo: "parceiros", entidadeId: id, acao: "editar", erro }));
 
   await logAlteracao({
     entidadeTipo: "parceiros",

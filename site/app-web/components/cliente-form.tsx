@@ -1,7 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { ESTADOS_CIVIS, TIPOS_CONTA, TIPOS_PIX, TIPOS_CLIENTE, SEXO_OPCOES } from "@/lib/clientes/opcoes";
+import {
+  ESTADOS_CIVIS,
+  TIPOS_CONTA,
+  TIPOS_PIX,
+  TIPOS_CLIENTE,
+  SEXO_OPCOES,
+  CAT_PROFISSAO_OPCOES
+} from "@/lib/clientes/opcoes";
 import { formatCpf, formatCnpj, formatTelefone, formatValorEditavel } from "@/lib/format";
 
 type Loja = { id: string; nome: string };
@@ -194,7 +201,14 @@ export function ClienteForm({
           </div>
           <div>
             <label className={LABEL}>Categoria de profissão</label>
-            <input className={CAMPO} name="cat_profissao" defaultValue={c?.cat_profissao ?? ""} />
+            <select className={CAMPO} name="cat_profissao" defaultValue={c?.cat_profissao ?? ""}>
+              <option value="">—</option>
+              {CAT_PROFISSAO_OPCOES.map((o) => (
+                <option key={o} value={o}>
+                  {o}
+                </option>
+              ))}
+            </select>
           </div>
           <div>
             <label className={LABEL}>Tipo de servidor</label>

@@ -188,3 +188,19 @@ export async function atualizarStatusSacAction(formData: FormData) {
 
   revalidatePath("/configuracoes");
 }
+
+// Erros de cadastro (logs_erro) — cada erro de salvamento (ex.: constraint do
+// banco rejeitando um valor) fica registrado aqui pra dar pra consultar
+// depois; "marcar visto" só tira da contagem de pendentes, não apaga nada.
+export async function marcarErroVistoAction(formData: FormData) {
+  await requireAdm();
+  const id = String(formData.get("erroId") ?? "");
+  if (!id) return;
+
+  await prisma.logs_erro.update({
+    where: { id },
+    data: { visto: true }
+  });
+
+  revalidatePath("/configuracoes");
+}

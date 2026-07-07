@@ -20,3 +20,16 @@ export const TIPOS_CLIENTE = ["Pessoa Física", "Pessoa Jurídica"];
 // livre no formulário — qualquer valor digitado fora dessa lista (ex.: "F",
 // "Feminino") derrubava o salvamento com um erro de constraint do Postgres.
 export const SEXO_OPCOES = ["Homem", "Mulher"];
+
+// Valores exatos aceitos pelo check constraint clientes_cat_profissao_check.
+// Mesmo problema do Sexo: "Categoria de profissão" era texto livre no
+// formulário, então qualquer valor fora dessa lista (ex.: "Aposentado",
+// "Estudante") derrubava o salvamento com um erro de constraint do Postgres —
+// provavelmente a causa dos erros intermitentes no cadastro de cliente.
+export const CAT_PROFISSAO_OPCOES = [
+  "Serviço público - Cargo Comissionado (CDS)",
+  "Serviço público - Estatutário",
+  "Autônomo",
+  "Empresário",
+  "Funcionário de empresa privada"
+];

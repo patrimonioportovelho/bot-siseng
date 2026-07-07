@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireAdminSession, requireAdm, logAlteracao } from "@/lib/auth";
 import { valorEditavelParaDecimal } from "@/lib/format";
+import { registrarEJogarErro } from "@/lib/erros";
 
 function texto(formData: FormData, campo: string): string | null {
   const v = formData.get(campo);
@@ -113,9 +114,11 @@ async function sincronizarProprietarios(imovelId: string, formData: FormData) {
 export async function criarImovelAction(formData: FormData) {
   await requireAdminSession();
 
-  const novo = await prisma.imoveis.create({
-    data: await camposEditaveis(formData)
-  });
+  const novo = await prisma.imoveis
+    .create({
+      data: await camposEditaveis(formData)
+    })
+    .catch((erro) => registrarEJogarErro({ entidadeTipo: "imoveis", acao: "criar", erro }));
 
   await sincronizarProprietarios(novo.id, formData);
 
@@ -139,10 +142,12 @@ export async function atualizarImovelAction(formData: FormData) {
   const antes = await prisma.imoveis.findUnique({ where: { id } });
   if (!antes) throw new Error("Imóvel não encontrado.");
 
-  const depois = await prisma.imoveis.update({
-    where: { id },
-    data: await camposEditaveis(formData)
-  });
+  const depois = await prisma.imoveis
+    .update({
+      where: { id },
+      data: await camposEditaveis(formData)
+    })
+    .catch((erro) => registrarEJogarErro({ entidadeTipo: "imoveis", entidadeId: id, acao: "editar", erro }));
 
   await sincronizarProprietarios(id, formData);
 

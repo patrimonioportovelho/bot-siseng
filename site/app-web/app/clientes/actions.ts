@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireAdminSession, requireAdm, logAlteracao } from "@/lib/auth";
 import { valorEditavelParaDecimal } from "@/lib/format";
+import { registrarEJogarErro } from "@/lib/erros";
 
 function texto(formData: FormData, campo: string): string | null {
   const v = formData.get(campo);
@@ -83,13 +84,15 @@ export async function criarClienteAction(formData: FormData) {
     throw new Error("Nome e tipo de cliente são obrigatórios.");
   }
 
-  const novo = await prisma.clientes.create({
-    data: {
-      nome,
-      ...camposEditaveis(formData),
-      tipo_cliente: tipoCliente
-    }
-  });
+  const novo = await prisma.clientes
+    .create({
+      data: {
+        nome,
+        ...camposEditaveis(formData),
+        tipo_cliente: tipoCliente
+      }
+    })
+    .catch((erro) => registrarEJogarErro({ entidadeTipo: "clientes", acao: "criar", erro }));
 
   await logAlteracao({
     entidadeTipo: "clientes",
@@ -111,10 +114,12 @@ export async function atualizarClienteAction(formData: FormData) {
   const antes = await prisma.clientes.findUnique({ where: { id } });
   if (!antes) throw new Error("Cliente não encontrado.");
 
-  const depois = await prisma.clientes.update({
-    where: { id },
-    data: camposEditaveis(formData)
-  });
+  const depois = await prisma.clientes
+    .update({
+      where: { id },
+      data: camposEditaveis(formData)
+    })
+    .catch((erro) => registrarEJogarErro({ entidadeTipo: "clientes", entidadeId: id, acao: "editar", erro }));
 
   await logAlteracao({
     entidadeTipo: "clientes",

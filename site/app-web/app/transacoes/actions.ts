@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireAdminSession, requireAdm, logAlteracao } from "@/lib/auth";
 import { valorEditavelParaDecimal, percentualParaDecimal } from "@/lib/format";
+import { registrarEJogarErro } from "@/lib/erros";
 
 function texto(formData: FormData, campo: string): string | null {
   const v = formData.get(campo);
@@ -206,17 +207,19 @@ export async function criarTransacaoAction(formData: FormData) {
   const clienteId = await proprietarioDoImovel(imovelId);
   const idLegado = await gerarProximoId(tipo);
 
-  const novo = await prisma.transacoes.create({
-    data: {
-      ...camposEditaveis(formData),
-      tipo,
-      loja_id: lojaId,
-      imovel_id: imovelId,
-      cliente_id: clienteId,
-      cliente_contraparte_id: interessadosIds[0],
-      id_legado: idLegado
-    }
-  });
+  const novo = await prisma.transacoes
+    .create({
+      data: {
+        ...camposEditaveis(formData),
+        tipo,
+        loja_id: lojaId,
+        imovel_id: imovelId,
+        cliente_id: clienteId,
+        cliente_contraparte_id: interessadosIds[0],
+        id_legado: idLegado
+      }
+    })
+    .catch((erro) => registrarEJogarErro({ entidadeTipo: "transacoes", acao: "criar", erro }));
 
   await sincronizarInteressados(novo.id, formData);
   await sincronizarCondicoesPagamento(novo.id, formData);
@@ -255,15 +258,17 @@ export async function atualizarTransacaoAction(formData: FormData) {
 
   const clienteId = await proprietarioDoImovel(imovelId);
 
-  const depois = await prisma.transacoes.update({
-    where: { id },
-    data: {
-      ...camposEditaveis(formData),
-      imovel_id: imovelId,
-      cliente_id: clienteId,
-      cliente_contraparte_id: interessadosIds[0]
-    }
-  });
+  const depois = await prisma.transacoes
+    .update({
+      where: { id },
+      data: {
+        ...camposEditaveis(formData),
+        imovel_id: imovelId,
+        cliente_id: clienteId,
+        cliente_contraparte_id: interessadosIds[0]
+      }
+    })
+    .catch((erro) => registrarEJogarErro({ entidadeTipo: "transacoes", entidadeId: id, acao: "editar", erro }));
 
   await sincronizarInteressados(id, formData);
   await sincronizarCondicoesPagamento(id, formData);

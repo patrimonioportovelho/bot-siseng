@@ -592,6 +592,7 @@ model parceiros {
   pagamentos                                                                  pagamentos[]
   publicacoes_site                                                           publicacoes_site[]
   mensagens_sac                                                              mensagens_sac[]
+  logs_erro                                                                  logs_erro[]
   bancos                                                                      bancos?                   @relation(fields: [banco_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   lojas                                                                       lojas?                    @relation(fields: [loja_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   relatorios                                                                  relatorios[]
@@ -835,6 +836,26 @@ model logs_alteracao {
 
   @@index([entidade_tipo, entidade_id], map: "idx_logs_alteracao_entidade")
   @@index([parceiro_id], map: "idx_logs_alteracao_parceiro")
+}
+
+/// Registro de erros de salvamento (ex.: constraint do banco rejeitando um
+/// valor) — antes disso, um erro de salvamento só aparecia na tela na hora
+/// (app/error.tsx) e sumia; agora fica registrado pra dar pra consultar
+/// depois em Configurações. "visto" marca se um admin já revisou.
+model logs_erro {
+  id               String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  parceiro_id      String?    @db.Uuid
+  entidade_tipo    String
+  entidade_id      String?    @db.Uuid
+  acao             String
+  mensagem         String
+  mensagem_tecnica String?
+  visto            Boolean    @default(false)
+  criado_em        DateTime   @default(now()) @db.Timestamptz(6)
+  parceiros        parceiros? @relation(fields: [parceiro_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([criado_em], map: "idx_logs_erro_criado_em")
+  @@index([visto, criado_em], map: "idx_logs_erro_visto")
 }
 
 model noticias {

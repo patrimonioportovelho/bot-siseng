@@ -13,6 +13,7 @@ import {
   excluirPublicacaoAction,
   marcarErroVistoAction
 } from "./actions";
+import { limparErrosAntigos } from "@/lib/erros";
 
 export const dynamic = "force-dynamic";
 
@@ -52,6 +53,10 @@ export default async function ConfiguracoesPage({
       </div>
     );
   }
+
+  // Erros de cadastro com mais de 3 dias somem sozinhos toda vez que essa
+  // página é aberta — dá tempo de revisar sem deixar a tabela crescendo.
+  await limparErrosAntigos();
 
   const [pendentes, parceirosAtivos, lojas, acessos, alteracoes, publicacoes, mensagensSac, errosCadastro] = await Promise.all([
     prisma.solicitacoes_acesso.findMany({
@@ -499,7 +504,7 @@ export default async function ConfiguracoesPage({
         <p className="text-xs text-gray-500 mb-3">
           Erros de salvamento em Clientes, Imóveis, Transações, Administrações e Parceiros ficam
           registrados aqui — antes disso, um erro só aparecia na tela na hora e sumia. Marque como
-          visto depois de conferir e resolver.
+          visto depois de conferir e resolver. Somem sozinhos depois de 3 dias, pra não acumular.
         </p>
         {errosCadastro.length === 0 ? (
           <p className="text-xs text-gray-400">Nenhum erro registrado ainda.</p>

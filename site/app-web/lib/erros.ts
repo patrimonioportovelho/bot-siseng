@@ -36,6 +36,14 @@ export async function registrarEJogarErro(params: {
   throw new Error(mensagem);
 }
 
+// Erros de cadastro somem sozinhos depois de 3 dias — tempo suficiente pra
+// revisar em Configurações, sem deixar a tabela crescendo pra sempre.
+// Chamado sempre que a lista de Configurações é aberta (ver app/configuracoes/page.tsx).
+export async function limparErrosAntigos() {
+  const limite = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+  await prisma.logs_erro.deleteMany({ where: { criado_em: { lt: limite } } });
+}
+
 function traduzirErro(erro: unknown): { mensagem: string; tecnica: string } {
   const tecnica = erro instanceof Error ? erro.message : String(erro);
 

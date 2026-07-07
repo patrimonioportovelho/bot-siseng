@@ -1,6 +1,8 @@
+import { headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import { loginAction, criarMensagemSacAction } from "./actions";
 import { AdminLoginPanel } from "@/components/site/admin-login-panel";
+import { ShareButton } from "@/components/site/share-button";
 
 export const dynamic = "force-dynamic";
 
@@ -44,6 +46,12 @@ export default async function LoginPage({
     orderBy: { publicado_em: "desc" },
     take: 20
   });
+
+  // Link absoluto (com domínio) pra dar pra compartilhar notícia/edital ou o
+  // SAC direto — link relativo não funciona quando compartilhado fora do site
+  // (WhatsApp, etc.).
+  const host = (await headers()).get("host");
+  const baseUrl = `${host?.includes("localhost") ? "http" : "https"}://${host}`;
 
   return (
     <div className="min-h-screen bg-appbg">
@@ -119,16 +127,23 @@ export default async function LoginPage({
 
           <div className="flex flex-col gap-3">
             {publicacoes.map((p) => (
-              <article key={p.id} className="bg-white border border-gray-200 rounded-xl p-4">
-                <div className="flex items-center gap-2 mb-1.5">
-                  <span
-                    className={`text-[10px] font-semibold uppercase rounded-full px-2 py-0.5 border ${
-                      TIPO_BADGE[p.tipo] ?? "bg-gray-50 text-gray-600 border-gray-200"
-                    }`}
-                  >
-                    {p.tipo === "Edital" ? "Edital" : "Notícia"}
-                  </span>
-                  <span className="text-[11px] text-gray-400">{formatData(p.publicado_em)}</span>
+              <article key={p.id} id={`noticia-${p.id}`} className="bg-white border border-gray-200 rounded-xl p-4">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <span
+                      className={`text-[10px] font-semibold uppercase rounded-full px-2 py-0.5 border ${
+                        TIPO_BADGE[p.tipo] ?? "bg-gray-50 text-gray-600 border-gray-200"
+                      }`}
+                    >
+                      {p.tipo === "Edital" ? "Edital" : "Notícia"}
+                    </span>
+                    <span className="text-[11px] text-gray-400">{formatData(p.publicado_em)}</span>
+                  </div>
+                  <ShareButton
+                    url={`${baseUrl}/login#noticia-${p.id}`}
+                    title={p.titulo}
+                    text={p.resumo ?? undefined}
+                  />
                 </div>
                 <div className="text-sm font-bold text-gray-800">{p.titulo}</div>
                 <p className="text-xs text-gray-600 mt-1 whitespace-pre-line">{p.resumo || p.corpo}</p>
@@ -140,7 +155,14 @@ export default async function LoginPage({
         {/* SAC */}
         <section id="sac" className="mb-16">
           <div className="bg-white border border-gray-200 rounded-xl p-6 max-w-xl mx-auto">
-            <div className="text-lg font-bold text-gray-800 mb-1">Fale conosco (SAC)</div>
+            <div className="flex items-start justify-between gap-2 mb-1">
+              <div className="text-lg font-bold text-gray-800">Fale conosco (SAC)</div>
+              <ShareButton
+                url={`${baseUrl}/login#sac`}
+                title="Fale conosco — RE/MAX Engimob"
+                text="Dúvidas, sugestões ou reclamações — fale com a RE/MAX Engimob."
+              />
+            </div>
             <p className="text-xs text-gray-500 mb-4">
               Dúvidas, sugestões ou reclamações — nossa equipe responde o quanto antes.
             </p>

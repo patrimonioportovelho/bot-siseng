@@ -12,7 +12,7 @@ import {
 import { formatCpf, formatCnpj, formatTelefone, formatValorEditavel } from "@/lib/format";
 
 type Loja = { id: string; nome: string };
-type Banco = { id: string; nome: string };
+type Banco = { id: string; nome: string; codigo: string | null };
 type ParceiroOpcao = { id: string; nome: string };
 
 type ClienteExistente = {
@@ -70,6 +70,18 @@ export function ClienteForm({
   const [tipoCliente, setTipoCliente] = useState(c?.tipo_cliente ?? "");
   const mostrarCpf = tipoCliente !== "Pessoa Jurídica";
   const mostrarCnpj = tipoCliente !== "Pessoa Física";
+
+  // Código do banco vem automaticamente ao escolher o Banco — antes era um
+  // campo de texto solto, sem relação nenhuma com o banco selecionado, e
+  // dava pra ficar com código e banco combinando errado.
+  const [bancoId, setBancoId] = useState(c?.banco_id ?? "");
+  const [codigoBanco, setCodigoBanco] = useState(c?.codigo_banco ?? "");
+
+  function selecionarBanco(id: string) {
+    setBancoId(id);
+    const banco = bancos.find((b) => b.id === id);
+    if (banco?.codigo) setCodigoBanco(banco.codigo);
+  }
 
   return (
     <form action={action} className="flex flex-col gap-5">
@@ -267,7 +279,12 @@ export function ClienteForm({
         <div className="grid md:grid-cols-2 gap-3">
           <div>
             <label className={LABEL}>Banco</label>
-            <select className={CAMPO} name="banco_id" defaultValue={c?.banco_id ?? ""}>
+            <select
+              className={CAMPO}
+              name="banco_id"
+              value={bancoId}
+              onChange={(e) => selecionarBanco(e.target.value)}
+            >
               <option value="">—</option>
               {bancos.map((b) => (
                 <option key={b.id} value={b.id}>
@@ -284,7 +301,13 @@ export function ClienteForm({
           </div>
           <div>
             <label className={LABEL}>Código do banco</label>
-            <input className={CAMPO} name="codigo_banco" defaultValue={c?.codigo_banco ?? ""} />
+            <input
+              className={CAMPO}
+              name="codigo_banco"
+              value={codigoBanco}
+              onChange={(e) => setCodigoBanco(e.target.value)}
+              placeholder="Preenchido ao escolher o banco"
+            />
           </div>
           <div>
             <label className={LABEL}>Agência</label>

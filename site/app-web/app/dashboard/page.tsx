@@ -15,8 +15,8 @@ export default async function DashboardPage() {
   inicioProxMes.setMonth(inicioProxMes.getMonth() + 1);
 
   const hoje = new Date();
-  const em30Dias = new Date();
-  em30Dias.setDate(em30Dias.getDate() + 30);
+  const em90Dias = new Date();
+  em90Dias.setDate(em90Dias.getDate() + 90);
 
   const [
     totalImoveis,
@@ -45,7 +45,7 @@ export default async function DashboardPage() {
         excluido: false,
         tipo: "Locação",
         status: STATUS_TRANSACAO_EM_ABERTO,
-        data_vencimento: { gte: hoje, lte: em30Dias }
+        data_vencimento: { gte: hoje, lte: em90Dias }
       }
     }),
     prisma.transacoes.count({
@@ -102,7 +102,7 @@ export default async function DashboardPage() {
         <KpiCard label="Imóveis cadastrados" value={String(totalImoveis)} />
         <KpiCard label="Transações em andamento" value={String(transacoesAbertas)} />
         <KpiCard label="Honorário previsto (mês)" value={formatMoeda(honorarioPrevisto)} accent />
-        <KpiCard label="Contratos a vencer (30 dias)" value={String(contratosAVencer)} />
+        <KpiCard label="Contratos a vencer (90 dias)" value={String(contratosAVencer)} />
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">

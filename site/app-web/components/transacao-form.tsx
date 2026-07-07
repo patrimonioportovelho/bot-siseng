@@ -194,10 +194,16 @@ export function TransacaoForm({
     t?.prazo_contrato_meses != null ? String(t.prazo_contrato_meses) : ""
   );
   const [valorTransacaoTexto, setValorTransacaoTexto] = useState(formatValorEditavel(t?.valor_transacao));
-  const dataVencimentoCalculada = useMemo(
-    () => somarMeses(dataAssinatura, Number(prazoContratoMesesTexto) || null),
-    [dataAssinatura, prazoContratoMesesTexto]
-  );
+  // Se não der pra calcular (falta "Tempo de contrato em meses" — comum em
+  // contrato importado da planilha antiga, que trouxe a Data de vencimento
+  // já pronta mas não o campo em meses), usa o valor já salvo em vez de
+  // deixar em branco. Sem isso, um simples Salvar nesses contratos apagava
+  // a Data de vencimento real do banco (o campo é somente leitura e sempre
+  // mandava o texto calculado, mesmo vazio).
+  const dataVencimentoCalculada = useMemo(() => {
+    const calculada = somarMeses(dataAssinatura, Number(prazoContratoMesesTexto) || null);
+    return calculada || inputDate(t?.data_vencimento ?? null);
+  }, [dataAssinatura, prazoContratoMesesTexto]);
 
   // Corretores da Comissionamento — vêm automático do proprietário (imóvel
   // ou administração) e do interessado, mas continuam editáveis (o usuário

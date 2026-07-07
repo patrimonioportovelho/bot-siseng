@@ -112,18 +112,29 @@ export function valorEditavelParaDecimal(texto: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-// "Prazo restante" de uma locação: Data de assinatura + Tempo de contrato
-// (em meses) menos hoje, em meses cheios. Só faz sentido para transações de
-// Locação — Compra e Venda não tem prazo de contrato corrente.
+// "Prazo restante" de uma locação, em meses cheios até hoje. Prefere a Data
+// de vencimento real do contrato (data_vencimento) quando ela existir — é o
+// valor que já vem certo da planilha antiga na maioria dos contratos
+// importados, que não têm o campo "Tempo de contrato (meses)" preenchido.
+// Só cai pro cálculo por Data de assinatura + meses quando não tiver
+// vencimento cadastrado (ex.: contrato novo, ainda sem data calculada). Sem
+// esse fallback, o "Prazo do contrato" ficava sempre em "—" no dashboard de
+// Locação pra quase todo contrato importado, mesmo tendo vencimento certo.
 export function calcularPrazoRestante(
   dataAssinatura: Date | string | null,
-  prazoContratoMeses: number | null
+  prazoContratoMeses: number | null,
+  dataVencimento?: Date | string | null
 ): string {
-  if (!dataAssinatura || !prazoContratoMeses) return "—";
+  let fim: Date | null = null;
 
-  const inicio = new Date(dataAssinatura);
-  const fim = new Date(inicio);
-  fim.setMonth(fim.getMonth() + prazoContratoMeses);
+  if (dataVencimento) {
+    fim = new Date(dataVencimento);
+  } else if (dataAssinatura && prazoContratoMeses) {
+    fim = new Date(dataAssinatura);
+    fim.setMonth(fim.getMonth() + prazoContratoMeses);
+  }
+
+  if (!fim || Number.isNaN(fim.getTime())) return "—";
 
   const hoje = new Date();
   const mesesRestantes =
@@ -161,7 +172,7 @@ export function diasParaVencimento(dataVencimento: Date | string | null): number
 
 // Situação do prazo de uma locação a partir da Data de vencimento real do
 // contrato: "vencido" (já passou — linha vermelha no dashboard), "alerta"
-// (30 dias ou menos pra vencer — precisa decidir renovar ou cancelar) ou
+// (90 dias ou menos pra vencer — precisa decidir renovar ou cancelar) ou
 // "normal".
 export type SituacaoContrato = "vencido" | "alerta" | "normal";
 
@@ -169,6 +180,6 @@ export function situacaoContratoLocacao(dataVencimento: Date | string | null): S
   const dias = diasParaVencimento(dataVencimento);
   if (dias === null) return null;
   if (dias < 0) return "vencido";
-  if (dias <= 30) return "alerta";
+  if (dias <= 90) return "alerta";
   return "normal";
 }

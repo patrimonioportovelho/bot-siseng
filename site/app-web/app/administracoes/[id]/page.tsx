@@ -139,7 +139,7 @@ export default async function AdministracaoDetalhePage({
         )}
         {transacoes.length > 0 && (
           <div className="flex flex-col">
-            <div className="grid grid-cols-[1fr_1fr_auto_auto] gap-3 px-1 py-1.5 text-[11px] text-gray-400 border-b border-gray-100">
+            <div className="hidden md:grid md:grid-cols-[1fr_1fr_auto_auto] gap-3 px-1 py-1.5 text-[11px] text-gray-400 border-b border-gray-100">
               <span>Locatário</span>
               <span>Assinatura</span>
               <span className="text-right">Valor</span>
@@ -148,7 +148,7 @@ export default async function AdministracaoDetalhePage({
             {transacoes.map((t) => (
               <div
                 key={t.id}
-                className="grid grid-cols-[1fr_1fr_auto_auto] gap-3 items-center px-1 py-2 border-b border-gray-50 last:border-0"
+                className="grid grid-cols-1 gap-1 md:grid-cols-[1fr_1fr_auto_auto] md:gap-3 md:items-center px-1 py-2 border-b border-gray-50 last:border-0"
               >
                 <span className="text-xs font-medium text-gray-800 truncate">
                   {t.clientes_transacoes_cliente_contraparte_idToclientes?.nome ?? "—"}

@@ -125,7 +125,7 @@ export default async function AdministracoesPage({
                     <div className="text-[11px] font-semibold text-gray-500 px-3 py-1">
                       {status} ({doStatus.length})
                     </div>
-                    <div className="grid grid-cols-[1fr_1.4fr_1.6fr_auto] gap-3 px-3 py-1 text-[11px] text-gray-400 border-b border-gray-100">
+                    <div className="hidden md:grid md:grid-cols-[1fr_1.4fr_1.6fr_auto] gap-3 px-3 py-1 text-[11px] text-gray-400 border-b border-gray-100">
                       <span>Id</span>
                       <span>Proprietário</span>
                       <span>Imóvel</span>
@@ -138,7 +138,7 @@ export default async function AdministracoesPage({
                           <Link
                             key={a.id}
                             href={`/administracoes/${a.id}`}
-                            className="grid grid-cols-[1fr_1.4fr_1.6fr_auto] gap-3 items-center px-3 py-2.5 rounded-lg hover:bg-gray-50 transition-colors"
+                            className="grid grid-cols-1 gap-0.5 md:grid-cols-[1fr_1.4fr_1.6fr_auto] md:gap-3 md:items-center px-3 py-2.5 rounded-lg hover:bg-gray-50 transition-colors"
                           >
                             <span className="text-xs text-gray-500 truncate">{a.id_legado ?? a.id}</span>
                             <span className="text-xs font-medium text-gray-800 truncate">

@@ -64,20 +64,12 @@ export function AdminLoginPanel({
 
             <input type="hidden" name="next" value={next ?? "/dashboard"} />
 
-            <label className="text-xs text-gray-600 block mb-1">Nome completo</label>
-            <input
-              name="nome"
-              required
-              autoFocus
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-4 outline-none focus:border-primary"
-              placeholder="Seu nome completo"
-            />
-
             <label className="text-xs text-gray-600 block mb-1">Email</label>
             <input
               name="email"
               type="email"
               required
+              autoFocus
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-4 outline-none focus:border-primary"
               placeholder="seuemail@exemplo.com"
             />

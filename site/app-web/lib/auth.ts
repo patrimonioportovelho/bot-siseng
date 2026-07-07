@@ -90,13 +90,15 @@ type LoginResult =
 // não tinha, ex.: colaborador administrativo recém-entrado). O e-mail
 // identifica o parceiro sem ambiguidade (sem a comparação "tolerante" de
 // nomes de antes); a senha só existe depois de aprovada por um admin — no
-// primeiro acesso, vira uma solicitação pendente.
-export async function loginAdmin(nomeCompleto: string, email: string, senha: string): Promise<LoginResult> {
-  const nomeInformado = nomeCompleto.trim();
+// primeiro acesso, vira uma solicitação pendente. O campo de Nome completo
+// foi tirado do formulário (pedia de novo um dado que o email já resolve
+// sozinho); o nome que aparece pra o ADM aprovar a solicitação vem direto da
+// ficha do parceiro (parceiro.nome), não mais digitado na hora do login.
+export async function loginAdmin(email: string, senha: string): Promise<LoginResult> {
   const emailNorm = normalizeEmail(email);
 
-  if (!nomeInformado || !emailNorm || !senha) {
-    return { ok: false, pendente: false, error: "Informe nome completo, email e senha." };
+  if (!emailNorm || !senha) {
+    return { ok: false, pendente: false, error: "Informe email e senha." };
   }
 
   // Não limitamos mais por função — qualquer parceiro ativo pode pedir acesso,
@@ -139,7 +141,7 @@ export async function loginAdmin(nomeCompleto: string, email: string, senha: str
     await prisma.solicitacoes_acesso.update({
       where: { id: pendente.id },
       data: {
-        nome_informado: nomeInformado,
+        nome_informado: parceiro.nome,
         email_informado: emailNorm,
         senha_hash_informada: senhaHash,
         criado_em: new Date()
@@ -149,7 +151,7 @@ export async function loginAdmin(nomeCompleto: string, email: string, senha: str
     await prisma.solicitacoes_acesso.create({
       data: {
         parceiro_id: parceiro.id,
-        nome_informado: nomeInformado,
+        nome_informado: parceiro.nome,
         email_informado: emailNorm,
         senha_hash_informada: senhaHash
       }

@@ -84,7 +84,7 @@ export default async function ClientesPage({
           </div>
         </div>
 
-        <div className="grid grid-cols-[1.2fr_2.4fr_2fr_auto] gap-3 px-3 py-1.5 text-[11px] text-gray-400 border-b border-gray-100">
+        <div className="hidden md:grid md:grid-cols-[1.2fr_2.4fr_2fr_auto] gap-3 px-3 py-1.5 text-[11px] text-gray-400 border-b border-gray-100">
           <span>Id cliente</span>
           <span>Nome</span>
           <span>Parceiro responsável</span>
@@ -95,7 +95,7 @@ export default async function ClientesPage({
             <Link
               key={c.id}
               href={`/clientes/${c.id}`}
-              className="grid grid-cols-[1.2fr_2.4fr_2fr_auto] gap-3 items-center px-3 py-2.5 rounded-lg hover:bg-gray-50 transition-colors"
+              className="grid grid-cols-1 gap-0.5 md:grid-cols-[1.2fr_2.4fr_2fr_auto] md:gap-3 md:items-center px-3 py-2.5 rounded-lg hover:bg-gray-50 transition-colors"
             >
               <span className="text-xs text-gray-500 truncate">{c.id_legado ?? c.id}</span>
               <span className="text-xs font-medium text-gray-800 truncate">{c.nome}</span>

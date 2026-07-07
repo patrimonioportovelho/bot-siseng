@@ -90,9 +90,12 @@ export async function TransacoesLista({ tipo, q, novoHref }: { tipo: "Locação"
   // colunas com largura "auto" ficam do tamanho do conteúdo daquela linha
   // específica e desalinham tudo entre as linhas — por isso as colunas de
   // data/valor usam px fixo, garantindo a mesma largura em todas as linhas.
+  // Prefixo md: — abaixo disso a linha vira empilhada de coluna única (ver
+  // classes do cabeçalho/linha mais abaixo), porque essas colunas fixas em
+  // px/fr espremiam ou cortavam o conteúdo no celular.
   const colunas = somenteLocacao
-    ? "grid-cols-[0.6fr_1fr_1fr_1fr_84px_84px_56px_190px_100px]"
-    : "grid-cols-[0.8fr_1.6fr_1.4fr_1.4fr_90px_110px]";
+    ? "md:grid-cols-[0.6fr_1fr_1fr_1fr_84px_84px_56px_190px_100px]"
+    : "md:grid-cols-[0.8fr_1.6fr_1.4fr_1.4fr_90px_110px]";
 
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-4">
@@ -163,7 +166,7 @@ export async function TransacoesLista({ tipo, q, novoHref }: { tipo: "Locação"
                   >
                     {status} ({doStatus.length})
                   </div>
-                  <div className={`grid ${colunas} gap-3 px-3 py-1 text-[11px] text-gray-400 border-b border-gray-100`}>
+                  <div className={`hidden md:grid ${colunas} gap-3 px-3 py-1 text-[11px] text-gray-400 border-b border-gray-100`}>
                     <span>Id</span>
                     <span>{somenteLocacao ? "Imóvel" : "Inscrição"}</span>
                     <span>Cliente Proprietário</span>
@@ -195,7 +198,7 @@ export async function TransacoesLista({ tipo, q, novoHref }: { tipo: "Locação"
                         <Link
                           key={t.id}
                           href={`/transacoes/${t.id}`}
-                          className={`grid ${colunas} gap-3 items-center px-3 py-2.5 rounded-lg transition-colors ${corLinha}`}
+                          className={`grid grid-cols-1 gap-1 ${colunas} md:gap-3 md:items-center px-3 py-2.5 rounded-lg transition-colors ${corLinha}`}
                         >
                           <span className={`text-xs truncate ${situacao === "vencido" ? "text-red-700" : "text-gray-500"}`}>
                             {t.id_legado ?? t.id}
@@ -248,7 +251,7 @@ export async function TransacoesLista({ tipo, q, novoHref }: { tipo: "Locação"
                                 ? "Vencido"
                                 : situacao === "alerta"
                                 ? `${diasParaVencimento(t.data_vencimento)} dia(s) — renovar/cancelar`
-                                : calcularPrazoRestante(t.data_assinatura, t.prazo_contrato_meses)}
+                                : calcularPrazoRestante(t.data_assinatura, t.prazo_contrato_meses, t.data_vencimento)}
                             </span>
                           )}
                           <span

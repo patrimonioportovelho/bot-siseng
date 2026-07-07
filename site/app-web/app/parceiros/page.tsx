@@ -31,7 +31,7 @@ function ParceiroRow({ p }: { p: Parceiro }) {
     <Link
       href={`/parceiros/${p.id}`}
       className={
-        "grid grid-cols-[2fr_1fr_1fr_1fr_1.4fr_auto] gap-3 items-center px-3 py-2.5 rounded-lg hover:bg-gray-50 transition-colors " +
+        "grid grid-cols-1 gap-0.5 md:grid-cols-[2fr_1fr_1fr_1fr_1.4fr_auto] md:gap-3 md:items-center px-3 py-2.5 rounded-lg hover:bg-gray-50 transition-colors " +
         (excluido ? "opacity-50" : "")
       }
     >
@@ -53,7 +53,7 @@ function GrupoFuncao({ titulo, parceiros }: { titulo: string; parceiros: Parceir
         <div className="text-xs font-bold text-gray-700 uppercase tracking-wide">{titulo}</div>
         <div className="text-[11px] text-gray-400">{parceiros.length}</div>
       </div>
-      <div className="grid grid-cols-[2fr_1fr_1fr_1fr_1.4fr_auto] gap-3 px-3 py-1 text-[11px] text-gray-400">
+      <div className="hidden md:grid md:grid-cols-[2fr_1fr_1fr_1fr_1.4fr_auto] gap-3 px-3 py-1 text-[11px] text-gray-400">
         <span>Nome</span>
         <span>Status</span>
         <span>Loja</span>

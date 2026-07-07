@@ -13,15 +13,15 @@ export async function Topbar() {
   const session = await getAdminSession();
 
   return (
-    <div className="flex items-center justify-between mb-4">
+    <div className="flex items-center justify-between gap-2 flex-wrap mb-4">
       <button className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-xs text-gray-600">
         Porto Velho
       </button>
       <div className="flex items-center gap-3">
-        <div className="w-7 h-7 rounded-full bg-primary text-white text-xs font-bold flex items-center justify-center">
+        <div className="w-7 h-7 rounded-full bg-primary text-white text-xs font-bold flex items-center justify-center shrink-0">
           {iniciais(session?.nome)}
         </div>
-        <span className="text-xs text-gray-700">
+        <span className="text-xs text-gray-700 hidden sm:inline">
           {session?.nome ?? "Não identificado"} {session?.isAdm ? "· ADM" : ""}
         </span>
         <form action={logoutAction}>

@@ -31,8 +31,8 @@ export default async function PortalPage() {
   const concluidos = new Set(conclusoesDoCorretor.map((c) => c.item_id));
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <div className="flex items-center justify-between mb-6">
+    <div className="min-h-screen bg-gray-50 p-4 md:p-6">
+      <div className="flex items-center justify-between gap-2 flex-wrap mb-6">
         <div>
           <div className="text-lg font-bold text-gray-900">Acesso SisEng · Portal do corretor</div>
           <div className="text-xs text-gray-500">

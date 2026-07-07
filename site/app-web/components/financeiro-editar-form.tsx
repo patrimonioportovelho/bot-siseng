@@ -109,7 +109,7 @@ export function FinanceiroEditarForm({
           <div className="text-sm font-bold text-gray-800">{m.tipo}</div>
           <div className="flex items-center gap-2 flex-wrap">
             {m.forma_pagamento && <span className="text-xs text-gray-500">{m.forma_pagamento}</span>}
-            {m.parcelas && m.parcelas > 1 && (
+            {(m.parcelas ?? 0) > 1 && (
               <span className="text-xs text-gray-500">
                 Parcela {m.num_parcela} de {m.parcelas}
               </span>

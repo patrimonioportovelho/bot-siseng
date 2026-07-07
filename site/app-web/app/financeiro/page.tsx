@@ -21,9 +21,17 @@ const COLUNAS = "md:grid-cols-[1fr_1fr_1fr_0.9fr_90px_100px_90px_90px_1.3fr]";
 export default async function FinanceiroPage({
   searchParams
 }: {
-  searchParams: Promise<{ tipo?: string; pago?: string; q?: string; page?: string }>;
+  searchParams: Promise<{
+    tipo?: string;
+    pago?: string;
+    q?: string;
+    page?: string;
+    categoria?: string;
+    de?: string;
+    ate?: string;
+  }>;
 }) {
-  const { tipo: tipoParam, pago: pagoParam, q, page: pageParam } = await searchParams;
+  const { tipo: tipoParam, pago: pagoParam, q, page: pageParam, categoria: categoriaParam, de, ate } = await searchParams;
   const tipo = tipoParam === "recebimento" ? "Recebimento" : "Despesa";
   const termo = (q ?? "").trim();
   const page = Math.max(1, Number(pageParam ?? "1") || 1);
@@ -31,8 +39,20 @@ export default async function FinanceiroPage({
   const hoje = new Date();
   hoje.setHours(0, 0, 0, 0);
 
+  const vencimentoFiltro: { gte?: Date; lte?: Date } = {};
+  if (de) {
+    const d = new Date(de + "T00:00:00");
+    if (!Number.isNaN(d.getTime())) vencimentoFiltro.gte = d;
+  }
+  if (ate) {
+    const d = new Date(ate + "T00:00:00");
+    if (!Number.isNaN(d.getTime())) vencimentoFiltro.lte = d;
+  }
+
   const where = {
     tipo,
+    ...(categoriaParam ? { categoria_id: categoriaParam } : {}),
+    ...(vencimentoFiltro.gte || vencimentoFiltro.lte ? { vencimento: vencimentoFiltro } : {}),
     ...(pagoParam === "sim" ? { pago: true } : pagoParam === "todas" ? {} : { pago: false }),
     ...(termo
       ? {
@@ -48,7 +68,7 @@ export default async function FinanceiroPage({
       : {})
   };
 
-  const [movimentacoes, total, totalDespesaAberto, totalRecebimentoAberto, vencidosDespesa, vencidosRecebimento] =
+  const [movimentacoes, total, totalDespesaAberto, totalRecebimentoAberto, vencidosDespesa, vencidosRecebimento, categorias] =
     await Promise.all([
       prisma.movimentacoes.findMany({
         where,
@@ -66,7 +86,8 @@ export default async function FinanceiroPage({
       prisma.movimentacoes.aggregate({ _sum: { valor: true }, where: { tipo: "Despesa", pago: false } }),
       prisma.movimentacoes.aggregate({ _sum: { valor: true }, where: { tipo: "Recebimento", pago: false } }),
       prisma.movimentacoes.count({ where: { tipo: "Despesa", pago: false, vencimento: { lt: hoje } } }),
-      prisma.movimentacoes.count({ where: { tipo: "Recebimento", pago: false, vencimento: { lt: hoje } } })
+      prisma.movimentacoes.count({ where: { tipo: "Recebimento", pago: false, vencimento: { lt: hoje } } }),
+      prisma.categorias_financeiras.findMany({ where: { tipo }, orderBy: { nome: "asc" } })
     ]);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -74,10 +95,16 @@ export default async function FinanceiroPage({
   const rotuloPago = tipo === "Despesa" ? "Pago" : "Recebido";
   const rotuloPendente = tipo === "Despesa" ? "Pendente" : "Não recebido";
 
+  // Filtros que precisam sobreviver tanto à troca de aba Despesa/Recebimento
+  // quanto à paginação e à troca de pílula Em aberto/Pago/Todas — exceto
+  // categoria, que é limpa ao trocar de tipo (categoria de Despesa não
+  // existe na lista de Recebimento, e vice-versa).
   function hrefTipo(t: "despesa" | "recebimento") {
     const params = new URLSearchParams();
     params.set("tipo", t);
     if (pagoParam) params.set("pago", pagoParam);
+    if (de) params.set("de", de);
+    if (ate) params.set("ate", ate);
     return `/financeiro?${params.toString()}`;
   }
 
@@ -85,6 +112,9 @@ export default async function FinanceiroPage({
     const params = new URLSearchParams();
     if (tipoParam) params.set("tipo", tipoParam);
     if (p) params.set("pago", p);
+    if (categoriaParam) params.set("categoria", categoriaParam);
+    if (de) params.set("de", de);
+    if (ate) params.set("ate", ate);
     return `/financeiro?${params.toString()}`;
   }
 
@@ -137,29 +167,63 @@ export default async function FinanceiroPage({
           <div className="text-sm font-bold text-gray-800">
             {tipo} ({total})
           </div>
-          <div className="flex gap-2">
-            <form className="flex gap-2">
-              {tipoParam && <input type="hidden" name="tipo" value={tipoParam} />}
-              {pagoParam && <input type="hidden" name="pago" value={pagoParam} />}
-              <input
-                type="text"
-                name="q"
-                defaultValue={termo}
-                placeholder="Buscar por categoria, cliente, parceiro..."
-                className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-56 outline-none focus:border-primary"
-              />
-              <button type="submit" className="text-xs bg-white border border-gray-300 text-gray-600 rounded-lg px-3 py-1.5">
-                Buscar
-              </button>
-            </form>
-            <Link
-              href="/financeiro/novo"
-              className="text-xs bg-primary text-white rounded-lg px-3 py-1.5 font-semibold whitespace-nowrap"
-            >
-              + Adicionar movimentação
-            </Link>
-          </div>
+          <Link
+            href="/financeiro/novo"
+            className="text-xs bg-primary text-white rounded-lg px-3 py-1.5 font-semibold whitespace-nowrap"
+          >
+            + Adicionar movimentação
+          </Link>
         </div>
+
+        <form className="flex gap-2 flex-wrap mb-3 items-center">
+          {tipoParam && <input type="hidden" name="tipo" value={tipoParam} />}
+          {pagoParam && <input type="hidden" name="pago" value={pagoParam} />}
+          <input
+            type="text"
+            name="q"
+            defaultValue={termo}
+            placeholder="Buscar por categoria, cliente, parceiro..."
+            className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-56 outline-none focus:border-primary"
+          />
+          <select
+            name="categoria"
+            defaultValue={categoriaParam ?? ""}
+            className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 outline-none focus:border-primary bg-white"
+          >
+            <option value="">Todas as categorias</option>
+            {categorias.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.nome}
+              </option>
+            ))}
+          </select>
+          <label className="text-xs text-gray-500 flex items-center gap-1">
+            De
+            <input
+              type="date"
+              name="de"
+              defaultValue={de ?? ""}
+              className="text-xs border border-gray-300 rounded-lg px-2 py-1.5 outline-none focus:border-primary"
+            />
+          </label>
+          <label className="text-xs text-gray-500 flex items-center gap-1">
+            Até
+            <input
+              type="date"
+              name="ate"
+              defaultValue={ate ?? ""}
+              className="text-xs border border-gray-300 rounded-lg px-2 py-1.5 outline-none focus:border-primary"
+            />
+          </label>
+          <button type="submit" className="text-xs bg-white border border-gray-300 text-gray-600 rounded-lg px-3 py-1.5">
+            Filtrar
+          </button>
+          {(termo || categoriaParam || de || ate) && (
+            <a href={hrefPago(pagoParam ?? null)} className="text-xs text-gray-400 underline">
+              Limpar filtros
+            </a>
+          )}
+        </form>
 
         <div className="flex gap-2 mb-3">
           <a
@@ -191,13 +255,13 @@ export default async function FinanceiroPage({
           </a>
         </div>
 
-        <div className={`hidden md:grid ${COLUNAS} gap-3 px-3 py-1.5 text-[11px] text-gray-400 border-b border-gray-100`}>
+        <div className={`hidden md:grid ${COLUNAS} gap-3 px-3 py-1.5 text-[11px] text-gray-400 border-b border-gray-100 text-center`}>
           <span>Categoria</span>
           <span>Cliente (interessado)</span>
           <span>Cliente (proprietário)</span>
           <span>Parceiro</span>
           <span>Pagamento</span>
-          <span className="text-right">Valor</span>
+          <span>Valor</span>
           <span>Vencimento</span>
           <span>Data pagamento</span>
           <span>Descrição</span>
@@ -213,12 +277,13 @@ export default async function FinanceiroPage({
                 ? "bg-amber-50 border border-amber-200 hover:bg-amber-100"
                 : "hover:bg-gray-50";
             const corTexto = situacao === "vencido" ? "text-red-700" : "text-gray-600";
+            const temParcelas = (m.parcelas ?? 0) > 1;
 
             return (
               <Link
                 key={m.id}
                 href={`/financeiro/${m.id}`}
-                className={`grid grid-cols-1 gap-1 ${COLUNAS} md:gap-3 md:items-center px-3 py-2.5 rounded-lg transition-colors ${corLinha}`}
+                className={`grid grid-cols-1 gap-1 ${COLUNAS} md:gap-3 md:items-center md:text-center px-3 py-2.5 rounded-lg transition-colors ${corLinha}`}
               >
                 <span className={`text-xs font-medium truncate ${situacao === "vencido" ? "text-red-800" : "text-gray-800"}`}>
                   {m.categorias_financeiras.nome}
@@ -235,11 +300,9 @@ export default async function FinanceiroPage({
                 >
                   {m.pago ? rotuloPago : rotuloPendente}
                 </span>
-                <span className={`text-xs text-right whitespace-nowrap ${situacao === "vencido" ? "text-red-800 font-medium" : "text-gray-700"}`}>
+                <span className={`text-xs whitespace-nowrap ${situacao === "vencido" ? "text-red-800 font-medium" : "text-gray-700"}`}>
                   {formatMoeda(m.valor)}
-                  {m.parcelas && m.parcelas > 1 && (
-                    <span className="text-gray-400 font-normal"> ({m.num_parcela}/{m.parcelas})</span>
-                  )}
+                  {temParcelas && <span className="text-gray-400 font-normal"> ({m.num_parcela}/{m.parcelas})</span>}
                 </span>
                 <span className={`text-xs whitespace-nowrap ${corTexto}`}>{formatData(m.vencimento)}</span>
                 <span className="text-xs text-gray-500 whitespace-nowrap">{m.data_pagamento ? formatData(m.data_pagamento) : "—"}</span>
@@ -257,7 +320,7 @@ export default async function FinanceiroPage({
           totalPages={totalPages}
           basePath="/financeiro"
           q={termo}
-          extraParams={{ tipo: tipoParam, pago: pagoParam }}
+          extraParams={{ tipo: tipoParam, pago: pagoParam, categoria: categoriaParam, de, ate }}
         />
       </div>
     </div>

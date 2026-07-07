@@ -3,14 +3,22 @@ type PaginationProps = {
   totalPages: number;
   basePath: string;
   q?: string;
+  // Outros filtros da tela (ex.: tipo, pago) que precisam continuar na URL
+  // ao trocar de página — sem isso, Anterior/Próxima perdia o filtro atual.
+  extraParams?: Record<string, string | undefined>;
 };
 
-export function Pagination({ page, totalPages, basePath, q }: PaginationProps) {
+export function Pagination({ page, totalPages, basePath, q, extraParams }: PaginationProps) {
   if (totalPages <= 1) return null;
 
   function href(p: number) {
     const params = new URLSearchParams();
     if (q) params.set("q", q);
+    if (extraParams) {
+      for (const [chave, valor] of Object.entries(extraParams)) {
+        if (valor) params.set(chave, valor);
+      }
+    }
     params.set("page", String(p));
     return `${basePath}?${params.toString()}`;
   }

@@ -183,3 +183,20 @@ export function situacaoContratoLocacao(dataVencimento: Date | string | null): S
   if (dias <= 90) return "alerta";
   return "normal";
 }
+
+// Mesma ideia da Locação (vencido/alerta/normal), só que genérica — usada no
+// Financeiro, onde a janela de alerta é de 15 dias (não 90) e só faz sentido
+// olhar a data de vencimento enquanto a movimentação ainda não foi paga/
+// recebida; depois de paga, não tem mais "situação" nenhuma (nem vencido).
+export function situacaoVencimento(
+  vencimento: Date | string | null,
+  jaResolvido: boolean,
+  diasAlerta: number
+): SituacaoContrato | null {
+  if (jaResolvido) return null;
+  const dias = diasParaVencimento(vencimento);
+  if (dias === null) return null;
+  if (dias < 0) return "vencido";
+  if (dias <= diasAlerta) return "alerta";
+  return "normal";
+}

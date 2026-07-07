@@ -227,6 +227,8 @@ model clientes {
   transacoes_contrapartes                                transacoes_contrapartes[]
   transacoes_transacoes_cliente_contraparte_idToclientes transacoes[]  @relation("transacoes_cliente_contraparte_idToclientes")
   transacoes_transacoes_cliente_idToclientes             transacoes[]  @relation("transacoes_cliente_idToclientes")
+  movimentacoes_interessado                              movimentacoes[] @relation("movimentacoes_cliente_interessado_idToclientes")
+  movimentacoes_proprietario                             movimentacoes[] @relation("movimentacoes_cliente_proprietario_idToclientes")
 
   @@index([conjuge_id], map: "idx_clientes_conjuge")
   @@index([loja_id], map: "idx_clientes_loja")
@@ -470,36 +472,47 @@ model metas {
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model movimentacoes {
-  id                     String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  id_legado              String?                @unique
-  tipo                   String
-  categoria_id           String                 @db.Uuid
-  transacao_id           String?                @db.Uuid
-  contraparte_nome       String?
-  parceiro_id            String?                @db.Uuid
-  pagamento_id           String?                @db.Uuid
-  descricao              String?
-  valor                  Decimal                @db.Decimal(14, 2)
-  forma_pagamento        String?
-  parcelas               Int?                   @db.SmallInt
-  num_parcela            Int?                   @db.SmallInt
-  id_parcelamento        String?                @db.Uuid
-  vencimento             DateTime               @db.Date
-  pago                   Boolean                @default(false)
-  data_pagamento         DateTime?              @db.Date
-  comprovante_url        String?
-  gerado_automaticamente Boolean                @default(false)
-  created_at             DateTime               @default(now()) @db.Timestamptz(6)
-  updated_at             DateTime               @default(now()) @db.Timestamptz(6)
-  categorias_financeiras categorias_financeiras @relation(fields: [categoria_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  pagamentos             pagamentos?            @relation(fields: [pagamento_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  parceiros              parceiros?             @relation(fields: [parceiro_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  transacoes             transacoes?            @relation(fields: [transacao_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  id                       String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id_legado                String?                @unique
+  tipo                     String
+  categoria_id             String                 @db.Uuid
+  transacao_id             String?                @db.Uuid
+  contraparte_nome         String?
+  parceiro_id              String?                @db.Uuid
+  pagamento_id             String?                @db.Uuid
+  descricao                String?
+  valor                    Decimal                @db.Decimal(14, 2)
+  forma_pagamento          String?
+  parcelas                 Int?                   @db.SmallInt
+  num_parcela              Int?                   @db.SmallInt
+  id_parcelamento          String?                @db.Uuid
+  vencimento               DateTime               @db.Date
+  pago                     Boolean                @default(false)
+  data_pagamento           DateTime?              @db.Date
+  comprovante_url          String?
+  gerado_automaticamente   Boolean                @default(false)
+  created_at               DateTime               @default(now()) @db.Timestamptz(6)
+  updated_at               DateTime               @default(now()) @db.Timestamptz(6)
+  // Cliente interessado (ex.: locatário/comprador) e Cliente proprietário —
+  // separados porque uma movimentação pode envolver os dois ao mesmo tempo
+  // (ex.: repasse de locação: proprietário recebe, interessado é o inquilino
+  // que pagou). contraparte_nome continua só pros registros antigos
+  // importados da planilha, que não tinham essa distinção.
+  cliente_interessado_id   String?                @db.Uuid
+  cliente_proprietario_id  String?                @db.Uuid
+  categorias_financeiras   categorias_financeiras @relation(fields: [categoria_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  pagamentos               pagamentos?            @relation(fields: [pagamento_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  parceiros                parceiros?             @relation(fields: [parceiro_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  transacoes               transacoes?            @relation(fields: [transacao_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  clientes_interessado     clientes?              @relation("movimentacoes_cliente_interessado_idToclientes", fields: [cliente_interessado_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  clientes_proprietario    clientes?              @relation("movimentacoes_cliente_proprietario_idToclientes", fields: [cliente_proprietario_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([categoria_id], map: "idx_movimentacoes_categoria")
   @@index([parceiro_id], map: "idx_movimentacoes_parceiro")
   @@index([id_parcelamento], map: "idx_movimentacoes_parcelamento")
   @@index([transacao_id], map: "idx_movimentacoes_transacao")
+  @@index([cliente_interessado_id], map: "idx_movimentacoes_cliente_interessado")
+  @@index([cliente_proprietario_id], map: "idx_movimentacoes_cliente_proprietario")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.

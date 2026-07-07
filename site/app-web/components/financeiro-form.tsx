@@ -1,0 +1,425 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import { formatMoeda, formatValorEditavel } from "@/lib/format";
+
+type CategoriaOpcao = { id: string; nome: string; tipo: string | null };
+type ClienteOpcao = { id: string; nome: string };
+type ParceiroOpcao = { id: string; nome: string };
+type TransacaoOpcao = {
+  id: string;
+  id_legado: string | null;
+  valor_transacao: unknown;
+  proprietarioNome: string | null;
+  interessadoNome: string | null;
+  imovelEndereco: string | null;
+};
+
+const CAMPO = "text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full outline-none focus:border-primary bg-white";
+const LABEL = "text-xs text-gray-600 block mb-1";
+
+// Nome exato da categoria que dispara o seletor de contrato de Compra e
+// Venda — precisa combinar com o nome já importado da planilha, ver
+// levantamento em categorias_financeiras.
+const CATEGORIA_COMPRA_E_VENDA = "Compra e venda";
+
+function hoje(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function labelTransacao(t: TransacaoOpcao): string {
+  const partes = [
+    t.id_legado ?? t.id,
+    t.imovelEndereco,
+    t.proprietarioNome ? `Propr.: ${t.proprietarioNome}` : null,
+    t.interessadoNome ? `Interess.: ${t.interessadoNome}` : null,
+    formatMoeda(t.valor_transacao)
+  ].filter(Boolean);
+  return partes.join(" — ");
+}
+
+export function FinanceiroForm({
+  categorias,
+  clientes,
+  parceiros,
+  transacoesCompraVenda,
+  action
+}: {
+  categorias: CategoriaOpcao[];
+  clientes: ClienteOpcao[];
+  parceiros: ParceiroOpcao[];
+  transacoesCompraVenda: TransacaoOpcao[];
+  action: (formData: FormData) => void;
+}) {
+  const [tipo, setTipo] = useState<"Despesa" | "Recebimento">("Despesa");
+  const [categoriaId, setCategoriaId] = useState("");
+  const [formaPagamento, setFormaPagamento] = useState<"À vista" | "Parcelado">("À vista");
+  const [pago, setPago] = useState(false);
+
+  const [valor, setValor] = useState("");
+  const [valorParcela, setValorParcela] = useState("");
+  const [parcelasQtd, setParcelasQtd] = useState("");
+
+  const [transacaoId, setTransacaoId] = useState("");
+  const [buscaTransacao, setBuscaTransacao] = useState("");
+  const [listaTransacaoAberta, setListaTransacaoAberta] = useState(false);
+
+  const [clienteInteressadoId, setClienteInteressadoId] = useState("");
+  const [buscaClienteInteressado, setBuscaClienteInteressado] = useState("");
+  const [listaInteressadoAberta, setListaInteressadoAberta] = useState(false);
+
+  const [clienteProprietarioId, setClienteProprietarioId] = useState("");
+  const [buscaClienteProprietario, setBuscaClienteProprietario] = useState("");
+  const [listaProprietarioAberta, setListaProprietarioAberta] = useState(false);
+
+  const categoriasFiltradas = useMemo(() => categorias.filter((c) => c.tipo === tipo), [categorias, tipo]);
+
+  const categoriaSelecionada = categorias.find((c) => c.id === categoriaId) ?? null;
+  const mostrarPickerTransacao = tipo === "Recebimento" && categoriaSelecionada?.nome === CATEGORIA_COMPRA_E_VENDA;
+
+  const transacoesFiltradas = useMemo(() => {
+    const t = buscaTransacao.trim().toLowerCase();
+    if (!t) return transacoesCompraVenda.slice(0, 30);
+    return transacoesCompraVenda
+      .filter((tr) => labelTransacao(tr).toLowerCase().includes(t))
+      .slice(0, 30);
+  }, [buscaTransacao, transacoesCompraVenda]);
+
+  const clientesFiltradosInteressado = useMemo(() => {
+    const t = buscaClienteInteressado.trim().toLowerCase();
+    if (!t) return clientes.slice(0, 30);
+    return clientes.filter((c) => c.nome.toLowerCase().includes(t)).slice(0, 30);
+  }, [buscaClienteInteressado, clientes]);
+
+  const clientesFiltradosProprietario = useMemo(() => {
+    const t = buscaClienteProprietario.trim().toLowerCase();
+    if (!t) return clientes.slice(0, 30);
+    return clientes.filter((c) => c.nome.toLowerCase().includes(t)).slice(0, 30);
+  }, [buscaClienteProprietario, clientes]);
+
+  function mudarTipo(novoTipo: "Despesa" | "Recebimento") {
+    setTipo(novoTipo);
+    setCategoriaId("");
+    setTransacaoId("");
+    setBuscaTransacao("");
+  }
+
+  function selecionarTransacao(t: TransacaoOpcao) {
+    setTransacaoId(t.id);
+    setBuscaTransacao(labelTransacao(t));
+    setListaTransacaoAberta(false);
+    // Pré-preenche valor e os dois clientes a partir do contrato — tudo
+    // continua editável depois, é só um ponto de partida.
+    if (t.valor_transacao) setValor(formatValorEditavel(t.valor_transacao));
+  }
+
+  function selecionarClienteInteressado(c: ClienteOpcao) {
+    setClienteInteressadoId(c.id);
+    setBuscaClienteInteressado(c.nome);
+    setListaInteressadoAberta(false);
+  }
+
+  function selecionarClienteProprietario(c: ClienteOpcao) {
+    setClienteProprietarioId(c.id);
+    setBuscaClienteProprietario(c.nome);
+    setListaProprietarioAberta(false);
+  }
+
+  const totalParcelado =
+    parcelasQtd && valorParcela ? Number(parcelasQtd) * (Number(valorParcela.replace(/\./g, "").replace(",", ".")) || 0) : null;
+
+  return (
+    <form action={action} className="flex flex-col gap-5">
+      <input type="hidden" name="cliente_interessado_id" value={clienteInteressadoId} />
+      <input type="hidden" name="cliente_proprietario_id" value={clienteProprietarioId} />
+      <input type="hidden" name="transacao_id" value={transacaoId} />
+
+      <div className="bg-white border border-gray-200 rounded-xl p-4">
+        <div className="text-sm font-bold text-gray-800 mb-3">Tipo</div>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => mudarTipo("Despesa")}
+            className={`text-xs px-4 py-2 rounded-lg border font-semibold ${
+              tipo === "Despesa" ? "bg-primary text-white border-primary" : "border-gray-200 text-gray-600 bg-white"
+            }`}
+          >
+            Despesa
+          </button>
+          <button
+            type="button"
+            onClick={() => mudarTipo("Recebimento")}
+            className={`text-xs px-4 py-2 rounded-lg border font-semibold ${
+              tipo === "Recebimento" ? "bg-primary text-white border-primary" : "border-gray-200 text-gray-600 bg-white"
+            }`}
+          >
+            Recebimento
+          </button>
+          <input type="hidden" name="tipo" value={tipo} />
+        </div>
+      </div>
+
+      <div className="bg-white border border-gray-200 rounded-xl p-4">
+        <div className="text-sm font-bold text-gray-800 mb-3">Categoria</div>
+        <select
+          className={CAMPO}
+          name="categoria_id"
+          value={categoriaId}
+          onChange={(e) => setCategoriaId(e.target.value)}
+          required
+        >
+          <option value="" disabled>
+            Selecione...
+          </option>
+          {categoriasFiltradas.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.nome}
+            </option>
+          ))}
+        </select>
+
+        {mostrarPickerTransacao && (
+          <div className="relative mt-3">
+            <label className={LABEL}>Contrato de Compra e Venda</label>
+            <input
+              className={CAMPO}
+              placeholder="Digite pra buscar o contrato (Id, imóvel ou cliente)..."
+              value={buscaTransacao}
+              onChange={(e) => {
+                setBuscaTransacao(e.target.value);
+                setTransacaoId("");
+                setListaTransacaoAberta(true);
+              }}
+              onFocus={() => setListaTransacaoAberta(true)}
+              onBlur={() => setTimeout(() => setListaTransacaoAberta(false), 150)}
+            />
+            {listaTransacaoAberta && (
+              <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-lg max-h-56 overflow-auto shadow-lg">
+                {transacoesFiltradas.length === 0 && (
+                  <p className="text-xs text-gray-400 p-3">Nenhum contrato encontrado.</p>
+                )}
+                {transacoesFiltradas.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onMouseDown={() => selecionarTransacao(t)}
+                    className="block w-full text-left text-xs px-3 py-2 border-b border-gray-50 last:border-0 hover:bg-gray-50 text-gray-700"
+                  >
+                    {labelTransacao(t)}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="bg-white border border-gray-200 rounded-xl p-4">
+        <div className="text-sm font-bold text-gray-800 mb-3">Envolvidos (quando for o caso)</div>
+        <div className="grid md:grid-cols-3 gap-3">
+          <div className="relative">
+            <label className={LABEL}>Cliente (interessado)</label>
+            <input
+              className={CAMPO}
+              placeholder="Digite para buscar..."
+              value={buscaClienteInteressado}
+              onChange={(e) => {
+                setBuscaClienteInteressado(e.target.value);
+                setClienteInteressadoId("");
+                setListaInteressadoAberta(true);
+              }}
+              onFocus={() => setListaInteressadoAberta(true)}
+              onBlur={() => setTimeout(() => setListaInteressadoAberta(false), 150)}
+            />
+            {listaInteressadoAberta && (
+              <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-lg max-h-48 overflow-auto shadow-lg">
+                {clientesFiltradosInteressado.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onMouseDown={() => selecionarClienteInteressado(c)}
+                    className="block w-full text-left text-xs px-3 py-2 border-b border-gray-50 last:border-0 hover:bg-gray-50 text-gray-700"
+                  >
+                    {c.nome}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="relative">
+            <label className={LABEL}>Cliente (proprietário)</label>
+            <input
+              className={CAMPO}
+              placeholder="Digite para buscar..."
+              value={buscaClienteProprietario}
+              onChange={(e) => {
+                setBuscaClienteProprietario(e.target.value);
+                setClienteProprietarioId("");
+                setListaProprietarioAberta(true);
+              }}
+              onFocus={() => setListaProprietarioAberta(true)}
+              onBlur={() => setTimeout(() => setListaProprietarioAberta(false), 150)}
+            />
+            {listaProprietarioAberta && (
+              <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-lg max-h-48 overflow-auto shadow-lg">
+                {clientesFiltradosProprietario.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onMouseDown={() => selecionarClienteProprietario(c)}
+                    className="block w-full text-left text-xs px-3 py-2 border-b border-gray-50 last:border-0 hover:bg-gray-50 text-gray-700"
+                  >
+                    {c.nome}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div>
+            <label className={LABEL}>Parceiro</label>
+            <select className={CAMPO} name="parceiro_id" defaultValue="">
+              <option value="">—</option>
+              {parceiros.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.nome}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white border border-gray-200 rounded-xl p-4">
+        <div className="text-sm font-bold text-gray-800 mb-3">Valor e forma de pagamento</div>
+
+        <div className="flex gap-2 mb-3">
+          <button
+            type="button"
+            onClick={() => setFormaPagamento("À vista")}
+            className={`text-xs px-4 py-2 rounded-lg border font-semibold ${
+              formaPagamento === "À vista" ? "bg-primary text-white border-primary" : "border-gray-200 text-gray-600 bg-white"
+            }`}
+          >
+            À vista
+          </button>
+          <button
+            type="button"
+            onClick={() => setFormaPagamento("Parcelado")}
+            className={`text-xs px-4 py-2 rounded-lg border font-semibold ${
+              formaPagamento === "Parcelado" ? "bg-primary text-white border-primary" : "border-gray-200 text-gray-600 bg-white"
+            }`}
+          >
+            Parcelado
+          </button>
+          <input type="hidden" name="forma_pagamento" value={formaPagamento} />
+        </div>
+
+        {formaPagamento === "À vista" ? (
+          <div className="grid md:grid-cols-2 gap-3">
+            <div>
+              <label className={LABEL}>Valor</label>
+              <input
+                className={CAMPO}
+                name="valor"
+                value={valor}
+                onChange={(e) => setValor(e.target.value)}
+                placeholder="0,00"
+                required
+              />
+            </div>
+            <div>
+              <label className={LABEL}>Vencimento</label>
+              <input className={CAMPO} type="date" name="vencimento" defaultValue={hoje()} required />
+            </div>
+          </div>
+        ) : (
+          <div className="grid md:grid-cols-3 gap-3">
+            <div>
+              <label className={LABEL}>Quantidade de parcelas</label>
+              <input
+                className={CAMPO}
+                name="parcelas"
+                type="number"
+                min={2}
+                value={parcelasQtd}
+                onChange={(e) => setParcelasQtd(e.target.value)}
+                required
+              />
+            </div>
+            <div>
+              <label className={LABEL}>Valor de cada parcela</label>
+              <input
+                className={CAMPO}
+                name="valor_parcela"
+                value={valorParcela}
+                onChange={(e) => setValorParcela(e.target.value)}
+                placeholder="0,00"
+                required
+              />
+            </div>
+            <div>
+              <label className={LABEL}>Vencimento da 1ª parcela</label>
+              <input className={CAMPO} type="date" name="vencimento" defaultValue={hoje()} required />
+            </div>
+            {totalParcelado !== null && (
+              <p className="text-[11px] text-gray-500 md:col-span-3">
+                Total: {formatMoeda(totalParcelado)} — vão ser lançadas {parcelasQtd || 0} parcelas, uma por mês a partir do
+                vencimento informado.
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+
+      {formaPagamento === "À vista" && (
+        <div className="bg-white border border-gray-200 rounded-xl p-4">
+          <div className="text-sm font-bold text-gray-800 mb-3">Situação</div>
+          <label className="flex items-center gap-2 text-xs text-gray-700 mb-3">
+            <input
+              type="checkbox"
+              name="pago"
+              checked={pago}
+              onChange={(e) => setPago(e.target.checked)}
+              className="rounded"
+            />
+            Já está {tipo === "Despesa" ? "pago" : "recebido"}
+          </label>
+          {!pago && (
+            <p className="text-[11px] text-gray-400">
+              Fica registrado como Pendente — dá pra marcar como {tipo === "Despesa" ? "pago" : "recebido"} depois, no
+              detalhe.
+            </p>
+          )}
+          {pago && (
+            <div className="max-w-xs">
+              <label className={LABEL}>Data do pagamento</label>
+              <input className={CAMPO} type="date" name="data_pagamento" defaultValue={hoje()} />
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="bg-white border border-gray-200 rounded-xl p-4">
+        <div className="text-sm font-bold text-gray-800 mb-3">Descrição</div>
+        <div className="grid md:grid-cols-2 gap-3">
+          <div>
+            <label className={LABEL}>Descrição</label>
+            <input className={CAMPO} name="descricao" placeholder="Ex.: repasse aluguel, conta de luz..." />
+          </div>
+          <div>
+            <label className={LABEL}>Comprovante (link)</label>
+            <input className={CAMPO} name="comprovante_url" placeholder="Link do Drive, se tiver" />
+          </div>
+        </div>
+      </div>
+
+      <div className="flex justify-end">
+        <button type="submit" className="text-xs bg-primary text-white rounded-lg px-5 py-2 font-semibold">
+          Salvar movimentação
+        </button>
+      </div>
+    </form>
+  );
+}

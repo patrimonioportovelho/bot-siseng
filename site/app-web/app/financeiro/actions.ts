@@ -206,3 +206,123 @@ export async function marcarPagoAction(formData: FormData) {
   revalidatePath("/financeiro");
   redirect(`/financeiro/${id}?salvo=1`);
 }
+
+// Categoria fixa usada nas despesas geradas pelo rateio — já existe importada
+// da planilha legada (ver Cat0021 "Repasse de Honorários Transações" em
+// categorias_financeiras, tipo Despesa).
+const CATEGORIA_REPASSE_HONORARIO = "Repasse de Honorários Transações";
+
+type LinhaRateio = {
+  parte: string;
+  parceiro_id: string;
+  parceiro_nome: string;
+  porcentagem: number;
+  valor_final: number;
+  desconto: number;
+  observacao: string | null;
+};
+
+// Gera o rateio de uma transação (Locação ou Compra e Venda) a partir das
+// porcentagens já cadastradas nela (porc_honorario, porc_parceria,
+// porc_corretor_proprietario, porc_corretor_contraparte) — ver a mesma
+// conta em cascata usada em components/transacao-form.tsx (honorário total
+// → desconta parceria → resto é rateado entre os corretores). Só roda uma
+// vez por transação: cria 1 linha em `pagamentos` + 1 despesa em
+// `movimentacoes` (linkada via pagamento_id) por parceiro/corretor
+// envolvido. A imobiliária não gera despesa (fica com o valor "em casa").
+export async function gerarRateioAction(formData: FormData) {
+  await requireAdminSession();
+
+  const transacaoId = texto(formData, "transacao_id");
+  const recebimentoId = texto(formData, "recebimento_id");
+  const vencimentoTexto = texto(formData, "vencimento");
+  const linhasTexto = texto(formData, "linhas");
+
+  if (!transacaoId || !recebimentoId || !vencimentoTexto || !linhasTexto) {
+    throw new Error("Dados incompletos para gerar o rateio.");
+  }
+
+  let linhas: LinhaRateio[];
+  try {
+    linhas = JSON.parse(linhasTexto);
+  } catch {
+    throw new Error("Rateio inválido.");
+  }
+  if (!Array.isArray(linhas) || linhas.length === 0) {
+    throw new Error("Nenhuma linha de rateio informada.");
+  }
+
+  const jaExiste = await prisma.pagamentos.findFirst({ where: { transacao_id: transacaoId } });
+  if (jaExiste) {
+    throw new Error("O rateio dessa transação já foi gerado.");
+  }
+
+  const [categoria, transacao] = await Promise.all([
+    prisma.categorias_financeiras.findFirst({ where: { nome: CATEGORIA_REPASSE_HONORARIO, tipo: "Despesa" } }),
+    prisma.transacoes.findUnique({ where: { id: transacaoId } })
+  ]);
+  if (!categoria) throw new Error(`Categoria "${CATEGORIA_REPASSE_HONORARIO}" não encontrada.`);
+  if (!transacao) throw new Error("Transação não encontrada.");
+
+  // Valor do honorário é fixo por transação (valor_transacao x porc_honorario)
+  // — recalculado aqui a partir do banco, não confiando no valor mandado
+  // pelo formulário, igual já é feito nas outras Server Actions do sistema.
+  const valorHonorarioTotal = Number(transacao.valor_transacao) * Number(transacao.porc_honorario ?? 0);
+  const vencimento = new Date(vencimentoTexto + "T00:00:00");
+
+  const idsCriados: string[] = [];
+
+  await prisma.$transaction(async (tx) => {
+    for (const linha of linhas) {
+      if (!linha.parceiro_id || !(linha.valor_final > 0)) continue;
+
+      const pagamento = await tx.pagamentos.create({
+        data: {
+          status: "Pendente",
+          transacao_id: transacaoId,
+          cliente_id: transacao.cliente_id,
+          tipo: transacao.tipo,
+          parceiro_id: linha.parceiro_id,
+          parte: linha.parte,
+          porcentagem: linha.porcentagem,
+          desconto: linha.desconto > 0 ? linha.desconto : null,
+          observacao: linha.observacao,
+          valor_honorario: valorHonorarioTotal,
+          valor_parceiro: linha.valor_final
+        }
+      });
+
+      const movimentacao = await tx.movimentacoes.create({
+        data: {
+          tipo: "Despesa",
+          categoria_id: categoria.id,
+          transacao_id: transacaoId,
+          parceiro_id: linha.parceiro_id,
+          pagamento_id: pagamento.id,
+          descricao: `Repasse de honorário — ${linha.parte} — ${linha.parceiro_nome}`,
+          valor: linha.valor_final,
+          vencimento,
+          pago: false,
+          gerado_automaticamente: true
+        }
+      });
+
+      idsCriados.push(movimentacao.id);
+    }
+  });
+
+  if (idsCriados.length === 0) {
+    throw new Error("Nenhuma linha válida para gerar o rateio (confira parceiro e valor de cada uma).");
+  }
+
+  await logAlteracao({
+    entidadeTipo: "pagamentos",
+    entidadeId: transacaoId,
+    acao: "criar",
+    dadosDepois: { transacao_id: transacaoId, quantidade: idsCriados.length }
+  });
+
+  revalidatePath(`/financeiro/${recebimentoId}`);
+  revalidatePath("/financeiro");
+  redirect(`/financeiro/${recebimentoId}?rateio=1`);
+}

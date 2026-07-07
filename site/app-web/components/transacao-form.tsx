@@ -233,6 +233,17 @@ export function TransacaoForm({
   // valor dele é descontado do honorário total antes de ratear entre os
   // corretores da imobiliária.
   const valorTransacaoNum = valorEditavelParaDecimal(valorTransacaoTexto) ?? 0;
+
+  // Mensagem de conferência (não bloqueia salvar): soma das condições de
+  // pagamento lançadas até agora, comparada ao Valor da Transação — pra dar
+  // pra ver, ainda preenchendo, se as etapas do negócio já fecham o valor
+  // total ou se falta/sobra alguma coisa.
+  const somaCondicoes = useMemo(
+    () => condicoes.reduce((acc, c) => acc + (valorEditavelParaDecimal(c.valor) ?? 0), 0),
+    [condicoes]
+  );
+  const saldoCondicoes = valorTransacaoNum - somaCondicoes;
+
   const [porcHonorarioTexto, setPorcHonorarioTexto] = useState(formatPercentual(t?.porc_honorario));
   const [porcParceriaTexto, setPorcParceriaTexto] = useState(formatPercentual(t?.porc_parceria));
   const [porcCorretorProprietarioTexto, setPorcCorretorProprietarioTexto] = useState(
@@ -723,6 +734,23 @@ export function TransacaoForm({
                   </button>
                 </div>
               ))}
+            </div>
+          )}
+
+          {condicoes.length > 0 && (
+            <div
+              className={`text-xs rounded-lg px-3 py-2 mb-3 border ${
+                saldoCondicoes === 0
+                  ? "bg-green-50 border-green-200 text-green-700"
+                  : "bg-amber-50 border-amber-200 text-amber-700"
+              }`}
+            >
+              Total lançado nas condições: {formatMoeda(somaCondicoes)} · Valor da transação:{" "}
+              {formatMoeda(valorTransacaoNum)}
+              {saldoCondicoes === 0 && " · fecha certinho com o valor da transação."}
+              {saldoCondicoes > 0 && ` · ainda falta ${formatMoeda(saldoCondicoes)} para completar o valor total.`}
+              {saldoCondicoes < 0 &&
+                ` · as condições somam ${formatMoeda(Math.abs(saldoCondicoes))} a mais que o valor da transação.`}
             </div>
           )}
 

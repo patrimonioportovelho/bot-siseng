@@ -314,6 +314,27 @@ function blocoAssinatura(nome: string, documento: string, papel: string): string
   return `___________________________\n${nome}\n${documento}\n${papel}`;
 }
 
+// Uma linha de condição de pagamento por extenso: antes só entravam Tipo,
+// Valor e Forma de pagamento no contrato — Parcelas, Momento e Data de
+// pagamento ficavam de fora do texto mesmo já preenchidos no cadastro.
+function linhaCondicaoPagamento(c: {
+  tipo: string | null;
+  valor: unknown;
+  forma_pagamento: string | null;
+  parcelas: number | null;
+  momento: string | null;
+  data_pagamento: Date | null;
+}): string {
+  const partes = [
+    `${c.tipo ?? "Parcela"}: R$ ${numero(c.valor)}`,
+    c.parcelas ? `em ${c.parcelas}x` : null,
+    c.forma_pagamento ? `forma de pagamento ${c.forma_pagamento}` : null,
+    c.momento ? `no momento ${c.momento}` : null,
+    c.data_pagamento ? `com vencimento em ${dataCurta(c.data_pagamento)}` : null
+  ].filter((p): p is string => Boolean(p));
+  return partes.join(", ");
+}
+
 async function montarDadosTransacao(
   tipoDocumento: "contrato_locacao" | "contrato_compra_venda",
   transacaoId: string
@@ -457,9 +478,7 @@ async function montarDadosTransacao(
       `${t.imoveis?.inscricao ? `, inscrição imobiliária ${formatInscricao(t.imoveis.inscricao)}` : ""}` +
       `${t.imoveis?.descricao ? `, com a seguinte descrição: ${t.imoveis.descricao}` : ""}`,
     ValorTransacao: `${numero(t.valor_transacao)} (${valorPorExtenso(Number(t.valor_transacao))})`,
-    CondicoesPagamento: t.condicoes_pagamento
-      .map((c) => `${c.tipo ?? "Parcela"}: R$ ${numero(c.valor)} (${c.forma_pagamento ?? "—"})`)
-      .join("\n"),
+    CondicoesPagamento: t.condicoes_pagamento.map(linhaCondicaoPagamento).join("\n"),
     BancoVendedor: bancoVendedor.nome,
     CodigoBancoVendedor: bancoVendedor.codigo,
     AgenciaVendedor: primeiroVendedor.agencia ?? "",

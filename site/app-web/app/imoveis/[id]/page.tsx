@@ -31,7 +31,9 @@ export default async function ImovelDetalhePage({
       }
     }),
     prisma.clientes.findMany({
-      where: { status_cadastro: { not: "Arquivado" } },
+      // NULL em status_cadastro conta como "não arquivado" — ver mesmo
+      // comentário em app/imoveis/novo/page.tsx.
+      where: { OR: [{ status_cadastro: null }, { status_cadastro: { not: "Arquivado" } }] },
       orderBy: { nome: "asc" },
       select: { id: true, nome: true, id_legado: true, parceiro_id: true }
     }),

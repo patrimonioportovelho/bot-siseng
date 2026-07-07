@@ -10,7 +10,11 @@ export const dynamic = "force-dynamic";
 export default async function NovoImovelPage() {
   const [clientes, parceiros, estados, cidades] = await Promise.all([
     prisma.clientes.findMany({
-      where: { status_cadastro: { not: "Arquivado" } },
+      // NULL em status_cadastro conta como "não arquivado" — todo cliente
+      // criado pela tela nova fica com esse campo NULL (nunca é setado na
+      // criação), e "not: Arquivado" sozinho exclui NULL no Postgres, o que
+      // sumia com o cliente recém-criado desse seletor.
+      where: { OR: [{ status_cadastro: null }, { status_cadastro: { not: "Arquivado" } }] },
       orderBy: { nome: "asc" },
       select: { id: true, nome: true, id_legado: true, parceiro_id: true }
     }),

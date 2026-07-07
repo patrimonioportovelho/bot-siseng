@@ -17,16 +17,23 @@ export default async function ClientesPage({
   const page = Math.max(1, Number(pageParam ?? "1") || 1);
 
   const where = {
-    status_cadastro: { not: "Arquivado" },
-    ...(termo
-      ? {
-          OR: [
-            { nome: { contains: termo, mode: "insensitive" as const } },
-            { email: { contains: termo, mode: "insensitive" as const } },
-            { cpf: { contains: termo, mode: "insensitive" as const } }
+    // NULL em status_cadastro conta como "não arquivado" — todo cliente
+    // criado nunca tem esse campo setado, e "not: Arquivado" sozinho exclui
+    // NULL no Postgres, o que sumia com clientes recém-criados da lista.
+    AND: [
+      { OR: [{ status_cadastro: null }, { status_cadastro: { not: "Arquivado" } }] },
+      ...(termo
+        ? [
+            {
+              OR: [
+                { nome: { contains: termo, mode: "insensitive" as const } },
+                { email: { contains: termo, mode: "insensitive" as const } },
+                { cpf: { contains: termo, mode: "insensitive" as const } }
+              ]
+            }
           ]
-        }
-      : {})
+        : [])
+    ]
   };
 
   const [clientes, total] = await Promise.all([

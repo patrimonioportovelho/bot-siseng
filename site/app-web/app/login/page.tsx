@@ -1,73 +1,224 @@
-import { loginAction } from "./actions";
+import { prisma } from "@/lib/prisma";
+import { loginAction, criarMensagemSacAction } from "./actions";
+import { AdminLoginPanel } from "@/components/site/admin-login-panel";
+
+export const dynamic = "force-dynamic";
+
+function formatData(data: Date) {
+  return new Date(data).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+const SERVICOS = [
+  {
+    titulo: "Correspondência Bancária",
+    descricao: "Assessoria completa em financiamento imobiliário, da simulação até a assinatura do contrato com o banco."
+  },
+  {
+    titulo: "Administração de Imóveis",
+    descricao: "Cuidamos do imóvel alugado do início ao fim: contrato, repasses, vistorias e atendimento ao inquilino."
+  },
+  {
+    titulo: "Serviços de Regularização",
+    descricao: "Documentação, matrícula e regularização junto aos cartórios e órgãos públicos, sem dor de cabeça pra você."
+  },
+  {
+    titulo: "Compra e Venda",
+    descricao: "Da avaliação à assinatura: te acompanhamos em cada etapa da compra ou venda do seu imóvel."
+  }
+];
+
+const TIPO_BADGE: Record<string, string> = {
+  Noticia: "bg-blue-50 text-blue-700 border-blue-200",
+  Edital: "bg-amber-50 text-amber-700 border-amber-200"
+};
 
 export default async function LoginPage({
   searchParams
 }: {
-  searchParams: Promise<{ erro?: string; pendente?: string; next?: string }>;
+  searchParams: Promise<{ erro?: string; pendente?: string; next?: string; sac_ok?: string; sac_erro?: string }>;
 }) {
-  const { erro, pendente, next } = await searchParams;
+  const { erro, pendente, next, sac_ok, sac_erro } = await searchParams;
+
+  const publicacoes = await prisma.publicacoes_site.findMany({
+    where: { ativo: true },
+    orderBy: { publicado_em: "desc" },
+    take: 20
+  });
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-      <form action={loginAction} className="bg-white border border-gray-200 rounded-xl p-8 w-full max-w-sm shadow-sm">
-        <div className="text-lg font-bold text-gray-900 mb-1">Acesso administrativo</div>
-        <div className="text-sm text-gray-500 mb-6">SisEng</div>
-
-        {erro && (
-          <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
-            {erro}
+    <div className="min-h-screen bg-appbg">
+      {/* Header */}
+      <header className="bg-primary">
+        <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
+          <div>
+            <div className="text-white font-bold text-lg leading-tight">RE/MAX Engimob</div>
+            <div className="text-white/60 text-[11px]">SisEng · sistema interno</div>
           </div>
-        )}
-
-        {pendente && (
-          <div className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
-            {pendente}
+          <div className="flex items-center gap-2">
+            <a
+              href="/portal/login"
+              className="text-xs bg-accent text-white rounded-lg px-3 py-1.5 font-semibold hover:opacity-90 transition-opacity whitespace-nowrap"
+            >
+              Acesso do corretor
+            </a>
+            <AdminLoginPanel action={loginAction} erro={erro} pendente={pendente} next={next} />
           </div>
-        )}
+        </div>
+      </header>
 
-        <input type="hidden" name="next" value={next ?? "/dashboard"} />
+      {/* Hero */}
+      <section className="bg-primary">
+        <div className="max-w-5xl mx-auto px-4 pb-16 pt-6 text-center">
+          <h1 className="text-white text-3xl md:text-4xl font-extrabold leading-tight max-w-3xl mx-auto">
+            O imóvel certo começa com quem entende do assunto.
+          </h1>
+          <p className="text-white/70 text-sm md:text-base mt-4 max-w-2xl mx-auto">
+            Compra, venda, locação e administração de imóveis em Porto Velho e região — com a
+            confiança de quem cuida de cada etapa do início ao fim.
+          </p>
+          <div className="flex items-center justify-center gap-3 mt-6">
+            <a
+              href="#servicos"
+              className="text-sm bg-white text-primary rounded-lg px-5 py-2.5 font-semibold hover:opacity-90 transition-opacity"
+            >
+              Nossos serviços
+            </a>
+            <a
+              href="#sac"
+              className="text-sm bg-transparent border border-white/40 text-white rounded-lg px-5 py-2.5 font-semibold hover:bg-white/10 transition-colors"
+            >
+              Fale conosco
+            </a>
+          </div>
+        </div>
+      </section>
 
-        <label className="text-xs text-gray-600 block mb-1">Nome completo</label>
-        <input
-          name="nome"
-          required
-          autoFocus
-          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-4 outline-none focus:border-primary"
-          placeholder="Seu nome completo"
-        />
+      <main className="max-w-5xl mx-auto px-4">
+        {/* Serviços */}
+        <section id="servicos" className="-mt-10 mb-16">
+          <div className="grid sm:grid-cols-2 md:grid-cols-4 gap-4">
+            {SERVICOS.map((s) => (
+              <div key={s.titulo} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+                <div className="text-sm font-bold text-gray-800 mb-2">{s.titulo}</div>
+                <p className="text-xs text-gray-500 leading-relaxed">{s.descricao}</p>
+              </div>
+            ))}
+          </div>
+        </section>
 
-        <label className="text-xs text-gray-600 block mb-1">Email</label>
-        <input
-          name="email"
-          type="email"
-          required
-          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-4 outline-none focus:border-primary"
-          placeholder="seuemail@exemplo.com"
-        />
+        {/* Notícias e editais */}
+        <section id="noticias" className="mb-16">
+          <div className="text-xl font-bold text-gray-800 mb-1">Notícias e editais</div>
+          <p className="text-xs text-gray-500 mb-4">Novidades da imobiliária e publicações oficiais.</p>
 
-        <label className="text-xs text-gray-600 block mb-1">Senha</label>
-        <input
-          name="senha"
-          type="password"
-          required
-          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-6 outline-none focus:border-primary"
-          placeholder="Sua senha"
-        />
+          {publicacoes.length === 0 && (
+            <div className="bg-white border border-gray-200 rounded-xl p-6 text-center text-sm text-gray-400">
+              Em breve, novidades por aqui.
+            </div>
+          )}
 
-        <button
-          type="submit"
-          className="w-full bg-primary text-white rounded-lg py-2 text-sm font-semibold hover:opacity-90"
-        >
-          Entrar
-        </button>
+          <div className="flex flex-col gap-3">
+            {publicacoes.map((p) => (
+              <article key={p.id} className="bg-white border border-gray-200 rounded-xl p-4">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span
+                    className={`text-[10px] font-semibold uppercase rounded-full px-2 py-0.5 border ${
+                      TIPO_BADGE[p.tipo] ?? "bg-gray-50 text-gray-600 border-gray-200"
+                    }`}
+                  >
+                    {p.tipo === "Edital" ? "Edital" : "Notícia"}
+                  </span>
+                  <span className="text-[11px] text-gray-400">{formatData(p.publicado_em)}</span>
+                </div>
+                <div className="text-sm font-bold text-gray-800">{p.titulo}</div>
+                <p className="text-xs text-gray-600 mt-1 whitespace-pre-line">{p.resumo || p.corpo}</p>
+              </article>
+            ))}
+          </div>
+        </section>
 
-        <p className="text-[11px] text-gray-400 mt-4 leading-relaxed">
-          O email precisa estar cadastrado na ficha de parceiro ativo. Se for seu primeiro acesso,
-          escolha a senha que quiser aqui — sua solicitação fica pendente até um administrador
-          aprovar, e depois disso essa mesma senha já funciona. Toda ação no sistema fica registrada
-          nos logs de auditoria.
-        </p>
-      </form>
+        {/* SAC */}
+        <section id="sac" className="mb-16">
+          <div className="bg-white border border-gray-200 rounded-xl p-6 max-w-xl mx-auto">
+            <div className="text-lg font-bold text-gray-800 mb-1">Fale conosco (SAC)</div>
+            <p className="text-xs text-gray-500 mb-4">
+              Dúvidas, sugestões ou reclamações — nossa equipe responde o quanto antes.
+            </p>
+
+            {sac_ok === "1" && (
+              <div className="text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg p-3 mb-4">
+                Mensagem enviada com sucesso. Obrigado pelo contato!
+              </div>
+            )}
+            {sac_erro && (
+              <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
+                {sac_erro}
+              </div>
+            )}
+
+            <form action={criarMensagemSacAction} className="flex flex-col gap-3">
+              <div className="grid md:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-gray-600 block mb-1">Nome</label>
+                  <input
+                    name="nome"
+                    required
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary"
+                    placeholder="Seu nome"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-600 block mb-1">E-mail</label>
+                  <input
+                    name="email"
+                    type="email"
+                    required
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary"
+                    placeholder="seuemail@exemplo.com"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-600 block mb-1">Telefone (opcional)</label>
+                  <input
+                    name="telefone"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary"
+                    placeholder="(69) 99999-9999"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-600 block mb-1">Assunto (opcional)</label>
+                  <input
+                    name="assunto"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary"
+                    placeholder="Sobre o que é?"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-gray-600 block mb-1">Mensagem</label>
+                <textarea
+                  name="mensagem"
+                  required
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary min-h-28"
+                  placeholder="Como podemos ajudar?"
+                />
+              </div>
+              <button
+                type="submit"
+                className="bg-primary text-white rounded-lg py-2.5 text-sm font-semibold hover:opacity-90 mt-1"
+              >
+                Enviar mensagem
+              </button>
+            </form>
+          </div>
+        </section>
+      </main>
+
+      <footer className="bg-[color:var(--pri-dark)]">
+        <div className="max-w-5xl mx-auto px-4 py-6 text-center text-white/50 text-[11px]">
+          RE/MAX Engimob · Porto Velho/RO — SisEng, sistema interno de gestão.
+        </div>
+      </footer>
     </div>
   );
 }

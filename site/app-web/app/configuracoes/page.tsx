@@ -2,7 +2,16 @@ import Link from "next/link";
 import { Topbar } from "@/components/topbar";
 import { prisma } from "@/lib/prisma";
 import { getAdminSession } from "@/lib/auth";
-import { definirSenhaParceiroAction, aprovarAcessoAction, rejeitarAcessoAction } from "./actions";
+import { StatusSacSelect } from "@/components/configuracoes/status-sac-select";
+import {
+  definirSenhaParceiroAction,
+  aprovarAcessoAction,
+  rejeitarAcessoAction,
+  criarPublicacaoAction,
+  atualizarPublicacaoAction,
+  alternarAtivoPublicacaoAction,
+  excluirPublicacaoAction
+} from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -10,12 +19,20 @@ function formatDataHora(data: Date) {
   return new Date(data).toLocaleString("pt-BR");
 }
 
+const TIPOS_PUBLICACAO = ["Noticia", "Edital"];
+
 export default async function ConfiguracoesPage({
   searchParams
 }: {
-  searchParams: Promise<{ salvo?: string; erro?: string; aprovado?: string; rejeitado?: string }>;
+  searchParams: Promise<{
+    salvo?: string;
+    erro?: string;
+    aprovado?: string;
+    rejeitado?: string;
+    salvo_publicacao?: string;
+  }>;
 }) {
-  const { salvo, erro, aprovado, rejeitado } = await searchParams;
+  const { salvo, erro, aprovado, rejeitado, salvo_publicacao } = await searchParams;
   const session = await getAdminSession();
 
   if (!session?.isAdm) {
@@ -33,7 +50,7 @@ export default async function ConfiguracoesPage({
     );
   }
 
-  const [pendentes, parceirosAtivos, lojas, acessos, alteracoes] = await Promise.all([
+  const [pendentes, parceirosAtivos, lojas, acessos, alteracoes, publicacoes, mensagensSac] = await Promise.all([
     prisma.solicitacoes_acesso.findMany({
       where: { status: "pendente" },
       orderBy: { criado_em: "asc" },
@@ -54,7 +71,9 @@ export default async function ConfiguracoesPage({
       orderBy: { criado_em: "desc" },
       take: 20,
       include: { parceiros: true }
-    })
+    }),
+    prisma.publicacoes_site.findMany({ orderBy: { publicado_em: "desc" } }),
+    prisma.mensagens_sac.findMany({ orderBy: { criado_em: "desc" }, take: 100 })
   ]);
 
   return (
@@ -74,6 +93,11 @@ export default async function ConfiguracoesPage({
       {rejeitado === "1" && (
         <div className="bg-green-50 border border-green-200 text-green-700 text-xs rounded-lg px-3 py-2 mb-4">
           Solicitação rejeitada.
+        </div>
+      )}
+      {salvo_publicacao === "1" && (
+        <div className="bg-green-50 border border-green-200 text-green-700 text-xs rounded-lg px-3 py-2 mb-4">
+          Publicação salva com sucesso.
         </div>
       )}
       {erro && (
@@ -225,7 +249,7 @@ export default async function ConfiguracoesPage({
         </div>
       </div>
 
-      <div className="bg-white border border-gray-200 rounded-xl p-4">
+      <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4">
         <div className="text-sm font-bold text-gray-800 mb-3">Log de alterações recentes</div>
         <div className="flex flex-col gap-1.5 max-h-64 overflow-auto">
           {alteracoes.map((a) => (
@@ -238,6 +262,228 @@ export default async function ConfiguracoesPage({
           ))}
           {alteracoes.length === 0 && <p className="text-xs text-gray-400">Nenhuma alteração registrada ainda.</p>}
         </div>
+      </div>
+
+      <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4">
+        <div className="text-sm font-bold text-gray-800 mb-1">Notícias e editais (site público)</div>
+        <p className="text-xs text-gray-500 mb-3">
+          Aparecem na página pública (fora do login), na seção "Notícias e editais". Desative em vez de
+          excluir se só quiser tirar de circulação por enquanto.
+        </p>
+
+        <details className="mb-4 bg-gray-50/50 border border-dashed border-gray-200 rounded-lg">
+          <summary className="text-xs font-semibold text-gray-700 cursor-pointer px-3 py-2">
+            + Nova publicação
+          </summary>
+          <form action={criarPublicacaoAction} className="p-3 pt-0 flex flex-col gap-2">
+            <div className="grid md:grid-cols-2 gap-2">
+              <div>
+                <label className="text-xs text-gray-600 block mb-1">Tipo</label>
+                <select
+                  name="tipo"
+                  defaultValue="Noticia"
+                  className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full outline-none focus:border-primary bg-white"
+                >
+                  {TIPOS_PUBLICACAO.map((t) => (
+                    <option key={t} value={t}>
+                      {t === "Edital" ? "Edital" : "Notícia"}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-gray-600 block mb-1">Título</label>
+                <input
+                  name="titulo"
+                  required
+                  className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full outline-none focus:border-primary"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs text-gray-600 block mb-1">Resumo (opcional, aparece na lista)</label>
+              <input
+                name="resumo"
+                className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full outline-none focus:border-primary"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-gray-600 block mb-1">Texto completo</label>
+              <textarea
+                name="corpo"
+                required
+                className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full outline-none focus:border-primary min-h-24"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-gray-600 block mb-1">Imagem (link, opcional)</label>
+              <input
+                name="imagem_url"
+                className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full outline-none focus:border-primary"
+              />
+            </div>
+            <label className="flex items-center gap-2 text-xs text-gray-600">
+              <input type="checkbox" name="ativo" defaultChecked /> Publicar já (visível no site)
+            </label>
+            <div>
+              <button type="submit" className="text-xs bg-primary text-white rounded-lg px-3 py-1.5 font-semibold">
+                Salvar publicação
+              </button>
+            </div>
+          </form>
+        </details>
+
+        {publicacoes.length === 0 ? (
+          <p className="text-xs text-gray-400">Nenhuma publicação cadastrada ainda.</p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {publicacoes.map((p) => (
+              <details key={p.id} className="border border-gray-200 rounded-lg">
+                <summary className="flex items-center justify-between gap-2 px-3 py-2 cursor-pointer text-xs">
+                  <span className="flex items-center gap-2 min-w-0">
+                    <span
+                      className={`text-[10px] font-semibold uppercase rounded-full px-2 py-0.5 border shrink-0 ${
+                        p.ativo
+                          ? "bg-green-50 text-green-700 border-green-200"
+                          : "bg-gray-50 text-gray-500 border-gray-200"
+                      }`}
+                    >
+                      {p.ativo ? "Ativa" : "Inativa"}
+                    </span>
+                    <span className="text-gray-400 shrink-0">{p.tipo === "Edital" ? "Edital" : "Notícia"}</span>
+                    <span className="font-medium text-gray-800 truncate">{p.titulo}</span>
+                  </span>
+                  <span className="text-gray-400 shrink-0">{formatDataHora(p.publicado_em)}</span>
+                </summary>
+                <div className="p-3 pt-0">
+                  <form action={atualizarPublicacaoAction} className="flex flex-col gap-2 mb-2">
+                    <input type="hidden" name="publicacaoId" value={p.id} />
+                    <div className="grid md:grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-xs text-gray-600 block mb-1">Tipo</label>
+                        <select
+                          name="tipo"
+                          defaultValue={p.tipo}
+                          className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full outline-none focus:border-primary bg-white"
+                        >
+                          {TIPOS_PUBLICACAO.map((t) => (
+                            <option key={t} value={t}>
+                              {t === "Edital" ? "Edital" : "Notícia"}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-xs text-gray-600 block mb-1">Título</label>
+                        <input
+                          name="titulo"
+                          required
+                          defaultValue={p.titulo}
+                          className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full outline-none focus:border-primary"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-600 block mb-1">Resumo</label>
+                      <input
+                        name="resumo"
+                        defaultValue={p.resumo ?? ""}
+                        className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full outline-none focus:border-primary"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-600 block mb-1">Texto completo</label>
+                      <textarea
+                        name="corpo"
+                        required
+                        defaultValue={p.corpo}
+                        className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full outline-none focus:border-primary min-h-24"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-gray-600 block mb-1">Imagem (link)</label>
+                      <input
+                        name="imagem_url"
+                        defaultValue={p.imagem_url ?? ""}
+                        className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full outline-none focus:border-primary"
+                      />
+                    </div>
+                    <label className="flex items-center gap-2 text-xs text-gray-600">
+                      <input type="checkbox" name="ativo" defaultChecked={p.ativo} /> Publicada (visível no site)
+                    </label>
+                    <div>
+                      <button
+                        type="submit"
+                        className="text-xs bg-primary text-white rounded-lg px-3 py-1.5 font-semibold"
+                      >
+                        Salvar alterações
+                      </button>
+                    </div>
+                  </form>
+                  <div className="flex gap-1.5">
+                    <form action={alternarAtivoPublicacaoAction}>
+                      <input type="hidden" name="publicacaoId" value={p.id} />
+                      <button
+                        type="submit"
+                        className="text-xs border border-gray-300 text-gray-600 rounded-lg px-2 py-1"
+                      >
+                        {p.ativo ? "Desativar" : "Ativar"}
+                      </button>
+                    </form>
+                    <form action={excluirPublicacaoAction}>
+                      <input type="hidden" name="publicacaoId" value={p.id} />
+                      <button type="submit" className="text-xs border border-red-200 text-red-600 rounded-lg px-2 py-1">
+                        Excluir
+                      </button>
+                    </form>
+                  </div>
+                </div>
+              </details>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="bg-white border border-gray-200 rounded-xl p-4">
+        <div className="text-sm font-bold text-gray-800 mb-1">Mensagens do SAC</div>
+        <p className="text-xs text-gray-500 mb-3">
+          Enviadas pelo formulário de contato do site público. Não manda e-mail automático — acompanhe e
+          marque o andamento aqui.
+        </p>
+        {mensagensSac.length === 0 ? (
+          <p className="text-xs text-gray-400">Nenhuma mensagem recebida ainda.</p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {mensagensSac.map((m) => (
+              <details key={m.id} className="border border-gray-200 rounded-lg">
+                <summary className="flex items-center justify-between gap-2 px-3 py-2 cursor-pointer text-xs">
+                  <span className="flex items-center gap-2 min-w-0">
+                    <span className="font-medium text-gray-800 truncate">{m.nome}</span>
+                    {m.assunto && <span className="text-gray-400 truncate">· {m.assunto}</span>}
+                  </span>
+                  <span className="flex items-center gap-2 shrink-0">
+                    <span className="text-gray-400">{formatDataHora(m.criado_em)}</span>
+                    <StatusSacSelect mensagemId={m.id} statusAtual={m.status} />
+                  </span>
+                </summary>
+                <div className="px-3 pb-3 text-xs text-gray-600">
+                  <div className="mb-1">
+                    <span className="text-gray-400">E-mail:</span> {m.email}
+                    {m.telefone && (
+                      <>
+                        {" "}
+                        <span className="text-gray-400">· Telefone:</span> {m.telefone}
+                      </>
+                    )}
+                  </div>
+                  <p className="whitespace-pre-line bg-gray-50 border border-gray-100 rounded-lg p-2">
+                    {m.mensagem}
+                  </p>
+                </div>
+              </details>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

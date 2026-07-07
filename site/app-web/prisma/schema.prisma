@@ -590,6 +590,8 @@ model parceiros {
   movimentacoes                                                               movimentacoes[]
   noticias                                                                    noticias[]
   pagamentos                                                                  pagamentos[]
+  publicacoes_site                                                           publicacoes_site[]
+  mensagens_sac                                                              mensagens_sac[]
   bancos                                                                      bancos?                   @relation(fields: [banco_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   lojas                                                                       lojas?                    @relation(fields: [loja_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   relatorios                                                                  relatorios[]
@@ -602,6 +604,45 @@ model parceiros {
 
   @@index([loja_id], map: "idx_parceiros_loja")
   @@index([nome], map: "idx_parceiros_nome")
+}
+
+/// Notícias e editais mostrados na página pública (fora do login) — separado
+/// da tabela "noticias" já existente, que só aparece pro corretor logado no
+/// Portal. Gerenciado em Configurações.
+model publicacoes_site {
+  id                String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tipo              String     @default("Noticia")
+  titulo            String
+  resumo            String?
+  corpo             String
+  imagem_url        String?
+  ativo             Boolean    @default(true)
+  publicado_em      DateTime   @default(now()) @db.Timestamptz(6)
+  autor_parceiro_id String?    @db.Uuid
+  created_at        DateTime   @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime   @default(now()) @db.Timestamptz(6)
+  parceiros         parceiros? @relation(fields: [autor_parceiro_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([ativo, publicado_em], map: "idx_publicacoes_site_ativo")
+}
+
+/// Mensagens do formulário de SAC da página pública — não envia e-mail
+/// automático por enquanto, fica como uma fila que o admin abre e resolve
+/// manualmente em Configurações.
+model mensagens_sac {
+  id                        String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nome                      String
+  email                     String
+  telefone                  String?
+  assunto                   String?
+  mensagem                  String
+  status                    String     @default("Novo")
+  resolvido_por_parceiro_id String?    @db.Uuid
+  resolvido_em              DateTime?  @db.Timestamptz(6)
+  criado_em                 DateTime   @default(now()) @db.Timestamptz(6)
+  parceiros                 parceiros? @relation(fields: [resolvido_por_parceiro_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([status, criado_em], map: "idx_mensagens_sac_status")
 }
 
 model recibos_locacao {

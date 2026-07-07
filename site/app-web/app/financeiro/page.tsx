@@ -289,7 +289,7 @@ export default async function FinanceiroPage({
                   {m.categorias_financeiras.nome}
                 </span>
                 <span className={`text-xs truncate ${corTexto}`}>
-                  {m.clientes_interessado?.nome ?? (m.clientes_proprietario ? "—" : m.contraparte_nome ?? "—")}
+                  {m.clientes_interessado?.nome ?? (m.clientes_proprietario || m.parceiros ? "—" : m.contraparte_nome ?? "—")}
                 </span>
                 <span className={`text-xs truncate ${corTexto}`}>{m.clientes_proprietario?.nome ?? "—"}</span>
                 <span className={`text-xs truncate ${corTexto}`}>{m.parceiros?.nome ?? "—"}</span>

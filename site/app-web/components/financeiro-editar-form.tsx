@@ -149,7 +149,7 @@ export function FinanceiroEditarForm({
 
       <div className="bg-white border border-gray-200 rounded-xl p-4">
         <div className="text-sm font-bold text-gray-800 mb-3">Envolvidos</div>
-        {m.contraparte_nome && !m.cliente_interessado_id && !m.cliente_proprietario_id && (
+        {m.contraparte_nome && !m.cliente_interessado_id && !m.cliente_proprietario_id && !m.parceiro_id && (
           <p className="text-[11px] text-gray-400 mb-2">
             Registro antigo importado da planilha, sem cliente vinculado: "{m.contraparte_nome}".
           </p>

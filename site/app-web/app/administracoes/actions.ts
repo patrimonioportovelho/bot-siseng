@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { requireAdminSession, logAlteracao } from "@/lib/auth";
+import { requireAdminSession, requireAdm, logAlteracao } from "@/lib/auth";
 import { valorEditavelParaDecimal, percentualParaDecimal } from "@/lib/format";
 
 function texto(formData: FormData, campo: string): string | null {
@@ -152,4 +152,33 @@ export async function atualizarAdministracaoAction(formData: FormData) {
   revalidatePath(`/administracoes/${id}`);
   revalidatePath("/administracoes");
   redirect(`/administracoes/${id}?salvo=1`);
+}
+
+// "Apagar" aqui é sempre um soft-delete (excluido=true) — a administração
+// costuma ter histórico real vinculado (transações, documentos gerados) e
+// um DELETE de verdade quebraria essas referências. Só ADM pode fazer isso.
+export async function apagarAdministracaoAction(formData: FormData) {
+  const admin = await requireAdm();
+
+  const id = texto(formData, "administracaoId");
+  if (!id) throw new Error("Administração inválida.");
+
+  const antes = await prisma.adm_imoveis.findUnique({ where: { id } });
+  if (!antes) throw new Error("Administração não encontrada.");
+
+  await prisma.adm_imoveis.update({
+    where: { id },
+    data: { excluido: true, updated_at: new Date() }
+  });
+
+  await logAlteracao({
+    entidadeTipo: "adm_imoveis",
+    entidadeId: id,
+    acao: "excluir",
+    dadosAntes: { status: antes.status },
+    dadosDepois: { excluido: true, excluido_por: admin.nome }
+  });
+
+  revalidatePath("/administracoes");
+  redirect("/administracoes?excluido=1");
 }

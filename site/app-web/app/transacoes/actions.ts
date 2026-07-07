@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { requireAdminSession, logAlteracao } from "@/lib/auth";
+import { requireAdminSession, requireAdm, logAlteracao } from "@/lib/auth";
 import { valorEditavelParaDecimal, percentualParaDecimal } from "@/lib/format";
 
 function texto(formData: FormData, campo: string): string | null {
@@ -315,4 +315,34 @@ export async function atualizarStatusTransacaoAction(formData: FormData) {
   }
   revalidatePath("/transacoes/locacao");
   revalidatePath("/transacoes/venda");
+}
+
+// "Apagar" aqui é sempre um soft-delete (excluido=true) — a transação
+// costuma ter histórico real vinculado (pagamentos, movimentações,
+// documentos já gerados) e um DELETE de verdade quebraria essas
+// referências. Só ADM pode fazer isso.
+export async function apagarTransacaoAction(formData: FormData) {
+  const admin = await requireAdm();
+
+  const id = texto(formData, "transacaoId");
+  if (!id) throw new Error("Transação inválida.");
+
+  const antes = await prisma.transacoes.findUnique({ where: { id } });
+  if (!antes) throw new Error("Transação não encontrada.");
+
+  await prisma.transacoes.update({
+    where: { id },
+    data: { excluido: true, updated_at: new Date() }
+  });
+
+  await logAlteracao({
+    entidadeTipo: "transacoes",
+    entidadeId: id,
+    acao: "excluir",
+    dadosAntes: { status: antes.status },
+    dadosDepois: { excluido: true, excluido_por: admin.nome }
+  });
+
+  revalidatePath(antes.tipo === "Locação" ? "/transacoes/locacao" : "/transacoes/venda");
+  redirect(`${antes.tipo === "Locação" ? "/transacoes/locacao" : "/transacoes/venda"}?excluido=1`);
 }

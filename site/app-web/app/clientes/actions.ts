@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { requireAdminSession, logAlteracao } from "@/lib/auth";
+import { requireAdminSession, requireAdm, logAlteracao } from "@/lib/auth";
 import { valorEditavelParaDecimal } from "@/lib/format";
 
 function texto(formData: FormData, campo: string): string | null {
@@ -127,4 +127,34 @@ export async function atualizarClienteAction(formData: FormData) {
   revalidatePath(`/clientes/${id}`);
   revalidatePath("/clientes");
   redirect(`/clientes/${id}?salvo=1`);
+}
+
+// "Apagar" aqui é sempre um soft-delete: reaproveita o valor "Arquivado" já
+// existente em status_cadastro (não precisou de coluna nova) — o cliente
+// costuma ter histórico real vinculado (imóveis, transações, avaliações) e
+// um DELETE de verdade quebraria essas referências. Só ADM pode fazer isso.
+export async function apagarClienteAction(formData: FormData) {
+  const admin = await requireAdm();
+
+  const id = texto(formData, "clienteId");
+  if (!id) throw new Error("Cliente inválido.");
+
+  const antes = await prisma.clientes.findUnique({ where: { id } });
+  if (!antes) throw new Error("Cliente não encontrado.");
+
+  await prisma.clientes.update({
+    where: { id },
+    data: { status_cadastro: "Arquivado", updated_at: new Date() }
+  });
+
+  await logAlteracao({
+    entidadeTipo: "clientes",
+    entidadeId: id,
+    acao: "excluir",
+    dadosAntes: { status_cadastro: antes.status_cadastro },
+    dadosDepois: { status_cadastro: "Arquivado", excluido_por: admin.nome }
+  });
+
+  revalidatePath("/clientes");
+  redirect("/clientes?excluido=1");
 }

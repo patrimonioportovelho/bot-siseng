@@ -9,20 +9,23 @@ export const dynamic = "force-dynamic";
 export default async function AdministracoesPage({
   searchParams
 }: {
-  searchParams: Promise<{ q?: string }>;
+  searchParams: Promise<{ q?: string; excluido?: string }>;
 }) {
-  const { q } = await searchParams;
+  const { q, excluido } = await searchParams;
   const termo = (q ?? "").trim();
 
-  const where = termo
-    ? {
-        OR: [
-          { clientes: { nome: { contains: termo, mode: "insensitive" as const } } },
-          { imoveis: { endereco: { contains: termo, mode: "insensitive" as const } } },
-          { id_legado: { contains: termo, mode: "insensitive" as const } }
-        ]
-      }
-    : undefined;
+  const where = {
+    excluido: false,
+    ...(termo
+      ? {
+          OR: [
+            { clientes: { nome: { contains: termo, mode: "insensitive" as const } } },
+            { imoveis: { endereco: { contains: termo, mode: "insensitive" as const } } },
+            { id_legado: { contains: termo, mode: "insensitive" as const } }
+          ]
+        }
+      : {})
+  };
 
   const administracoes = await prisma.adm_imoveis.findMany({
     where,
@@ -56,6 +59,12 @@ export default async function AdministracoesPage({
   return (
     <div>
       <Topbar />
+
+      {excluido === "1" && (
+        <div className="bg-green-50 border border-green-200 text-green-700 text-xs rounded-lg px-3 py-2 mb-4">
+          Cadastro apagado com sucesso.
+        </div>
+      )}
 
       <div className="bg-white border border-gray-200 rounded-xl p-4">
         <div className="flex items-center justify-between mb-3">

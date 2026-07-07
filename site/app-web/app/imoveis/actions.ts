@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { requireAdminSession, logAlteracao } from "@/lib/auth";
+import { requireAdminSession, requireAdm, logAlteracao } from "@/lib/auth";
 import { valorEditavelParaDecimal } from "@/lib/format";
 
 function texto(formData: FormData, campo: string): string | null {
@@ -157,4 +157,33 @@ export async function atualizarImovelAction(formData: FormData) {
   revalidatePath(`/imoveis/${id}`);
   revalidatePath("/imoveis");
   redirect(`/imoveis/${id}?salvo=1`);
+}
+
+// "Apagar" aqui é sempre um soft-delete (excluido=true) — o imóvel costuma
+// ter histórico real vinculado (administrações, transações, avaliações) e
+// um DELETE de verdade quebraria essas referências. Só ADM pode fazer isso.
+export async function apagarImovelAction(formData: FormData) {
+  const admin = await requireAdm();
+
+  const id = texto(formData, "imovelId");
+  if (!id) throw new Error("Imóvel inválido.");
+
+  const antes = await prisma.imoveis.findUnique({ where: { id } });
+  if (!antes) throw new Error("Imóvel não encontrado.");
+
+  await prisma.imoveis.update({
+    where: { id },
+    data: { excluido: true, updated_at: new Date() }
+  });
+
+  await logAlteracao({
+    entidadeTipo: "imoveis",
+    entidadeId: id,
+    acao: "excluir",
+    dadosAntes: { status_imovel: antes.status_imovel },
+    dadosDepois: { excluido: true, excluido_por: admin.nome }
+  });
+
+  revalidatePath("/imoveis");
+  redirect("/imoveis?excluido=1");
 }

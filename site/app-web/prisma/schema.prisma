@@ -37,6 +37,10 @@ model adm_imoveis {
   energia              String?
   uc_energisa          String?
   observacao           String?
+  // Soft-delete: "Apagar cadastro" marca excluido=true em vez de apagar de
+  // verdade — a administração tem histórico real vinculado (transações,
+  // documentos gerados). Fica fora das listas e buscas por padrão.
+  excluido             Boolean      @default(false)
   created_at           DateTime     @default(now()) @db.Timestamptz(6)
   updated_at           DateTime     @default(now()) @db.Timestamptz(6)
   clientes             clientes     @relation(fields: [cliente_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -372,6 +376,10 @@ model imoveis {
   validade_avaliacao    DateTime?               @db.Date
   descricao             String?
   descricao_ia          String?
+  // Soft-delete: "Apagar cadastro" marca excluido=true em vez de apagar de
+  // verdade — o imóvel costuma ter histórico real vinculado (administrações,
+  // transações, avaliações). Fica fora das listas e buscas por padrão.
+  excluido              Boolean                 @default(false)
   created_at            DateTime                @default(now()) @db.Timestamptz(6)
   updated_at            DateTime                @default(now()) @db.Timestamptz(6)
   adm_imoveis           adm_imoveis[]
@@ -668,6 +676,12 @@ model transacoes {
   tem_vistoria                                             Boolean?
   arquivo_vistoria_url                                     String?
   observacao                                               String?
+  // Soft-delete: "Apagar cadastro" marca excluido=true em vez de apagar de
+  // verdade — a transação costuma ter histórico real vinculado (pagamentos,
+  // movimentações, documentos gerados). Fica fora das listas e buscas por
+  // padrão, mas o registro em si (e seus documentos já gerados) continua
+  // acessível.
+  excluido                                                 Boolean                  @default(false)
   created_at                                               DateTime                 @default(now()) @db.Timestamptz(6)
   updated_at                                               DateTime                 @default(now()) @db.Timestamptz(6)
   chaves                                                   chaves[]

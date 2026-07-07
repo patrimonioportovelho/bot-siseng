@@ -10,6 +10,7 @@ export const dynamic = "force-dynamic";
 export default async function NovoImovelPage() {
   const [clientes, parceiros, estados, cidades] = await Promise.all([
     prisma.clientes.findMany({
+      where: { status_cadastro: { not: "Arquivado" } },
       orderBy: { nome: "asc" },
       select: { id: true, nome: true, id_legado: true, parceiro_id: true }
     }),

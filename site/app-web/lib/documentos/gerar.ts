@@ -251,6 +251,8 @@ type ClienteComEndereco = {
   estado_civil: string | null;
   cpf: string | null;
   cnpj: string | null;
+  rg: string | null;
+  expedicao: string | null;
   endereco: string | null;
   cidades: { nome: string } | null;
   estados: { nome: string } | null;
@@ -261,13 +263,16 @@ function enderecoClienteCompleto(c: ClienteComEndereco): string {
 }
 
 // Parágrafo de qualificação completo de uma parte (vendedor/comprador,
-// locador/locatário): "Nome, nacionalidade, profissão, estado civil, CPF nº
-// ..., residente e domiciliado(a) em ...". Usado tanto sozinho (um só
-// proprietário) quanto unido com "e" quando há mais de um (herdeiros etc.).
+// locador/locatário): "Nome, nacionalidade, profissão, estado civil, RG nº
+// ..., CPF nº ..., residente e domiciliado(a) em ...". Usado tanto sozinho
+// (um só proprietário) quanto unido com "e" quando há mais de um (herdeiros
+// etc.). RG entrou porque a qualificação sem ele fica incompleta pra um
+// contrato de verdade (praxe jurídica sempre traz RG junto do CPF).
 function qualificacaoTexto(c: ClienteComEndereco): string {
   const nacionalidade = c.sexo === "Mulher" ? "brasileira" : "brasileiro";
   const profissao = c.profissao ?? c.cat_profissao ?? "";
   const estadoCivil = (c.estado_civil ?? "").toLowerCase();
+  const rg = c.rg ? `portador(a) da cédula de identidade RG nº ${c.rg}${c.expedicao ? `/${c.expedicao}` : ""}` : "";
   const doc = c.cpf ? `CPF nº ${formatarCpf(c.cpf)}` : c.cnpj ? `CNPJ nº ${formatCnpj(c.cnpj)}` : "";
   const endereco = enderecoClienteCompleto(c);
   const partes = [
@@ -275,10 +280,31 @@ function qualificacaoTexto(c: ClienteComEndereco): string {
     nacionalidade,
     profissao || null,
     estadoCivil || null,
+    rg || null,
     doc || null,
     endereco ? `residente e domiciliado(a) em ${endereco}` : null
   ].filter((p): p is string => Boolean(p));
   return partes.join(", ");
+}
+
+// Nem todo cliente tem banco_id vinculado à tabela bancos (parte da base
+// veio de planilha antiga só com o código do banco em texto livre) — antes
+// disso o nome do banco saía em branco no contrato mesmo já tendo um código
+// digitado no cadastro, o que parecia "sumir" a informação. Resolve por
+// código quando a ligação com a tabela bancos ainda não foi feita.
+async function resolverBanco(cliente: {
+  bancos: { nome: string; codigo: string | null } | null;
+  codigo_banco: string | null;
+}): Promise<{ nome: string; codigo: string }> {
+  if (cliente.bancos) {
+    return { nome: cliente.bancos.nome, codigo: cliente.bancos.codigo ?? cliente.codigo_banco ?? "" };
+  }
+  if (cliente.codigo_banco) {
+    const encontrado = await prisma.bancos.findFirst({ where: { codigo: cliente.codigo_banco } });
+    if (encontrado) return { nome: encontrado.nome, codigo: encontrado.codigo ?? cliente.codigo_banco };
+    return { nome: "", codigo: cliente.codigo_banco };
+  }
+  return { nome: "", codigo: "" };
 }
 
 // Bloco de assinatura de uma parte: linha em branco + nome + documento +
@@ -311,7 +337,8 @@ async function montarDadosTransacao(
       adm_imoveis: true,
       condicoes_pagamento: true,
       parceiros_transacoes_corretor_proprietario_idToparceiros: { include: { bancos: true } },
-      parceiros_transacoes_corretor_contraparte_idToparceiros: { include: { bancos: true } }
+      parceiros_transacoes_corretor_contraparte_idToparceiros: { include: { bancos: true } },
+      parceiros_transacoes_parceiro_externo_idToparceiros: { include: { bancos: true } }
     }
   });
   if (!t) throw new Error(`Transação "${transacaoId}" não encontrada.`);
@@ -375,16 +402,50 @@ async function montarDadosTransacao(
 
   const corretorProprietario = t.parceiros_transacoes_corretor_proprietario_idToparceiros;
   const corretorContraparte = t.parceiros_transacoes_corretor_contraparte_idToparceiros;
+  const parceiroExterno = t.parceiros_transacoes_parceiro_externo_idToparceiros;
   const primeiroVendedor = proprietarios[0];
+  const bancoVendedor = await resolverBanco(primeiroVendedor);
+
+  // Rateio do honorário — mesmo cálculo ao vivo já usado no formulário de
+  // Comissionamento (ver TransacaoForm): valor total primeiro, parceria
+  // (se tiver) descontada antes, e só depois divide o restante entre
+  // corretor do proprietário, corretor da contraparte e imobiliária. Antes
+  // essa parte só listava o banco dos dois corretores, sem nenhum valor ou
+  // percentual — não dava pra saber quanto cada um recebia de fato.
+  const honorarioTotal = Number(t.valor_transacao) * Number(t.porc_honorario ?? 0);
+  const valorParceria = t.tem_parceria ? honorarioTotal * Number(t.porc_parceria ?? 0) : 0;
+  const restanteRateio = honorarioTotal - valorParceria;
+  const valorCorretorProprietario = restanteRateio * Number(t.porc_corretor_proprietario ?? 0);
+  const valorCorretorContraparte = restanteRateio * Number(t.porc_corretor_contraparte ?? 0);
+  const valorImobiliaria = restanteRateio * Number(t.porc_imobiliaria ?? 0);
+
+  function linhaHonorario(nome: string, valor: number, corretor: { bancos: { nome: string; codigo: string | null } | null; codigo_banco: string | null; agencia: string | null; conta: string | null; tipo_pix: string | null; pix: string | null } | null): string {
+    const banco = corretor?.bancos?.nome ?? corretor?.codigo_banco ?? "—";
+    const dadosBancarios = corretor
+      ? ` — Banco ${banco}, Ag. ${corretor.agencia ?? "—"}, Conta ${corretor.conta ?? "—"}${
+          corretor.pix ? `, Pix (${corretor.tipo_pix ?? "—"}): ${corretor.pix}` : ""
+        }`
+      : "";
+    return `${nome}: ${numero(valor)}${dadosBancarios}`;
+  }
 
   const linhasHonorario: string[] = [];
-  for (const corretor of [corretorProprietario, corretorContraparte]) {
-    if (!corretor) continue;
+  linhasHonorario.push(`Honorário total (${percentual(t.porc_honorario)} sobre o valor da transação): ${numero(honorarioTotal)}`);
+  if (t.tem_parceria && parceiroExterno) {
+    linhasHonorario.push(linhaHonorario(`Parceria — ${parceiroExterno.nome} (${percentual(t.porc_parceria)})`, valorParceria, parceiroExterno));
+  }
+  if (corretorProprietario) {
     linhasHonorario.push(
-      `${corretor.nome} — Banco ${corretor.bancos?.nome ?? corretor.codigo_banco ?? "—"}, Ag. ${
-        corretor.agencia ?? "—"
-      }, Conta ${corretor.conta ?? "—"}${corretor.pix ? `, Pix (${corretor.tipo_pix ?? "—"}): ${corretor.pix}` : ""}`
+      linhaHonorario(`Corretor do proprietário — ${corretorProprietario.nome} (${percentual(t.porc_corretor_proprietario)})`, valorCorretorProprietario, corretorProprietario)
     );
+  }
+  if (corretorContraparte) {
+    linhasHonorario.push(
+      linhaHonorario(`Corretor da contraparte — ${corretorContraparte.nome} (${percentual(t.porc_corretor_contraparte)})`, valorCorretorContraparte, corretorContraparte)
+    );
+  }
+  if (Number(t.porc_imobiliaria ?? 0) > 0) {
+    linhasHonorario.push(`Imobiliária (${percentual(t.porc_imobiliaria)}): ${numero(valorImobiliaria)}`);
   }
 
   return {
@@ -399,8 +460,8 @@ async function montarDadosTransacao(
     CondicoesPagamento: t.condicoes_pagamento
       .map((c) => `${c.tipo ?? "Parcela"}: R$ ${numero(c.valor)} (${c.forma_pagamento ?? "—"})`)
       .join("\n"),
-    BancoVendedor: primeiroVendedor.bancos?.nome ?? "",
-    CodigoBancoVendedor: primeiroVendedor.bancos?.codigo ?? primeiroVendedor.codigo_banco ?? "",
+    BancoVendedor: bancoVendedor.nome,
+    CodigoBancoVendedor: bancoVendedor.codigo,
     AgenciaVendedor: primeiroVendedor.agencia ?? "",
     ContaVendedor: primeiroVendedor.conta ?? "",
     TipoPixVendedor: primeiroVendedor.tipo_pix ?? "",

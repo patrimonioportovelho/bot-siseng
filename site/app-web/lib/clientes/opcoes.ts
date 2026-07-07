@@ -14,3 +14,9 @@ export const ESTADOS_CIVIS = [
 ];
 
 export const TIPOS_CLIENTE = ["Pessoa Física", "Pessoa Jurídica"];
+
+// Valores exatos aceitos pelo check constraint clientes_sexo_check no banco
+// (só "Homem" ou "Mulher", NULL também é aceito). Antes esse campo era texto
+// livre no formulário — qualquer valor digitado fora dessa lista (ex.: "F",
+// "Feminino") derrubava o salvamento com um erro de constraint do Postgres.
+export const SEXO_OPCOES = ["Homem", "Mulher"];

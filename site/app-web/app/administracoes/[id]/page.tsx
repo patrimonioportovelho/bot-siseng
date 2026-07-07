@@ -2,11 +2,12 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Topbar } from "@/components/topbar";
 import { prisma } from "@/lib/prisma";
+import { getAdminSession } from "@/lib/auth";
 import { AdministracaoForm } from "@/components/administracao-form";
 import { StatusTransacaoSelect } from "@/components/status-transacao-select";
 import { FUNCOES_CAPTADOR } from "@/lib/administracoes/opcoes";
 import { formatMoeda, formatData } from "@/lib/format";
-import { atualizarAdministracaoAction } from "../actions";
+import { atualizarAdministracaoAction, apagarAdministracaoAction } from "../actions";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +20,7 @@ export default async function AdministracaoDetalhePage({
 }) {
   const { id } = await params;
   const { salvo } = await searchParams;
+  const session = await getAdminSession();
 
   const [administracao, lojas, clientes, imoveis, parceiros, transacoes] = await Promise.all([
     prisma.adm_imoveis.findUnique({
@@ -35,10 +37,12 @@ export default async function AdministracaoDetalhePage({
     }),
     prisma.lojas.findMany({ orderBy: { nome: "asc" } }),
     prisma.clientes.findMany({
+      where: { status_cadastro: { not: "Arquivado" } },
       orderBy: { nome: "asc" },
       select: { id: true, nome: true, id_legado: true, parceiro_id: true }
     }),
     prisma.imoveis.findMany({
+      where: { excluido: false },
       orderBy: { created_at: "desc" },
       select: {
         id: true,
@@ -57,7 +61,7 @@ export default async function AdministracaoDetalhePage({
       select: { id: true, nome: true }
     }),
     prisma.transacoes.findMany({
-      where: { adm_imovel_id: id },
+      where: { adm_imovel_id: id, excluido: false },
       orderBy: { created_at: "desc" },
       include: {
         clientes_transacoes_cliente_contraparte_idToclientes: { select: { nome: true } }
@@ -82,9 +86,22 @@ export default async function AdministracaoDetalhePage({
     <div>
       <Topbar />
 
-      <Link href="/administracoes" className="text-xs text-gray-500 hover:text-gray-800 inline-block mb-3">
-        ← Voltar para Administrações
-      </Link>
+      <div className="flex items-center justify-between mb-3">
+        <Link href="/administracoes" className="text-xs text-gray-500 hover:text-gray-800">
+          ← Voltar para Administrações
+        </Link>
+        {session?.isAdm && !administracao.excluido && (
+          <form action={apagarAdministracaoAction}>
+            <input type="hidden" name="administracaoId" value={administracao.id} />
+            <button
+              type="submit"
+              className="text-xs border border-red-200 text-red-600 rounded-lg px-3 py-1.5 hover:bg-red-50"
+            >
+              Apagar cadastro
+            </button>
+          </form>
+        )}
+      </div>
 
       {salvo === "1" && (
         <div className="bg-green-50 border border-green-200 text-green-700 text-xs rounded-lg px-3 py-2 mb-4">

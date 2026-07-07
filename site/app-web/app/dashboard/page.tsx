@@ -29,31 +29,33 @@ export default async function DashboardPage() {
     novosImoveis,
     transacoesRecentes
   ] = await Promise.all([
-    prisma.imoveis.count(),
-    prisma.transacoes.count({ where: { status: STATUS_TRANSACAO_EM_ABERTO } }),
+    prisma.imoveis.count({ where: { excluido: false } }),
+    prisma.transacoes.count({ where: { excluido: false, status: STATUS_TRANSACAO_EM_ABERTO } }),
     // Honorário previsto do mês calculado direto de transacoes (valor_transacao
     // x porc_honorario) — a tabela pagamentos não é gravada por nenhuma
     // Server Action do sistema atual, então usar ela aqui sempre daria R$ 0,00
     // pra transação nova. valor_transacao/porc_honorario são preenchidos no
     // cadastro/edição, então isso reflete a realidade.
     prisma.transacoes.findMany({
-      where: { data_assinatura: { gte: inicioMes, lt: inicioProxMes } },
+      where: { excluido: false, data_assinatura: { gte: inicioMes, lt: inicioProxMes } },
       select: { valor_transacao: true, porc_honorario: true }
     }),
     prisma.transacoes.count({
       where: {
+        excluido: false,
         tipo: "Locação",
         status: STATUS_TRANSACAO_EM_ABERTO,
         data_vencimento: { gte: hoje, lte: em30Dias }
       }
     }),
     prisma.transacoes.count({
-      where: { tipo: "Locação", status: STATUS_TRANSACAO_EM_ABERTO, data_vencimento: { lt: hoje } }
+      where: { excluido: false, tipo: "Locação", status: STATUS_TRANSACAO_EM_ABERTO, data_vencimento: { lt: hoje } }
     }),
-    prisma.adm_imoveis.count({ where: { status: "Ativo" } }),
+    prisma.adm_imoveis.count({ where: { status: "Ativo", excluido: false } }),
     prisma.solicitacoes_acesso.count({ where: { status: "pendente" } }),
-    prisma.imoveis.count({ where: { data_cadastro: { gte: inicioMes, lt: inicioProxMes } } }),
+    prisma.imoveis.count({ where: { excluido: false, data_cadastro: { gte: inicioMes, lt: inicioProxMes } } }),
     prisma.transacoes.findMany({
+      where: { excluido: false },
       take: 6,
       orderBy: { created_at: "desc" },
       include: {

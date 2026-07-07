@@ -11,26 +11,29 @@ const PAGE_SIZE = 50;
 export default async function ImoveisPage({
   searchParams
 }: {
-  searchParams: Promise<{ q?: string; page?: string }>;
+  searchParams: Promise<{ q?: string; page?: string; excluido?: string }>;
 }) {
-  const { q, page: pageParam } = await searchParams;
+  const { q, page: pageParam, excluido } = await searchParams;
   const termo = (q ?? "").trim();
   const page = Math.max(1, Number(pageParam ?? "1") || 1);
 
-  const where = termo
-    ? {
-        OR: [
-          { endereco: { contains: termo, mode: "insensitive" as const } },
-          { bairro: { contains: termo, mode: "insensitive" as const } },
-          { rua: { contains: termo, mode: "insensitive" as const } },
-          {
-            imoveis_proprietarios: {
-              some: { clientes: { nome: { contains: termo, mode: "insensitive" as const } } }
+  const where = {
+    excluido: false,
+    ...(termo
+      ? {
+          OR: [
+            { endereco: { contains: termo, mode: "insensitive" as const } },
+            { bairro: { contains: termo, mode: "insensitive" as const } },
+            { rua: { contains: termo, mode: "insensitive" as const } },
+            {
+              imoveis_proprietarios: {
+                some: { clientes: { nome: { contains: termo, mode: "insensitive" as const } } }
+              }
             }
-          }
-        ]
-      }
-    : undefined;
+          ]
+        }
+      : {})
+  };
 
   const [imoveis, total] = await Promise.all([
     prisma.imoveis.findMany({
@@ -51,6 +54,12 @@ export default async function ImoveisPage({
   return (
     <div>
       <Topbar />
+
+      {excluido === "1" && (
+        <div className="bg-green-50 border border-green-200 text-green-700 text-xs rounded-lg px-3 py-2 mb-4">
+          Cadastro apagado com sucesso.
+        </div>
+      )}
 
       <div className="bg-white border border-gray-200 rounded-xl p-4">
         <div className="flex items-center justify-between mb-3">

@@ -11,10 +11,12 @@ export default async function NovaAdministracaoPage() {
   const [lojas, clientes, imoveis, parceiros] = await Promise.all([
     prisma.lojas.findMany({ orderBy: { nome: "asc" } }),
     prisma.clientes.findMany({
+      where: { status_cadastro: { not: "Arquivado" } },
       orderBy: { nome: "asc" },
       select: { id: true, nome: true, id_legado: true, parceiro_id: true }
     }),
     prisma.imoveis.findMany({
+      where: { excluido: false },
       orderBy: { created_at: "desc" },
       select: {
         id: true,

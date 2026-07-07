@@ -36,6 +36,7 @@ export async function TransacoesLista({ tipo, q, novoHref }: { tipo: "Locação"
 
   const where = {
     tipo,
+    excluido: false,
     ...(termo
       ? {
           OR: [

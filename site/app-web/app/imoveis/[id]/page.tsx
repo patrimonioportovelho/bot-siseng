@@ -2,9 +2,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Topbar } from "@/components/topbar";
 import { prisma } from "@/lib/prisma";
+import { getAdminSession } from "@/lib/auth";
 import { ImovelForm } from "@/components/imovel-form";
 import { FUNCOES_CAPTADOR } from "@/lib/imoveis/opcoes";
-import { atualizarImovelAction } from "../actions";
+import { atualizarImovelAction, apagarImovelAction } from "../actions";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +18,7 @@ export default async function ImovelDetalhePage({
 }) {
   const { id } = await params;
   const { salvo } = await searchParams;
+  const session = await getAdminSession();
 
   const [imovel, clientes, parceiros, estados, cidades] = await Promise.all([
     prisma.imoveis.findUnique({
@@ -29,6 +31,7 @@ export default async function ImovelDetalhePage({
       }
     }),
     prisma.clientes.findMany({
+      where: { status_cadastro: { not: "Arquivado" } },
       orderBy: { nome: "asc" },
       select: { id: true, nome: true, id_legado: true, parceiro_id: true }
     }),
@@ -52,9 +55,22 @@ export default async function ImovelDetalhePage({
     <div>
       <Topbar />
 
-      <Link href="/imoveis" className="text-xs text-gray-500 hover:text-gray-800 inline-block mb-3">
-        ← Voltar para Imóveis
-      </Link>
+      <div className="flex items-center justify-between mb-3">
+        <Link href="/imoveis" className="text-xs text-gray-500 hover:text-gray-800">
+          ← Voltar para Imóveis
+        </Link>
+        {session?.isAdm && !imovel.excluido && (
+          <form action={apagarImovelAction}>
+            <input type="hidden" name="imovelId" value={imovel.id} />
+            <button
+              type="submit"
+              className="text-xs border border-red-200 text-red-600 rounded-lg px-3 py-1.5 hover:bg-red-50"
+            >
+              Apagar cadastro
+            </button>
+          </form>
+        )}
+      </div>
 
       {salvo === "1" && (
         <div className="bg-green-50 border border-green-200 text-green-700 text-xs rounded-lg px-3 py-2 mb-4">

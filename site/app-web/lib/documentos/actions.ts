@@ -33,6 +33,7 @@ export async function buscarRegistrosAction(
           : {};
       const rows = await prisma.transacoes.findMany({
         where: {
+          excluido: false,
           ...filtroStatus,
           ...(termo
             ? {
@@ -91,6 +92,7 @@ export async function buscarRegistrosAction(
       const rows = await prisma.adm_imoveis.findMany({
         where: {
           status: "Captação",
+          excluido: false,
           ...(termo
             ? {
                 OR: [

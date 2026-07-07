@@ -10,21 +10,24 @@ const PAGE_SIZE = 50;
 export default async function ClientesPage({
   searchParams
 }: {
-  searchParams: Promise<{ q?: string; page?: string }>;
+  searchParams: Promise<{ q?: string; page?: string; excluido?: string }>;
 }) {
-  const { q, page: pageParam } = await searchParams;
+  const { q, page: pageParam, excluido } = await searchParams;
   const termo = (q ?? "").trim();
   const page = Math.max(1, Number(pageParam ?? "1") || 1);
 
-  const where = termo
-    ? {
-        OR: [
-          { nome: { contains: termo, mode: "insensitive" as const } },
-          { email: { contains: termo, mode: "insensitive" as const } },
-          { cpf: { contains: termo, mode: "insensitive" as const } }
-        ]
-      }
-    : undefined;
+  const where = {
+    status_cadastro: { not: "Arquivado" },
+    ...(termo
+      ? {
+          OR: [
+            { nome: { contains: termo, mode: "insensitive" as const } },
+            { email: { contains: termo, mode: "insensitive" as const } },
+            { cpf: { contains: termo, mode: "insensitive" as const } }
+          ]
+        }
+      : {})
+  };
 
   const [clientes, total] = await Promise.all([
     prisma.clientes.findMany({
@@ -42,6 +45,12 @@ export default async function ClientesPage({
   return (
     <div>
       <Topbar />
+
+      {excluido === "1" && (
+        <div className="bg-green-50 border border-green-200 text-green-700 text-xs rounded-lg px-3 py-2 mb-4">
+          Cadastro apagado com sucesso.
+        </div>
+      )}
 
       <div className="bg-white border border-gray-200 rounded-xl p-4">
         <div className="flex items-center justify-between mb-3">

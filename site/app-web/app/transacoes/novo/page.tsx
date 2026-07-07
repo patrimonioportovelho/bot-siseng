@@ -18,10 +18,12 @@ export default async function NovaTransacaoPage({
   const [lojas, clientes, imoveis, parceiros, admImoveisAtivos] = await Promise.all([
     prisma.lojas.findMany({ orderBy: { nome: "asc" } }),
     prisma.clientes.findMany({
+      where: { status_cadastro: { not: "Arquivado" } },
       orderBy: { nome: "asc" },
       select: { id: true, nome: true, id_legado: true, parceiro_id: true }
     }),
     prisma.imoveis.findMany({
+      where: { excluido: false },
       orderBy: { created_at: "desc" },
       select: {
         id: true,
@@ -42,7 +44,7 @@ export default async function NovaTransacaoPage({
     // Só administrações com status Ativo podem virar uma locação em
     // "Elaboração de Contrato de Locação" — imóvel e proprietário vêm dela.
     prisma.adm_imoveis.findMany({
-      where: { status: "Ativo" },
+      where: { status: "Ativo", excluido: false },
       orderBy: { created_at: "desc" },
       select: {
         id: true,

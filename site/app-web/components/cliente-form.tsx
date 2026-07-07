@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ESTADOS_CIVIS, TIPOS_CONTA, TIPOS_PIX, TIPOS_CLIENTE } from "@/lib/clientes/opcoes";
+import { ESTADOS_CIVIS, TIPOS_CONTA, TIPOS_PIX, TIPOS_CLIENTE, SEXO_OPCOES } from "@/lib/clientes/opcoes";
 import { formatCpf, formatCnpj, formatTelefone, formatValorEditavel } from "@/lib/format";
 
 type Loja = { id: string; nome: string };
@@ -130,7 +130,14 @@ export function ClienteForm({
           </div>
           <div>
             <label className={LABEL}>Sexo</label>
-            <input className={CAMPO} name="sexo" defaultValue={c?.sexo ?? ""} />
+            <select className={CAMPO} name="sexo" defaultValue={c?.sexo ?? ""}>
+              <option value="">—</option>
+              {SEXO_OPCOES.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
           </div>
           <div>
             <label className={LABEL}>Estado civil</label>

@@ -23,6 +23,8 @@ type MovimentacaoExistente = {
   data_pagamento: Date | string | null;
   parcelas: number | null;
   num_parcela: number | null;
+  forma_pagamento: string | null;
+  gerado_automaticamente: boolean;
 };
 
 const CAMPO = "text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full outline-none focus:border-primary bg-white";
@@ -50,6 +52,15 @@ export function FinanceiroEditarForm({
   const rotuloPago = m.tipo === "Despesa" ? "pago" : "recebido";
 
   const categoriasFiltradas = useMemo(() => categorias.filter((c) => c.tipo === m.tipo), [categorias, m.tipo]);
+  // Defensiva: se por algum motivo a categoria já salva na movimentação não
+  // estiver na lista filtrada por tipo (ex.: dado antigo inconsistente), ela
+  // ainda aparece selecionada em vez de o <select> cair silenciosamente na
+  // primeira opção da lista (o que faria parecer que a categoria "sumiu").
+  const categoriaAtual = categorias.find((c) => c.id === m.categoria_id) ?? null;
+  const categoriasParaExibir =
+    categoriaAtual && !categoriasFiltradas.some((c) => c.id === m.categoria_id)
+      ? [categoriaAtual, ...categoriasFiltradas]
+      : categoriasFiltradas;
 
   const clienteInteressadoInicial = clientes.find((c) => c.id === m.cliente_interessado_id) ?? null;
   const [clienteInteressadoId, setClienteInteressadoId] = useState(m.cliente_interessado_id ?? "");
@@ -94,20 +105,28 @@ export function FinanceiroEditarForm({
       <input type="hidden" name="cliente_proprietario_id" value={clienteProprietarioId} />
 
       <div className="bg-white border border-gray-200 rounded-xl p-4">
-        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <div className="flex items-center justify-between mb-1 flex-wrap gap-2">
           <div className="text-sm font-bold text-gray-800">{m.tipo}</div>
-          {m.parcelas && m.parcelas > 1 && (
-            <span className="text-xs text-gray-500">
-              Parcela {m.num_parcela} de {m.parcelas}
-            </span>
-          )}
+          <div className="flex items-center gap-2 flex-wrap">
+            {m.forma_pagamento && <span className="text-xs text-gray-500">{m.forma_pagamento}</span>}
+            {m.parcelas && m.parcelas > 1 && (
+              <span className="text-xs text-gray-500">
+                Parcela {m.num_parcela} de {m.parcelas}
+              </span>
+            )}
+          </div>
         </div>
+        {m.gerado_automaticamente && (
+          <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1 mb-3 inline-block">
+            Gerada automaticamente pelo rateio de honorários da transação vinculada.
+          </p>
+        )}
 
-        <div className="grid md:grid-cols-2 gap-3">
+        <div className="grid md:grid-cols-2 gap-3 mt-3">
           <div>
             <label className={LABEL}>Categoria</label>
             <select className={CAMPO} name="categoria_id" defaultValue={m.categoria_id} required>
-              {categoriasFiltradas.map((c) => (
+              {categoriasParaExibir.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.nome}
                 </option>

@@ -19,7 +19,9 @@ export async function middleware(req: NextRequest) {
   }
 
   // Sistema administrativo — tudo fora de /login exige sessão válida.
-  if (pathname === "/login") return NextResponse.next();
+  // /noticias/[id] também é público: é a página de cada notícia/edital
+  // aberta a partir do card em /login (ver app/noticias/[id]/page.tsx).
+  if (pathname === "/login" || pathname.startsWith("/noticias/")) return NextResponse.next();
 
   const token = req.cookies.get(ADMIN_COOKIE)?.value;
   const valid = secret && token ? await verifySession(token, secret) : null;

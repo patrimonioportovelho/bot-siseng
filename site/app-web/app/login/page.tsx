@@ -128,7 +128,7 @@ export default async function LoginPage({
           <div className="flex flex-col gap-3">
             {publicacoes.map((p) => (
               <article key={p.id} id={`noticia-${p.id}`} className="bg-white border border-gray-200 rounded-xl p-4">
-                <div className="flex items-start justify-between gap-2">
+                <div className="flex items-start justify-between gap-2 flex-wrap">
                   <div className="flex items-center gap-2 mb-1.5">
                     <span
                       className={`text-[10px] font-semibold uppercase rounded-full px-2 py-0.5 border ${
@@ -139,14 +139,20 @@ export default async function LoginPage({
                     </span>
                     <span className="text-[11px] text-gray-400">{formatData(p.publicado_em)}</span>
                   </div>
+                  {/* Compartilha o link da página própria da publicação
+                      (/noticias/[id]), não uma âncora da home — assim quem
+                      recebe abre direto o conteúdo, sem o resto da página. */}
                   <ShareButton
-                    url={`${baseUrl}/login#noticia-${p.id}`}
+                    url={`${baseUrl}/noticias/${p.id}`}
                     title={p.titulo}
                     text={p.resumo ?? undefined}
                   />
                 </div>
                 <div className="text-sm font-bold text-gray-800">{p.titulo}</div>
-                <p className="text-xs text-gray-600 mt-1 whitespace-pre-line">{p.resumo || p.corpo}</p>
+                <p className="text-xs text-gray-600 mt-1 whitespace-pre-line line-clamp-3">{p.resumo || p.corpo}</p>
+                <a href={`/noticias/${p.id}`} className="text-xs font-semibold text-primary hover:underline mt-2 inline-block">
+                  Ler {p.tipo === "Edital" ? "o edital completo" : "a notícia completa"} →
+                </a>
               </article>
             ))}
           </div>

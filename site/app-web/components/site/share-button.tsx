@@ -21,10 +21,15 @@ export function ShareButton({
     if (typeof navigator !== "undefined" && navigator.share) {
       try {
         await navigator.share({ title, text, url });
-      } catch {
-        // usuário cancelou o compartilhamento — não é erro, não faz nada
+        return;
+      } catch (erro) {
+        // Usuário cancelou o compartilhamento (AbortError) — não é erro, não
+        // faz nada. Qualquer outro motivo (API indisponível no contexto,
+        // bloqueada por política do navegador etc.) cai pro fallback de
+        // copiar o link abaixo, em vez de falhar em silêncio sem nenhum
+        // feedback pra quem clicou — era esse o bug relatado.
+        if (erro instanceof Error && erro.name === "AbortError") return;
       }
-      return;
     }
 
     try {

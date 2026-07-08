@@ -258,14 +258,25 @@ export function TransacaoForm({
   const [porcCorretorContraparteTexto, setPorcCorretorContraparteTexto] = useState(
     formatPercentual(t?.porc_corretor_contraparte)
   );
-  const [porcImobiliariaTexto, setPorcImobiliariaTexto] = useState(formatPercentual(t?.porc_imobiliaria));
 
   const honorarioTotalRS = valorTransacaoNum * (percentualParaDecimal(porcHonorarioTexto) ?? 0);
   const valorParceriaRS = temParceria ? honorarioTotalRS * (percentualParaDecimal(porcParceriaTexto) ?? 0) : 0;
+  // "Restante" é o que de fato entra pra imobiliária depois de descontada a
+  // parceria externa (quando tem) — vira o "100%" local pro rateio entre os
+  // dois corretores e a própria imobiliária, não o honorário total bruto.
   const restanteRateioRS = honorarioTotalRS - valorParceriaRS;
-  const valorCorretorProprietarioRS = restanteRateioRS * (percentualParaDecimal(porcCorretorProprietarioTexto) ?? 0);
-  const valorCorretorContraparteRS = restanteRateioRS * (percentualParaDecimal(porcCorretorContraparteTexto) ?? 0);
-  const valorImobiliariaRS = restanteRateioRS * (percentualParaDecimal(porcImobiliariaTexto) ?? 0);
+  const fracCorretorProprietario = percentualParaDecimal(porcCorretorProprietarioTexto) ?? 0;
+  const fracCorretorContraparte = percentualParaDecimal(porcCorretorContraparteTexto) ?? 0;
+  const valorCorretorProprietarioRS = restanteRateioRS * fracCorretorProprietario;
+  const valorCorretorContraparteRS = restanteRateioRS * fracCorretorContraparte;
+  // % imobiliária não é mais digitado — é sempre o que sobra do "restante"
+  // depois de pagar os dois corretores, pra não precisar de conta manual
+  // (e pra nunca ficar com uma % de imobiliária que não bate com o resto).
+  const somaFracCorretores = fracCorretorProprietario + fracCorretorContraparte;
+  const corretoresPassaramDe100 = somaFracCorretores > 1;
+  const fracImobiliaria = Math.max(0, 1 - somaFracCorretores);
+  const porcImobiliariaTexto = formatPercentual(fracImobiliaria);
+  const valorImobiliariaRS = restanteRateioRS * fracImobiliaria;
 
   const corretores = useMemo(() => parceiros.filter((p) => FUNCOES_CORRETOR.includes(p.funcao ?? "")), [parceiros]);
 
@@ -954,18 +965,26 @@ export function TransacaoForm({
           <div>
             <label className={LABEL}>% imobiliária</label>
             <input
-              className={CAMPO}
+              className={CAMPO + " bg-gray-50 text-gray-500"}
               name="porc_imobiliaria"
-              placeholder="50"
               value={porcImobiliariaTexto}
-              onChange={(e) => setPorcImobiliariaTexto(e.target.value)}
+              readOnly
             />
             <p className="text-[11px] text-gray-500 mt-1">{formatMoeda(valorImobiliariaRS)}</p>
           </div>
-          {temParceria && (
-            <p className="md:col-span-3 text-[11px] text-gray-400">
-              Honorário total {formatMoeda(honorarioTotalRS)} − parceria {formatMoeda(valorParceriaRS)} = {formatMoeda(restanteRateioRS)}{" "}
-              pra ratear entre corretor do proprietário, corretor da contraparte e imobiliária.
+          <p className="md:col-span-3 text-[11px] text-gray-400">
+            {temParceria && (
+              <>
+                Honorário total {formatMoeda(honorarioTotalRS)} − parceria {formatMoeda(valorParceriaRS)} ={" "}
+                {formatMoeda(restanteRateioRS)} fica pra imobiliária (esse valor vira os 100% de baixo).{" "}
+              </>
+            )}
+            % imobiliária é calculada sozinha: 100% − corretor do proprietário − corretor da contraparte.
+          </p>
+          {corretoresPassaramDe100 && (
+            <p className="md:col-span-3 text-[11px] text-red-700 bg-red-50 border border-red-200 rounded-lg px-2 py-1.5">
+              % corretor do proprietário + % corretor da contraparte somam mais que 100% — a imobiliária ficaria
+              negativa, então foi travada em 0%. Ajuste as duas porcentagens acima.
             </p>
           )}
         </div>

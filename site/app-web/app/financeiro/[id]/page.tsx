@@ -78,6 +78,17 @@ export default async function MovimentacaoPage({ params }: { params: Promise<{ i
       })
     : null;
 
+  // Pro lado da Despesa (repasse), mostra o Recebimento irmão (mesma
+  // transação) — dá pra ver de qual entrada isso está sendo abatido, em vez
+  // de só saber que existe uma transação vinculada.
+  const recebimentoOrigem =
+    movimentacao.tipo === "Despesa" && movimentacao.transacao_id
+      ? await prisma.movimentacoes.findFirst({
+          where: { tipo: "Recebimento", transacao_id: movimentacao.transacao_id },
+          select: { id: true, valor: true, pago: true, categorias_financeiras: { select: { nome: true } } }
+        })
+      : null;
+
   // Rateio de honorários só faz sentido num Recebimento vinculado a uma
   // transação — é o dinheiro que entrou e precisa ser repartido entre
   // corretores/parceiros.
@@ -192,6 +203,20 @@ export default async function MovimentacaoPage({ params }: { params: Promise<{ i
               <p className="text-[11px] text-amber-600 mt-2">
                 Este parceiro ainda não tem dados bancários cadastrados. Complete o cadastro dele antes de repassar.
               </p>
+            )}
+            {recebimentoOrigem && (
+              <Link
+                href={`/financeiro/${recebimentoOrigem.id}`}
+                className="mt-3 flex items-center justify-between gap-2 border border-gray-100 rounded-lg px-3 py-2 hover:bg-gray-50"
+              >
+                <span className="text-[11px] text-gray-500">
+                  Abatido do recebimento: {recebimentoOrigem.categorias_financeiras.nome} —{" "}
+                  {formatMoeda(recebimentoOrigem.valor)}
+                </span>
+                <span className={`text-[11px] font-medium ${recebimentoOrigem.pago ? "text-green-700" : "text-gray-500"}`}>
+                  {recebimentoOrigem.pago ? "Recebido" : "Ainda não recebido"} →
+                </span>
+              </Link>
             )}
           </div>
         )}

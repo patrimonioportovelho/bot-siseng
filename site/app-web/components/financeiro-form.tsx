@@ -9,19 +9,31 @@ type ParceiroOpcao = { id: string; nome: string };
 type TransacaoOpcao = {
   id: string;
   id_legado: string | null;
+  tipo: string;
   valor_transacao: unknown;
+  valor_caucao: unknown;
+  porc_honorario: unknown;
+  tem_parceria: boolean | null;
+  porc_parceria: unknown;
+  proprietarioId: string | null;
   proprietarioNome: string | null;
+  interessadoId: string | null;
   interessadoNome: string | null;
   imovelEndereco: string | null;
+  corretorProprietarioNome: string | null;
+  corretorContraparteNome: string | null;
 };
 
 const CAMPO = "text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full outline-none focus:border-primary bg-white";
 const LABEL = "text-xs text-gray-600 block mb-1";
 
-// Nome exato da categoria que dispara o seletor de contrato de Compra e
-// Venda — precisa combinar com o nome já importado da planilha, ver
-// levantamento em categorias_financeiras.
+// Nomes exatos das categorias que disparam o seletor de contrato — precisam
+// combinar com os nomes já importados da planilha, ver levantamento em
+// categorias_financeiras. Compra e venda busca contrato tipo "Compra e
+// Venda"; as três de locação buscam contrato tipo "Locação".
 const CATEGORIA_COMPRA_E_VENDA = "Compra e venda";
+const CATEGORIA_LOCACAO_CAUCAO = "Locações - cauções";
+const CATEGORIAS_LOCACAO = ["Administração de Imóveis Locados", "Locações", "Locações - cauções"];
 
 function hoje(): string {
   return new Date().toISOString().slice(0, 10);
@@ -42,13 +54,13 @@ export function FinanceiroForm({
   categorias,
   clientes,
   parceiros,
-  transacoesCompraVenda,
+  transacoes,
   action
 }: {
   categorias: CategoriaOpcao[];
   clientes: ClienteOpcao[];
   parceiros: ParceiroOpcao[];
-  transacoesCompraVenda: TransacaoOpcao[];
+  transacoes: TransacaoOpcao[];
   action: (formData: FormData) => void;
 }) {
   const [tipo, setTipo] = useState<"Despesa" | "Recebimento">("Despesa");
@@ -74,15 +86,27 @@ export function FinanceiroForm({
   const categoriasFiltradas = useMemo(() => categorias.filter((c) => c.tipo === tipo), [categorias, tipo]);
 
   const categoriaSelecionada = categorias.find((c) => c.id === categoriaId) ?? null;
-  const mostrarPickerTransacao = tipo === "Recebimento" && categoriaSelecionada?.nome === CATEGORIA_COMPRA_E_VENDA;
+  const ehCategoriaCompraVenda = categoriaSelecionada?.nome === CATEGORIA_COMPRA_E_VENDA;
+  const ehCategoriaLocacao = CATEGORIAS_LOCACAO.includes(categoriaSelecionada?.nome ?? "");
+  const mostrarPickerTransacao = tipo === "Recebimento" && (ehCategoriaCompraVenda || ehCategoriaLocacao);
+
+  // O contrato mostrado no picker depende da categoria: Compra e venda só
+  // mostra contratos tipo Compra e Venda; as categorias de locação só
+  // mostram contratos tipo Locação.
+  const transacoesDoTipoCerto = useMemo(() => {
+    const tipoContrato = ehCategoriaCompraVenda ? "Compra e Venda" : "Locação";
+    return transacoes.filter((tr) => tr.tipo === tipoContrato);
+  }, [transacoes, ehCategoriaCompraVenda]);
 
   const transacoesFiltradas = useMemo(() => {
     const t = buscaTransacao.trim().toLowerCase();
-    if (!t) return transacoesCompraVenda.slice(0, 30);
-    return transacoesCompraVenda
+    if (!t) return transacoesDoTipoCerto.slice(0, 30);
+    return transacoesDoTipoCerto
       .filter((tr) => labelTransacao(tr).toLowerCase().includes(t))
       .slice(0, 30);
-  }, [buscaTransacao, transacoesCompraVenda]);
+  }, [buscaTransacao, transacoesDoTipoCerto]);
+
+  const transacaoSelecionada = transacoes.find((tr) => tr.id === transacaoId) ?? null;
 
   const clientesFiltradosInteressado = useMemo(() => {
     const t = buscaClienteInteressado.trim().toLowerCase();
@@ -107,9 +131,39 @@ export function FinanceiroForm({
     setTransacaoId(t.id);
     setBuscaTransacao(labelTransacao(t));
     setListaTransacaoAberta(false);
-    // Pré-preenche valor e os dois clientes a partir do contrato — tudo
-    // continua editável depois, é só um ponto de partida.
-    if (t.valor_transacao) setValor(formatValorEditavel(t.valor_transacao));
+
+    // Pré-preenche os dois clientes a partir do contrato — tudo continua
+    // editável depois, é só um ponto de partida.
+    if (t.proprietarioId) {
+      setClienteProprietarioId(t.proprietarioId);
+      setBuscaClienteProprietario(t.proprietarioNome ?? "");
+    }
+    if (t.interessadoId) {
+      setClienteInteressadoId(t.interessadoId);
+      setBuscaClienteInteressado(t.interessadoNome ?? "");
+    }
+
+    // Em Compra e venda o valor do Recebimento é o honorário da imobiliária
+    // (valor da transação x % de honorário), não o valor cheio do imóvel —
+    // é isso que efetivamente entra na conta, o resto nunca passa por aqui.
+    // Se tem parceria externa, a parte do parceiro já cai direto na conta
+    // dele (não passa pela nossa movimentação) — então desconta ela também,
+    // ficando só com o que a gente de fato recebe.
+    if (t.tipo === "Compra e Venda" && t.valor_transacao) {
+      let honorario = Number(t.valor_transacao) * Number(t.porc_honorario ?? 0);
+      if (t.tem_parceria) honorario *= 1 - Number(t.porc_parceria ?? 0);
+      setValor(formatValorEditavel(honorario));
+    } else if (t.tipo === "Locação" && categoriaSelecionada?.nome === CATEGORIA_LOCACAO_CAUCAO) {
+      // Cauções recebemos o valor de garantia combinado no contrato, não o
+      // valor do aluguel.
+      if (t.valor_caucao) setValor(formatValorEditavel(t.valor_caucao));
+    } else if (t.valor_transacao) {
+      // Administração de Imóveis Locados e Locações: mantém o valor cheio
+      // do contrato (ex.: aluguel total parcelado) — o repasse ao
+      // proprietário (aluguel menos a taxa de administração) é uma despesa
+      // separada, gerada na hora que a parcela é recebida.
+      setValor(formatValorEditavel(t.valor_transacao));
+    }
   }
 
   function selecionarClienteInteressado(c: ClienteOpcao) {
@@ -185,7 +239,7 @@ export function FinanceiroForm({
 
         {mostrarPickerTransacao && (
           <div className="relative mt-3">
-            <label className={LABEL}>Contrato de Compra e Venda</label>
+            <label className={LABEL}>{ehCategoriaCompraVenda ? "Contrato de Compra e Venda" : "Contrato de Locação"}</label>
             <input
               className={CAMPO}
               placeholder="Digite pra buscar o contrato (Id, imóvel ou cliente)..."
@@ -214,6 +268,14 @@ export function FinanceiroForm({
                   </button>
                 ))}
               </div>
+            )}
+
+            {transacaoSelecionada && (transacaoSelecionada.corretorProprietarioNome || transacaoSelecionada.corretorContraparteNome) && (
+              <p className="text-[11px] text-gray-400 mt-2">
+                Corretor do proprietário: {transacaoSelecionada.corretorProprietarioNome ?? "—"} · Corretor da
+                contraparte: {transacaoSelecionada.corretorContraparteNome ?? "—"}. O repasse de comissão pra eles é
+                gerado depois, na tela desta movimentação (rateio de honorários).
+              </p>
             )}
           </div>
         )}

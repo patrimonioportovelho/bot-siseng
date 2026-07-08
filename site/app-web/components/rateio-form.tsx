@@ -53,6 +53,10 @@ export function RateioForm({
   // Mesma conta em cascata de components/transacao-form.tsx: honorário
   // total -> desconta a parceria (se houver) -> o restante é rateado entre
   // os corretores. A fatia da imobiliária não vira despesa (fica em casa).
+  // A fatia da parceria externa também não vira despesa aqui — na prática
+  // ela já cai direto na conta do parceiro (o valor nunca passa pela nossa
+  // movimentação), então ela só serve pra reduzir a base rateada entre os
+  // nossos corretores, sem gerar repasse nosso pra pagar.
   const honorarioTotal = valorTransacao * porcHonorario;
   const valorParceria = transacao.tem_parceria ? honorarioTotal * porcParceria : 0;
   const restante = honorarioTotal - valorParceria;
@@ -60,17 +64,6 @@ export function RateioForm({
   const valorCorretorContraparte = restante * porcCorretorContraparte;
 
   const linhasIniciais: Linha[] = [];
-  if (transacao.tem_parceria && transacao.parceiro_externo && valorParceria > 0) {
-    linhasIniciais.push({
-      parte: "Parceria",
-      parceiroId: transacao.parceiro_externo.id,
-      parceiroNome: transacao.parceiro_externo.nome,
-      porcentagem: porcParceria,
-      valorBase: valorParceria,
-      desconto: 0,
-      observacao: ""
-    });
-  }
   if (transacao.corretor_proprietario && valorCorretorProprietario > 0) {
     linhasIniciais.push({
       parte: "Proprietário",
@@ -166,8 +159,9 @@ export function RateioForm({
 
       {transacao.tem_parceria && (
         <p className="text-[11px] text-gray-400 mb-3">
-          Parceria ({formatPercentual(porcParceria)}%) descontada do honorário total — o restante (
-          {formatMoeda(restante)}) é rateado entre os corretores abaixo.
+          Parceria ({formatPercentual(porcParceria)}%, {formatMoeda(valorParceria)}) descontada do honorário total —
+          ela recebe direto na conta dela, sem gerar despesa aqui. O restante ({formatMoeda(restante)}) é rateado
+          entre os corretores abaixo.
         </p>
       )}
 

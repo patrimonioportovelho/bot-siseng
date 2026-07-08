@@ -31,7 +31,52 @@ export function formatMoeda(valor: unknown) {
 
 export function formatData(data: unknown) {
   if (!data) return "—";
-  return new Date(data as string).toLocaleDateString("pt-BR");
+  // timeZone explícito: sem isso, o servidor (que roda em UTC) empurra
+  // horários da noite (Porto Velho, UTC-4) pro dia seguinte na exibição.
+  return new Date(data as string).toLocaleDateString("pt-BR", { timeZone: "America/Porto_Velho" });
+}
+
+// Mesma ideia de formatData, mas com data e hora juntas — usada onde o
+// horário importa (ex.: "criado em"), não só o dia.
+export function formatDataHora(data: unknown) {
+  if (!data) return "—";
+  return new Date(data as string).toLocaleString("pt-BR", { timeZone: "America/Porto_Velho" });
+}
+
+// "Hoje" (ano/mês/dia) no fuso de Porto Velho — não usar `new Date()` puro
+// pra isso: em produção o servidor roda em UTC, então nas ~4h finais de
+// cada dia em Porto Velho (UTC-4) o servidor já pensa que é o dia seguinte.
+// Usada em qualquer comparação de "vencido"/"atrasado"/"hoje" que precise
+// bater com o calendário local, não o do servidor.
+function partesHojePortoVelho(): { ano: number; mes: number; dia: number } {
+  const partes = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Porto_Velho",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(new Date());
+  return {
+    ano: Number(partes.find((p) => p.type === "year")?.value),
+    mes: Number(partes.find((p) => p.type === "month")?.value),
+    dia: Number(partes.find((p) => p.type === "day")?.value)
+  };
+}
+
+// Devolve um Date representando meia-noite de "hoje" em Porto Velho — pra
+// comparações de dia (vencido, atrasado, "é hoje?"). Funciona tanto em
+// componente de servidor quanto de cliente.
+export function hojePortoVelho(): Date {
+  const { ano, mes, dia } = partesHojePortoVelho();
+  return new Date(ano, mes - 1, dia);
+}
+
+// Mesma ideia, mas como string yyyy-mm-dd — pro defaultValue de campos
+// <input type="date">. Não trocar por `new Date().toISOString().slice(0,10)`:
+// toISOString sempre converte pra UTC e sofre o mesmo problema do dia
+// adiantado à noite.
+export function hojeInputDate(): string {
+  const { ano, mes, dia } = partesHojePortoVelho();
+  return `${ano}-${String(mes).padStart(2, "0")}-${String(dia).padStart(2, "0")}`;
 }
 
 // Formata CPF (qualquer string com 11 dígitos) como 000.000.000-00.
@@ -136,7 +181,7 @@ export function calcularPrazoRestante(
 
   if (!fim || Number.isNaN(fim.getTime())) return "—";
 
-  const hoje = new Date();
+  const hoje = hojePortoVelho();
   const mesesRestantes =
     (fim.getFullYear() - hoje.getFullYear()) * 12 + (fim.getMonth() - hoje.getMonth());
 
@@ -162,8 +207,7 @@ export function somarMeses(dataYYYYMMDD: string, meses: number | null): string {
 // dashboard de Locação.
 export function diasParaVencimento(dataVencimento: Date | string | null): number | null {
   if (!dataVencimento) return null;
-  const hoje = new Date();
-  hoje.setHours(0, 0, 0, 0);
+  const hoje = hojePortoVelho();
   const fim = new Date(dataVencimento);
   fim.setHours(0, 0, 0, 0);
   if (Number.isNaN(fim.getTime())) return null;

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { TIPO_ATIVIDADE_LABEL } from "@/lib/manutencao/opcoes";
+import { hojePortoVelho } from "@/lib/format";
 
 type Atividade = {
   id: string;
@@ -33,8 +34,7 @@ export function ManutencaoCalendario({
   const inicioGrade = new Date(ano, mesIndice, 1 - primeiroDiaMes.getDay());
   const totalCelulas = Math.ceil((primeiroDiaMes.getDay() + ultimoDiaMes.getDate()) / 7) * 7;
 
-  const hoje = new Date();
-  hoje.setHours(0, 0, 0, 0);
+  const hoje = hojePortoVelho();
 
   const celulas: Date[] = [];
   for (let i = 0; i < totalCelulas; i++) {

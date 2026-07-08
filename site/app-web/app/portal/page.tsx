@@ -5,7 +5,7 @@ import { logoutPortalAction, toggleChecklistAction } from "./actions";
 export const dynamic = "force-dynamic";
 
 function formatData(data: Date) {
-  return new Date(data).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" });
+  return new Date(data).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric", timeZone: "America/Porto_Velho" });
 }
 
 export default async function PortalPage() {

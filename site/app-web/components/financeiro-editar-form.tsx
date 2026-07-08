@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { formatValorEditavel } from "@/lib/format";
+import { formatValorEditavel, hojeInputDate } from "@/lib/format";
 
 type CategoriaOpcao = { id: string; nome: string; tipo: string | null };
 type ClienteOpcao = { id: string; nome: string };
@@ -243,7 +243,7 @@ export function FinanceiroEditarForm({
               className={CAMPO}
               type="date"
               name="data_pagamento"
-              defaultValue={inputDate(m.data_pagamento) || new Date().toISOString().slice(0, 10)}
+              defaultValue={inputDate(m.data_pagamento) || hojeInputDate()}
             />
           </div>
         )}

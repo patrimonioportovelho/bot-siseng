@@ -10,6 +10,7 @@ export type NavItem = {
 // misturado numa página só ficava difícil de bater o olho.
 export const NAV_ITEMS: NavItem[] = [
   { label: "Dashboard", href: "/dashboard" },
+  { label: "Atividades", href: "/manutencao" },
   { label: "Parceiros", href: "/parceiros" },
   { label: "Clientes", href: "/clientes" },
   { label: "Imóveis", href: "/imoveis" },
@@ -18,7 +19,6 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Compra e Venda", href: "/transacoes/venda" },
   { label: "Financiamento", href: "/financiamento" },
   { label: "Financeiro", href: "/financeiro" },
-  { label: "Manutenção", href: "/manutencao" },
   { label: "Metas", href: "/metas" },
   { label: "Relatórios", href: "/relatorios" },
   { label: "Documentos", href: "/documentos" },

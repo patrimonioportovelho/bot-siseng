@@ -194,12 +194,12 @@ function percentual(valor: unknown): string {
 }
 
 function dataCurta(d: Date | null | undefined): string {
-  return d ? new Date(d).toLocaleDateString("pt-BR") : "";
+  return d ? new Date(d).toLocaleDateString("pt-BR", { timeZone: "America/Porto_Velho" }) : "";
 }
 
 function mesReferencia(d: Date | null | undefined): string {
   if (!d) return "";
-  return new Date(d).toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+  return new Date(d).toLocaleDateString("pt-BR", { month: "long", year: "numeric", timeZone: "America/Porto_Velho" });
 }
 
 // Busca os dados da entidade e monta o objeto plano de placeholders (ver

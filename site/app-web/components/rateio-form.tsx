@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { formatMoeda, formatPercentual } from "@/lib/format";
+import { formatMoeda, formatPercentual, hojeInputDate } from "@/lib/format";
 
 type ParceiroInfo = { id: string; nome: string } | null;
 
@@ -146,7 +146,7 @@ export function RateioForm({
       <input
         type="hidden"
         name="vencimento"
-        value={vencimentoSugerido ? inputDate(new Date(vencimentoSugerido)) : inputDate(new Date())}
+        value={vencimentoSugerido ? inputDate(new Date(vencimentoSugerido)) : hojeInputDate()}
       />
       <input type="hidden" name="linhas" value={JSON.stringify(linhasParaEnviar)} />
 

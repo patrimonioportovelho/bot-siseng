@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { formatMoeda, formatValorEditavel } from "@/lib/format";
+import { formatMoeda, formatValorEditavel, hojeInputDate } from "@/lib/format";
 
 type CategoriaOpcao = { id: string; nome: string; tipo: string | null };
 type ClienteOpcao = { id: string; nome: string };
@@ -34,10 +34,6 @@ const LABEL = "text-xs text-gray-600 block mb-1";
 const CATEGORIA_COMPRA_E_VENDA = "Compra e venda";
 const CATEGORIA_LOCACAO_CAUCAO = "Locações - cauções";
 const CATEGORIAS_LOCACAO = ["Administração de Imóveis Locados", "Locações", "Locações - cauções"];
-
-function hoje(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 function labelTransacao(t: TransacaoOpcao): string {
   const partes = [
@@ -398,7 +394,7 @@ export function FinanceiroForm({
             </div>
             <div>
               <label className={LABEL}>Vencimento</label>
-              <input className={CAMPO} type="date" name="vencimento" defaultValue={hoje()} required />
+              <input className={CAMPO} type="date" name="vencimento" defaultValue={hojeInputDate()} required />
             </div>
           </div>
         ) : (
@@ -428,7 +424,7 @@ export function FinanceiroForm({
             </div>
             <div>
               <label className={LABEL}>Vencimento da 1ª parcela</label>
-              <input className={CAMPO} type="date" name="vencimento" defaultValue={hoje()} required />
+              <input className={CAMPO} type="date" name="vencimento" defaultValue={hojeInputDate()} required />
             </div>
             {valorParcelaPreview !== null && (
               <p className="text-[11px] text-gray-500 md:col-span-3">
@@ -462,7 +458,7 @@ export function FinanceiroForm({
           {pago && (
             <div className="max-w-xs">
               <label className={LABEL}>Data do pagamento</label>
-              <input className={CAMPO} type="date" name="data_pagamento" defaultValue={hoje()} />
+              <input className={CAMPO} type="date" name="data_pagamento" defaultValue={hojeInputDate()} />
             </div>
           )}
         </div>

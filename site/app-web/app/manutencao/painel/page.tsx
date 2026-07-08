@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Topbar } from "@/components/topbar";
 import { prisma } from "@/lib/prisma";
-import { formatData } from "@/lib/format";
+import { formatData, hojePortoVelho } from "@/lib/format";
 import {
   URGENCIA_LABEL,
   URGENCIA_COR,
@@ -17,8 +17,7 @@ export const dynamic = "force-dynamic";
 const ORDEM_URGENCIA: Record<string, number> = { emergencial: 0, alta: 1, media: 2, baixa: 3 };
 
 export default async function ManutencaoPainelPage() {
-  const hoje = new Date();
-  hoje.setHours(0, 0, 0, 0);
+  const hoje = hojePortoVelho();
   const em7dias = new Date(hoje);
   em7dias.setDate(em7dias.getDate() + 7);
 

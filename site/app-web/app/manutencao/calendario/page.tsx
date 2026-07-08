@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Topbar } from "@/components/topbar";
 import { prisma } from "@/lib/prisma";
 import { ManutencaoCalendario } from "@/components/manutencao-calendario";
+import { hojePortoVelho } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +12,7 @@ function parseMes(mes: string | undefined): { ano: number; mesIndice: number } {
     const [ano, m] = mes.split("-").map(Number);
     return { ano, mesIndice: m - 1 };
   }
-  const hoje = new Date();
+  const hoje = hojePortoVelho();
   return { ano: hoje.getFullYear(), mesIndice: hoje.getMonth() };
 }
 
@@ -44,7 +45,7 @@ export default async function ManutencaoCalendarioPage({
   const mesAtualTexto = `${ano}-${String(mesIndice + 1).padStart(2, "0")}`;
   const mesAnteriorTexto = `${mesAnterior.getFullYear()}-${String(mesAnterior.getMonth() + 1).padStart(2, "0")}`;
   const mesSeguinteTexto = `${mesSeguinte.getFullYear()}-${String(mesSeguinte.getMonth() + 1).padStart(2, "0")}`;
-  const hoje = new Date();
+  const hoje = hojePortoVelho();
   const mesHojeTexto = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, "0")}`;
 
   return (

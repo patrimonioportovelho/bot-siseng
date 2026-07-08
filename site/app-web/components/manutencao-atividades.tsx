@@ -1,14 +1,10 @@
 "use client";
 
 import { useRef, useTransition } from "react";
-import { formatData } from "@/lib/format";
+import { formatData, hojeInputDate, hojePortoVelho } from "@/lib/format";
 import { TIPOS_ATIVIDADE, TIPO_ATIVIDADE_LABEL } from "@/lib/manutencao/opcoes";
 
 type Atividade = { id: string; tipo: string; titulo: string; data: Date | string; feito: boolean; notas: string | null };
-
-function hoje(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 export function ManutencaoAtividades({
   manutencaoId,
@@ -25,8 +21,7 @@ export function ManutencaoAtividades({
 }) {
   const [, startTransition] = useTransition();
   const formRef = useRef<HTMLFormElement>(null);
-  const agora = new Date();
-  agora.setHours(0, 0, 0, 0);
+  const agora = hojePortoVelho();
 
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-4">
@@ -57,7 +52,7 @@ export function ManutencaoAtividades({
           className="text-xs border border-gray-300 rounded-lg px-2 py-1.5 outline-none focus:border-primary md:col-span-2"
           required
         />
-        <input name="data" type="date" defaultValue={hoje()} className="text-xs border border-gray-300 rounded-lg px-2 py-1.5 outline-none focus:border-primary" required />
+        <input name="data" type="date" defaultValue={hojeInputDate()} className="text-xs border border-gray-300 rounded-lg px-2 py-1.5 outline-none focus:border-primary" required />
         <input
           name="notas"
           placeholder="Notas (opcional)"

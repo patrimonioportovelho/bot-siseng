@@ -18,6 +18,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Compra e Venda", href: "/transacoes/venda" },
   { label: "Financiamento", href: "/financiamento" },
   { label: "Financeiro", href: "/financeiro" },
+  { label: "Manutenção", href: "/manutencao" },
   { label: "Metas", href: "/metas" },
   { label: "Relatórios", href: "/relatorios" },
   { label: "Documentos", href: "/documentos" },

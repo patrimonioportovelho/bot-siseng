@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { getAdminSession } from "@/lib/auth";
 import { ImovelForm } from "@/components/imovel-form";
 import { FUNCOES_CAPTADOR } from "@/lib/imoveis/opcoes";
+import { URGENCIA_COR, URGENCIA_LABEL, labelColuna } from "@/lib/manutencao/opcoes";
 import { atualizarImovelAction, apagarImovelAction } from "../actions";
 
 export const dynamic = "force-dynamic";
@@ -20,7 +21,7 @@ export default async function ImovelDetalhePage({
   const { salvo } = await searchParams;
   const session = await getAdminSession();
 
-  const [imovel, clientes, parceiros, estados, cidades] = await Promise.all([
+  const [imovel, clientes, parceiros, estados, cidades, manutencoes] = await Promise.all([
     prisma.imoveis.findUnique({
       where: { id },
       include: {
@@ -43,7 +44,15 @@ export default async function ImovelDetalhePage({
       select: { id: true, nome: true }
     }),
     prisma.estados.findMany({ orderBy: { nome: "asc" } }),
-    prisma.cidades.findMany({ orderBy: { nome: "asc" }, select: { id: true, nome: true, estado_id: true } })
+    prisma.cidades.findMany({ orderBy: { nome: "asc" }, select: { id: true, nome: true, estado_id: true } }),
+    // Relação inversa: manutenções abertas pra este imóvel — pedido do
+    // usuário, pra dar pra ver o histórico de manutenção direto na ficha do
+    // imóvel, sem precisar ir procurar no quadro de Manutenção.
+    prisma.manutencoes.findMany({
+      where: { imovel_id: id, excluido: false },
+      orderBy: { created_at: "desc" },
+      include: { parceiros: { select: { nome: true } } }
+    })
   ]);
 
   if (!imovel) notFound();
@@ -91,6 +100,45 @@ export default async function ImovelDetalhePage({
         )}
       </div>
       <div className="text-xs text-gray-400 mb-4">Id imóvel: {imovel.id_legado ?? imovel.id}</div>
+
+      <div className="bg-white border border-gray-200 rounded-xl p-4 mb-5">
+        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <div className="text-sm font-bold text-gray-800">Manutenções ({manutencoes.length})</div>
+          <Link
+            href={`/manutencao/novo?imovel_id=${imovel.id}`}
+            className="text-xs bg-primary text-white rounded-lg px-3 py-1.5 font-semibold"
+          >
+            + Nova manutenção
+          </Link>
+        </div>
+        <div className="flex flex-col gap-2">
+          {manutencoes.map((m) => (
+            <Link
+              key={m.id}
+              href={`/manutencao/${m.id}`}
+              className="border border-gray-100 rounded-lg px-3 py-2 flex items-center justify-between gap-2 hover:bg-gray-50"
+            >
+              <div className="min-w-0">
+                <div className="text-xs font-medium text-gray-800 truncate">{m.titulo}</div>
+                <div className="text-[11px] text-gray-400 truncate">
+                  {labelColuna(m.coluna)}
+                  {m.parceiros?.nome ? ` · Prestador: ${m.parceiros.nome}` : ""}
+                </div>
+              </div>
+              <span
+                className={`text-[10px] font-semibold rounded-full px-2 py-0.5 border shrink-0 ${
+                  (URGENCIA_COR[m.urgencia] ?? URGENCIA_COR.media).bg
+                } ${(URGENCIA_COR[m.urgencia] ?? URGENCIA_COR.media).texto} ${
+                  (URGENCIA_COR[m.urgencia] ?? URGENCIA_COR.media).borda
+                }`}
+              >
+                {URGENCIA_LABEL[m.urgencia] ?? m.urgencia}
+              </span>
+            </Link>
+          ))}
+          {manutencoes.length === 0 && <p className="text-xs text-gray-400">Nenhuma manutenção registrada pra este imóvel.</p>}
+        </div>
+      </div>
 
       <ImovelForm
         imovel={imovel}

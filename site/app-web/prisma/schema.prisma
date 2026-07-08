@@ -229,6 +229,7 @@ model clientes {
   transacoes_transacoes_cliente_idToclientes             transacoes[]  @relation("transacoes_cliente_idToclientes")
   movimentacoes_interessado                              movimentacoes[] @relation("movimentacoes_cliente_interessado_idToclientes")
   movimentacoes_proprietario                             movimentacoes[] @relation("movimentacoes_cliente_proprietario_idToclientes")
+  manutencoes                                             manutencoes[]
 
   @@index([conjuge_id], map: "idx_clientes_conjuge")
   @@index([loja_id], map: "idx_clientes_loja")
@@ -388,6 +389,7 @@ model imoveis {
   andamentos            andamentos[]
   gestoes               gestoes[]
   imoveis_proprietarios imoveis_proprietarios[]
+  manutencoes           manutencoes[]
   cidades               cidades?                @relation(fields: [cidade_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   estados               estados?                @relation(fields: [estado_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   parceiros             parceiros?              @relation(fields: [parceiro_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -606,6 +608,7 @@ model parceiros {
   publicacoes_site                                                           publicacoes_site[]
   mensagens_sac                                                              mensagens_sac[]
   logs_erro                                                                  logs_erro[]
+  manutencoes                                                                manutencoes[]
   bancos                                                                      bancos?                   @relation(fields: [banco_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   lojas                                                                       lojas?                    @relation(fields: [loja_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   relatorios                                                                  relatorios[]
@@ -900,4 +903,76 @@ model solicitacoes_acesso {
 
   @@index([parceiro_id], map: "idx_solicitacoes_acesso_parceiro")
   @@index([status], map: "idx_solicitacoes_acesso_status")
+}
+
+// Módulo de Manutenção · Administração — ferramenta interna (não comercial)
+// pra acompanhar solicitações de manutenção dos imóveis, do pedido simples
+// (cópia de chave) até serviços que envolvem contratar prestador externo.
+// imovel_id aponta pra qualquer imóvel (não só os com administração ativa
+// cadastrada — muita locação ainda não tem isso registrado formalmente).
+model manutencoes {
+  id                       String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  imovel_id                String                     @db.Uuid
+  cliente_proprietario_id  String?                    @db.Uuid
+  prestador_id             String?                    @db.Uuid
+  titulo                   String
+  tipo_servico             String
+  urgencia                 String                     @default("media")
+  solicitado_por           String?
+  custo_estimado           Decimal?                   @db.Decimal(14, 2)
+  custo_final              Decimal?                   @db.Decimal(14, 2)
+  autorizado_por           String                     @default("pendente")
+  chave_posse              String                     @default("imobiliaria")
+  chave_com                String?
+  chave_atualizado_em      DateTime?                  @db.Timestamptz(6)
+  coluna                   String                     @default("solicitado")
+  excluido                 Boolean                    @default(false)
+  created_at               DateTime                   @default(now()) @db.Timestamptz(6)
+  updated_at               DateTime                   @default(now()) @db.Timestamptz(6)
+  imoveis                  imoveis                    @relation(fields: [imovel_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  clientes                 clientes?                  @relation(fields: [cliente_proprietario_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  parceiros                parceiros?                 @relation(fields: [prestador_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  checklist_itens          manutencao_checklist_itens[]
+  atividades               manutencao_atividades[]
+  notas                    manutencao_notas[]
+
+  @@index([imovel_id], map: "idx_manutencoes_imovel")
+  @@index([coluna], map: "idx_manutencoes_coluna")
+}
+
+model manutencao_checklist_itens {
+  id            String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  manutencao_id String      @db.Uuid
+  label         String
+  done          Boolean     @default(false)
+  ordem         Int         @default(0) @db.SmallInt
+  created_at    DateTime    @default(now()) @db.Timestamptz(6)
+  manutencoes   manutencoes @relation(fields: [manutencao_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([manutencao_id], map: "idx_manut_checklist_manutencao")
+}
+
+model manutencao_atividades {
+  id            String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  manutencao_id String      @db.Uuid
+  tipo          String
+  titulo        String
+  data          DateTime    @db.Date
+  feito         Boolean     @default(false)
+  notas         String?
+  created_at    DateTime    @default(now()) @db.Timestamptz(6)
+  manutencoes   manutencoes @relation(fields: [manutencao_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([manutencao_id], map: "idx_manut_atividades_manutencao")
+  @@index([data], map: "idx_manut_atividades_data")
+}
+
+model manutencao_notas {
+  id            String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  manutencao_id String      @db.Uuid
+  texto         String
+  criado_em     DateTime    @default(now()) @db.Timestamptz(6)
+  manutencoes   manutencoes @relation(fields: [manutencao_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([manutencao_id], map: "idx_manut_notas_manutencao")
 }

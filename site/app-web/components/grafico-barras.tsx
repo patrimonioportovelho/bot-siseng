@@ -7,14 +7,16 @@ type Ponto = { label: string } & Record<string, number | string>;
 export function GraficoBarras({
   dados,
   series,
-  formatarValor
+  formatarValor,
+  mensagemVazia = "Sem movimentações pagas no período."
 }: {
   dados: Ponto[];
   series: Serie[];
   formatarValor: (v: number) => string;
+  mensagemVazia?: string;
 }) {
   if (dados.length === 0) {
-    return <p className="text-xs text-gray-400">Sem movimentações pagas no período.</p>;
+    return <p className="text-xs text-gray-400">{mensagemVazia}</p>;
   }
 
   const maior = Math.max(1, ...dados.flatMap((d) => series.map((s) => Number(d[s.chave]) || 0)));

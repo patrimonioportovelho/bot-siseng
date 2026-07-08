@@ -18,6 +18,12 @@ export const dynamic = "force-dynamic";
 
 const MESES_ABREV = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
 
+// Status usado nas transações de Locação que não têm administração vinculada
+// (o dono cuida direto, a imobiliária só intermediou o contrato). Ver
+// STATUS_ABERTA em lib/format.ts.
+const STATUS_LOCACAO_SEM_ADM = "Imóvel em locação sem administração";
+const STATUS_CANCELADAS = ["Distrato", "Locação cancelada"];
+
 export default async function DashboardPage({
   searchParams
 }: {
@@ -34,13 +40,14 @@ export default async function DashboardPage({
   const [
     totalImoveis,
     transacoesAbertas,
-    transacoesDoPeriodoResumo,
+    transacoesPeriodo,
     contratosAVencer,
     locacoesVencidas,
     administracoesAtivas,
     solicitacoesPendentes,
     novosImoveisPeriodo,
     transacoesDoPeriodo,
+    administracoesPeriodo,
     recebimentosPendentesPeriodo,
     despesasPendentesPeriodo,
     recebimentosVencidos,
@@ -49,14 +56,20 @@ export default async function DashboardPage({
   ] = await Promise.all([
     prisma.imoveis.count({ where: { excluido: false } }),
     prisma.transacoes.count({ where: { excluido: false, status: STATUS_TRANSACAO_EM_ABERTO } }),
-    // Honorário previsto do período, calculado direto de transacoes
-    // (valor_transacao x porc_honorario) — a tabela pagamentos não é gravada
-    // por nenhuma Server Action do sistema atual, então usar ela aqui sempre
-    // daria R$ 0,00 pra transação nova. valor_transacao/porc_honorario são
-    // preenchidos no cadastro/edição, então isso reflete a realidade.
+    // Base de tudo que é "negócio assinado no período": alimenta VGH/VGV/VGL,
+    // a quantidade de Locação sem administração, os distratos e o gráfico de
+    // novos negócios mês a mês — uma única busca em vez de várias parecidas.
     prisma.transacoes.findMany({
       where: { excluido: false, data_assinatura: { gte: inicio, lt: fimExclusivo } },
-      select: { valor_transacao: true, porc_honorario: true }
+      select: {
+        tipo: true,
+        status: true,
+        valor_transacao: true,
+        porc_honorario: true,
+        tem_parceria: true,
+        porc_parceria: true,
+        data_assinatura: true
+      }
     }),
     prisma.transacoes.count({
       where: {
@@ -69,6 +82,8 @@ export default async function DashboardPage({
     prisma.transacoes.count({
       where: { excluido: false, tipo: "Locação", status: STATUS_TRANSACAO_EM_ABERTO, data_vencimento: { lt: hoje } }
     }),
+    // Administrações ativas é sempre "agora" (estado atual), não do período —
+    // mesma lógica do "Vencido em aberto" do Financeiro, mais abaixo.
     prisma.adm_imoveis.count({ where: { status: "Ativo", excluido: false } }),
     prisma.solicitacoes_acesso.count({ where: { status: "pendente" } }),
     prisma.imoveis.count({ where: { excluido: false, data_cadastro: { gte: inicio, lt: fimExclusivo } } }),
@@ -90,6 +105,12 @@ export default async function DashboardPage({
         clientes_transacoes_cliente_idToclientes: true,
         clientes_transacoes_cliente_contraparte_idToclientes: true
       }
+    }),
+    // VGA (administração) e o "Administração" do gráfico de novos negócios —
+    // por Data de assinatura da administração, igual às transações.
+    prisma.adm_imoveis.findMany({
+      where: { excluido: false, data_assinatura: { gte: inicio, lt: fimExclusivo } },
+      select: { valor_administracao: true, data_assinatura: true }
     }),
     prisma.movimentacoes.aggregate({
       _sum: { valor: true },
@@ -121,10 +142,87 @@ export default async function DashboardPage({
     })
   ]);
 
-  const honorarioPrevisto = transacoesDoPeriodoResumo.reduce(
-    (acc, t) => acc + Number(t.valor_transacao) * Number(t.porc_honorario ?? 0),
-    0
-  );
+  // VGH (Valor Geral de Honorários): soma de valor_transacao x porc_honorario
+  // de TODA transação assinada no período (Compra e Venda + Locação, é o que
+  // o usuário pediu). "Bruto" é o honorário cheio; "Líquido" desconta a
+  // parte que fica com o parceiro externo quando há parceria — mesma conta
+  // usada em Financeiro/Comissionamento pra saber o que de fato fica com a
+  // imobiliária.
+  // VGV (vendas) e VGL (locação): valor_transacao e quantidade, por tipo.
+  // Distratos: transações cujo status atual é Distrato/Locação cancelada,
+  // agrupadas pela mesma Data de assinatura (não existe um campo de "data de
+  // encerramento" preenchido no sistema hoje).
+  let honorarioBruto = 0;
+  let honorarioLiquido = 0;
+  let vendasValor = 0;
+  let vendasQtd = 0;
+  let locacaoValor = 0;
+  let locacaoQtd = 0;
+  let locacaoSemAdmQtd = 0;
+  let distratosQtd = 0;
+  const porMesNegocios = new Map<
+    string,
+    { vendas: number; locacoes: number; administracoes: number; distratos: number; ordem: number }
+  >();
+
+  function linhaDoMes(data: unknown) {
+    const d = new Date(data as string);
+    const chave = `${d.getFullYear()}-${d.getMonth()}`;
+    const atual = porMesNegocios.get(chave) ?? {
+      vendas: 0,
+      locacoes: 0,
+      administracoes: 0,
+      distratos: 0,
+      ordem: d.getFullYear() * 12 + d.getMonth()
+    };
+    porMesNegocios.set(chave, atual);
+    return atual;
+  }
+
+  for (const t of transacoesPeriodo) {
+    const honorario = Number(t.valor_transacao) * Number(t.porc_honorario ?? 0);
+    honorarioBruto += honorario;
+    honorarioLiquido += t.tem_parceria ? honorario * (1 - Number(t.porc_parceria ?? 0)) : honorario;
+
+    const linha = linhaDoMes(t.data_assinatura);
+
+    if (t.tipo === "Compra e Venda") {
+      vendasValor += Number(t.valor_transacao);
+      vendasQtd += 1;
+      linha.vendas += 1;
+    } else if (t.tipo === "Locação") {
+      locacaoValor += Number(t.valor_transacao);
+      locacaoQtd += 1;
+      linha.locacoes += 1;
+      if (t.status === STATUS_LOCACAO_SEM_ADM) locacaoSemAdmQtd += 1;
+    }
+
+    if (t.status && STATUS_CANCELADAS.includes(t.status)) {
+      distratosQtd += 1;
+      linha.distratos += 1;
+    }
+  }
+
+  for (const a of administracoesPeriodo) {
+    if (!a.data_assinatura) continue;
+    linhaDoMes(a.data_assinatura).administracoes += 1;
+  }
+
+  const administracaoValor = administracoesPeriodo.reduce((acc, a) => acc + Number(a.valor_administracao ?? 0), 0);
+  const administracaoQtd = administracoesPeriodo.length;
+
+  const dadosGraficoNegocios = [...porMesNegocios.entries()]
+    .sort((a, b) => a[1].ordem - b[1].ordem)
+    .map(([chave, v]) => {
+      const [ano, mes] = chave.split("-").map(Number);
+      return {
+        label: `${MESES_ABREV[mes]}/${String(ano).slice(2)}`,
+        vendas: v.vendas,
+        locacoes: v.locacoes,
+        administracoes: v.administracoes,
+        distratos: v.distratos
+      };
+    });
 
   const recebidoPeriodo = movimentacoesPagasPeriodo
     .filter((m) => m.tipo === "Recebimento")
@@ -171,6 +269,15 @@ export default async function DashboardPage({
     return `/dashboard?periodo=${p}`;
   }
 
+  // Mesma query string do período atual, usada tanto no link "Ver todas as
+  // transações" quanto se precisar linkar o período pra outra tela.
+  const queryPeriodoAtual = new URLSearchParams();
+  queryPeriodoAtual.set("periodo", periodoResolvido.preset);
+  if (periodoResolvido.preset === "personalizado") {
+    queryPeriodoAtual.set("inicio", periodoResolvido.inicioTexto);
+    queryPeriodoAtual.set("fim", periodoResolvido.fimTexto);
+  }
+
   return (
     <div>
       <Topbar />
@@ -198,22 +305,15 @@ export default async function DashboardPage({
         </div>
       )}
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
         <KpiCard label="Imóveis cadastrados" value={String(totalImoveis)} />
         <KpiCard label="Transações em andamento" value={String(transacoesAbertas)} />
-        <KpiCard label="Honorário previsto (período)" value={formatMoeda(honorarioPrevisto)} accent />
         <KpiCard label="Contratos a vencer (90 dias)" value={String(contratosAVencer)} />
-      </div>
-
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-        <KpiCard label="Locações vencidas" value={String(locacoesVencidas)} />
-        <KpiCard label="Administrações ativas" value={String(administracoesAtivas)} />
         <KpiCard label="Solicitações pendentes" value={String(solicitacoesPendentes)} />
-        <KpiCard label="Imóveis cadastrados (período)" value={String(novosImoveisPeriodo)} />
       </div>
 
       {/* Filtro de período — governa as Transações abaixo (por Data de
-          assinatura) e todo o bloco Financeiro. */}
+          assinatura), o quadro Vendas & Locação e todo o bloco Financeiro. */}
       <div className="bg-white border border-gray-200 rounded-xl p-3 mb-5 flex items-center justify-between gap-3 flex-wrap">
         <div className="flex gap-2 items-center flex-wrap">
           <span className="text-xs text-gray-500 mr-1">Período:</span>
@@ -266,9 +366,19 @@ export default async function DashboardPage({
       </div>
 
       <div className="bg-white border border-gray-200 rounded-xl p-4 mb-5">
-        <div className="text-sm font-bold text-gray-800 mb-3">
-          Transações do período ({transacoesDoPeriodo.length}
-          {transacoesDoPeriodo.length === 15 ? "+" : ""})
+        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <div className="text-sm font-bold text-gray-800">
+            Transações do período ({transacoesDoPeriodo.length}
+            {transacoesDoPeriodo.length === 15 ? "+" : ""})
+          </div>
+          {transacoesDoPeriodo.length === 15 && (
+            <Link
+              href={`/transacoes/periodo?${queryPeriodoAtual.toString()}`}
+              className="text-xs text-primary font-semibold hover:underline whitespace-nowrap"
+            >
+              Ver todas as transações →
+            </Link>
+          )}
         </div>
         {/* overflow-x-auto + min-w no table: no celular a tabela rola de lado
             em vez de espremer/cortar as colunas (era o que estava quebrando
@@ -317,6 +427,64 @@ export default async function DashboardPage({
             </tbody>
           </table>
         </div>
+      </div>
+
+      <div className="bg-white border border-gray-200 rounded-xl p-4 mb-5">
+        <div className="flex items-center justify-between mb-1 flex-wrap gap-2">
+          <div className="text-sm font-bold text-gray-800">Vendas & Locação</div>
+          <div className="text-[11px] text-gray-400">{novosImoveisPeriodo} imóvel(is) captado(s) no período</div>
+        </div>
+        <p className="text-[11px] text-gray-400 mb-3">
+          Valores somados pela Data de assinatura, dentro do período selecionado acima.
+        </p>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-2">
+          <div className="bg-gray-50 border border-gray-100 rounded-xl p-3">
+            <div className="text-xs text-gray-500">VGH — Honorários (bruto)</div>
+            <div className="text-lg font-bold mt-1 text-accent">{formatMoeda(honorarioBruto)}</div>
+            <div className="text-[11px] text-gray-400">Líquido: {formatMoeda(honorarioLiquido)}</div>
+            <div className="text-[11px] text-gray-400">
+              {vendasQtd + locacaoQtd} transação(ões) com honorário
+            </div>
+          </div>
+          <div className="bg-gray-50 border border-gray-100 rounded-xl p-3">
+            <div className="text-xs text-gray-500">VGV — Vendas</div>
+            <div className="text-lg font-bold mt-1 text-gray-900">{formatMoeda(vendasValor)}</div>
+            <div className="text-[11px] text-gray-400">{vendasQtd} venda(s)</div>
+          </div>
+          <div className="bg-gray-50 border border-gray-100 rounded-xl p-3">
+            <div className="text-xs text-gray-500">VGL — Locação</div>
+            <div className="text-lg font-bold mt-1 text-gray-900">{formatMoeda(locacaoValor)}</div>
+            <div className="text-[11px] text-gray-400">{locacaoQtd} contrato(s)</div>
+            <div className="text-[11px] text-gray-400">{locacaoSemAdmQtd} sem administração</div>
+            <div className="text-[11px] text-gray-400">{administracoesAtivas} administração(ões) ativa(s) (atual)</div>
+          </div>
+          <div className="bg-gray-50 border border-gray-100 rounded-xl p-3">
+            <div className="text-xs text-gray-500">VGA — Administração</div>
+            <div className="text-lg font-bold mt-1 text-gray-900">{formatMoeda(administracaoValor)}</div>
+            <div className="text-[11px] text-gray-400">{administracaoQtd} administração(ões) no período</div>
+          </div>
+        </div>
+
+        {distratosQtd > 0 && (
+          <div className="text-[11px] text-red-600 mb-2">
+            {distratosQtd} distrato(s)/cancelamento(s) no período (pela Data de assinatura, sem uma data de
+            encerramento cadastrada)
+          </div>
+        )}
+
+        <div className="text-xs font-semibold text-gray-600 mb-2 mt-2">Novos negócios, mês a mês</div>
+        <GraficoBarras
+          dados={dadosGraficoNegocios}
+          series={[
+            { chave: "vendas", cor: "#04075c", nome: "Compra e Venda" },
+            { chave: "locacoes", cor: "#3C7A57", nome: "Locação" },
+            { chave: "administracoes", cor: "#c97a1a", nome: "Administração" },
+            { chave: "distratos", cor: "#B14226", nome: "Distratos" }
+          ]}
+          formatarValor={(v) => String(v)}
+          mensagemVazia="Sem negócios registrados nesse período."
+        />
       </div>
 
       <div className="bg-white border border-gray-200 rounded-xl p-4">

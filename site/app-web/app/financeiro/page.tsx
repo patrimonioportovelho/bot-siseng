@@ -27,11 +27,23 @@ export default async function FinanceiroPage({
     q?: string;
     page?: string;
     categoria?: string;
-    de?: string;
-    ate?: string;
+    venc_de?: string;
+    venc_ate?: string;
+    pag_de?: string;
+    pag_ate?: string;
   }>;
 }) {
-  const { tipo: tipoParam, pago: pagoParam, q, page: pageParam, categoria: categoriaParam, de, ate } = await searchParams;
+  const {
+    tipo: tipoParam,
+    pago: pagoParam,
+    q,
+    page: pageParam,
+    categoria: categoriaParam,
+    venc_de: vencDe,
+    venc_ate: vencAte,
+    pag_de: pagDe,
+    pag_ate: pagAte
+  } = await searchParams;
   const tipo = tipoParam === "recebimento" ? "Recebimento" : "Despesa";
   const termo = (q ?? "").trim();
   const page = Math.max(1, Number(pageParam ?? "1") || 1);
@@ -39,20 +51,34 @@ export default async function FinanceiroPage({
   const hoje = new Date();
   hoje.setHours(0, 0, 0, 0);
 
+  // Vencimento e Data de pagamento são duas dimensões de tempo diferentes —
+  // filtrando separado dá pra responder tanto "o que vence em julho" quanto
+  // "o que eu já paguei/recebi em julho", sem uma pisar na outra.
   const vencimentoFiltro: { gte?: Date; lte?: Date } = {};
-  if (de) {
-    const d = new Date(de + "T00:00:00");
+  if (vencDe) {
+    const d = new Date(vencDe + "T00:00:00");
     if (!Number.isNaN(d.getTime())) vencimentoFiltro.gte = d;
   }
-  if (ate) {
-    const d = new Date(ate + "T00:00:00");
+  if (vencAte) {
+    const d = new Date(vencAte + "T00:00:00");
     if (!Number.isNaN(d.getTime())) vencimentoFiltro.lte = d;
+  }
+
+  const pagamentoFiltro: { gte?: Date; lte?: Date } = {};
+  if (pagDe) {
+    const d = new Date(pagDe + "T00:00:00");
+    if (!Number.isNaN(d.getTime())) pagamentoFiltro.gte = d;
+  }
+  if (pagAte) {
+    const d = new Date(pagAte + "T00:00:00");
+    if (!Number.isNaN(d.getTime())) pagamentoFiltro.lte = d;
   }
 
   const where = {
     tipo,
     ...(categoriaParam ? { categoria_id: categoriaParam } : {}),
     ...(vencimentoFiltro.gte || vencimentoFiltro.lte ? { vencimento: vencimentoFiltro } : {}),
+    ...(pagamentoFiltro.gte || pagamentoFiltro.lte ? { data_pagamento: pagamentoFiltro } : {}),
     ...(pagoParam === "sim" ? { pago: true } : pagoParam === "todas" ? {} : { pago: false }),
     ...(termo
       ? {
@@ -103,8 +129,10 @@ export default async function FinanceiroPage({
     const params = new URLSearchParams();
     params.set("tipo", t);
     if (pagoParam) params.set("pago", pagoParam);
-    if (de) params.set("de", de);
-    if (ate) params.set("ate", ate);
+    if (vencDe) params.set("venc_de", vencDe);
+    if (vencAte) params.set("venc_ate", vencAte);
+    if (pagDe) params.set("pag_de", pagDe);
+    if (pagAte) params.set("pag_ate", pagAte);
     return `/financeiro?${params.toString()}`;
   }
 
@@ -113,8 +141,10 @@ export default async function FinanceiroPage({
     if (tipoParam) params.set("tipo", tipoParam);
     if (p) params.set("pago", p);
     if (categoriaParam) params.set("categoria", categoriaParam);
-    if (de) params.set("de", de);
-    if (ate) params.set("ate", ate);
+    if (vencDe) params.set("venc_de", vencDe);
+    if (vencAte) params.set("venc_ate", vencAte);
+    if (pagDe) params.set("pag_de", pagDe);
+    if (pagAte) params.set("pag_ate", pagAte);
     return `/financeiro?${params.toString()}`;
   }
 
@@ -197,28 +227,48 @@ export default async function FinanceiroPage({
               </option>
             ))}
           </select>
+          <span className="w-px h-5 bg-gray-200 mx-1 hidden md:inline-block" />
           <label className="text-xs text-gray-500 flex items-center gap-1">
-            De
+            Vencimento de
             <input
               type="date"
-              name="de"
-              defaultValue={de ?? ""}
+              name="venc_de"
+              defaultValue={vencDe ?? ""}
               className="text-xs border border-gray-300 rounded-lg px-2 py-1.5 outline-none focus:border-primary"
             />
           </label>
           <label className="text-xs text-gray-500 flex items-center gap-1">
-            Até
+            até
             <input
               type="date"
-              name="ate"
-              defaultValue={ate ?? ""}
+              name="venc_ate"
+              defaultValue={vencAte ?? ""}
+              className="text-xs border border-gray-300 rounded-lg px-2 py-1.5 outline-none focus:border-primary"
+            />
+          </label>
+          <span className="w-px h-5 bg-gray-200 mx-1 hidden md:inline-block" />
+          <label className="text-xs text-gray-500 flex items-center gap-1">
+            Pagamento de
+            <input
+              type="date"
+              name="pag_de"
+              defaultValue={pagDe ?? ""}
+              className="text-xs border border-gray-300 rounded-lg px-2 py-1.5 outline-none focus:border-primary"
+            />
+          </label>
+          <label className="text-xs text-gray-500 flex items-center gap-1">
+            até
+            <input
+              type="date"
+              name="pag_ate"
+              defaultValue={pagAte ?? ""}
               className="text-xs border border-gray-300 rounded-lg px-2 py-1.5 outline-none focus:border-primary"
             />
           </label>
           <button type="submit" className="text-xs bg-white border border-gray-300 text-gray-600 rounded-lg px-3 py-1.5">
             Filtrar
           </button>
-          {(termo || categoriaParam || de || ate) && (
+          {(termo || categoriaParam || vencDe || vencAte || pagDe || pagAte) && (
             <a href={hrefPago(pagoParam ?? null)} className="text-xs text-gray-400 underline">
               Limpar filtros
             </a>
@@ -320,7 +370,15 @@ export default async function FinanceiroPage({
           totalPages={totalPages}
           basePath="/financeiro"
           q={termo}
-          extraParams={{ tipo: tipoParam, pago: pagoParam, categoria: categoriaParam, de, ate }}
+          extraParams={{
+            tipo: tipoParam,
+            pago: pagoParam,
+            categoria: categoriaParam,
+            venc_de: vencDe,
+            venc_ate: vencAte,
+            pag_de: pagDe,
+            pag_ate: pagAte
+          }}
         />
       </div>
     </div>

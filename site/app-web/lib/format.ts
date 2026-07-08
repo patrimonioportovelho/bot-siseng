@@ -79,6 +79,62 @@ export function hojeInputDate(): string {
   return `${ano}-${String(mes).padStart(2, "0")}-${String(dia).padStart(2, "0")}`;
 }
 
+// Presets de período usados nos filtros de dashboard (Este mês / Este ano /
+// Personalizado).
+export type PeriodoPreset = "mes" | "ano" | "personalizado";
+
+export type PeriodoResolvido = {
+  preset: PeriodoPreset;
+  inicio: Date;
+  // Exclusivo — pensado pra usar com `lt` no Prisma. Evita o problema de
+  // "o último dia some" que dá com `lte` quando a coluna guarda horário.
+  fimExclusivo: Date;
+  // yyyy-mm-dd, pro defaultValue dos <input type="date"> do filtro.
+  inicioTexto: string;
+  fimTexto: string;
+};
+
+function paraTextoData(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function montarPeriodo(preset: PeriodoPreset, inicio: Date, fimExclusivo: Date): PeriodoResolvido {
+  const fimInclusivo = new Date(fimExclusivo);
+  fimInclusivo.setDate(fimInclusivo.getDate() - 1);
+  return {
+    preset,
+    inicio,
+    fimExclusivo,
+    inicioTexto: paraTextoData(inicio),
+    fimTexto: paraTextoData(fimInclusivo)
+  };
+}
+
+// Resolve o período de um dashboard a partir dos parâmetros de URL
+// (?periodo=mes|ano|personalizado&inicio=yyyy-mm-dd&fim=yyyy-mm-dd). Sem
+// parâmetro nenhum (ou com "personalizado" incompleto/inválido), cai no mês
+// atual — mesmo comportamento "padrão" que o dashboard já tinha antes deste
+// filtro existir, só que agora explícito e trocável pelo usuário.
+export function resolverPeriodo(params: { periodo?: string; inicio?: string; fim?: string }): PeriodoResolvido {
+  const hoje = hojePortoVelho();
+
+  if (params.periodo === "ano") {
+    return montarPeriodo("ano", new Date(hoje.getFullYear(), 0, 1), new Date(hoje.getFullYear() + 1, 0, 1));
+  }
+
+  if (params.periodo === "personalizado" && params.inicio && params.fim) {
+    const inicio = new Date(params.inicio + "T00:00:00");
+    const fimInclusivo = new Date(params.fim + "T00:00:00");
+    if (!Number.isNaN(inicio.getTime()) && !Number.isNaN(fimInclusivo.getTime()) && inicio <= fimInclusivo) {
+      const fimExclusivo = new Date(fimInclusivo);
+      fimExclusivo.setDate(fimExclusivo.getDate() + 1);
+      return montarPeriodo("personalizado", inicio, fimExclusivo);
+    }
+  }
+
+  return montarPeriodo("mes", new Date(hoje.getFullYear(), hoje.getMonth(), 1), new Date(hoje.getFullYear(), hoje.getMonth() + 1, 1));
+}
+
 // Formata CPF (qualquer string com 11 dígitos) como 000.000.000-00.
 // Alguns registros foram importados de planilha e ficaram com sufixo ".0"
 // (ex.: "884264752720" após tirar o ponto) — removemos esse resto de float

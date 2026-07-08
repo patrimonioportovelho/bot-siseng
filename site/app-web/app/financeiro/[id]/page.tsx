@@ -12,7 +12,26 @@ export const dynamic = "force-dynamic";
 export default async function MovimentacaoPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
-  const movimentacao = await prisma.movimentacoes.findUnique({ where: { id } });
+  const movimentacao = await prisma.movimentacoes.findUnique({
+    where: { id },
+    include: {
+      // Dados bancários do parceiro — só usados pra montar o "recibo de
+      // repasse" abaixo (despesa gerada pra pagar comissão de um parceiro).
+      parceiros: {
+        select: {
+          nome: true,
+          cpf: true,
+          agencia: true,
+          conta: true,
+          tipo_conta: true,
+          codigo_banco: true,
+          pix: true,
+          tipo_pix: true,
+          bancos: { select: { nome: true } }
+        }
+      }
+    }
+  });
   if (!movimentacao) notFound();
 
   const [categorias, clientes, parceiros] = await Promise.all([
@@ -132,6 +151,48 @@ export default async function MovimentacaoPage({ params }: { params: Promise<{ i
                 <div className="text-xs text-gray-800">{formatData(transacaoVinculada.data_assinatura)}</div>
               </div>
             </div>
+          </div>
+        )}
+
+        {movimentacao.tipo === "Despesa" && movimentacao.parceiro_id && movimentacao.parceiros && (
+          <div className="bg-white border border-gray-200 rounded-xl p-4">
+            <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+              <div className="text-sm font-bold text-gray-800">Recibo de repasse — {movimentacao.parceiros.nome}</div>
+              <span className="text-sm font-bold text-gray-800">{formatMoeda(movimentacao.valor)}</span>
+            </div>
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-4 md:gap-4">
+              <div>
+                <div className="text-[11px] text-gray-400">CPF/CNPJ</div>
+                <div className="text-xs text-gray-800">{movimentacao.parceiros.cpf ?? "—"}</div>
+              </div>
+              <div>
+                <div className="text-[11px] text-gray-400">Banco</div>
+                <div className="text-xs text-gray-800">
+                  {movimentacao.parceiros.bancos?.nome ?? "—"}
+                  {movimentacao.parceiros.codigo_banco ? ` (${movimentacao.parceiros.codigo_banco})` : ""}
+                </div>
+              </div>
+              <div>
+                <div className="text-[11px] text-gray-400">Agência / Conta</div>
+                <div className="text-xs text-gray-800">
+                  {movimentacao.parceiros.agencia ?? "—"} / {movimentacao.parceiros.conta ?? "—"}
+                  {movimentacao.parceiros.tipo_conta ? ` (${movimentacao.parceiros.tipo_conta})` : ""}
+                </div>
+              </div>
+              <div>
+                <div className="text-[11px] text-gray-400">Pix</div>
+                <div className="text-xs text-gray-800">
+                  {movimentacao.parceiros.pix
+                    ? `${movimentacao.parceiros.pix}${movimentacao.parceiros.tipo_pix ? ` (${movimentacao.parceiros.tipo_pix})` : ""}`
+                    : "—"}
+                </div>
+              </div>
+            </div>
+            {!movimentacao.parceiros.pix && !movimentacao.parceiros.conta && (
+              <p className="text-[11px] text-amber-600 mt-2">
+                Este parceiro ainda não tem dados bancários cadastrados. Complete o cadastro dele antes de repassar.
+              </p>
+            )}
           </div>
         )}
 

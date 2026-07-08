@@ -2,15 +2,22 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Topbar } from "@/components/topbar";
 import { prisma } from "@/lib/prisma";
-import { FinanceiroEditarForm } from "@/components/financeiro-editar-form";
+import { MovimentacaoDetalhe } from "@/components/movimentacao-detalhe";
 import { RateioForm } from "@/components/rateio-form";
 import { formatMoeda, formatPercentual, formatData } from "@/lib/format";
 import { atualizarMovimentacaoAction, gerarRateioAction } from "../actions";
 
 export const dynamic = "force-dynamic";
 
-export default async function MovimentacaoPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function MovimentacaoPage({
+  params,
+  searchParams
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ salvo?: string }>;
+}) {
   const { id } = await params;
+  const { salvo } = await searchParams;
 
   const movimentacao = await prisma.movimentacoes.findUnique({
     where: { id },
@@ -29,7 +36,13 @@ export default async function MovimentacaoPage({ params }: { params: Promise<{ i
           tipo_pix: true,
           bancos: { select: { nome: true } }
         }
-      }
+      },
+      // Nomes pra ficha compacta — a movimentação já traz os ids desses
+      // vínculos, aqui só pega o nome pronto pra exibir sem precisar buscar
+      // em outra lista.
+      categorias_financeiras: { select: { nome: true } },
+      clientes_interessado: { select: { nome: true } },
+      clientes_proprietario: { select: { nome: true } }
     }
   });
   if (!movimentacao) notFound();
@@ -113,6 +126,12 @@ export default async function MovimentacaoPage({ params }: { params: Promise<{ i
       </Link>
 
       <div className="text-sm font-bold text-gray-800 mb-4">Movimentação</div>
+
+      {salvo === "1" && (
+        <div className="bg-green-50 border border-green-200 text-green-700 text-xs rounded-lg px-3 py-2 mb-4">
+          Movimentação salva com sucesso.
+        </div>
+      )}
 
       <div className="flex flex-col gap-5">
         {transacaoVinculada && (
@@ -221,7 +240,8 @@ export default async function MovimentacaoPage({ params }: { params: Promise<{ i
           </div>
         )}
 
-        <FinanceiroEditarForm
+        <MovimentacaoDetalhe
+          key={movimentacao.updated_at.toISOString()}
           movimentacao={movimentacao}
           categorias={categorias}
           clientes={clientes}

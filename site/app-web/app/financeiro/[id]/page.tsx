@@ -22,8 +22,6 @@ export default async function MovimentacaoPage({
   const movimentacao = await prisma.movimentacoes.findUnique({
     where: { id },
     include: {
-      // Dados bancários do parceiro — só usados pra montar o "recibo de
-      // repasse" abaixo (despesa gerada pra pagar comissão de um parceiro).
       parceiros: {
         select: {
           nome: true,
@@ -37,12 +35,22 @@ export default async function MovimentacaoPage({
           bancos: { select: { nome: true } }
         }
       },
-      // Nomes pra ficha compacta — a movimentação já traz os ids desses
-      // vínculos, aqui só pega o nome pronto pra exibir sem precisar buscar
-      // em outra lista.
       categorias_financeiras: { select: { nome: true } },
       clientes_interessado: { select: { nome: true } },
-      clientes_proprietario: { select: { nome: true } }
+      clientes_proprietario: {
+        select: {
+          nome: true,
+          cpf: true,
+          cnpj: true,
+          agencia: true,
+          conta: true,
+          tipo_conta: true,
+          codigo_banco: true,
+          pix: true,
+          tipo_pix: true,
+          bancos: { select: { nome: true } }
+        }
+      }
     }
   });
   if (!movimentacao) notFound();
@@ -61,11 +69,6 @@ export default async function MovimentacaoPage({
     })
   ]);
 
-  // Busca a transação vinculada (se houver) independente do tipo — tanto
-  // Recebimento quanto Despesa podem estar ligados a uma transação (ex.:
-  // repasse de honorário é Despesa com transacao_id preenchido). Isso é o
-  // que faltava aparecer no detalhe: antes só mostrava Categoria/Valor/
-  // Vencimento e não dava pra saber de qual contrato aquilo veio.
   const transacaoVinculada = movimentacao.transacao_id
     ? await prisma.transacoes.findUnique({
         where: { id: movimentacao.transacao_id },
@@ -91,9 +94,6 @@ export default async function MovimentacaoPage({
       })
     : null;
 
-  // Pro lado da Despesa (repasse), mostra o Recebimento irmão (mesma
-  // transação) — dá pra ver de qual entrada isso está sendo abatido, em vez
-  // de só saber que existe uma transação vinculada.
   const recebimentoOrigem =
     movimentacao.tipo === "Despesa" && movimentacao.transacao_id
       ? await prisma.movimentacoes.findFirst({
@@ -102,9 +102,35 @@ export default async function MovimentacaoPage({
         })
       : null;
 
-  // Rateio de honorários só faz sentido num Recebimento vinculado a uma
-  // transação — é o dinheiro que entrou e precisa ser repartido entre
-  // corretores/parceiros.
+  const destinatarioRepasse =
+    movimentacao.tipo === "Despesa" && movimentacao.parceiro_id && movimentacao.parceiros
+      ? {
+          tipoParte: "Parceiro" as const,
+          nome: movimentacao.parceiros.nome,
+          documento: movimentacao.parceiros.cpf,
+          banco: movimentacao.parceiros.bancos?.nome ?? null,
+          codigo_banco: movimentacao.parceiros.codigo_banco,
+          agencia: movimentacao.parceiros.agencia,
+          conta: movimentacao.parceiros.conta,
+          tipo_conta: movimentacao.parceiros.tipo_conta,
+          pix: movimentacao.parceiros.pix,
+          tipo_pix: movimentacao.parceiros.tipo_pix
+        }
+      : movimentacao.tipo === "Despesa" && movimentacao.cliente_proprietario_id && movimentacao.clientes_proprietario
+        ? {
+            tipoParte: "Proprietário" as const,
+            nome: movimentacao.clientes_proprietario.nome,
+            documento: movimentacao.clientes_proprietario.cpf ?? movimentacao.clientes_proprietario.cnpj,
+            banco: movimentacao.clientes_proprietario.bancos?.nome ?? null,
+            codigo_banco: movimentacao.clientes_proprietario.codigo_banco,
+            agencia: movimentacao.clientes_proprietario.agencia,
+            conta: movimentacao.clientes_proprietario.conta,
+            tipo_conta: movimentacao.clientes_proprietario.tipo_conta,
+            pix: movimentacao.clientes_proprietario.pix,
+            tipo_pix: movimentacao.clientes_proprietario.tipo_pix
+          }
+        : null;
+
   const pagamentosExistentes =
     movimentacao.tipo === "Recebimento" && transacaoVinculada
       ? await prisma.pagamentos.findMany({
@@ -184,43 +210,48 @@ export default async function MovimentacaoPage({
           </div>
         )}
 
-        {movimentacao.tipo === "Despesa" && movimentacao.parceiro_id && movimentacao.parceiros && (
+        {destinatarioRepasse && (
           <div className="bg-white border border-gray-200 rounded-xl p-4">
             <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-              <div className="text-sm font-bold text-gray-800">Recibo de repasse — {movimentacao.parceiros.nome}</div>
+              <div>
+                <div className="text-sm font-bold text-gray-800">Recibo de repasse — {destinatarioRepasse.nome}</div>
+                <div className="text-[11px] text-gray-400">{destinatarioRepasse.tipoParte}</div>
+              </div>
               <span className="text-sm font-bold text-gray-800">{formatMoeda(movimentacao.valor)}</span>
             </div>
             <div className="grid grid-cols-1 gap-2 md:grid-cols-4 md:gap-4">
               <div>
                 <div className="text-[11px] text-gray-400">CPF/CNPJ</div>
-                <div className="text-xs text-gray-800">{movimentacao.parceiros.cpf ?? "—"}</div>
+                <div className="text-xs text-gray-800">{destinatarioRepasse.documento ?? "—"}</div>
               </div>
               <div>
                 <div className="text-[11px] text-gray-400">Banco</div>
                 <div className="text-xs text-gray-800">
-                  {movimentacao.parceiros.bancos?.nome ?? "—"}
-                  {movimentacao.parceiros.codigo_banco ? ` (${movimentacao.parceiros.codigo_banco})` : ""}
+                  {destinatarioRepasse.banco ?? "—"}
+                  {destinatarioRepasse.codigo_banco ? ` (${destinatarioRepasse.codigo_banco})` : ""}
                 </div>
               </div>
               <div>
                 <div className="text-[11px] text-gray-400">Agência / Conta</div>
                 <div className="text-xs text-gray-800">
-                  {movimentacao.parceiros.agencia ?? "—"} / {movimentacao.parceiros.conta ?? "—"}
-                  {movimentacao.parceiros.tipo_conta ? ` (${movimentacao.parceiros.tipo_conta})` : ""}
+                  {destinatarioRepasse.agencia ?? "—"} / {destinatarioRepasse.conta ?? "—"}
+                  {destinatarioRepasse.tipo_conta ? ` (${destinatarioRepasse.tipo_conta})` : ""}
                 </div>
               </div>
               <div>
                 <div className="text-[11px] text-gray-400">Pix</div>
                 <div className="text-xs text-gray-800">
-                  {movimentacao.parceiros.pix
-                    ? `${movimentacao.parceiros.pix}${movimentacao.parceiros.tipo_pix ? ` (${movimentacao.parceiros.tipo_pix})` : ""}`
+                  {destinatarioRepasse.pix
+                    ? `${destinatarioRepasse.pix}${destinatarioRepasse.tipo_pix ? ` (${destinatarioRepasse.tipo_pix})` : ""}`
                     : "—"}
                 </div>
               </div>
             </div>
-            {!movimentacao.parceiros.pix && !movimentacao.parceiros.conta && (
+            {!destinatarioRepasse.pix && !destinatarioRepasse.conta && (
               <p className="text-[11px] text-amber-600 mt-2">
-                Este parceiro ainda não tem dados bancários cadastrados. Complete o cadastro dele antes de repassar.
+                {destinatarioRepasse.tipoParte === "Parceiro"
+                  ? "Este parceiro ainda não tem dados bancários cadastrados. Complete o cadastro dele antes de repassar."
+                  : "Este cliente ainda não tem dados bancários cadastrados. Complete o cadastro dele antes de repassar."}
               </p>
             )}
             {recebimentoOrigem && (

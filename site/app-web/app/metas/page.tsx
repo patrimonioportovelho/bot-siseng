@@ -23,32 +23,34 @@ export default async function MetasPage() {
         </p>
 
         {metas.length > 0 && (
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="text-left text-gray-500">
-                <th className="font-normal py-1.5 border-b border-gray-100">Parceiro</th>
-                <th className="font-normal py-1.5 border-b border-gray-100">Loja</th>
-                <th className="font-normal py-1.5 border-b border-gray-100">Tipo</th>
-                <th className="font-normal py-1.5 border-b border-gray-100">Período</th>
-                <th className="font-normal py-1.5 border-b border-gray-100 text-right">Alvo</th>
-              </tr>
-            </thead>
-            <tbody>
-              {metas.map((m) => (
-                <tr key={m.id}>
-                  <td className="py-2 border-b border-gray-50">{m.parceiros?.nome ?? "—"}</td>
-                  <td className="py-2 border-b border-gray-50">{m.lojas?.nome ?? "—"}</td>
-                  <td className="py-2 border-b border-gray-50">{m.tipo_meta}</td>
-                  <td className="py-2 border-b border-gray-50">
-                    {formatData(m.periodo_inicio)} – {formatData(m.periodo_fim)}
-                  </td>
-                  <td className="py-2 border-b border-gray-50 text-right">
-                    {m.unidade === "valor" ? formatMoeda(m.valor_meta) : `${m.valor_meta} ${m.unidade}`}
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs min-w-[600px]">
+              <thead>
+                <tr className="text-left text-gray-500">
+                  <th className="font-normal py-1.5 border-b border-gray-100">Parceiro</th>
+                  <th className="font-normal py-1.5 border-b border-gray-100">Loja</th>
+                  <th className="font-normal py-1.5 border-b border-gray-100">Tipo</th>
+                  <th className="font-normal py-1.5 border-b border-gray-100">Período</th>
+                  <th className="font-normal py-1.5 border-b border-gray-100 text-right">Alvo</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {metas.map((m) => (
+                  <tr key={m.id}>
+                    <td className="py-2 border-b border-gray-50">{m.parceiros?.nome ?? "—"}</td>
+                    <td className="py-2 border-b border-gray-50">{m.lojas?.nome ?? "—"}</td>
+                    <td className="py-2 border-b border-gray-50">{m.tipo_meta}</td>
+                    <td className="py-2 border-b border-gray-50">
+                      {formatData(m.periodo_inicio)} – {formatData(m.periodo_fim)}
+                    </td>
+                    <td className="py-2 border-b border-gray-50 text-right">
+                      {m.unidade === "valor" ? formatMoeda(m.valor_meta) : `${m.valor_meta} ${m.unidade}`}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </div>

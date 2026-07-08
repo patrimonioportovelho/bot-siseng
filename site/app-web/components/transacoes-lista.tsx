@@ -99,18 +99,18 @@ export async function TransacoesLista({ tipo, q, novoHref }: { tipo: "Locação"
 
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-4">
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
         <div className="text-sm font-bold text-gray-800">
           {tipo} ({transacoes.length})
         </div>
-        <div className="flex gap-2">
-          <form className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          <form className="flex gap-2 flex-wrap">
             <input
               type="text"
               name="q"
               defaultValue={termo}
               placeholder="Buscar por imóvel, cliente ou Id..."
-              className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-64 outline-none focus:border-primary"
+              className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full sm:w-64 outline-none focus:border-primary"
             />
             <button type="submit" className="text-xs bg-white border border-gray-300 text-gray-600 rounded-lg px-3 py-1.5">
               Buscar

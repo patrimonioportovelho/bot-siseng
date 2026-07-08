@@ -270,48 +270,53 @@ export default async function DashboardPage({
           Transações do período ({transacoesDoPeriodo.length}
           {transacoesDoPeriodo.length === 15 ? "+" : ""})
         </div>
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="text-left text-gray-500">
-              <th className="font-normal py-1.5 border-b border-gray-100">Imóvel</th>
-              <th className="font-normal py-1.5 border-b border-gray-100">Proprietário</th>
-              <th className="font-normal py-1.5 border-b border-gray-100">Interessado</th>
-              <th className="font-normal py-1.5 border-b border-gray-100">Tipo</th>
-              <th className="font-normal py-1.5 border-b border-gray-100">Status</th>
-              <th className="font-normal py-1.5 border-b border-gray-100">Assinatura</th>
-              <th className="font-normal py-1.5 border-b border-gray-100 text-right">Valor</th>
-            </tr>
-          </thead>
-          <tbody>
-            {transacoesDoPeriodo.map((t) => (
-              <tr key={t.id}>
-                <td className="py-2 border-b border-gray-50 max-w-[200px] truncate">{t.imoveis?.endereco ?? "—"}</td>
-                <td className="py-2 border-b border-gray-50">
-                  {t.clientes_transacoes_cliente_idToclientes?.nome ?? "—"}
-                </td>
-                <td className="py-2 border-b border-gray-50">
-                  {t.clientes_transacoes_cliente_contraparte_idToclientes?.nome ?? "—"}
-                </td>
-                <td className="py-2 border-b border-gray-50">{t.tipo}</td>
-                <td className="py-2 border-b border-gray-50">
-                  <StatusBadge status={t.status ?? "—"} tone={statusTone(t.status)} />
-                </td>
-                <td className="py-2 border-b border-gray-50 whitespace-nowrap">{formatData(t.data_assinatura)}</td>
-                <td className="py-2 border-b border-gray-50 text-right whitespace-nowrap">
-                  {formatMoeda(t.valor_transacao)}
-                </td>
+        {/* overflow-x-auto + min-w no table: no celular a tabela rola de lado
+            em vez de espremer/cortar as colunas (era o que estava quebrando
+            o layout no print do celular). */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs min-w-[720px]">
+            <thead>
+              <tr className="text-left text-gray-500">
+                <th className="font-normal py-1.5 border-b border-gray-100">Imóvel</th>
+                <th className="font-normal py-1.5 border-b border-gray-100">Proprietário</th>
+                <th className="font-normal py-1.5 border-b border-gray-100">Interessado</th>
+                <th className="font-normal py-1.5 border-b border-gray-100">Tipo</th>
+                <th className="font-normal py-1.5 border-b border-gray-100">Status</th>
+                <th className="font-normal py-1.5 border-b border-gray-100">Assinatura</th>
+                <th className="font-normal py-1.5 border-b border-gray-100 text-right">Valor</th>
               </tr>
-            ))}
-            {transacoesDoPeriodo.length === 0 && (
-              <tr>
-                <td colSpan={7} className="py-4 text-center text-gray-400">
-                  Nenhuma transação assinada nesse período. Se esperava ver alguma aqui (ex.: um contrato renovado),
-                  confira a Data de assinatura cadastrada na ficha dela.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {transacoesDoPeriodo.map((t) => (
+                <tr key={t.id}>
+                  <td className="py-2 border-b border-gray-50 max-w-[200px] truncate">{t.imoveis?.endereco ?? "—"}</td>
+                  <td className="py-2 border-b border-gray-50">
+                    {t.clientes_transacoes_cliente_idToclientes?.nome ?? "—"}
+                  </td>
+                  <td className="py-2 border-b border-gray-50">
+                    {t.clientes_transacoes_cliente_contraparte_idToclientes?.nome ?? "—"}
+                  </td>
+                  <td className="py-2 border-b border-gray-50">{t.tipo}</td>
+                  <td className="py-2 border-b border-gray-50">
+                    <StatusBadge status={t.status ?? "—"} tone={statusTone(t.status)} />
+                  </td>
+                  <td className="py-2 border-b border-gray-50 whitespace-nowrap">{formatData(t.data_assinatura)}</td>
+                  <td className="py-2 border-b border-gray-50 text-right whitespace-nowrap">
+                    {formatMoeda(t.valor_transacao)}
+                  </td>
+                </tr>
+              ))}
+              {transacoesDoPeriodo.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="py-4 text-center text-gray-400">
+                    Nenhuma transação assinada nesse período. Se esperava ver alguma aqui (ex.: um contrato renovado),
+                    confira a Data de assinatura cadastrada na ficha dela.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <div className="bg-white border border-gray-200 rounded-xl p-4">

@@ -127,48 +127,50 @@ export default async function ConfiguracoesPage({
         {pendentes.length === 0 ? (
           <p className="text-xs text-gray-400">Nenhuma solicitação pendente.</p>
         ) : (
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="text-left text-gray-500">
-                <th className="font-normal py-1.5 border-b border-gray-100">Parceiro cadastrado</th>
-                <th className="font-normal py-1.5 border-b border-gray-100">Nome informado</th>
-                <th className="font-normal py-1.5 border-b border-gray-100">Email informado</th>
-                <th className="font-normal py-1.5 border-b border-gray-100">Pedido em</th>
-                <th className="font-normal py-1.5 border-b border-gray-100 w-40">Ação</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pendentes.map((s) => (
-                <tr key={s.id}>
-                  <td className="py-2 border-b border-gray-50 font-medium text-gray-800">
-                    {s.parceiros_solicitacoes_acesso_parceiro_idToparceiros.nome}{" "}
-                    <span className="text-gray-400">
-                      · {s.parceiros_solicitacoes_acesso_parceiro_idToparceiros.funcao}
-                    </span>
-                  </td>
-                  <td className="py-2 border-b border-gray-50">{s.nome_informado}</td>
-                  <td className="py-2 border-b border-gray-50">{s.email_informado}</td>
-                  <td className="py-2 border-b border-gray-50">{formatDataHora(s.criado_em)}</td>
-                  <td className="py-2 border-b border-gray-50">
-                    <div className="flex gap-1.5">
-                      <form action={aprovarAcessoAction}>
-                        <input type="hidden" name="solicitacaoId" value={s.id} />
-                        <button type="submit" className="text-xs bg-primary text-white rounded-lg px-2 py-1">
-                          Aprovar
-                        </button>
-                      </form>
-                      <form action={rejeitarAcessoAction}>
-                        <input type="hidden" name="solicitacaoId" value={s.id} />
-                        <button type="submit" className="text-xs border border-gray-300 text-gray-600 rounded-lg px-2 py-1">
-                          Rejeitar
-                        </button>
-                      </form>
-                    </div>
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs min-w-[640px]">
+              <thead>
+                <tr className="text-left text-gray-500">
+                  <th className="font-normal py-1.5 border-b border-gray-100">Parceiro cadastrado</th>
+                  <th className="font-normal py-1.5 border-b border-gray-100">Nome informado</th>
+                  <th className="font-normal py-1.5 border-b border-gray-100">Email informado</th>
+                  <th className="font-normal py-1.5 border-b border-gray-100">Pedido em</th>
+                  <th className="font-normal py-1.5 border-b border-gray-100 w-40">Ação</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {pendentes.map((s) => (
+                  <tr key={s.id}>
+                    <td className="py-2 border-b border-gray-50 font-medium text-gray-800">
+                      {s.parceiros_solicitacoes_acesso_parceiro_idToparceiros.nome}{" "}
+                      <span className="text-gray-400">
+                        · {s.parceiros_solicitacoes_acesso_parceiro_idToparceiros.funcao}
+                      </span>
+                    </td>
+                    <td className="py-2 border-b border-gray-50">{s.nome_informado}</td>
+                    <td className="py-2 border-b border-gray-50">{s.email_informado}</td>
+                    <td className="py-2 border-b border-gray-50">{formatDataHora(s.criado_em)}</td>
+                    <td className="py-2 border-b border-gray-50">
+                      <div className="flex gap-1.5">
+                        <form action={aprovarAcessoAction}>
+                          <input type="hidden" name="solicitacaoId" value={s.id} />
+                          <button type="submit" className="text-xs bg-primary text-white rounded-lg px-2 py-1">
+                            Aprovar
+                          </button>
+                        </form>
+                        <form action={rejeitarAcessoAction}>
+                          <input type="hidden" name="solicitacaoId" value={s.id} />
+                          <button type="submit" className="text-xs border border-gray-300 text-gray-600 rounded-lg px-2 py-1">
+                            Rejeitar
+                          </button>
+                        </form>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 
@@ -226,24 +228,26 @@ export default async function ConfiguracoesPage({
       <div className="grid md:grid-cols-2 gap-4 mb-4">
         <div className="bg-white border border-gray-200 rounded-xl p-4">
           <div className="text-sm font-bold text-gray-800 mb-3">Lojas</div>
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="text-left text-gray-500">
-                <th className="font-normal py-1.5 border-b border-gray-100">Nome</th>
-                <th className="font-normal py-1.5 border-b border-gray-100">Cidade</th>
-                <th className="font-normal py-1.5 border-b border-gray-100">Estado</th>
-              </tr>
-            </thead>
-            <tbody>
-              {lojas.map((l) => (
-                <tr key={l.id}>
-                  <td className="py-2 border-b border-gray-50">{l.nome}</td>
-                  <td className="py-2 border-b border-gray-50">{l.cidade ?? "—"}</td>
-                  <td className="py-2 border-b border-gray-50">{l.estado ?? "—"}</td>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-left text-gray-500">
+                  <th className="font-normal py-1.5 border-b border-gray-100">Nome</th>
+                  <th className="font-normal py-1.5 border-b border-gray-100">Cidade</th>
+                  <th className="font-normal py-1.5 border-b border-gray-100">Estado</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {lojas.map((l) => (
+                  <tr key={l.id}>
+                    <td className="py-2 border-b border-gray-50">{l.nome}</td>
+                    <td className="py-2 border-b border-gray-50">{l.cidade ?? "—"}</td>
+                    <td className="py-2 border-b border-gray-50">{l.estado ?? "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
 
         <div className="bg-white border border-gray-200 rounded-xl p-4">

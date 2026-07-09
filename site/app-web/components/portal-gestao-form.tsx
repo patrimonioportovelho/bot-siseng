@@ -6,6 +6,10 @@ import { ESTADOS_CIVIS } from "@/lib/clientes/opcoes";
 import { gerarContratoGestaoAction } from "@/app/portal/gestao/actions";
 
 type ClienteLinha = {
+  // Presente só quando o corretor escolheu um cliente já cadastrado (em vez
+  // de digitar um novo) — nesse caso os campos abaixo vêm travados (só
+  // leitura), pra não deixar editar um cadastro existente por aqui.
+  clienteId?: string;
   nome: string;
   rg: string;
   cpfCnpj: string;
@@ -14,6 +18,34 @@ type ClienteLinha = {
   estadoCivil: string;
   email: string;
   telefone: string;
+};
+
+type ImovelDoCliente = {
+  id: string;
+  tipoImovel: string;
+  rua: string;
+  nPredial: string;
+  complemento: string;
+  bairro: string;
+  estadoId: string;
+  cidadeId: string;
+  valorVenda: string;
+  matricula: string;
+  inscricaoMunicipal: string;
+  endereco: string;
+};
+
+type ClienteDoCorretor = {
+  id: string;
+  nome: string;
+  rg: string;
+  cpfCnpj: string;
+  endereco: string;
+  nacionalidade: string;
+  estadoCivil: string;
+  email: string;
+  telefone: string;
+  imoveis: ImovelDoCliente[];
 };
 
 function clienteVazio(): ClienteLinha {
@@ -34,19 +66,23 @@ function hojeISO(): string {
 }
 
 const CAMPO = "text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full outline-none focus:border-primary bg-white";
+const CAMPO_TRAVADO = "text-xs border border-gray-200 rounded-lg px-3 py-1.5 w-full bg-gray-100 text-gray-500";
 const LABEL = "text-xs text-gray-600 block mb-1";
 
 export function PortalGestaoForm({
   corretor,
   estados,
-  cidades
+  cidades,
+  clientesDoCorretor
 }: {
   corretor: { id: string; nome: string; creci: string | null; cpf: string | null };
   estados: { id: string; nome: string }[];
   cidades: { id: string; nome: string; estado_id: string }[];
+  clientesDoCorretor: ClienteDoCorretor[];
 }) {
   const [clientes, setClientes] = useState<ClienteLinha[]>([clienteVazio()]);
 
+  const [imovelId, setImovelId] = useState("");
   const [tipoImovel, setTipoImovel] = useState("");
   const [rua, setRua] = useState("");
   const [nPredial, setNPredial] = useState("");
@@ -67,8 +103,51 @@ export function PortalGestaoForm({
 
   const cidadesDoEstado = useMemo(() => cidades.filter((c) => c.estado_id === estadoId), [cidades, estadoId]);
 
+  // Imóveis oferecidos pra reaproveitar vêm sempre do cliente PRINCIPAL (o
+  // primeiro da lista, o que aparece no corpo do contrato) — é o dono
+  // natural do imóvel objeto da gestão.
+  const clientePrincipal = clientes[0];
+  const clienteExistentePrincipal = clientePrincipal?.clienteId
+    ? clientesDoCorretor.find((c) => c.id === clientePrincipal.clienteId)
+    : undefined;
+  const imoveisDoClientePrincipal = clienteExistentePrincipal?.imoveis ?? [];
+
   function atualizarCliente(index: number, campo: keyof ClienteLinha, valor: string) {
     setClientes((atual) => atual.map((c, i) => (i === index ? { ...c, [campo]: valor } : c)));
+  }
+
+  // Ao escolher um cliente já cadastrado, preenche tudo com o que já está no
+  // banco e trava os campos — o corretor não edita cadastro existente por
+  // aqui, só usa. Escolhendo "+ Novo cliente" de volta, limpa a linha.
+  function selecionarClienteExistente(index: number, clienteId: string) {
+    if (!clienteId) {
+      setClientes((atual) => atual.map((c, i) => (i === index ? clienteVazio() : c)));
+      return;
+    }
+    const encontrado = clientesDoCorretor.find((c) => c.id === clienteId);
+    if (!encontrado) return;
+    setClientes((atual) =>
+      atual.map((c, i) =>
+        i === index
+          ? {
+              clienteId: encontrado.id,
+              nome: encontrado.nome,
+              rg: encontrado.rg,
+              cpfCnpj: encontrado.cpfCnpj,
+              endereco: encontrado.endereco,
+              nacionalidade: encontrado.nacionalidade,
+              estadoCivil: encontrado.estadoCivil,
+              email: encontrado.email,
+              telefone: encontrado.telefone
+            }
+          : c
+      )
+    );
+    // Trocar o cliente principal invalida o imóvel que tinha sido
+    // selecionado antes (era de outro cliente).
+    if (index === 0 && imovelId) {
+      limparImovel();
+    }
   }
 
   function adicionarCliente() {
@@ -77,6 +156,46 @@ export function PortalGestaoForm({
 
   function removerCliente(index: number) {
     setClientes((atual) => atual.filter((_, i) => i !== index));
+    if (index === 0 && imovelId) {
+      limparImovel();
+    }
+  }
+
+  function limparImovel() {
+    setImovelId("");
+    setTipoImovel("");
+    setRua("");
+    setNPredial("");
+    setComplemento("");
+    setBairro("");
+    setEstadoId("");
+    setCidadeId("");
+    setValorVenda("");
+    setMatricula("");
+    setInscricaoMunicipal("");
+  }
+
+  // Ao escolher um imóvel já cadastrado (do cliente principal), preenche e
+  // trava os campos do imóvel — mesma lógica do cliente: só reaproveita, não
+  // edita o cadastro existente.
+  function selecionarImovelExistente(id: string) {
+    if (!id) {
+      limparImovel();
+      return;
+    }
+    const im = imoveisDoClientePrincipal.find((i) => i.id === id);
+    if (!im) return;
+    setImovelId(im.id);
+    setTipoImovel(im.tipoImovel);
+    setRua(im.rua);
+    setNPredial(im.nPredial);
+    setComplemento(im.complemento);
+    setBairro(im.bairro);
+    setEstadoId(im.estadoId);
+    setCidadeId(im.cidadeId);
+    setValorVenda(im.valorVenda);
+    setMatricula(im.matricula);
+    setInscricaoMunicipal(im.inscricaoMunicipal);
   }
 
   async function handleGerar() {
@@ -85,6 +204,7 @@ export function PortalGestaoForm({
     try {
       const formData = new FormData();
       formData.set("clientesJson", JSON.stringify(clientes));
+      formData.set("imovel_id", imovelId);
       formData.set("tipo_imovel", tipoImovel);
       formData.set("rua", rua);
       formData.set("n_predial", nPredial);
@@ -114,7 +234,8 @@ export function PortalGestaoForm({
       <div className="bg-white border border-gray-200 rounded-xl p-4">
         <div className="text-sm font-bold text-gray-800 mb-1">1. Cliente(s)</div>
         <p className="text-[11px] text-gray-400 mb-3">
-          Só o primeiro cliente aparece no corpo do contrato — os demais (se houver) só assinam.
+          Só o primeiro cliente aparece no corpo do contrato — os demais (se houver) só assinam. Se o
+          cliente já tem cadastro, escolha ele na lista em vez de digitar de novo (evita duplicar).
         </p>
 
         <div className="flex flex-col gap-4">
@@ -134,23 +255,50 @@ export function PortalGestaoForm({
                   </button>
                 )}
               </div>
+
+              {clientesDoCorretor.length > 0 && (
+                <div className="mb-3">
+                  <label className={LABEL}>Cliente já cadastrado (opcional)</label>
+                  <select
+                    className={CAMPO}
+                    value={c.clienteId ?? ""}
+                    onChange={(e) => selecionarClienteExistente(index, e.target.value)}
+                  >
+                    <option value="">+ Novo cliente</option>
+                    {clientesDoCorretor.map((cc) => (
+                      <option key={cc.id} value={cc.id}>
+                        {cc.nome}
+                        {cc.cpfCnpj ? ` — ${cc.cpfCnpj}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               <div className="grid md:grid-cols-2 gap-3">
                 <div>
                   <label className={LABEL}>Nome / Razão social</label>
                   <input
-                    className={CAMPO}
+                    className={c.clienteId ? CAMPO_TRAVADO : CAMPO}
+                    readOnly={Boolean(c.clienteId)}
                     value={c.nome}
                     onChange={(e) => atualizarCliente(index, "nome", e.target.value)}
                   />
                 </div>
                 <div>
                   <label className={LABEL}>RG</label>
-                  <input className={CAMPO} value={c.rg} onChange={(e) => atualizarCliente(index, "rg", e.target.value)} />
+                  <input
+                    className={c.clienteId ? CAMPO_TRAVADO : CAMPO}
+                    readOnly={Boolean(c.clienteId)}
+                    value={c.rg}
+                    onChange={(e) => atualizarCliente(index, "rg", e.target.value)}
+                  />
                 </div>
                 <div>
                   <label className={LABEL}>CPF / CNPJ</label>
                   <input
-                    className={CAMPO}
+                    className={c.clienteId ? CAMPO_TRAVADO : CAMPO}
+                    readOnly={Boolean(c.clienteId)}
                     value={c.cpfCnpj}
                     onChange={(e) => atualizarCliente(index, "cpfCnpj", e.target.value)}
                   />
@@ -158,7 +306,8 @@ export function PortalGestaoForm({
                 <div>
                   <label className={LABEL}>Endereço</label>
                   <input
-                    className={CAMPO}
+                    className={c.clienteId ? CAMPO_TRAVADO : CAMPO}
+                    readOnly={Boolean(c.clienteId)}
                     value={c.endereco}
                     onChange={(e) => atualizarCliente(index, "endereco", e.target.value)}
                   />
@@ -166,7 +315,8 @@ export function PortalGestaoForm({
                 <div>
                   <label className={LABEL}>Nacionalidade</label>
                   <input
-                    className={CAMPO}
+                    className={c.clienteId ? CAMPO_TRAVADO : CAMPO}
+                    readOnly={Boolean(c.clienteId)}
                     value={c.nacionalidade}
                     onChange={(e) => atualizarCliente(index, "nacionalidade", e.target.value)}
                   />
@@ -174,7 +324,8 @@ export function PortalGestaoForm({
                 <div>
                   <label className={LABEL}>Estado civil</label>
                   <select
-                    className={CAMPO}
+                    className={c.clienteId ? CAMPO_TRAVADO : CAMPO}
+                    disabled={Boolean(c.clienteId)}
                     value={c.estadoCivil}
                     onChange={(e) => atualizarCliente(index, "estadoCivil", e.target.value)}
                   >
@@ -189,7 +340,8 @@ export function PortalGestaoForm({
                 <div>
                   <label className={LABEL}>Email</label>
                   <input
-                    className={CAMPO}
+                    className={c.clienteId ? CAMPO_TRAVADO : CAMPO}
+                    readOnly={Boolean(c.clienteId)}
                     value={c.email}
                     onChange={(e) => atualizarCliente(index, "email", e.target.value)}
                   />
@@ -197,7 +349,8 @@ export function PortalGestaoForm({
                 <div>
                   <label className={LABEL}>Telefone</label>
                   <input
-                    className={CAMPO}
+                    className={c.clienteId ? CAMPO_TRAVADO : CAMPO}
+                    readOnly={Boolean(c.clienteId)}
                     value={c.telefone}
                     onChange={(e) => atualizarCliente(index, "telefone", e.target.value)}
                   />
@@ -218,10 +371,34 @@ export function PortalGestaoForm({
 
       <div className="bg-white border border-gray-200 rounded-xl p-4">
         <div className="text-sm font-bold text-gray-800 mb-3">2. Imóvel</div>
+
+        {imoveisDoClientePrincipal.length > 0 && (
+          <div className="mb-3">
+            <label className={LABEL}>Imóvel já cadastrado deste cliente (opcional)</label>
+            <select
+              className={CAMPO}
+              value={imovelId}
+              onChange={(e) => selecionarImovelExistente(e.target.value)}
+            >
+              <option value="">+ Novo imóvel</option>
+              {imoveisDoClientePrincipal.map((im) => (
+                <option key={im.id} value={im.id}>
+                  {im.endereco || `${im.rua}, ${im.nPredial}`}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
         <div className="grid md:grid-cols-2 gap-3">
           <div>
             <label className={LABEL}>Tipo de imóvel</label>
-            <select className={CAMPO} value={tipoImovel} onChange={(e) => setTipoImovel(e.target.value)}>
+            <select
+              className={imovelId ? CAMPO_TRAVADO : CAMPO}
+              disabled={Boolean(imovelId)}
+              value={tipoImovel}
+              onChange={(e) => setTipoImovel(e.target.value)}
+            >
               <option value="">—</option>
               {TIPOS_IMOVEL.map((t) => (
                 <option key={t} value={t}>
@@ -232,24 +409,45 @@ export function PortalGestaoForm({
           </div>
           <div>
             <label className={LABEL}>Rua</label>
-            <input className={CAMPO} value={rua} onChange={(e) => setRua(e.target.value)} />
+            <input
+              className={imovelId ? CAMPO_TRAVADO : CAMPO}
+              readOnly={Boolean(imovelId)}
+              value={rua}
+              onChange={(e) => setRua(e.target.value)}
+            />
           </div>
           <div>
             <label className={LABEL}>Número</label>
-            <input className={CAMPO} value={nPredial} onChange={(e) => setNPredial(e.target.value)} />
+            <input
+              className={imovelId ? CAMPO_TRAVADO : CAMPO}
+              readOnly={Boolean(imovelId)}
+              value={nPredial}
+              onChange={(e) => setNPredial(e.target.value)}
+            />
           </div>
           <div>
             <label className={LABEL}>Complemento</label>
-            <input className={CAMPO} value={complemento} onChange={(e) => setComplemento(e.target.value)} />
+            <input
+              className={imovelId ? CAMPO_TRAVADO : CAMPO}
+              readOnly={Boolean(imovelId)}
+              value={complemento}
+              onChange={(e) => setComplemento(e.target.value)}
+            />
           </div>
           <div>
             <label className={LABEL}>Bairro</label>
-            <input className={CAMPO} value={bairro} onChange={(e) => setBairro(e.target.value)} />
+            <input
+              className={imovelId ? CAMPO_TRAVADO : CAMPO}
+              readOnly={Boolean(imovelId)}
+              value={bairro}
+              onChange={(e) => setBairro(e.target.value)}
+            />
           </div>
           <div>
             <label className={LABEL}>Estado</label>
             <select
-              className={CAMPO}
+              className={imovelId ? CAMPO_TRAVADO : CAMPO}
+              disabled={Boolean(imovelId)}
               value={estadoId}
               onChange={(e) => {
                 setEstadoId(e.target.value);
@@ -266,7 +464,12 @@ export function PortalGestaoForm({
           </div>
           <div>
             <label className={LABEL}>Cidade</label>
-            <select className={CAMPO} value={cidadeId} onChange={(e) => setCidadeId(e.target.value)}>
+            <select
+              className={imovelId ? CAMPO_TRAVADO : CAMPO}
+              disabled={Boolean(imovelId)}
+              value={cidadeId}
+              onChange={(e) => setCidadeId(e.target.value)}
+            >
               <option value="">—</option>
               {cidadesDoEstado.map((c) => (
                 <option key={c.id} value={c.id}>
@@ -278,7 +481,8 @@ export function PortalGestaoForm({
           <div>
             <label className={LABEL}>Valor de venda (R$)</label>
             <input
-              className={CAMPO}
+              className={imovelId ? CAMPO_TRAVADO : CAMPO}
+              readOnly={Boolean(imovelId)}
               placeholder="350.000,00"
               value={valorVenda}
               onChange={(e) => setValorVenda(e.target.value)}
@@ -287,7 +491,8 @@ export function PortalGestaoForm({
           <div>
             <label className={LABEL}>Matrícula</label>
             <input
-              className={CAMPO}
+              className={imovelId ? CAMPO_TRAVADO : CAMPO}
+              readOnly={Boolean(imovelId)}
               value={matricula}
               onChange={(e) => setMatricula(e.target.value)}
             />
@@ -295,7 +500,8 @@ export function PortalGestaoForm({
           <div>
             <label className={LABEL}>Inscrição municipal</label>
             <input
-              className={CAMPO}
+              className={imovelId ? CAMPO_TRAVADO : CAMPO}
+              readOnly={Boolean(imovelId)}
               value={inscricaoMunicipal}
               onChange={(e) => setInscricaoMunicipal(e.target.value)}
             />

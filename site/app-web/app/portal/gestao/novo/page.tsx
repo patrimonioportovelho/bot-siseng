@@ -14,13 +14,27 @@ export const dynamic = "force-dynamic";
 export default async function PortalGestaoNovoPage() {
   const session = await requirePortalSession();
 
-  const [corretor, estados, cidades] = await Promise.all([
+  const [corretor, estados, cidades, clientesDoCorretor] = await Promise.all([
     prisma.parceiros.findUnique({
       where: { id: session.parceiroId },
       select: { id: true, nome: true, creci: true, cpf: true }
     }),
     prisma.estados.findMany({ orderBy: { nome: "asc" } }),
-    prisma.cidades.findMany({ orderBy: { nome: "asc" } })
+    prisma.cidades.findMany({ orderBy: { nome: "asc" } }),
+    // Clientes que esse corretor já cadastrou antes (por ele mesmo, via
+    // portal ou pelo admin) — oferecido no formulário pra evitar cadastro
+    // duplicado do mesmo cliente a cada novo contrato. Junto de cada um já
+    // vêm os imóveis que ele tem cadastrados, pro corretor poder reaproveitar
+    // em vez de cadastrar o mesmo imóvel de novo.
+    prisma.clientes.findMany({
+      where: { parceiro_id: session.parceiroId },
+      orderBy: { nome: "asc" },
+      include: {
+        imoveis_proprietarios: {
+          include: { imoveis: true }
+        }
+      }
+    })
   ]);
 
   if (!corretor) {
@@ -55,6 +69,33 @@ export default async function PortalGestaoNovoPage() {
           corretor={{ id: corretor.id, nome: corretor.nome, creci: corretor.creci, cpf: corretor.cpf }}
           estados={estados.map((e) => ({ id: e.id, nome: e.nome }))}
           cidades={cidades.map((c) => ({ id: c.id, nome: c.nome, estado_id: c.estado_id }))}
+          clientesDoCorretor={clientesDoCorretor.map((c) => ({
+            id: c.id,
+            nome: c.nome,
+            rg: c.rg ?? "",
+            cpfCnpj: c.cpf ?? c.cnpj ?? "",
+            endereco: c.endereco ?? "",
+            nacionalidade: c.nacionalidade ?? "",
+            estadoCivil: c.estado_civil ?? "",
+            email: c.email ?? "",
+            telefone: c.telefone ?? "",
+            imoveis: c.imoveis_proprietarios
+              .filter((v) => !v.imoveis.excluido)
+              .map((v) => ({
+                id: v.imoveis.id,
+                tipoImovel: v.imoveis.tipo_imovel ?? "",
+                rua: v.imoveis.rua ?? "",
+                nPredial: v.imoveis.n_predial ?? "",
+                complemento: v.imoveis.complemento ?? "",
+                bairro: v.imoveis.bairro ?? "",
+                estadoId: v.imoveis.estado_id ?? "",
+                cidadeId: v.imoveis.cidade_id ?? "",
+                valorVenda: v.imoveis.valor_venda != null ? String(v.imoveis.valor_venda) : "",
+                matricula: v.imoveis.matricula ?? "",
+                inscricaoMunicipal: v.imoveis.inscricao ?? "",
+                endereco: v.imoveis.endereco ?? ""
+              }))
+          }))}
         />
       </div>
     </div>

@@ -27,11 +27,13 @@ function data(formData: FormData, campo: string): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-// Um cliente digitado no formulário do portal (não é uma busca em cadastro
-// existente — o corretor sempre cria um cliente novo aqui, mesmo que a
-// pessoa já exista no sistema; caso vire duplicidade, o admin resolve depois
-// pelo cadastro de Clientes).
+// Um cliente do formulário do portal — ou é um cadastro já existente
+// (clienteId presente, escolhido na lista "Cliente já cadastrado"), ou é um
+// cliente novo digitado na hora. Cliente existente nunca é editado por
+// aqui — só reaproveitado, pra evitar duplicidade (era o que gerava o mesmo
+// cliente 3x quando o corretor sempre digitava de novo).
 type ClienteDigitado = {
+  clienteId?: string;
   nome: string;
   rg: string;
   cpfCnpj: string;
@@ -50,6 +52,7 @@ function parseClientes(formData: FormData): ClienteDigitado[] {
     if (!Array.isArray(lista)) return [];
     return lista
       .map((c) => ({
+        clienteId: typeof c?.clienteId === "string" && c.clienteId.length > 0 ? c.clienteId : undefined,
         nome: String(c?.nome ?? "").trim(),
         rg: String(c?.rg ?? "").trim(),
         cpfCnpj: String(c?.cpfCnpj ?? "").trim(),
@@ -59,27 +62,29 @@ function parseClientes(formData: FormData): ClienteDigitado[] {
         email: String(c?.email ?? "").trim(),
         telefone: String(c?.telefone ?? "").trim()
       }))
-      .filter((c) => c.nome.length > 0);
+      .filter((c) => c.clienteId || c.nome.length > 0);
   } catch {
     return [];
   }
 }
 
-// Gera o Contrato de Gestão a partir do formulário do portal: cria o(s)
-// cliente(s) e o imóvel (já vinculado a todos eles como proprietários,
-// mesmo padrão do cadastro de Imóveis no admin), cria o registro de Gestão
-// (Captação Exclusiva, primeira coluna do quadro de Gestões em Atividades)
-// com uma atividade já agendada de vencimento do contrato, gera o .docx
-// (reaproveitando o mesmo pipeline de app/configuracoes) e registra tudo
-// em logs_acesso/logs_alteracao para auditoria.
+// Gera o Contrato de Gestão a partir do formulário do portal: reaproveita
+// cliente(s)/imóvel já cadastrados quando escolhidos na lista (evita criar
+// duplicata do mesmo nome a cada contrato novo — cadastro existente nunca é
+// editado por aqui, só vinculado), cria os que forem realmente novos, cria o
+// registro de Gestão (Captação Exclusiva, primeira coluna do quadro de
+// Gestões em Atividades) com uma atividade já agendada de vencimento do
+// contrato, gera o .docx (reaproveitando o mesmo pipeline de
+// app/configuracoes) e registra tudo em logs_acesso/logs_alteracao para
+// auditoria.
 export async function gerarContratoGestaoAction(
   formData: FormData
 ): Promise<{ ok: true; url: string } | { ok: false; erro: string }> {
   const session = await requirePortalSession();
 
   try {
-    const clientesDigitados = parseClientes(formData);
-    if (clientesDigitados.length === 0) {
+    const clientesForm = parseClientes(formData);
+    if (clientesForm.length === 0) {
       return { ok: false, erro: "Cadastre ao menos um cliente." };
     }
 
@@ -92,6 +97,7 @@ export async function gerarContratoGestaoAction(
     const estadoId = texto(formData, "estado_id");
     const matricula = texto(formData, "matricula");
     const inscricaoMunicipal = texto(formData, "inscricao_municipal");
+    const imovelIdExistente = texto(formData, "imovel_id");
     const valorVenda = (() => {
       const t = texto(formData, "valor_venda");
       return t ? valorEditavelParaDecimal(t) : null;
@@ -115,68 +121,137 @@ export async function gerarContratoGestaoAction(
       return { ok: false, erro: "Informe o prazo da gestão em dias." };
     }
 
-    const [cidade, estado] = await Promise.all([
-      cidadeId ? prisma.cidades.findUnique({ where: { id: cidadeId } }) : Promise.resolve(null),
-      estadoId ? prisma.estados.findUnique({ where: { id: estadoId } }) : Promise.resolve(null)
-    ]);
+    // Confere que todo clienteId enviado realmente pertence a este corretor
+    // (não dá pra reaproveitar cadastro de outro parceiro por aqui) e busca
+    // os dados atuais desses clientes já cadastrados.
+    const idsExistentes = clientesForm.map((c) => c.clienteId).filter((id): id is string => Boolean(id));
+    const clientesExistentes =
+      idsExistentes.length > 0
+        ? await prisma.clientes.findMany({
+            where: { id: { in: idsExistentes }, parceiro_id: session.parceiroId }
+          })
+        : [];
+    const clientesExistentesPorId = new Map(clientesExistentes.map((c) => [c.id, c]));
+
+    for (const id of idsExistentes) {
+      if (!clientesExistentesPorId.has(id)) {
+        return { ok: false, erro: "Um dos clientes selecionados não pertence ao seu cadastro." };
+      }
+    }
+
+    // Cria só os clientes que realmente são novos (sem clienteId); os
+    // demais são só reaproveitados do banco, sem alterar nada neles.
+    const clientesCriados = await Promise.all(
+      clientesForm
+        .filter((c) => !c.clienteId)
+        .map((c) => {
+          const doc = digitos(c.cpfCnpj);
+          const ehCnpj = (doc?.length ?? 0) === 14;
+          return prisma.clientes.create({
+            data: {
+              nome: c.nome,
+              tipo_cliente: ehCnpj ? "Pessoa Jurídica" : "Pessoa Física",
+              rg: c.rg || null,
+              cpf: !ehCnpj ? doc : null,
+              cnpj: ehCnpj ? doc : null,
+              endereco: c.endereco || null,
+              nacionalidade: c.nacionalidade || null,
+              estado_civil: c.estadoCivil || null,
+              email: c.email || null,
+              telefone: digitos(c.telefone),
+              parceiro_id: session.parceiroId
+            }
+          });
+        })
+    ).catch((erro) => registrarEJogarErro({ entidadeTipo: "clientes", acao: "criar_via_portal", erro }));
+
+    // Remonta a lista de clientes na mesma ordem em que apareceram no
+    // formulário (mistura existentes reaproveitados + recém-criados) — o
+    // primeiro da lista continua sendo o Contratante principal da gestão.
+    let proximoNovo = 0;
+    const clientesResultado = clientesForm.map((c) => {
+      if (c.clienteId) {
+        return clientesExistentesPorId.get(c.clienteId)!;
+      }
+      const criado = clientesCriados[proximoNovo];
+      proximoNovo += 1;
+      return criado;
+    });
+
+    const principal = clientesResultado[0];
+
+    let cidade = null as Awaited<ReturnType<typeof prisma.cidades.findUnique>>;
+    let estado = null as Awaited<ReturnType<typeof prisma.estados.findUnique>>;
+    let imovel: Awaited<ReturnType<typeof prisma.imoveis.create>>;
+
+    if (imovelIdExistente) {
+      // Reaproveita um imóvel já cadastrado deste corretor (não edita nada
+      // nele) — só garante que todo cliente desse contrato fique vinculado
+      // como proprietário, inclusive os que forem novos aqui.
+      const imovelExistente = await prisma.imoveis.findFirst({
+        where: { id: imovelIdExistente, parceiro_id: session.parceiroId }
+      });
+      if (!imovelExistente) {
+        return { ok: false, erro: "O imóvel selecionado não pertence ao seu cadastro." };
+      }
+      imovel = imovelExistente;
+
+      await prisma.imoveis_proprietarios.createMany({
+        data: clientesResultado.map((c, ordem) => ({ imovel_id: imovel.id, cliente_id: c.id, ordem })),
+        skipDuplicates: true
+      });
+
+      [cidade, estado] = await Promise.all([
+        imovel.cidade_id ? prisma.cidades.findUnique({ where: { id: imovel.cidade_id } }) : Promise.resolve(null),
+        imovel.estado_id ? prisma.estados.findUnique({ where: { id: imovel.estado_id } }) : Promise.resolve(null)
+      ]);
+    } else {
+      [cidade, estado] = await Promise.all([
+        cidadeId ? prisma.cidades.findUnique({ where: { id: cidadeId } }) : Promise.resolve(null),
+        estadoId ? prisma.estados.findUnique({ where: { id: estadoId } }) : Promise.resolve(null)
+      ]);
+      const enderecoCompletoNovo = [
+        [rua, nPredial].filter(Boolean).join(", ") || null,
+        complemento,
+        bairro,
+        cidade?.nome ?? null,
+        estado?.nome ?? null
+      ]
+        .filter((p): p is string => Boolean(p))
+        .join(" - ");
+
+      imovel = await prisma.imoveis
+        .create({
+          data: {
+            tipo_imovel: tipoImovel,
+            rua,
+            n_predial: nPredial,
+            complemento,
+            bairro,
+            cidade_id: cidadeId,
+            estado_id: estadoId,
+            endereco: enderecoCompletoNovo || null,
+            matricula,
+            inscricao: inscricaoMunicipal,
+            valor_venda: valorVenda,
+            parceiro_id: session.parceiroId,
+            imoveis_proprietarios: {
+              create: clientesResultado.map((c, ordem) => ({ cliente_id: c.id, ordem }))
+            }
+          }
+        })
+        .catch((erro) => registrarEJogarErro({ entidadeTipo: "imoveis", acao: "criar_via_portal", erro }));
+    }
+
     const enderecoCompleto = [
-      [rua, nPredial].filter(Boolean).join(", ") || null,
-      complemento,
-      bairro,
+      [imovel.rua, imovel.n_predial].filter(Boolean).join(", ") || null,
+      imovel.complemento,
+      imovel.bairro,
       cidade?.nome ?? null,
       estado?.nome ?? null
     ]
       .filter((p): p is string => Boolean(p))
       .join(" - ");
-
-    // Cria todos os clientes digitados no formulário (o primeiro vira o
-    // Contratante principal da gestão; todos entram como proprietários do
-    // imóvel, na mesma ordem em que foram adicionados no formulário).
-    const clientesCriados = await Promise.all(
-      clientesDigitados.map((c) => {
-        const doc = digitos(c.cpfCnpj);
-        const ehCnpj = (doc?.length ?? 0) === 14;
-        return prisma.clientes.create({
-          data: {
-            nome: c.nome,
-            tipo_cliente: ehCnpj ? "Pessoa Jurídica" : "Pessoa Física",
-            rg: c.rg || null,
-            cpf: !ehCnpj ? doc : null,
-            cnpj: ehCnpj ? doc : null,
-            endereco: c.endereco || null,
-            nacionalidade: c.nacionalidade || null,
-            estado_civil: c.estadoCivil || null,
-            email: c.email || null,
-            telefone: digitos(c.telefone),
-            parceiro_id: session.parceiroId
-          }
-        });
-      })
-    ).catch((erro) => registrarEJogarErro({ entidadeTipo: "clientes", acao: "criar_via_portal", erro }));
-
-    const principal = clientesCriados[0];
-
-    const imovel = await prisma.imoveis
-      .create({
-        data: {
-          tipo_imovel: tipoImovel,
-          rua,
-          n_predial: nPredial,
-          complemento,
-          bairro,
-          cidade_id: cidadeId,
-          estado_id: estadoId,
-          endereco: enderecoCompleto || null,
-          matricula,
-          inscricao: inscricaoMunicipal,
-          valor_venda: valorVenda,
-          parceiro_id: session.parceiroId,
-          imoveis_proprietarios: {
-            create: clientesCriados.map((c, ordem) => ({ cliente_id: c.id, ordem }))
-          }
-        }
-      })
-      .catch((erro) => registrarEJogarErro({ entidadeTipo: "imoveis", acao: "criar_via_portal", erro }));
 
     const gestao = await prisma.gestoes
       .create({

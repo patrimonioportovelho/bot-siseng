@@ -7,9 +7,8 @@ import { loginPortal, logoutPortal, requirePortalSession } from "@/lib/portal-au
 
 export async function loginPortalAction(formData: FormData) {
   const email = String(formData.get("email") ?? "");
-  const senha = String(formData.get("senha") ?? "");
 
-  const result = await loginPortal(email, senha);
+  const result = await loginPortal(email);
   if (!result.ok) {
     redirect(`/portal/login?erro=${encodeURIComponent(result.error)}`);
   }

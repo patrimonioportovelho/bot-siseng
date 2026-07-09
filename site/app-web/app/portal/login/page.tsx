@@ -1,9 +1,9 @@
 import { loginPortalAction } from "../actions";
 
-// Login por email + senha — só entra quem tem email @remax.com.br e função
+// Login só por email — só entra quem tem email @remax.com.br e função
 // "Corretor" ativa no cadastro de parceiros (ver loginPortal em
-// lib/portal-auth.ts). Mesmo mecanismo de senha do login admin: primeiro
-// acesso vira uma solicitação pendente pra um administrador aprovar.
+// lib/portal-auth.ts). Sem senha: quem controla o acesso é o cadastro
+// administrativo (email certo + função Corretor + status Ativo).
 export default async function PortalLoginPage({
   searchParams
 }: {
@@ -29,17 +29,8 @@ export default async function PortalLoginPage({
           name="email"
           required
           autoFocus
-          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-4 outline-none focus:border-primary"
-          placeholder="seunome@remax.com.br"
-        />
-
-        <label className="text-xs text-gray-600 block mb-1">Senha</label>
-        <input
-          type="password"
-          name="senha"
-          required
           className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-6 outline-none focus:border-primary"
-          placeholder="Sua senha"
+          placeholder="seunome@remax.com.br"
         />
 
         <button
@@ -50,8 +41,8 @@ export default async function PortalLoginPage({
         </button>
 
         <p className="text-[11px] text-gray-400 mt-4 leading-relaxed">
-          Acesso restrito a quem tem função Corretor ativa no cadastro. No primeiro acesso,
-          escolha uma senha aqui — ela fica pendente até um administrador aprovar.
+          Acesso restrito a quem tem função Corretor ativa no cadastro de parceiros, com esse
+          email cadastrado na ficha.
         </p>
       </form>
     </div>

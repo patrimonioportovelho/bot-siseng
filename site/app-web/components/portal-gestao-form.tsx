@@ -55,6 +55,8 @@ export function PortalGestaoForm({
   const [estadoId, setEstadoId] = useState("");
   const [cidadeId, setCidadeId] = useState("");
   const [valorVenda, setValorVenda] = useState("");
+  const [matricula, setMatricula] = useState("");
+  const [inscricaoMunicipal, setInscricaoMunicipal] = useState("");
 
   const [prazoDias, setPrazoDias] = useState("");
   const [porcHonorario, setPorcHonorario] = useState("");
@@ -91,6 +93,8 @@ export function PortalGestaoForm({
       formData.set("estado_id", estadoId);
       formData.set("cidade_id", cidadeId);
       formData.set("valor_venda", valorVenda);
+      formData.set("matricula", matricula);
+      formData.set("inscricao_municipal", inscricaoMunicipal);
       formData.set("prazo_gestao_dias", prazoDias);
       formData.set("porc_honorario", porcHonorario);
       formData.set("data_fechamento", dataFechamento);
@@ -278,6 +282,22 @@ export function PortalGestaoForm({
               placeholder="350.000,00"
               value={valorVenda}
               onChange={(e) => setValorVenda(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className={LABEL}>Matrícula</label>
+            <input
+              className={CAMPO}
+              value={matricula}
+              onChange={(e) => setMatricula(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className={LABEL}>Inscrição municipal</label>
+            <input
+              className={CAMPO}
+              value={inscricaoMunicipal}
+              onChange={(e) => setInscricaoMunicipal(e.target.value)}
             />
           </div>
         </div>

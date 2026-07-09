@@ -206,6 +206,7 @@ export const CAMPOS_DOCUMENTO: Record<TipoDocumento, CampoDocumento[]> = {
     { campo: "Cidade", descricao: "Cidade do imóvel (também usada no Foro e na data de fechamento)" },
     { campo: "Estado", descricao: "Estado do imóvel (também usado no Foro e na data de fechamento)" },
     { campo: "NumeroMatricula", descricao: "Número de matrícula do imóvel, se houver" },
+    { campo: "InscricaoMunicipal", descricao: "Inscrição municipal/imobiliária do imóvel, se houver" },
     { campo: "ValorImovel", descricao: "Valor de venda pretendido em R$" },
     { campo: "PrazoGestao", descricao: "Prazo de exclusividade em dias" },
     { campo: "PorcentagemHonorarios", descricao: "Percentual de honorários combinado" },

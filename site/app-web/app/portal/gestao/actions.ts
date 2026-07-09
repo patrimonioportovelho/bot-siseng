@@ -90,6 +90,8 @@ export async function gerarContratoGestaoAction(
     const bairro = texto(formData, "bairro");
     const cidadeId = texto(formData, "cidade_id");
     const estadoId = texto(formData, "estado_id");
+    const matricula = texto(formData, "matricula");
+    const inscricaoMunicipal = texto(formData, "inscricao_municipal");
     const valorVenda = (() => {
       const t = texto(formData, "valor_venda");
       return t ? valorEditavelParaDecimal(t) : null;
@@ -165,6 +167,8 @@ export async function gerarContratoGestaoAction(
           cidade_id: cidadeId,
           estado_id: estadoId,
           endereco: enderecoCompleto || null,
+          matricula,
+          inscricao: inscricaoMunicipal,
           valor_venda: valorVenda,
           parceiro_id: session.parceiroId,
           imoveis_proprietarios: {

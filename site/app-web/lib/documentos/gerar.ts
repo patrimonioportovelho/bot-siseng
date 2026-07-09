@@ -600,6 +600,7 @@ async function montarDadosContratoGestao(gestaoId: string): Promise<Record<strin
     Cidade: g.imoveis.cidades?.nome ?? "",
     Estado: g.imoveis.estados?.nome ?? "",
     NumeroMatricula: g.imoveis.matricula ?? "",
+    InscricaoMunicipal: formatInscricao(g.imoveis.inscricao),
     ValorImovel: numero(g.valor_venda),
     PrazoGestao: g.prazo_gestao_dias ?? "",
     PorcentagemHonorarios: percentual(g.porc_honorario),

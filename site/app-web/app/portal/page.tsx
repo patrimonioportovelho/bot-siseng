@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requirePortalSession } from "@/lib/portal-auth";
 import { logoutPortalAction, toggleChecklistAction } from "./actions";
@@ -8,6 +9,10 @@ function formatData(data: Date) {
   return new Date(data).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric", timeZone: "America/Porto_Velho" });
 }
 
+// Portal do corretor — desde a mudança pra login por email @remax.com.br +
+// função Corretor (lib/portal-auth.ts), toda sessão aqui é de um corretor
+// identificado (session.parceiroId sempre presente); não existe mais o
+// acesso anônimo "sem identificação" que só via notícias.
 export default async function PortalPage() {
   const session = await requirePortalSession();
 
@@ -21,11 +26,9 @@ export default async function PortalPage() {
       where: { ativo: true },
       orderBy: { ordem: "asc" }
     }),
-    session.parceiroId
-      ? prisma.checklist_conclusoes.findMany({
-          where: { parceiro_id: session.parceiroId }
-        })
-      : Promise.resolve([])
+    prisma.checklist_conclusoes.findMany({
+      where: { parceiro_id: session.parceiroId }
+    })
   ]);
 
   const concluidos = new Set(conclusoesDoCorretor.map((c) => c.item_id));
@@ -35,15 +38,28 @@ export default async function PortalPage() {
       <div className="flex items-center justify-between gap-2 flex-wrap mb-6">
         <div>
           <div className="text-lg font-bold text-gray-900">Acesso SisEng · Portal do corretor</div>
-          <div className="text-xs text-gray-500">
-            {session.nome ? `Olá, ${session.nome}` : "Acesso sem identificação"}
-          </div>
+          <div className="text-xs text-gray-500">Olá, {session.nome}</div>
         </div>
         <form action={logoutPortalAction}>
           <button type="submit" className="text-xs text-gray-400 hover:text-gray-700">
             Sair
           </button>
         </form>
+      </div>
+
+      <div className="max-w-4xl mb-4">
+        <Link
+          href="/portal/gestao/novo"
+          className="flex items-center justify-between gap-3 bg-primary text-white rounded-xl px-4 py-4 hover:opacity-90 transition-opacity"
+        >
+          <div>
+            <div className="text-sm font-bold">Elaboração de Contrato de Gestão</div>
+            <div className="text-xs opacity-80 mt-0.5">
+              Preencha os dados do cliente e do imóvel para gerar o contrato de captação exclusiva
+            </div>
+          </div>
+          <span className="text-xl leading-none">→</span>
+        </Link>
       </div>
 
       <div className="grid md:grid-cols-2 gap-4 max-w-4xl">
@@ -75,13 +91,11 @@ export default async function PortalPage() {
                 <form key={item.id} action={toggleChecklistAction.bind(null, item.id)}>
                   <button
                     type="submit"
-                    disabled={!session.parceiroId}
                     className={
                       "w-full text-left flex items-start gap-2 rounded-lg border px-3 py-2 text-sm transition-colors " +
                       (feito
                         ? "bg-[#e3f5ea] border-[#bfe3cd] text-[#1f7a4d]"
-                        : "border-gray-200 text-gray-700 hover:bg-gray-50") +
-                      (!session.parceiroId ? " opacity-60 cursor-not-allowed" : "")
+                        : "border-gray-200 text-gray-700 hover:bg-gray-50")
                     }
                   >
                     <span>{feito ? "☑" : "☐"}</span>
@@ -94,11 +108,6 @@ export default async function PortalPage() {
               );
             })}
           </div>
-          {!session.parceiroId && (
-            <p className="text-[11px] text-gray-400 mt-3">
-              Entre novamente informando seu nome para marcar itens do checklist.
-            </p>
-          )}
         </div>
       </div>
     </div>

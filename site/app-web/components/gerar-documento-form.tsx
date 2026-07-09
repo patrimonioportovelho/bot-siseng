@@ -14,7 +14,8 @@ const MODELOS: { valor: TipoDocumento; label: string }[] = [
   { valor: "termo_entrega_chaves", label: "Termo de entrega de chaves" },
   { valor: "recibo_honorarios", label: "Recibo de honorários" },
   { valor: "repasse_administracao", label: "Repasse de administração" },
-  { valor: "repasse_primeira_locacao", label: "Repasse de primeira locação" }
+  { valor: "repasse_primeira_locacao", label: "Repasse de primeira locação" },
+  { valor: "contrato_gestao", label: "Contrato de gestão (captação exclusiva)" }
 ];
 
 const DICA_BUSCA: Record<TipoDocumento, string> = {
@@ -30,7 +31,8 @@ const DICA_BUSCA: Record<TipoDocumento, string> = {
   termo_entrega_chaves: "Busque pela chave da transação ou endereço do imóvel",
   recibo_honorarios: "Busque pelo nome do parceiro ou chave da transação",
   repasse_administracao: "Busque pelo nome do parceiro ou chave da transação",
-  repasse_primeira_locacao: "Busque pelo nome do parceiro ou chave da transação"
+  repasse_primeira_locacao: "Busque pelo nome do parceiro ou chave da transação",
+  contrato_gestao: "Busque pelo endereço do imóvel ou nome do cliente — normalmente já gerado sozinho pelo portal do corretor"
 };
 
 export function GerarDocumentoForm() {

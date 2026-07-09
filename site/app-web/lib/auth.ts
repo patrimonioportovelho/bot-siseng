@@ -47,7 +47,9 @@ export async function hashSenha(senha: string): Promise<string> {
   return `${Buffer.from(salt).toString("hex")}:${Buffer.from(bits).toString("hex")}`;
 }
 
-async function verificarSenha(senha: string, hashArmazenado: string | null): Promise<boolean> {
+// Exportado para o lib/portal-auth.ts reusar a mesma verificação de senha
+// (PBKDF2) no login do portal do corretor — mesmo mecanismo, sem duplicar.
+export async function verificarSenha(senha: string, hashArmazenado: string | null): Promise<boolean> {
   if (!hashArmazenado) return false;
   const [saltHex, hashHex] = hashArmazenado.split(":");
   if (!saltHex || !hashHex) return false;
@@ -262,6 +264,38 @@ export async function logAlteracao(params: {
   await prisma.logs_alteracao.create({
     data: {
       parceiro_id: session?.parceiroId ?? null,
+      entidade_tipo: params.entidadeTipo,
+      entidade_id: params.entidadeId ?? null,
+      acao: params.acao,
+      dados_antes: params.dadosAntes === undefined ? undefined : (params.dadosAntes as object),
+      dados_depois: params.dadosDepois === undefined ? undefined : (params.dadosDepois as object)
+    }
+  });
+}
+
+// Variantes de log para o portal do corretor — o portal usa um cookie de
+// sessão diferente (sis_portal_session, ver lib/portal-auth.ts), então
+// recebem o parceiroId explícito em vez de ler o cookie de admin. Usado
+// pra registrar todo login do corretor e todo documento que ele gerar
+// (ex.: contrato de gestão), visível em Configurações > Logs junto com os
+// logs do admin.
+export async function logAcessoPortal(parceiroId: string, acao: "login" | "logout" = "login") {
+  await prisma.logs_acesso.create({
+    data: { parceiro_id: parceiroId, tipo_portal: "corretor", acao }
+  });
+}
+
+export async function logAlteracaoPortal(params: {
+  parceiroId: string;
+  entidadeTipo: string;
+  entidadeId?: string | null;
+  acao: string;
+  dadosAntes?: unknown;
+  dadosDepois?: unknown;
+}) {
+  await prisma.logs_alteracao.create({
+    data: {
+      parceiro_id: params.parceiroId,
       entidade_tipo: params.entidadeTipo,
       entidade_id: params.entidadeId ?? null,
       acao: params.acao,

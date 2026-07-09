@@ -1,20 +1,15 @@
-import { prisma } from "@/lib/prisma";
 import { loginPortalAction } from "../actions";
 
-const FUNCOES_CORRETOR = ["Corretor", "Corretor Externo", "Corretor Estagiário", "Parceiro Externa"];
-
+// Login por email + senha — só entra quem tem email @remax.com.br e função
+// "Corretor" ativa no cadastro de parceiros (ver loginPortal em
+// lib/portal-auth.ts). Mesmo mecanismo de senha do login admin: primeiro
+// acesso vira uma solicitação pendente pra um administrador aprovar.
 export default async function PortalLoginPage({
   searchParams
 }: {
   searchParams: Promise<{ erro?: string }>;
 }) {
   const { erro } = await searchParams;
-
-  const corretores = await prisma.parceiros.findMany({
-    where: { funcao: { in: FUNCOES_CORRETOR }, status_funcao: "Ativo" },
-    select: { id: true, nome: true },
-    orderBy: { nome: "asc" }
-  });
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
@@ -28,27 +23,23 @@ export default async function PortalLoginPage({
           </div>
         )}
 
-        <label className="text-xs text-gray-600 block mb-1">Quem é você?</label>
-        <select
-          name="parceiroId"
-          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-4 outline-none focus:border-primary bg-white"
-        >
-          <option value="">Prefiro não informar</option>
-          {corretores.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.nome}
-            </option>
-          ))}
-        </select>
+        <label className="text-xs text-gray-600 block mb-1">Email @remax.com.br</label>
+        <input
+          type="email"
+          name="email"
+          required
+          autoFocus
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-4 outline-none focus:border-primary"
+          placeholder="seunome@remax.com.br"
+        />
 
-        <label className="text-xs text-gray-600 block mb-1">Senha de acesso</label>
+        <label className="text-xs text-gray-600 block mb-1">Senha</label>
         <input
           type="password"
           name="senha"
           required
-          autoFocus
           className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-6 outline-none focus:border-primary"
-          placeholder="Senha fornecida pela imobiliária"
+          placeholder="Sua senha"
         />
 
         <button
@@ -59,8 +50,8 @@ export default async function PortalLoginPage({
         </button>
 
         <p className="text-[11px] text-gray-400 mt-4 leading-relaxed">
-          Informe seu nome para marcar itens do checklist como concluídos. Sem nome, você só
-          consegue visualizar as notícias.
+          Acesso restrito a quem tem função Corretor ativa no cadastro. No primeiro acesso,
+          escolha uma senha aqui — ela fica pendente até um administrador aprovar.
         </p>
       </form>
     </div>

@@ -1,14 +1,20 @@
 import Link from "next/link";
-import { TIPO_ATIVIDADE_LABEL } from "@/lib/manutencao/opcoes";
 import { hojePortoVelho } from "@/lib/format";
 
+// Calendário compartilhado entre Manutenção e Gestões (ver app/manutencao/
+// calendario/page.tsx, que já busca e normaliza as atividades dos dois
+// módulos antes de passar pra cá) — por isso o tipo é genérico: cada
+// atividade já vem com o rótulo do tipo, o href da ficha de origem e um
+// texto de contexto (título do ticket/gestão), sem depender de qual tabela
+// ela veio.
 type Atividade = {
   id: string;
-  tipo: string;
+  tipoLabel: string;
   titulo: string;
   data: Date;
   feito: boolean;
-  manutencoes: { id: string; titulo: string; imoveis: { endereco: string | null; id_legado: string | null } };
+  href: string;
+  contexto: string;
 };
 
 const DIAS_SEMANA = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
@@ -76,8 +82,8 @@ export function ManutencaoCalendario({
                   return (
                     <Link
                       key={a.id}
-                      href={`/manutencao/${a.manutencoes.id}`}
-                      title={`${TIPO_ATIVIDADE_LABEL[a.tipo] ?? a.tipo} — ${a.manutencoes.titulo}`}
+                      href={a.href}
+                      title={`${a.tipoLabel} — ${a.contexto}`}
                       className={`text-[10px] rounded px-1.5 py-0.5 truncate border ${
                         atrasada
                           ? "bg-[#B14226]/10 text-[#B14226] border-[#B14226]/30 font-semibold"

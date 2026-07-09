@@ -2,7 +2,10 @@ import Link from "next/link";
 import { Topbar } from "@/components/topbar";
 import { prisma } from "@/lib/prisma";
 import { ManutencaoCalendario } from "@/components/manutencao-calendario";
+import { AtividadesTabs } from "@/components/atividades-tabs";
 import { hojePortoVelho } from "@/lib/format";
+import { TIPO_ATIVIDADE_LABEL as TIPO_ATIVIDADE_LABEL_MANUTENCAO } from "@/lib/manutencao/opcoes";
+import { TIPO_ATIVIDADE_LABEL as TIPO_ATIVIDADE_LABEL_GESTAO } from "@/lib/gestoes/opcoes";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +19,9 @@ function parseMes(mes: string | undefined): { ano: number; mesIndice: number } {
   return { ano: hoje.getFullYear(), mesIndice: hoje.getMonth() };
 }
 
+// Calendário compartilhado entre Manutenção e Gestões — os dois módulos têm
+// quadro (Kanban) separado, mas aqui as atividades agendadas de ambos
+// aparecem juntas no mesmo mês, cada uma linkando pra sua ficha de origem.
 export default async function ManutencaoCalendarioPage({
   searchParams
 }: {
@@ -27,22 +33,56 @@ export default async function ManutencaoCalendarioPage({
   const inicioMes = new Date(ano, mesIndice, 1);
   const fimMes = new Date(ano, mesIndice + 1, 1);
 
-  const atividades = await prisma.manutencao_atividades.findMany({
-    where: {
-      data: { gte: inicioMes, lt: fimMes },
-      manutencoes: { excluido: false }
-    },
-    orderBy: { data: "asc" },
-    include: {
-      manutencoes: {
-        select: { id: true, titulo: true, imoveis: { select: { endereco: true, id_legado: true } } }
+  const [atividadesManutencao, atividadesGestao] = await Promise.all([
+    prisma.manutencao_atividades.findMany({
+      where: {
+        data: { gte: inicioMes, lt: fimMes },
+        manutencoes: { excluido: false }
+      },
+      orderBy: { data: "asc" },
+      include: {
+        manutencoes: {
+          select: { id: true, titulo: true, imoveis: { select: { endereco: true, id_legado: true } } }
+        }
       }
-    }
-  });
+    }),
+    prisma.gestao_atividades.findMany({
+      where: {
+        data: { gte: inicioMes, lt: fimMes },
+        gestoes: { excluido: false }
+      },
+      orderBy: { data: "asc" },
+      include: {
+        gestoes: {
+          select: { id: true, imoveis: { select: { endereco: true, id_legado: true } } }
+        }
+      }
+    })
+  ]);
+
+  const atividades = [
+    ...atividadesManutencao.map((a) => ({
+      id: `manutencao-${a.id}`,
+      tipoLabel: TIPO_ATIVIDADE_LABEL_MANUTENCAO[a.tipo] ?? a.tipo,
+      titulo: a.titulo,
+      data: a.data,
+      feito: a.feito,
+      href: `/manutencao/${a.manutencoes.id}`,
+      contexto: a.manutencoes.titulo
+    })),
+    ...atividadesGestao.map((a) => ({
+      id: `gestao-${a.id}`,
+      tipoLabel: TIPO_ATIVIDADE_LABEL_GESTAO[a.tipo] ?? a.tipo,
+      titulo: a.titulo,
+      data: a.data,
+      feito: a.feito,
+      href: `/gestoes/${a.gestoes.id}`,
+      contexto: a.gestoes.imoveis.endereco ?? a.gestoes.imoveis.id_legado ?? "Gestão"
+    }))
+  ].sort((a, b) => a.data.getTime() - b.data.getTime());
 
   const mesAnterior = new Date(ano, mesIndice - 1, 1);
   const mesSeguinte = new Date(ano, mesIndice + 1, 1);
-  const mesAtualTexto = `${ano}-${String(mesIndice + 1).padStart(2, "0")}`;
   const mesAnteriorTexto = `${mesAnterior.getFullYear()}-${String(mesAnterior.getMonth() + 1).padStart(2, "0")}`;
   const mesSeguinteTexto = `${mesSeguinte.getFullYear()}-${String(mesSeguinte.getMonth() + 1).padStart(2, "0")}`;
   const hoje = hojePortoVelho();
@@ -53,18 +93,8 @@ export default async function ManutencaoCalendarioPage({
       <Topbar />
 
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-        <div className="text-sm font-bold text-gray-800">Manutenção · Administração</div>
-        <div className="flex gap-2">
-          <Link href="/manutencao" className="text-xs border border-gray-300 text-gray-600 bg-white rounded-lg px-3 py-1.5 font-semibold">
-            Quadro
-          </Link>
-          <Link href="/manutencao/calendario" className="text-xs bg-primary text-white rounded-lg px-3 py-1.5 font-semibold">
-            Calendário
-          </Link>
-          <Link href="/manutencao/painel" className="text-xs border border-gray-300 text-gray-600 bg-white rounded-lg px-3 py-1.5 font-semibold">
-            Painel
-          </Link>
-        </div>
+        <div className="text-sm font-bold text-gray-800">Atividades · Manutenção &amp; Gestões</div>
+        <AtividadesTabs ativo="/manutencao/calendario" />
       </div>
 
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">

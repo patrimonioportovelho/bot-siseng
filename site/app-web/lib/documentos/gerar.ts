@@ -21,7 +21,8 @@ const ARQUIVO_TEMPLATE: Record<TipoDocumento, string> = {
   termo_entrega_chaves: "termo_entrega_chaves.docx",
   recibo_honorarios: "recibo_honorarios.docx",
   repasse_administracao: "repasse_administracao.docx",
-  repasse_primeira_locacao: "repasse_primeira_locacao.docx"
+  repasse_primeira_locacao: "repasse_primeira_locacao.docx",
+  contrato_gestao: "contrato_gestao.docx"
 };
 
 // URL do serviço de conversão docx -> PDF (Gotenberg rodando no Railway).
@@ -64,7 +65,8 @@ export const ENTIDADE_POR_DOCUMENTO: Record<TipoDocumento, GerarDocumentoParams[
   termo_entrega_chaves: "chaves",
   recibo_honorarios: "movimentacao",
   repasse_administracao: "movimentacao",
-  repasse_primeira_locacao: "movimentacao"
+  repasse_primeira_locacao: "movimentacao",
+  contrato_gestao: "gestao"
 };
 
 export async function gerarDocumento(params: GerarDocumentoParams): Promise<string> {
@@ -225,6 +227,8 @@ async function montarDadosDoMerge(
     case "repasse_administracao":
     case "repasse_primeira_locacao":
       return montarDadosMovimentacao(tipoDocumento, entidadeId);
+    case "contrato_gestao":
+      return montarDadosContratoGestao(entidadeId);
   }
 }
 
@@ -246,6 +250,11 @@ function docTexto(c: { cpf: string | null; cnpj: string | null }): string {
 type ClienteComEndereco = {
   nome: string;
   sexo: string | null;
+  // Adicionado pro contrato de gestão (Elaboração de Contrato de Gestão,
+  // portal do corretor) — clientes antigos ficam NULL, e a qualificação
+  // continua inferindo brasileiro/brasileira pelo campo "sexo" nesse caso
+  // (ver nacionalidadeTexto abaixo).
+  nacionalidade?: string | null;
   profissao: string | null;
   cat_profissao: string | null;
   estado_civil: string | null;
@@ -262,6 +271,15 @@ function enderecoClienteCompleto(c: ClienteComEndereco): string {
   return [c.endereco, c.cidades?.nome, c.estados?.nome].filter((p): p is string => Boolean(p)).join(" - ");
 }
 
+// Nacionalidade textual de um cliente — usa o campo cadastrado quando
+// presente (Elaboração de Contrato de Gestão sempre pede esse campo);
+// clientes antigos que nunca passaram por lá ficam com nacionalidade NULL,
+// então cai pro mesmo palpite por sexo que o sistema já fazia antes de o
+// campo existir.
+function nacionalidadeTexto(c: { nacionalidade?: string | null; sexo: string | null }): string {
+  return c.nacionalidade ?? (c.sexo === "Mulher" ? "brasileira" : "brasileiro");
+}
+
 // Parágrafo de qualificação completo de uma parte (vendedor/comprador,
 // locador/locatário): "Nome, nacionalidade, profissão, estado civil, RG nº
 // ..., CPF nº ..., residente e domiciliado(a) em ...". Usado tanto sozinho
@@ -269,7 +287,7 @@ function enderecoClienteCompleto(c: ClienteComEndereco): string {
 // etc.). RG entrou porque a qualificação sem ele fica incompleta pra um
 // contrato de verdade (praxe jurídica sempre traz RG junto do CPF).
 function qualificacaoTexto(c: ClienteComEndereco): string {
-  const nacionalidade = c.sexo === "Mulher" ? "brasileira" : "brasileiro";
+  const nacionalidade = nacionalidadeTexto(c);
   const profissao = c.profissao ?? c.cat_profissao ?? "";
   const estadoCivil = (c.estado_civil ?? "").toLowerCase();
   const rg = c.rg ? `portador(a) da cédula de identidade RG nº ${c.rg}${c.expedicao ? `/${c.expedicao}` : ""}` : "";
@@ -516,6 +534,79 @@ async function montarDadosGestao(gestaoId: string): Promise<Record<string, unkno
     prazo_gestao_meses: g.prazo_gestao_meses ?? "",
     porc_honorario: percentual(g.porc_honorario),
     data_emissao: dataCurta(new Date())
+  };
+}
+
+// Contrato de Gestão (Captação Exclusiva) — nasce do formulário "Elaboração
+// de Contrato de Gestão" no portal do corretor. gestoes.cliente_id guarda
+// o CONTRATANTE principal (primeiro cliente preenchido no formulário, o
+// único que aparece na qualificação do corpo do contrato); os demais
+// clientes que o corretor tiver cadastrado no mesmo formulário entram como
+// mais proprietários do imóvel (imoveis_proprietarios, mesmo padrão do
+// contrato de administração) e só aparecem no bloco de assinatura, via
+// AssinaturasAdicionais.
+async function montarDadosContratoGestao(gestaoId: string): Promise<Record<string, unknown>> {
+  const g = await prisma.gestoes.findUnique({
+    where: { id: gestaoId },
+    include: {
+      clientes: { include: { cidades: true, estados: true } },
+      parceiros: true,
+      imoveis: {
+        include: {
+          cidades: true,
+          estados: true,
+          imoveis_proprietarios: {
+            orderBy: { ordem: "asc" },
+            include: { clientes: true }
+          }
+        }
+      }
+    }
+  });
+  if (!g) throw new Error(`Gestão "${gestaoId}" não encontrada.`);
+
+  const principal = g.clientes;
+  const demaisProprietarios = g.imoveis.imoveis_proprietarios
+    .map((v) => v.clientes)
+    .filter((c) => c.id !== principal.id);
+
+  const hoje = new Date();
+
+  return {
+    NomeRazaoSocial: principal.nome,
+    Rg: principal.rg ?? "",
+    CpfCnpj: docTexto(principal),
+    EnderecoCompleto: enderecoClienteCompleto(principal),
+    Nacionalidade: nacionalidadeTexto(principal),
+    EstadoCivil: principal.estado_civil ?? "",
+    Email: principal.email ?? "",
+    TelefoneCelular: formatTelefone(principal.telefone),
+    // O formulário do portal só pede um telefone — Telefone reserva fica em
+    // branco no contrato até um dia existir um segundo campo de telefone no
+    // cadastro de Cliente.
+    TelefoneReserva: "",
+    AssinaturasAdicionais:
+      demaisProprietarios.length > 0
+        ? demaisProprietarios.map((c) => blocoAssinatura(c.nome, docTexto(c), "CONTRATANTE")).join("\n\n")
+        : "",
+    TipoImovel: g.imoveis.tipo_imovel ?? "",
+    Rua: g.imoveis.rua ?? "",
+    Numero: g.imoveis.n_predial ?? "",
+    Complemento: g.imoveis.complemento ?? "",
+    Bairro: g.imoveis.bairro ?? "",
+    // Mesmo par Cidade/Estado alimenta a cláusula de Foro e a linha de
+    // local/data perto da assinatura — faz sentido nos dois casos, já que o
+    // foro de um contrato de gestão é o da comarca onde fica o imóvel.
+    Cidade: g.imoveis.cidades?.nome ?? "",
+    Estado: g.imoveis.estados?.nome ?? "",
+    NumeroMatricula: g.imoveis.matricula ?? "",
+    ValorImovel: numero(g.valor_venda),
+    PrazoGestao: g.prazo_gestao_dias ?? "",
+    PorcentagemHonorarios: percentual(g.porc_honorario),
+    DataFechamento: dataCurta(g.data_assinatura ?? hoje),
+    Corretor: g.parceiros?.nome ?? "",
+    CorretorCpf: formatarCpf(g.parceiros?.cpf ?? ""),
+    Creci: g.parceiros?.creci ?? ""
   };
 }
 

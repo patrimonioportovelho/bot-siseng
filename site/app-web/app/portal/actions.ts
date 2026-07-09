@@ -6,10 +6,10 @@ import { prisma } from "@/lib/prisma";
 import { loginPortal, logoutPortal, requirePortalSession } from "@/lib/portal-auth";
 
 export async function loginPortalAction(formData: FormData) {
+  const email = String(formData.get("email") ?? "");
   const senha = String(formData.get("senha") ?? "");
-  const parceiroId = String(formData.get("parceiroId") ?? "") || null;
 
-  const result = await loginPortal(senha, parceiroId);
+  const result = await loginPortal(email, senha);
   if (!result.ok) {
     redirect(`/portal/login?erro=${encodeURIComponent(result.error)}`);
   }

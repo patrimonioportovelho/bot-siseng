@@ -1,13 +1,12 @@
-import Link from "next/link";
 import { Topbar } from "@/components/topbar";
 import { prisma } from "@/lib/prisma";
-import { ManutencaoKanban } from "@/components/manutencao-kanban";
+import { GestaoKanban } from "@/components/gestao-kanban";
 import { AtividadesTabs } from "@/components/atividades-tabs";
 import { moverColunaAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
-export default async function ManutencaoPage({
+export default async function GestoesPage({
   searchParams
 }: {
   searchParams: Promise<{ q?: string }>;
@@ -15,21 +14,20 @@ export default async function ManutencaoPage({
   const { q } = await searchParams;
   const termo = (q ?? "").trim();
 
-  const tickets = await prisma.manutencoes.findMany({
+  const gestoes = await prisma.gestoes.findMany({
     where: {
       excluido: false,
       ...(termo
         ? {
             OR: [
-              { titulo: { contains: termo, mode: "insensitive" as const } },
+              { imoveis: { endereco: { contains: termo, mode: "insensitive" as const } } },
               { clientes: { nome: { contains: termo, mode: "insensitive" as const } } },
-              { parceiros: { nome: { contains: termo, mode: "insensitive" as const } } },
-              { imoveis: { endereco: { contains: termo, mode: "insensitive" as const } } }
+              { parceiros: { nome: { contains: termo, mode: "insensitive" as const } } }
             ]
           }
         : {})
     },
-    orderBy: [{ urgencia: "asc" }, { created_at: "desc" }],
+    orderBy: { created_at: "desc" },
     include: {
       imoveis: { select: { id: true, id_legado: true, endereco: true } },
       clientes: { select: { nome: true } },
@@ -42,8 +40,8 @@ export default async function ManutencaoPage({
       <Topbar />
 
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-        <div className="text-sm font-bold text-gray-800">Manutenção · Administração</div>
-        <AtividadesTabs ativo="/manutencao" />
+        <div className="text-sm font-bold text-gray-800">Gestões · Captação Exclusiva</div>
+        <AtividadesTabs ativo="/gestoes" />
       </div>
 
       <div className="flex items-center justify-between gap-2 mb-4 flex-wrap">
@@ -52,19 +50,16 @@ export default async function ManutencaoPage({
             type="text"
             name="q"
             defaultValue={termo}
-            placeholder="Buscar por título, proprietário, prestador..."
+            placeholder="Buscar por endereço, cliente ou corretor..."
             className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full outline-none focus:border-primary bg-white"
           />
         </form>
-        <Link
-          href="/manutencao/novo"
-          className="text-xs bg-primary text-white rounded-lg px-3 py-1.5 font-semibold whitespace-nowrap"
-        >
-          + Nova manutenção
-        </Link>
+        <p className="text-[11px] text-gray-400">
+          Toda gestão nasce sozinha aqui quando um corretor gera o Contrato de Gestão pelo portal.
+        </p>
       </div>
 
-      <ManutencaoKanban tickets={tickets} moverColuna={moverColunaAction} />
+      <GestaoKanban gestoes={gestoes} moverColuna={moverColunaAction} />
     </div>
   );
 }

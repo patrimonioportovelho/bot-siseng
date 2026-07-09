@@ -209,6 +209,11 @@ model clientes {
   tipo_conta                                             String?
   tipo_pix                                               String?
   pix                                                    String?
+  // Usado no contrato de gestão (Elaboração de Contrato de Gestão, portal do
+  // corretor) — clientes antigos ficam NULL e o sistema continua inferindo
+  // brasileiro/brasileira pelo campo "sexo" nesse caso (ver qualificacaoTexto
+  // em lib/documentos/gerar.ts).
+  nacionalidade                                          String?
   created_at                                             DateTime      @default(now()) @db.Timestamptz(6)
   updated_at                                             DateTime      @default(now()) @db.Timestamptz(6)
   adm_imoveis                                            adm_imoveis[]
@@ -335,24 +340,82 @@ model estados {
 }
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+// Contrato de Gestão (Captação Exclusiva) — nasce do formulário "Elaboração
+// de Contrato de Gestão" no portal do corretor. coluna é a etapa do quadro
+// Kanban de Gestões (dentro de Atividades): captacao_exclusiva ->
+// gestao_ativa -> comercializacao -> visitas -> proposta_negociacao.
+// chave_posse/chave_com/chave_atualizado_em seguem o mesmo controle de posse
+// de chave já usado em Manutenção (ver model manutencoes).
 model gestoes {
-  id                 String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  id_legado          String?    @unique
-  parceiro_id        String?    @db.Uuid
-  data_cadastro      DateTime   @default(dbgenerated("CURRENT_DATE")) @db.Date
-  cliente_id         String     @db.Uuid
-  imovel_id          String     @db.Uuid
-  valor_venda        Decimal?   @db.Decimal(14, 2)
-  prazo_gestao_meses Int?       @db.SmallInt
-  porc_honorario     Decimal?   @db.Decimal(6, 4)
-  created_at         DateTime   @default(now()) @db.Timestamptz(6)
-  updated_at         DateTime   @default(now()) @db.Timestamptz(6)
-  clientes           clientes   @relation(fields: [cliente_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  imoveis            imoveis    @relation(fields: [imovel_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  parceiros          parceiros? @relation(fields: [parceiro_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  id                 String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id_legado          String?                     @unique
+  parceiro_id        String?                     @db.Uuid
+  data_cadastro      DateTime                    @default(dbgenerated("CURRENT_DATE")) @db.Date
+  cliente_id         String                      @db.Uuid
+  imovel_id          String                      @db.Uuid
+  valor_venda        Decimal?                    @db.Decimal(14, 2)
+  prazo_gestao_meses Int?                        @db.SmallInt
+  porc_honorario     Decimal?                    @db.Decimal(6, 4)
+  coluna             String                      @default("captacao_exclusiva")
+  chave_posse        String                      @default("imobiliaria")
+  chave_com          String?
+  chave_atualizado_em DateTime?                  @db.Timestamptz(6)
+  excluido           Boolean                     @default(false)
+  data_assinatura    DateTime?                   @db.Date
+  // Prazo de exclusividade em DIAS — o texto do contrato de gestão fala em
+  // dias, não em meses; prazo_gestao_meses acima é o campo legado (dado
+  // importado antigo), mantido intacto.
+  prazo_gestao_dias  Int?                        @db.SmallInt
+  criado_no_portal   Boolean                     @default(false)
+  created_at         DateTime                    @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime                    @default(now()) @db.Timestamptz(6)
+  clientes           clientes                    @relation(fields: [cliente_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  imoveis            imoveis                     @relation(fields: [imovel_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  parceiros          parceiros?                  @relation(fields: [parceiro_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  checklist_itens    gestao_checklist_itens[]
+  atividades         gestao_atividades[]
+  notas              gestao_notas[]
 
   @@index([cliente_id], map: "idx_gestoes_cliente")
   @@index([imovel_id], map: "idx_gestoes_imovel")
+  @@index([coluna], map: "idx_gestoes_coluna")
+}
+
+model gestao_checklist_itens {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  gestao_id  String   @db.Uuid
+  label      String
+  done       Boolean  @default(false)
+  ordem      Int      @default(0) @db.SmallInt
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  gestoes    gestoes  @relation(fields: [gestao_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([gestao_id], map: "idx_gestao_checklist_gestao")
+}
+
+model gestao_atividades {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  gestao_id  String   @db.Uuid
+  tipo       String
+  titulo     String
+  data       DateTime @db.Date
+  feito      Boolean  @default(false)
+  notas      String?
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  gestoes    gestoes  @relation(fields: [gestao_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([gestao_id], map: "idx_gestao_atividades_gestao")
+  @@index([data], map: "idx_gestao_atividades_data")
+}
+
+model gestao_notas {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  gestao_id  String   @db.Uuid
+  texto      String
+  criado_em  DateTime @default(now()) @db.Timestamptz(6)
+  gestoes    gestoes  @relation(fields: [gestao_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([gestao_id], map: "idx_gestao_notas_gestao")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.

@@ -8,7 +8,8 @@ export type TipoDocumento =
   | "termo_entrega_chaves"
   | "recibo_honorarios"
   | "repasse_administracao"
-  | "repasse_primeira_locacao";
+  | "repasse_primeira_locacao"
+  | "contrato_gestao";
 
 export type CampoDocumento = {
   campo: string;
@@ -180,5 +181,37 @@ export const CAMPOS_DOCUMENTO: Record<TipoDocumento, CampoDocumento[]> = {
     { campo: "mes_referencia", descricao: "Mês/ano de referência do repasse" },
     { campo: "valor_repasse", descricao: "Valor líquido do primeiro aluguel repassado" },
     { campo: "data_repasse", descricao: "Data do repasse" }
+  ],
+  // Nasce do formulário "Elaboração de Contrato de Gestão" no portal do
+  // corretor (app/portal/gestao/novo) — só o CONTRATANTE principal (primeiro
+  // cliente cadastrado) aparece na qualificação do corpo do contrato;
+  // AssinaturasAdicionais cobre o restante (herdeiros, cônjuges etc.) só no
+  // bloco de assinatura, um por linha.
+  contrato_gestao: [
+    { campo: "NomeRazaoSocial", descricao: "Nome/razão social do cliente principal (aparece na qualificação e na assinatura)" },
+    { campo: "Rg", descricao: "RG do cliente principal" },
+    { campo: "CpfCnpj", descricao: "CPF ou CNPJ do cliente principal" },
+    { campo: "EnderecoCompleto", descricao: "Endereço completo do cliente principal" },
+    { campo: "Nacionalidade", descricao: "Nacionalidade do cliente principal" },
+    { campo: "EstadoCivil", descricao: "Estado civil do cliente principal" },
+    { campo: "Email", descricao: "E-mail do cliente principal" },
+    { campo: "TelefoneCelular", descricao: "Telefone celular do cliente principal" },
+    { campo: "TelefoneReserva", descricao: "Telefone reserva do cliente principal, se houver" },
+    { campo: "AssinaturasAdicionais", descricao: "Bloco de assinatura dos demais clientes cadastrados (um por linha), vazio se só houver um" },
+    { campo: "TipoImovel", descricao: "Tipo do imóvel" },
+    { campo: "Rua", descricao: "Rua do imóvel" },
+    { campo: "Numero", descricao: "Número predial do imóvel" },
+    { campo: "Complemento", descricao: "Complemento do endereço do imóvel" },
+    { campo: "Bairro", descricao: "Bairro do imóvel" },
+    { campo: "Cidade", descricao: "Cidade do imóvel (também usada no Foro e na data de fechamento)" },
+    { campo: "Estado", descricao: "Estado do imóvel (também usado no Foro e na data de fechamento)" },
+    { campo: "NumeroMatricula", descricao: "Número de matrícula do imóvel, se houver" },
+    { campo: "ValorImovel", descricao: "Valor de venda pretendido em R$" },
+    { campo: "PrazoGestao", descricao: "Prazo de exclusividade em dias" },
+    { campo: "PorcentagemHonorarios", descricao: "Percentual de honorários combinado" },
+    { campo: "DataFechamento", descricao: "Data de fechamento do contrato (dd/mm/aaaa)" },
+    { campo: "Corretor", descricao: "Nome do corretor responsável (parceiro logado no portal)" },
+    { campo: "CorretorCpf", descricao: "CPF do corretor responsável" },
+    { campo: "Creci", descricao: "CRECI do corretor responsável" }
   ]
 };

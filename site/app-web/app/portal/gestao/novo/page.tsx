@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requirePortalSession } from "@/lib/portal-auth";
+import { PortalHeader } from "@/components/portal-header";
 import { PortalGestaoForm } from "@/components/portal-gestao-form";
 
 export const dynamic = "force-dynamic";
@@ -24,21 +25,26 @@ export default async function PortalGestaoNovoPage() {
 
   if (!corretor) {
     return (
-      <div className="min-h-screen bg-gray-50 p-4 md:p-6">
-        <p className="text-sm text-red-600">
-          Não encontrei seu cadastro de parceiro. Avise um administrador.
-        </p>
+      <div className="min-h-screen bg-gray-50">
+        <PortalHeader nome={session.nome} />
+        <div className="max-w-3xl mx-auto px-4 py-6">
+          <p className="text-sm text-red-600">
+            Não encontrei seu cadastro de parceiro. Avise um administrador.
+          </p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 md:p-6">
-      <Link href="/portal" className="text-xs text-gray-500 hover:text-gray-800 inline-block mb-3">
-        ← Voltar
-      </Link>
+    <div className="min-h-screen bg-gray-50">
+      <PortalHeader nome={session.nome} />
 
-      <div className="max-w-3xl">
+      <div className="max-w-3xl mx-auto px-4 py-6">
+        <Link href="/portal" className="text-xs text-gray-500 hover:text-gray-800 inline-block mb-3">
+          ← Voltar
+        </Link>
+
         <div className="text-lg font-bold text-gray-900 mb-1">Elaboração de Contrato de Gestão</div>
         <p className="text-xs text-gray-500 mb-6">
           Preencha os dados do cliente e do imóvel. Só o primeiro cliente cadastrado aparece no corpo do

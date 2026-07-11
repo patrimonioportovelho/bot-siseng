@@ -580,7 +580,7 @@ async function montarDadosContratoGestao(gestaoId: string): Promise<Record<strin
 
   return {
     NomeRazaoSocial: principal.nome,
-    Rg: principal.rg ?? "",
+    RG: principal.rg ?? "",
     CpfCnpj: docTexto(principal),
     EnderecoCompleto: enderecoClienteCompleto(principal),
     Nacionalidade: nacionalidadeTexto(principal),

@@ -189,7 +189,7 @@ export const CAMPOS_DOCUMENTO: Record<TipoDocumento, CampoDocumento[]> = {
   // bloco de assinatura, um por linha.
   contrato_gestao: [
     { campo: "NomeRazaoSocial", descricao: "Nome/razão social do cliente principal (aparece na qualificação e na assinatura)" },
-    { campo: "Rg", descricao: "RG do cliente principal" },
+    { campo: "RG", descricao: "RG do cliente principal" },
     { campo: "CpfCnpj", descricao: "CPF ou CNPJ do cliente principal" },
     { campo: "EnderecoCompleto", descricao: "Endereço completo do cliente principal" },
     { campo: "Nacionalidade", descricao: "Nacionalidade do cliente principal" },

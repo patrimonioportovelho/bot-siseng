@@ -322,6 +322,71 @@ export async function atualizarStatusTransacaoAction(formData: FormData) {
   revalidatePath("/transacoes/venda");
 }
 
+// Lote de boletos (Recebimentos) de uma Locação — sempre a partir de uma
+// prévia editável montada no cliente (components/gerar-boletos-form.tsx):
+// aqui só valida e grava o que já veio revisado, não recalcula nada (a
+// conta de caução/honorário/mensal tem casos atípicos demais pra travar
+// no servidor — é por isso que a tela deixa cada linha editável antes de
+// confirmar).
+export async function gerarBoletosAction(formData: FormData) {
+  await requireAdminSession();
+
+  const transacaoId = texto(formData, "transacao_id");
+  const linhasTexto = texto(formData, "linhas");
+  if (!transacaoId || !linhasTexto) throw new Error("Dados incompletos para gerar os boletos.");
+
+  let linhas: Array<{ categoria_id: string; valor: number; vencimento: string; descricao: string }>;
+  try {
+    linhas = JSON.parse(linhasTexto);
+  } catch {
+    throw new Error("Boletos inválidos.");
+  }
+  if (!Array.isArray(linhas) || linhas.length === 0) {
+    throw new Error("Nenhum boleto informado.");
+  }
+
+  const transacao = await prisma.transacoes.findUnique({ where: { id: transacaoId } });
+  if (!transacao) throw new Error("Transação não encontrada.");
+  if (transacao.tipo !== "Locação") throw new Error("Gerar boletos só vale para transações de Locação.");
+
+  const linhasValidas = linhas.filter(
+    (l) => l.categoria_id && l.valor > 0 && l.vencimento && !Number.isNaN(new Date(l.vencimento + "T00:00:00").getTime())
+  );
+  if (linhasValidas.length === 0) {
+    throw new Error("Nenhuma linha válida pra gerar (confira categoria, valor e vencimento de cada uma).");
+  }
+
+  const criados = await prisma.$transaction(
+    linhasValidas.map((l) =>
+      prisma.movimentacoes.create({
+        data: {
+          tipo: "Recebimento",
+          categoria_id: l.categoria_id,
+          transacao_id: transacaoId,
+          cliente_proprietario_id: transacao.cliente_id,
+          cliente_interessado_id: transacao.cliente_contraparte_id,
+          descricao: l.descricao || null,
+          valor: l.valor,
+          vencimento: new Date(l.vencimento + "T00:00:00"),
+          pago: false,
+          gerado_automaticamente: true
+        }
+      })
+    )
+  );
+
+  await logAlteracao({
+    entidadeTipo: "movimentacoes",
+    entidadeId: transacaoId,
+    acao: "criar",
+    dadosDepois: { transacao_id: transacaoId, quantidade: criados.length, origem: "gerar_boletos" }
+  });
+
+  revalidatePath(`/transacoes/${transacaoId}`);
+  revalidatePath("/financeiro");
+  redirect(`/transacoes/${transacaoId}?boletos=1`);
+}
+
 // "Apagar" aqui é sempre um soft-delete (excluido=true) — a transação
 // costuma ter histórico real vinculado (pagamentos, movimentações,
 // documentos já gerados) e um DELETE de verdade quebraria essas

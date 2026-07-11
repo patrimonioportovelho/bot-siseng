@@ -50,7 +50,8 @@ export function MovimentacaoDetalhe({
   clientes,
   parceiros,
   action,
-  excluirAction
+  excluirAction,
+  marcarPagoAction
 }: {
   movimentacao: MovimentacaoParaVisualizar;
   categorias: CategoriaOpcao[];
@@ -58,6 +59,7 @@ export function MovimentacaoDetalhe({
   parceiros: ParceiroOpcao[];
   action: (formData: FormData) => void;
   excluirAction: (formData: FormData) => void;
+  marcarPagoAction: (formData: FormData) => void;
 }) {
   const [editando, setEditando] = useState(false);
   const m = movimentacao;
@@ -137,9 +139,19 @@ export function MovimentacaoDetalhe({
         <Linha
           label="Pago?"
           valor={
-            <span className={`font-semibold ${m.pago ? "text-[#3C7A57]" : "text-gray-500"}`}>
-              {m.pago ? rotuloPago : rotuloPendente}
-            </span>
+            <form action={marcarPagoAction}>
+              <input type="hidden" name="movimentacaoId" value={m.id} />
+              <select
+                defaultValue={m.pago ? "pago" : "pendente"}
+                onChange={(e) => e.currentTarget.form?.requestSubmit()}
+                className={`text-sm font-semibold rounded-lg border px-2 py-1 outline-none ${
+                  m.pago ? "text-[#3C7A57] border-[#3C7A57]/30 bg-[#3C7A57]/5" : "text-gray-600 border-gray-300 bg-white"
+                }`}
+              >
+                <option value="pendente">{rotuloPendente}</option>
+                <option value="pago">{rotuloPago}</option>
+              </select>
+            </form>
           }
         />
         {m.pago && <Linha label="Data de pagamento" valor={m.data_pagamento ? formatDataCalendario(m.data_pagamento) : "—"} />}
@@ -157,7 +169,9 @@ export function MovimentacaoDetalhe({
         />
         {m.gerado_automaticamente && (
           <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1 mt-2 inline-block w-fit">
-            Gerada automaticamente pelo rateio de honorários da transação vinculada.
+            {m.tipo === "Recebimento"
+              ? "Gerada automaticamente pelo lote de boletos da transação vinculada."
+              : "Gerada automaticamente pelo rateio de honorários da transação vinculada."}
           </p>
         )}
       </div>

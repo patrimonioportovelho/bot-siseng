@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { MovimentacaoDetalhe } from "@/components/movimentacao-detalhe";
 import { RateioForm } from "@/components/rateio-form";
 import { formatMoeda, formatPercentual, formatDataCalendario } from "@/lib/format";
-import { atualizarMovimentacaoAction, gerarRateioAction, excluirMovimentacaoAction } from "../actions";
+import { atualizarMovimentacaoAction, gerarRateioAction, excluirMovimentacaoAction, marcarPagoAction } from "../actions";
 
 export const dynamic = "force-dynamic";
 
@@ -291,6 +291,7 @@ export default async function MovimentacaoPage({
           parceiros={parceiros}
           action={atualizarMovimentacaoAction}
           excluirAction={excluirMovimentacaoAction}
+          marcarPagoAction={marcarPagoAction}
         />
 
         {movimentacao.tipo === "Recebimento" && transacaoVinculada && pagamentosExistentes.length === 0 && (

@@ -37,11 +37,13 @@ export default async function NovaMovimentacaoPage() {
         porc_honorario: true,
         tem_parceria: true,
         porc_parceria: true,
+        porc_corretor_proprietario: true,
+        porc_corretor_contraparte: true,
         imoveis: { select: { endereco: true } },
         clientes_transacoes_cliente_idToclientes: { select: { id: true, nome: true } },
         clientes_transacoes_cliente_contraparte_idToclientes: { select: { id: true, nome: true } },
-        parceiros_transacoes_corretor_proprietario_idToparceiros: { select: { nome: true } },
-        parceiros_transacoes_corretor_contraparte_idToparceiros: { select: { nome: true } }
+        parceiros_transacoes_corretor_proprietario_idToparceiros: { select: { id: true, nome: true } },
+        parceiros_transacoes_corretor_contraparte_idToparceiros: { select: { id: true, nome: true } }
       }
     })
   ]);
@@ -55,12 +57,16 @@ export default async function NovaMovimentacaoPage() {
     porc_honorario: t.porc_honorario,
     tem_parceria: t.tem_parceria,
     porc_parceria: t.porc_parceria,
+    porc_corretor_proprietario: t.porc_corretor_proprietario,
+    porc_corretor_contraparte: t.porc_corretor_contraparte,
     imovelEndereco: t.imoveis?.endereco ?? null,
     proprietarioId: t.clientes_transacoes_cliente_idToclientes?.id ?? null,
     proprietarioNome: t.clientes_transacoes_cliente_idToclientes?.nome ?? null,
     interessadoId: t.clientes_transacoes_cliente_contraparte_idToclientes?.id ?? null,
     interessadoNome: t.clientes_transacoes_cliente_contraparte_idToclientes?.nome ?? null,
+    corretorProprietarioId: t.parceiros_transacoes_corretor_proprietario_idToparceiros?.id ?? null,
     corretorProprietarioNome: t.parceiros_transacoes_corretor_proprietario_idToparceiros?.nome ?? null,
+    corretorContraparteId: t.parceiros_transacoes_corretor_contraparte_idToparceiros?.id ?? null,
     corretorContraparteNome: t.parceiros_transacoes_corretor_contraparte_idToparceiros?.nome ?? null
   }));
 

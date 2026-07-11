@@ -76,12 +76,41 @@ export default async function FinanceiroPage({
     if (!Number.isNaN(d.getTime())) pagamentoFiltro.lte = d;
   }
 
+  // "Pendente - recebido": despesa ainda não paga (pago=false) cujo
+  // pagamento está ligado (via recebimento_id, ver correção do rateio
+  // recorrente) a um Recebimento que já caiu na conta (pago=true) — dinheiro
+  // que já entrou mas ainda não foi repassado. Calculado aqui (não é um
+  // status salvo) pra alimentar tanto a pílula de filtro quanto o destaque
+  // azul nas linhas da lista.
+  const pagamentosComRecebimento = await prisma.pagamentos.findMany({
+    where: { recebimento_id: { not: null } },
+    select: { id: true, recebimento_id: true }
+  });
+  const recebimentoIdsCandidatos = pagamentosComRecebimento
+    .map((p) => p.recebimento_id)
+    .filter((v): v is string => Boolean(v));
+  const recebimentosPagos =
+    recebimentoIdsCandidatos.length > 0
+      ? await prisma.movimentacoes.findMany({ where: { id: { in: recebimentoIdsCandidatos }, pago: true }, select: { id: true } })
+      : [];
+  const recebimentosPagosSet = new Set(recebimentosPagos.map((r) => r.id));
+  const pagamentoIdsRecebidos = pagamentosComRecebimento
+    .filter((p) => p.recebimento_id && recebimentosPagosSet.has(p.recebimento_id))
+    .map((p) => p.id);
+  const pagamentoIdsRecebidosSet = new Set(pagamentoIdsRecebidos);
+
   const where = {
     tipo,
     ...(categoriaParam ? { categoria_id: categoriaParam } : {}),
     ...(vencimentoFiltro.gte || vencimentoFiltro.lte ? { vencimento: vencimentoFiltro } : {}),
     ...(pagamentoFiltro.gte || pagamentoFiltro.lte ? { data_pagamento: pagamentoFiltro } : {}),
-    ...(pagoParam === "sim" ? { pago: true } : pagoParam === "todas" ? {} : { pago: false }),
+    ...(pagoParam === "sim"
+      ? { pago: true }
+      : pagoParam === "recebido"
+        ? { pago: false, pagamento_id: { in: pagamentoIdsRecebidos } }
+        : pagoParam === "todas"
+          ? {}
+          : { pago: false }),
     ...(termo
       ? {
           OR: [
@@ -160,7 +189,7 @@ export default async function FinanceiroPage({
         </div>
       )}
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
         <div className="bg-white border border-gray-200 rounded-xl p-3">
           <div className="text-xs text-gray-500">Despesas em aberto</div>
           <div className="text-lg font-bold mt-1 text-gray-900">{formatMoeda(totalDespesaAberto._sum.valor ?? 0)}</div>
@@ -168,6 +197,10 @@ export default async function FinanceiroPage({
         <div className="bg-white border border-gray-200 rounded-xl p-3">
           <div className="text-xs text-gray-500">Recebimentos em aberto</div>
           <div className="text-lg font-bold mt-1 text-accent">{formatMoeda(totalRecebimentoAberto._sum.valor ?? 0)}</div>
+        </div>
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
+          <div className="text-xs text-blue-600">Pendente - recebido</div>
+          <div className="text-lg font-bold mt-1 text-blue-700">{pagamentoIdsRecebidos.length}</div>
         </div>
         <div className="bg-white border border-gray-200 rounded-xl p-3">
           <div className="text-xs text-gray-500">Despesas vencidas</div>
@@ -311,6 +344,17 @@ export default async function FinanceiroPage({
           >
             Todas
           </a>
+          {tipo === "Despesa" && (
+            <a
+              href={hrefPago("recebido")}
+              className={
+                "text-xs px-3 py-1 rounded-full border " +
+                (pagoParam === "recebido" ? "bg-blue-600 text-white border-blue-600" : "border-blue-200 text-blue-600")
+              }
+            >
+              Pendente - recebido
+            </a>
+          )}
         </div>
 
         <div className={`hidden md:grid ${COLUNAS} gap-3 px-3 py-1.5 text-[11px] text-gray-400 border-b border-gray-100 text-center`}>
@@ -328,13 +372,15 @@ export default async function FinanceiroPage({
         <div className="flex flex-col">
           {movimentacoes.map((m) => {
             const situacao = situacaoVencimento(m.vencimento, m.pago, DIAS_ALERTA);
-            const corLinha =
-              situacao === "vencido"
+            const pendenteRecebido = !m.pago && m.pagamento_id ? pagamentoIdsRecebidosSet.has(m.pagamento_id) : false;
+            const corLinha = pendenteRecebido
+              ? "bg-blue-50 border border-blue-200 hover:bg-blue-100"
+              : situacao === "vencido"
                 ? "bg-red-50 border border-red-200 hover:bg-red-100"
                 : situacao === "alerta"
                 ? "bg-amber-50 border border-amber-200 hover:bg-amber-100"
                 : "hover:bg-gray-50";
-            const corTexto = situacao === "vencido" ? "text-red-700" : "text-gray-600";
+            const corTexto = pendenteRecebido ? "text-blue-700" : situacao === "vencido" ? "text-red-700" : "text-gray-600";
             const temParcelas = (m.parcelas ?? 0) > 1;
 
             return (
@@ -353,10 +399,18 @@ export default async function FinanceiroPage({
                 <span className={`text-xs truncate ${corTexto}`}>{m.parceiros?.nome ?? "—"}</span>
                 <span
                   className={`text-xs font-medium whitespace-nowrap ${
-                    m.pago ? "text-green-700" : situacao === "vencido" ? "text-red-700" : situacao === "alerta" ? "text-amber-700" : "text-gray-500"
+                    m.pago
+                      ? "text-green-700"
+                      : pendenteRecebido
+                        ? "text-blue-700"
+                        : situacao === "vencido"
+                          ? "text-red-700"
+                          : situacao === "alerta"
+                            ? "text-amber-700"
+                            : "text-gray-500"
                   }`}
                 >
-                  {m.pago ? rotuloPago : rotuloPendente}
+                  {m.pago ? rotuloPago : pendenteRecebido ? "Pendente - Recebido" : rotuloPendente}
                 </span>
                 <span className={`text-xs whitespace-nowrap ${situacao === "vencido" ? "text-red-800 font-medium" : "text-gray-700"}`}>
                   {formatMoeda(m.valor)}

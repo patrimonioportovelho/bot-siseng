@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { formatMoeda, formatValorEditavel, hojeInputDate } from "@/lib/format";
+import { formatMoeda, formatValorEditavel, valorEditavelParaDecimal, hojeInputDate } from "@/lib/format";
 
 type CategoriaOpcao = { id: string; nome: string; tipo: string | null };
 type ClienteOpcao = { id: string; nome: string };
@@ -15,12 +15,16 @@ type TransacaoOpcao = {
   porc_honorario: unknown;
   tem_parceria: boolean | null;
   porc_parceria: unknown;
+  porc_corretor_proprietario: unknown;
+  porc_corretor_contraparte: unknown;
   proprietarioId: string | null;
   proprietarioNome: string | null;
   interessadoId: string | null;
   interessadoNome: string | null;
   imovelEndereco: string | null;
+  corretorProprietarioId: string | null;
   corretorProprietarioNome: string | null;
+  corretorContraparteId: string | null;
   corretorContraparteNome: string | null;
 };
 
@@ -34,6 +38,18 @@ const LABEL = "text-xs text-gray-600 block mb-1";
 const CATEGORIA_COMPRA_E_VENDA = "Compra e venda";
 const CATEGORIA_LOCACAO_CAUCAO = "Locações - cauções";
 const CATEGORIAS_LOCACAO = ["Administração de Imóveis Locados", "Locações", "Locações - cauções"];
+
+// Categorias de Despesa que são repasse de honorário/comissão de uma
+// transação — ao escolher uma delas, mostra o mesmo cálculo em cascata
+// (honorário total -> parceria -> corretor proprietário/contraparte, com
+// desconto) que a tela da própria transação/rateio já tem. Serve de reforço
+// manual: o Financeiro consegue lançar (ou corrigir) um repasse sem precisar
+// abrir a transação, com o mesmo valor que sairia de lá.
+const CATEGORIAS_REPASSE_HONORARIO = [
+  "Repasse de Honorários Transações",
+  "Repasse Proprietários Primeira Locação",
+  "Repassa Proprietários Locações"
+];
 
 function labelTransacao(t: TransacaoOpcao): string {
   const partes = [
@@ -84,15 +100,57 @@ export function FinanceiroForm({
   const categoriaSelecionada = categorias.find((c) => c.id === categoriaId) ?? null;
   const ehCategoriaCompraVenda = categoriaSelecionada?.nome === CATEGORIA_COMPRA_E_VENDA;
   const ehCategoriaLocacao = CATEGORIAS_LOCACAO.includes(categoriaSelecionada?.nome ?? "");
-  const mostrarPickerTransacao = tipo === "Recebimento" && (ehCategoriaCompraVenda || ehCategoriaLocacao);
+  const ehCategoriaRepasse = CATEGORIAS_REPASSE_HONORARIO.includes(categoriaSelecionada?.nome ?? "");
+  const mostrarPickerTransacao =
+    (tipo === "Recebimento" && (ehCategoriaCompraVenda || ehCategoriaLocacao)) || (tipo === "Despesa" && ehCategoriaRepasse);
 
   // O contrato mostrado no picker depende da categoria: Compra e venda só
   // mostra contratos tipo Compra e Venda; as categorias de locação só
-  // mostram contratos tipo Locação.
+  // mostram contratos tipo Locação. Repasse de honorário é categoria única
+  // pros dois tipos de transação — mostra os dois, sem filtrar.
   const transacoesDoTipoCerto = useMemo(() => {
+    if (ehCategoriaRepasse) return transacoes;
     const tipoContrato = ehCategoriaCompraVenda ? "Compra e Venda" : "Locação";
     return transacoes.filter((tr) => tr.tipo === tipoContrato);
-  }, [transacoes, ehCategoriaCompraVenda]);
+  }, [transacoes, ehCategoriaCompraVenda, ehCategoriaRepasse]);
+
+  // Cascata de honorário — mesma conta de components/rateio-form.tsx —
+  // usada só quando a categoria é de repasse (Despesa), pra sugerir o valor
+  // e o parceiro certo conforme a parte escolhida abaixo.
+  const [parteRepasse, setParteRepasse] = useState<"proprietario" | "contraparte" | "">("");
+  const [descontoRepasseTexto, setDescontoRepasseTexto] = useState("");
+  const [parceiroId, setParceiroId] = useState("");
+
+  const transacaoSelecionadaParaCascata = transacoes.find((tr) => tr.id === transacaoId) ?? null;
+  const cascataRepasse = useMemo(() => {
+    if (!ehCategoriaRepasse || !transacaoSelecionadaParaCascata) return null;
+    const t = transacaoSelecionadaParaCascata;
+    const honorarioTotal = Number(t.valor_transacao) * Number(t.porc_honorario ?? 0);
+    const valorParceria = t.tem_parceria ? honorarioTotal * Number(t.porc_parceria ?? 0) : 0;
+    const restante = honorarioTotal - valorParceria;
+    const valorProprietario = restante * Number(t.porc_corretor_proprietario ?? 0);
+    const valorContraparte = restante * Number(t.porc_corretor_contraparte ?? 0);
+    return { honorarioTotal, valorParceria, restante, valorProprietario, valorContraparte };
+  }, [ehCategoriaRepasse, transacaoSelecionadaParaCascata]);
+
+  function escolherParteRepasse(parte: "proprietario" | "contraparte") {
+    setParteRepasse(parte);
+    setDescontoRepasseTexto("");
+    if (!transacaoSelecionadaParaCascata || !cascataRepasse) return;
+    const base = parte === "proprietario" ? cascataRepasse.valorProprietario : cascataRepasse.valorContraparte;
+    const corretorId =
+      parte === "proprietario" ? transacaoSelecionadaParaCascata.corretorProprietarioId : transacaoSelecionadaParaCascata.corretorContraparteId;
+    if (corretorId) setParceiroId(corretorId);
+    setValor(formatValorEditavel(base));
+  }
+
+  function aplicarDescontoRepasse(texto: string) {
+    setDescontoRepasseTexto(texto);
+    if (!cascataRepasse || !parteRepasse) return;
+    const base = parteRepasse === "proprietario" ? cascataRepasse.valorProprietario : cascataRepasse.valorContraparte;
+    const desconto = valorEditavelParaDecimal(texto) ?? 0;
+    setValor(formatValorEditavel(Math.max(0, base - desconto)));
+  }
 
   const transacoesFiltradas = useMemo(() => {
     const t = buscaTransacao.trim().toLowerCase();
@@ -121,12 +179,24 @@ export function FinanceiroForm({
     setCategoriaId("");
     setTransacaoId("");
     setBuscaTransacao("");
+    setParteRepasse("");
+    setDescontoRepasseTexto("");
+  }
+
+  function mudarCategoria(novaCategoriaId: string) {
+    setCategoriaId(novaCategoriaId);
+    setTransacaoId("");
+    setBuscaTransacao("");
+    setParteRepasse("");
+    setDescontoRepasseTexto("");
   }
 
   function selecionarTransacao(t: TransacaoOpcao) {
     setTransacaoId(t.id);
     setBuscaTransacao(labelTransacao(t));
     setListaTransacaoAberta(false);
+    setParteRepasse("");
+    setDescontoRepasseTexto("");
 
     // Pré-preenche os dois clientes a partir do contrato — tudo continua
     // editável depois, é só um ponto de partida.
@@ -138,6 +208,10 @@ export function FinanceiroForm({
       setClienteInteressadoId(t.interessadoId);
       setBuscaClienteInteressado(t.interessadoNome ?? "");
     }
+
+    // Repasse de honorário não define o valor aqui — só depois de escolher
+    // qual parte (corretor do proprietário/contraparte) na cascata abaixo.
+    if (ehCategoriaRepasse) return;
 
     // Em Compra e venda o valor do Recebimento é o honorário da imobiliária
     // (valor da transação x % de honorário), não o valor cheio do imóvel —
@@ -220,7 +294,7 @@ export function FinanceiroForm({
           className={CAMPO}
           name="categoria_id"
           value={categoriaId}
-          onChange={(e) => setCategoriaId(e.target.value)}
+          onChange={(e) => mudarCategoria(e.target.value)}
           required
         >
           <option value="" disabled>
@@ -235,7 +309,13 @@ export function FinanceiroForm({
 
         {mostrarPickerTransacao && (
           <div className="relative mt-3">
-            <label className={LABEL}>{ehCategoriaCompraVenda ? "Contrato de Compra e Venda" : "Contrato de Locação"}</label>
+            <label className={LABEL}>
+              {ehCategoriaCompraVenda
+                ? "Contrato de Compra e Venda"
+                : ehCategoriaRepasse
+                  ? "Transação (Locação ou Compra e Venda)"
+                  : "Contrato de Locação"}
+            </label>
             <input
               className={CAMPO}
               placeholder="Digite pra buscar o contrato (Id, imóvel ou cliente)..."
@@ -266,12 +346,68 @@ export function FinanceiroForm({
               </div>
             )}
 
-            {transacaoSelecionada && (transacaoSelecionada.corretorProprietarioNome || transacaoSelecionada.corretorContraparteNome) && (
-              <p className="text-[11px] text-gray-400 mt-2">
-                Corretor do proprietário: {transacaoSelecionada.corretorProprietarioNome ?? "—"} · Corretor da
-                contraparte: {transacaoSelecionada.corretorContraparteNome ?? "—"}. O repasse de comissão pra eles é
-                gerado depois, na tela desta movimentação (rateio de honorários).
-              </p>
+            {!ehCategoriaRepasse &&
+              transacaoSelecionada &&
+              (transacaoSelecionada.corretorProprietarioNome || transacaoSelecionada.corretorContraparteNome) && (
+                <p className="text-[11px] text-gray-400 mt-2">
+                  Corretor do proprietário: {transacaoSelecionada.corretorProprietarioNome ?? "—"} · Corretor da
+                  contraparte: {transacaoSelecionada.corretorContraparteNome ?? "—"}. O repasse de comissão pra eles é
+                  gerado depois, na tela desta movimentação (rateio de honorários).
+                </p>
+              )}
+
+            {ehCategoriaRepasse && cascataRepasse && transacaoSelecionadaParaCascata && (
+              <div className="mt-3 border border-gray-100 rounded-lg p-3 bg-gray-50">
+                <div className="text-xs text-gray-500 mb-2">
+                  Honorário total: <span className="font-semibold text-gray-700">{formatMoeda(cascataRepasse.honorarioTotal)}</span>
+                  {transacaoSelecionadaParaCascata.tem_parceria && (
+                    <>
+                      {" "}
+                      · Parceria: {formatMoeda(cascataRepasse.valorParceria)} · Restante pra ratear:{" "}
+                      {formatMoeda(cascataRepasse.restante)}
+                    </>
+                  )}
+                </div>
+                <div className="flex flex-col gap-2">
+                  <button
+                    type="button"
+                    onClick={() => escolherParteRepasse("proprietario")}
+                    disabled={!transacaoSelecionadaParaCascata.corretorProprietarioId}
+                    className={`text-left text-xs px-3 py-2 rounded-lg border ${
+                      parteRepasse === "proprietario" ? "border-primary bg-primary/5" : "border-gray-200"
+                    } ${!transacaoSelecionadaParaCascata.corretorProprietarioId ? "opacity-40 cursor-not-allowed" : "hover:bg-white"}`}
+                  >
+                    Corretor do proprietário — {transacaoSelecionadaParaCascata.corretorProprietarioNome ?? "sem corretor cadastrado"}{" "}
+                    — <span className="font-semibold">{formatMoeda(cascataRepasse.valorProprietario)}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => escolherParteRepasse("contraparte")}
+                    disabled={!transacaoSelecionadaParaCascata.corretorContraparteId}
+                    className={`text-left text-xs px-3 py-2 rounded-lg border ${
+                      parteRepasse === "contraparte" ? "border-primary bg-primary/5" : "border-gray-200"
+                    } ${!transacaoSelecionadaParaCascata.corretorContraparteId ? "opacity-40 cursor-not-allowed" : "hover:bg-white"}`}
+                  >
+                    Corretor da contraparte — {transacaoSelecionadaParaCascata.corretorContraparteNome ?? "sem corretor cadastrado"} —{" "}
+                    <span className="font-semibold">{formatMoeda(cascataRepasse.valorContraparte)}</span>
+                  </button>
+                </div>
+                {parteRepasse && (
+                  <div className="mt-2 max-w-xs">
+                    <label className={LABEL}>Desconto/débito (opcional)</label>
+                    <input
+                      className={CAMPO}
+                      value={descontoRepasseTexto}
+                      onChange={(e) => aplicarDescontoRepasse(e.target.value)}
+                      placeholder="0,00"
+                    />
+                  </div>
+                )}
+                <p className="text-[11px] text-gray-400 mt-2">
+                  Escolher uma parte já preenche o Parceiro e o Valor abaixo — continua tudo editável na mão se
+                  precisar ajustar mais alguma coisa.
+                </p>
+              </div>
             )}
           </div>
         )}
@@ -342,7 +478,7 @@ export function FinanceiroForm({
 
           <div>
             <label className={LABEL}>Parceiro</label>
-            <select className={CAMPO} name="parceiro_id" defaultValue="">
+            <select className={CAMPO} name="parceiro_id" value={parceiroId} onChange={(e) => setParceiroId(e.target.value)}>
               <option value="">—</option>
               {parceiros.map((p) => (
                 <option key={p.id} value={p.id}>

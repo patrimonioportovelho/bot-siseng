@@ -4,8 +4,9 @@ import { Topbar } from "@/components/topbar";
 import { prisma } from "@/lib/prisma";
 import { getAdminSession } from "@/lib/auth";
 import { TransacaoForm } from "@/components/transacao-form";
+import { GerarBoletosForm } from "@/components/gerar-boletos-form";
 import { formatDataCalendario, formatMoeda } from "@/lib/format";
-import { atualizarTransacaoAction, apagarTransacaoAction } from "../actions";
+import { atualizarTransacaoAction, apagarTransacaoAction, gerarBoletosAction } from "../actions";
 
 export const dynamic = "force-dynamic";
 
@@ -19,10 +20,10 @@ export default async function TransacaoDetalhePage({
   searchParams
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ salvo?: string }>;
+  searchParams: Promise<{ salvo?: string; boletos?: string }>;
 }) {
   const { id } = await params;
-  const { salvo } = await searchParams;
+  const { salvo, boletos } = await searchParams;
   const session = await getAdminSession();
 
   const [transacao, lojas, clientes, imoveis, parceiros, admImoveisAtivos] = await Promise.all([
@@ -77,6 +78,20 @@ export default async function TransacaoDetalhePage({
   ]);
 
   if (!transacao) notFound();
+
+  const ehLocacaoComOuSemAdm =
+    transacao.tipo === "Locação" &&
+    (transacao.status === "Imóvel em Locação" || transacao.status === "Imóvel em locação sem administração");
+
+  const [categoriasRecebimento, mesesJaGerados] = ehLocacaoComOuSemAdm
+    ? await Promise.all([
+        prisma.categorias_financeiras.findMany({
+          where: { tipo: "Recebimento", nome: { in: ["Locações - cauções", "Locações", "Administração de Imóveis Locados"] } },
+          select: { id: true, nome: true }
+        }),
+        prisma.movimentacoes.count({ where: { transacao_id: id, tipo: "Recebimento" } })
+      ])
+    : [[], 0];
 
   const clientesComParceiro = clientes.map((c) => ({
     id: c.id,
@@ -178,6 +193,11 @@ export default async function TransacaoDetalhePage({
           Transação salva com sucesso.
         </div>
       )}
+      {boletos === "1" && (
+        <div className="bg-green-50 border border-green-200 text-green-700 text-xs rounded-lg px-3 py-2 mb-4">
+          Boletos gerados com sucesso — veja os Recebimentos no Financeiro.
+        </div>
+      )}
 
       <div className="flex items-center gap-2 mb-1">
         <div className="text-sm font-bold text-gray-800">{transacao.imoveis?.endereco ?? "Imóvel sem endereço"}</div>
@@ -194,6 +214,24 @@ export default async function TransacaoDetalhePage({
         Assinatura: {formatDataCalendario(transacao.data_assinatura)}
         {" · "}Valor: {formatMoeda(transacao.valor_transacao)}
       </div>
+
+      {ehLocacaoComOuSemAdm && (
+        <div className="mb-5">
+          <GerarBoletosForm
+            transacao={{
+              id: transacao.id,
+              status: transacao.status,
+              valor_transacao: transacao.valor_transacao,
+              valor_caucao: transacao.valor_caucao,
+              dia_vencimento: transacao.dia_vencimento,
+              data_assinatura: transacao.data_assinatura
+            }}
+            categorias={categoriasRecebimento}
+            mesesJaGerados={mesesJaGerados}
+            action={gerarBoletosAction}
+          />
+        </div>
+      )}
 
       <TransacaoForm
         transacao={transacao}

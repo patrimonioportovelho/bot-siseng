@@ -13,6 +13,7 @@ import {
   resolverPeriodo,
   hojePortoVelho
 } from "@/lib/format";
+import { FUNCOES_CORRETOR } from "@/lib/transacoes/opcoes";
 
 export const dynamic = "force-dynamic";
 
@@ -52,7 +53,10 @@ export default async function DashboardPage({
     despesasPendentesPeriodo,
     recebimentosVencidos,
     despesasVencidas,
-    movimentacoesPagasPeriodo
+    movimentacoesPagasPeriodo,
+    corretoresAtivos,
+    despesasPagasPorCorretor,
+    despesasPendentesPorCorretor
   ] = await Promise.all([
     prisma.imoveis.count({ where: { excluido: false } }),
     prisma.transacoes.count({ where: { excluido: false, status: STATUS_TRANSACAO_EM_ABERTO } }),
@@ -139,6 +143,39 @@ export default async function DashboardPage({
     prisma.movimentacoes.findMany({
       where: { pago: true, data_pagamento: { gte: inicio, lt: fimExclusivo } },
       select: { tipo: true, valor: true, data_pagamento: true, categorias_financeiras: { select: { nome: true } } }
+    }),
+    // Quadro "Corretores" mais abaixo: todo parceiro com função Corretor ou
+    // Corretor Estagiário, ativo, pra listar mesmo quem ainda não tem nenhum
+    // repasse lançado (aparece com R$ 0,00 nas duas colunas).
+    prisma.parceiros.findMany({
+      where: { funcao: { in: FUNCOES_CORRETOR }, status_funcao: "Ativo" },
+      orderBy: { nome: "asc" },
+      select: { id: true, nome: true, funcao: true }
+    }),
+    // Recebido: despesas de repasse já pagas ao corretor, pela Data de
+    // pagamento dentro do período — mesmo critério do "Pago no período" logo
+    // acima, só que agrupado por parceiro.
+    prisma.movimentacoes.groupBy({
+      by: ["parceiro_id"],
+      where: {
+        tipo: "Despesa",
+        pago: true,
+        parceiro_id: { not: null },
+        data_pagamento: { gte: inicio, lt: fimExclusivo }
+      },
+      _sum: { valor: true }
+    }),
+    // A Receber: despesas de repasse ainda pendentes, pelo Vencimento dentro
+    // do período — mesmo critério do "A pagar no período" logo acima.
+    prisma.movimentacoes.groupBy({
+      by: ["parceiro_id"],
+      where: {
+        tipo: "Despesa",
+        pago: false,
+        parceiro_id: { not: null },
+        vencimento: { gte: inicio, lt: fimExclusivo }
+      },
+      _sum: { valor: true }
     })
   ]);
 
@@ -262,6 +299,33 @@ export default async function DashboardPage({
   const dadosPizzaCategorias = [...porCategoria.entries()]
     .sort((a, b) => b[1] - a[1])
     .map(([label, valor]) => ({ label, valor }));
+
+  // Quadro Corretores: junta o cadastro (todo Corretor/Corretor Estagiário
+  // ativo) com o que já foi de fato pago a ele (Recebido) e o que ainda está
+  // pendente (A Receber), ambos dentro do período selecionado — mesma régua
+  // de "Recebido/Pago" e "A receber/A pagar" já usada no bloco Financeiro
+  // acima, só que agrupado por parceiro em vez de somado geral.
+  const recebidoPorParceiro = new Map<string, number>();
+  for (const g of despesasPagasPorCorretor) {
+    if (!g.parceiro_id) continue;
+    recebidoPorParceiro.set(g.parceiro_id, Number(g._sum.valor ?? 0));
+  }
+  const aReceberPorParceiro = new Map<string, number>();
+  for (const g of despesasPendentesPorCorretor) {
+    if (!g.parceiro_id) continue;
+    aReceberPorParceiro.set(g.parceiro_id, Number(g._sum.valor ?? 0));
+  }
+  const corretoresComValores = corretoresAtivos
+    .map((c) => ({
+      id: c.id,
+      nome: c.nome,
+      funcao: c.funcao,
+      recebido: recebidoPorParceiro.get(c.id) ?? 0,
+      aReceber: aReceberPorParceiro.get(c.id) ?? 0
+    }))
+    .sort((a, b) => b.recebido + b.aReceber - (a.recebido + a.aReceber));
+  const totalRecebidoCorretores = corretoresComValores.reduce((acc, c) => acc + c.recebido, 0);
+  const totalAReceberCorretores = corretoresComValores.reduce((acc, c) => acc + c.aReceber, 0);
 
   // Links dos atalhos de período — preserva "personalizado" só quando ele
   // próprio é o link ativo (senão os campos de data ficam sem sentido).
@@ -551,6 +615,65 @@ export default async function DashboardPage({
             <div className="text-xs font-semibold text-gray-600 mb-2">Despesas pagas por categoria</div>
             <GraficoPizza dados={dadosPizzaCategorias} formatarValor={formatMoeda} />
           </div>
+        </div>
+      </div>
+
+      <div className="bg-white border border-gray-200 rounded-xl p-4 mt-5">
+        <div className="flex items-center justify-between mb-1 flex-wrap gap-2">
+          <div className="text-sm font-bold text-gray-800">Corretores</div>
+        </div>
+        <p className="text-[11px] text-gray-400 mb-3">
+          Repasses de honorário/comissão por corretor, dentro do período selecionado acima — Recebido pela Data de
+          pagamento, A Receber pelo Vencimento.
+        </p>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs min-w-[480px]">
+            <thead>
+              <tr className="text-left text-gray-500">
+                <th className="font-normal py-1.5 border-b border-gray-100">Parceiro (corretor)</th>
+                <th className="font-normal py-1.5 border-b border-gray-100 text-right">Recebido</th>
+                <th className="font-normal py-1.5 border-b border-gray-100 text-right">A Receber</th>
+              </tr>
+            </thead>
+            <tbody>
+              {corretoresComValores.map((c) => (
+                <tr key={c.id}>
+                  <td className="py-2 border-b border-gray-50">
+                    <Link href={`/parceiros/${c.id}`} className="text-primary font-medium hover:underline">
+                      {c.nome}
+                    </Link>
+                    <span className="text-[11px] text-gray-400"> — {c.funcao}</span>
+                  </td>
+                  <td className="py-2 border-b border-gray-50 text-right whitespace-nowrap text-[#3C7A57] font-semibold">
+                    {formatMoeda(c.recebido)}
+                  </td>
+                  <td className="py-2 border-b border-gray-50 text-right whitespace-nowrap text-gray-700 font-semibold">
+                    {formatMoeda(c.aReceber)}
+                  </td>
+                </tr>
+              ))}
+              {corretoresComValores.length === 0 && (
+                <tr>
+                  <td colSpan={3} className="py-4 text-center text-gray-400">
+                    Nenhum corretor ativo cadastrado.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+            {corretoresComValores.length > 0 && (
+              <tfoot>
+                <tr>
+                  <td className="py-2 font-bold text-gray-700">Total</td>
+                  <td className="py-2 text-right font-bold text-[#3C7A57] whitespace-nowrap">
+                    {formatMoeda(totalRecebidoCorretores)}
+                  </td>
+                  <td className="py-2 text-right font-bold text-gray-800 whitespace-nowrap">
+                    {formatMoeda(totalAReceberCorretores)}
+                  </td>
+                </tr>
+              </tfoot>
+            )}
+          </table>
         </div>
       </div>
     </div>

@@ -639,7 +639,7 @@ export default async function DashboardPage({
               {corretoresComValores.map((c) => (
                 <tr key={c.id}>
                   <td className="py-2 border-b border-gray-50">
-                    <Link href={`/parceiros/${c.id}`} className="text-primary font-medium hover:underline">
+                    <Link href={`/parceiros/${c.id}/dashboard`} className="text-primary font-medium hover:underline">
                       {c.nome}
                     </Link>
                     <span className="text-[11px] text-gray-400"> — {c.funcao}</span>

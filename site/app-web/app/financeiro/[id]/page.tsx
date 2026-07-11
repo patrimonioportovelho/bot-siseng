@@ -111,6 +111,10 @@ export default async function MovimentacaoPage({
         )
     : null;
 
+  // Mesma definição usada na lista /financeiro: despesa ainda não paga cujo
+  // Recebimento de origem já caiu na conta — "já entrou, falta repassar".
+  const pendenteRecebido = movimentacao.tipo === "Despesa" && !movimentacao.pago && recebimentoOrigem?.pago === true;
+
   const destinatarioRepasse =
     movimentacao.tipo === "Despesa" && movimentacao.parceiro_id && movimentacao.parceiros
       ? {
@@ -292,6 +296,7 @@ export default async function MovimentacaoPage({
           action={atualizarMovimentacaoAction}
           excluirAction={excluirMovimentacaoAction}
           marcarPagoAction={marcarPagoAction}
+          pendenteRecebido={pendenteRecebido}
         />
 
         {movimentacao.tipo === "Recebimento" && transacaoVinculada && pagamentosExistentes.length === 0 && (

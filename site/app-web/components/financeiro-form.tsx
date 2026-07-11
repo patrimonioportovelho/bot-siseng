@@ -117,7 +117,7 @@ export function FinanceiroForm({
   // Cascata de honorário — mesma conta de components/rateio-form.tsx —
   // usada só quando a categoria é de repasse (Despesa), pra sugerir o valor
   // e o parceiro certo conforme a parte escolhida abaixo.
-  const [parteRepasse, setParteRepasse] = useState<"proprietario" | "contraparte" | "">("");
+  const [parteRepasse, setParteRepasse] = useState<"proprietario" | "contraparte" | "combinado" | "">("");
   const [descontoRepasseTexto, setDescontoRepasseTexto] = useState("");
   const [parceiroId, setParceiroId] = useState("");
 
@@ -130,16 +130,29 @@ export function FinanceiroForm({
     const restante = honorarioTotal - valorParceria;
     const valorProprietario = restante * Number(t.porc_corretor_proprietario ?? 0);
     const valorContraparte = restante * Number(t.porc_corretor_contraparte ?? 0);
-    return { honorarioTotal, valorParceria, restante, valorProprietario, valorContraparte };
+    // Quando o corretor do proprietário é a mesma pessoa do corretor da
+    // contraparte (comum em locação, um só corretor cuidando dos dois
+    // lados), oferece a opção de já lançar tudo somado numa despesa só —
+    // evita ter que lançar duas despesas manuais pro mesmo parceiro.
+    const mesmoCorretor = Boolean(
+      t.corretorProprietarioId && t.corretorContraparteId && t.corretorProprietarioId === t.corretorContraparteId
+    );
+    const valorCombinado = valorProprietario + valorContraparte;
+    return { honorarioTotal, valorParceria, restante, valorProprietario, valorContraparte, mesmoCorretor, valorCombinado };
   }, [ehCategoriaRepasse, transacaoSelecionadaParaCascata]);
 
-  function escolherParteRepasse(parte: "proprietario" | "contraparte") {
+  function escolherParteRepasse(parte: "proprietario" | "contraparte" | "combinado") {
     setParteRepasse(parte);
     setDescontoRepasseTexto("");
     if (!transacaoSelecionadaParaCascata || !cascataRepasse) return;
-    const base = parte === "proprietario" ? cascataRepasse.valorProprietario : cascataRepasse.valorContraparte;
+    const base =
+      parte === "proprietario"
+        ? cascataRepasse.valorProprietario
+        : parte === "contraparte"
+          ? cascataRepasse.valorContraparte
+          : cascataRepasse.valorCombinado;
     const corretorId =
-      parte === "proprietario" ? transacaoSelecionadaParaCascata.corretorProprietarioId : transacaoSelecionadaParaCascata.corretorContraparteId;
+      parte === "contraparte" ? transacaoSelecionadaParaCascata.corretorContraparteId : transacaoSelecionadaParaCascata.corretorProprietarioId;
     if (corretorId) setParceiroId(corretorId);
     setValor(formatValorEditavel(base));
   }
@@ -147,7 +160,12 @@ export function FinanceiroForm({
   function aplicarDescontoRepasse(texto: string) {
     setDescontoRepasseTexto(texto);
     if (!cascataRepasse || !parteRepasse) return;
-    const base = parteRepasse === "proprietario" ? cascataRepasse.valorProprietario : cascataRepasse.valorContraparte;
+    const base =
+      parteRepasse === "proprietario"
+        ? cascataRepasse.valorProprietario
+        : parteRepasse === "contraparte"
+          ? cascataRepasse.valorContraparte
+          : cascataRepasse.valorCombinado;
     const desconto = valorEditavelParaDecimal(texto) ?? 0;
     setValor(formatValorEditavel(Math.max(0, base - desconto)));
   }
@@ -369,6 +387,18 @@ export function FinanceiroForm({
                   )}
                 </div>
                 <div className="flex flex-col gap-2">
+                  {cascataRepasse.mesmoCorretor && (
+                    <button
+                      type="button"
+                      onClick={() => escolherParteRepasse("combinado")}
+                      className={`text-left text-xs px-3 py-2 rounded-lg border-2 ${
+                        parteRepasse === "combinado" ? "border-primary bg-primary/5" : "border-primary/30 hover:bg-white"
+                      }`}
+                    >
+                      Corretor único (proprietário + contraparte) — {transacaoSelecionadaParaCascata.corretorProprietarioNome} — soma{" "}
+                      <span className="font-semibold">{formatMoeda(cascataRepasse.valorCombinado)}</span>
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => escolherParteRepasse("proprietario")}
@@ -379,6 +409,7 @@ export function FinanceiroForm({
                   >
                     Corretor do proprietário — {transacaoSelecionadaParaCascata.corretorProprietarioNome ?? "sem corretor cadastrado"}{" "}
                     — <span className="font-semibold">{formatMoeda(cascataRepasse.valorProprietario)}</span>
+                    {cascataRepasse.mesmoCorretor && <span className="text-gray-400"> (só a metade dele)</span>}
                   </button>
                   <button
                     type="button"
@@ -390,6 +421,7 @@ export function FinanceiroForm({
                   >
                     Corretor da contraparte — {transacaoSelecionadaParaCascata.corretorContraparteNome ?? "sem corretor cadastrado"} —{" "}
                     <span className="font-semibold">{formatMoeda(cascataRepasse.valorContraparte)}</span>
+                    {cascataRepasse.mesmoCorretor && <span className="text-gray-400"> (só a outra metade dele)</span>}
                   </button>
                 </div>
                 {parteRepasse && (

@@ -51,7 +51,8 @@ export function MovimentacaoDetalhe({
   parceiros,
   action,
   excluirAction,
-  marcarPagoAction
+  marcarPagoAction,
+  pendenteRecebido
 }: {
   movimentacao: MovimentacaoParaVisualizar;
   categorias: CategoriaOpcao[];
@@ -60,6 +61,7 @@ export function MovimentacaoDetalhe({
   action: (formData: FormData) => void;
   excluirAction: (formData: FormData) => void;
   marcarPagoAction: (formData: FormData) => void;
+  pendenteRecebido?: boolean;
 }) {
   const [editando, setEditando] = useState(false);
   const m = movimentacao;
@@ -139,21 +141,35 @@ export function MovimentacaoDetalhe({
         <Linha
           label="Pago?"
           valor={
-            <form action={marcarPagoAction}>
-              <input type="hidden" name="movimentacaoId" value={m.id} />
-              <select
-                defaultValue={m.pago ? "pago" : "pendente"}
-                onChange={(e) => e.currentTarget.form?.requestSubmit()}
-                className={`text-sm font-semibold rounded-lg border px-2 py-1 outline-none ${
-                  m.pago ? "text-[#3C7A57] border-[#3C7A57]/30 bg-[#3C7A57]/5" : "text-gray-600 border-gray-300 bg-white"
+            <div className="flex items-center gap-2 flex-wrap">
+              <span
+                className={`font-semibold ${
+                  m.pago ? "text-[#3C7A57]" : pendenteRecebido ? "text-blue-700" : "text-gray-500"
                 }`}
               >
-                <option value="pendente">{rotuloPendente}</option>
-                <option value="pago">{rotuloPago}</option>
-              </select>
-            </form>
+                {m.pago ? rotuloPago : pendenteRecebido ? "Pendente - Recebido" : rotuloPendente}
+              </span>
+              <form action={marcarPagoAction}>
+                <input type="hidden" name="movimentacaoId" value={m.id} />
+                <button
+                  type="submit"
+                  className={`text-xs rounded-lg border px-2.5 py-1 font-semibold ${
+                    m.pago
+                      ? "border-gray-300 text-gray-600 hover:bg-gray-50"
+                      : "bg-primary text-white border-primary hover:opacity-90"
+                  }`}
+                >
+                  {m.pago ? `Marcar como ${rotuloPendente}` : `Marcar como ${rotuloPago}`}
+                </button>
+              </form>
+            </div>
           }
         />
+        {pendenteRecebido && !m.pago && (
+          <p className="text-[11px] text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-2 py-1.5 mt-1 mb-1">
+            O dinheiro já caiu na conta (o Recebimento de origem está marcado como recebido) — falta só repassar.
+          </p>
+        )}
         {m.pago && <Linha label="Data de pagamento" valor={m.data_pagamento ? formatDataCalendario(m.data_pagamento) : "—"} />}
         <Linha
           label="Comprovante"

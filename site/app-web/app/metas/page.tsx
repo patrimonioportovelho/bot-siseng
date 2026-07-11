@@ -1,6 +1,6 @@
 import { Topbar } from "@/components/topbar";
 import { prisma } from "@/lib/prisma";
-import { formatMoeda, formatData } from "@/lib/format";
+import { formatMoeda, formatDataCalendario } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -41,7 +41,7 @@ export default async function MetasPage() {
                     <td className="py-2 border-b border-gray-50">{m.lojas?.nome ?? "—"}</td>
                     <td className="py-2 border-b border-gray-50">{m.tipo_meta}</td>
                     <td className="py-2 border-b border-gray-50">
-                      {formatData(m.periodo_inicio)} – {formatData(m.periodo_fim)}
+                      {formatDataCalendario(m.periodo_inicio)} – {formatDataCalendario(m.periodo_fim)}
                     </td>
                     <td className="py-2 border-b border-gray-50 text-right">
                       {m.unidade === "valor" ? formatMoeda(m.valor_meta) : `${m.valor_meta} ${m.unidade}`}

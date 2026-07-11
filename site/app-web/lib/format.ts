@@ -29,10 +29,13 @@ export function formatMoeda(valor: unknown) {
   return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+// Usar só para colunas @db.Timestamptz (created_at, gerado_em, publicado_em,
+// criado_em, chave_atualizado_em...) — momentos reais, onde faz sentido
+// perguntar "que dia era isso em Porto Velho". timeZone explícito: sem isso,
+// o servidor (que roda em UTC) empurra horários da noite (Porto Velho,
+// UTC-4) pro dia seguinte na exibição.
 export function formatData(data: unknown) {
   if (!data) return "—";
-  // timeZone explícito: sem isso, o servidor (que roda em UTC) empurra
-  // horários da noite (Porto Velho, UTC-4) pro dia seguinte na exibição.
   return new Date(data as string).toLocaleDateString("pt-BR", { timeZone: "America/Porto_Velho" });
 }
 
@@ -41,6 +44,23 @@ export function formatData(data: unknown) {
 export function formatDataHora(data: unknown) {
   if (!data) return "—";
   return new Date(data as string).toLocaleString("pt-BR", { timeZone: "America/Porto_Velho" });
+}
+
+// Para colunas @db.Date (data_assinatura, data_vencimento, vencimento,
+// data_pagamento, periodo_inicio/fim, data_inicio, data_recebimento,
+// data_entrada, e o campo "data" de gestao_atividades/manutencao_atividades/
+// chaves) — essas colunas não têm horário nem fuso: são só um dia do
+// calendário, e o Prisma as devolve como Date à meia-noite UTC. Aplicar
+// timeZone "America/Porto_Velho" (como formatData faz pra timestamptz)
+// empurraria essa meia-noite UTC pro dia anterior em Porto Velho (UTC-4) —
+// foi exatamente esse bug: cadastrar "hoje" e ver salvo/exibido como
+// "ontem". Aqui não convertemos fuso nenhum, só lemos o dia como ele foi
+// gravado.
+export function formatDataCalendario(data: unknown): string {
+  if (!data) return "—";
+  const d = new Date(data as string);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("pt-BR", { timeZone: "UTC" });
 }
 
 // "Hoje" (ano/mês/dia) no fuso de Porto Velho — não usar `new Date()` puro

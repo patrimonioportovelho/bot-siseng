@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Topbar } from "@/components/topbar";
 import { Pagination } from "@/components/pagination";
 import { prisma } from "@/lib/prisma";
-import { formatMoeda, formatData, situacaoVencimento } from "@/lib/format";
+import { formatMoeda, formatDataCalendario, situacaoVencimento } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -354,8 +354,8 @@ export default async function FinanceiroPage({
                   {formatMoeda(m.valor)}
                   {temParcelas && <span className="text-gray-400 font-normal"> ({m.num_parcela}/{m.parcelas})</span>}
                 </span>
-                <span className={`text-xs whitespace-nowrap ${corTexto}`}>{formatData(m.vencimento)}</span>
-                <span className="text-xs text-gray-500 whitespace-nowrap">{m.data_pagamento ? formatData(m.data_pagamento) : "—"}</span>
+                <span className={`text-xs whitespace-nowrap ${corTexto}`}>{formatDataCalendario(m.vencimento)}</span>
+                <span className="text-xs text-gray-500 whitespace-nowrap">{m.data_pagamento ? formatDataCalendario(m.data_pagamento) : "—"}</span>
                 <span className="text-xs text-gray-500 truncate">{m.descricao ?? "—"}</span>
               </Link>
             );

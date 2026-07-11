@@ -1,7 +1,7 @@
 import { Topbar } from "@/components/topbar";
 import { Pagination } from "@/components/pagination";
 import { prisma } from "@/lib/prisma";
-import { formatMoeda, formatData } from "@/lib/format";
+import { formatMoeda, formatDataCalendario } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -78,7 +78,7 @@ export default async function FinanciamentoPage({
                   <td className="py-2 border-b border-gray-50">{a.imoveis?.endereco ?? "—"}</td>
                   <td className="py-2 border-b border-gray-50">{a.tipo_contrato ?? "—"}</td>
                   <td className="py-2 border-b border-gray-50">{a.lancamentos_financiamento.length}</td>
-                  <td className="py-2 border-b border-gray-50">{formatData(a.data_inicio)}</td>
+                  <td className="py-2 border-b border-gray-50">{formatDataCalendario(a.data_inicio)}</td>
                   <td className="py-2 border-b border-gray-50 text-right">{formatMoeda(a.valor_financiado)}</td>
                 </tr>
               ))}

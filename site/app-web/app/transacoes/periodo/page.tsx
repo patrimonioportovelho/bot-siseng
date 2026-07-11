@@ -3,7 +3,7 @@ import { Topbar } from "@/components/topbar";
 import { Pagination } from "@/components/pagination";
 import { StatusBadge } from "@/components/status-badge";
 import { prisma } from "@/lib/prisma";
-import { formatMoeda, formatData, statusTone, resolverPeriodo } from "@/lib/format";
+import { formatMoeda, formatDataCalendario, statusTone, resolverPeriodo } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -91,7 +91,7 @@ export default async function TransacoesPeriodoPage({
           <div className="text-sm font-bold text-gray-800">Transações do período ({total})</div>
         </div>
         <p className="text-[11px] text-gray-400 mb-3">
-          Período: {formatData(inicio)} até {formatData(new Date(fimExclusivo.getTime() - 1))}, pela Data de
+          Período: {formatDataCalendario(inicio)} até {formatDataCalendario(new Date(fimExclusivo.getTime() - 1))}, pela Data de
           assinatura.
         </p>
 
@@ -158,7 +158,7 @@ export default async function TransacoesPeriodoPage({
                   </td>
                   <td className="py-2 border-b border-gray-50 whitespace-nowrap">
                     <Link href={`/transacoes/${t.id}`} className="block">
-                      {formatData(t.data_assinatura)}
+                      {formatDataCalendario(t.data_assinatura)}
                     </Link>
                   </td>
                   <td className="py-2 border-b border-gray-50 text-right whitespace-nowrap">

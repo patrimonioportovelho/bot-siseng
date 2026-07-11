@@ -5,7 +5,7 @@ import { Topbar } from "@/components/topbar";
 import { prisma } from "@/lib/prisma";
 import { getAdminSession } from "@/lib/auth";
 import { ParceiroForm } from "@/components/parceiro-form";
-import { formatMoeda, formatData } from "@/lib/format";
+import { formatMoeda, formatData, formatDataCalendario } from "@/lib/format";
 import { atualizarParceiroAction, apagarParceiroAction } from "../actions";
 
 export const dynamic = "force-dynamic";
@@ -115,7 +115,7 @@ export default async function ParceiroDetalhePage({
         {desde && (
           <>
             {" "}
-            · desde {formatData(desde)}
+            · desde {formatDataCalendario(desde)}
             {primeiraTransacao?.tipo ? ` (${primeiraTransacao.tipo})` : ""}
           </>
         )}
@@ -173,7 +173,7 @@ export default async function ParceiroDetalhePage({
               <div key={p.id} className="text-xs text-gray-600 border-b border-gray-50 pb-1.5">
                 <span className="font-medium text-gray-800">{formatMoeda(p.valor_parceiro)}</span>{" "}
                 <span className="text-gray-400">
-                  · {p.status} · {formatData(p.data_recebimento)}
+                  · {p.status} · {formatDataCalendario(p.data_recebimento)}
                 </span>
               </div>
             ))}

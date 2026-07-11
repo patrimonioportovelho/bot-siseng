@@ -4,7 +4,7 @@ import { Topbar } from "@/components/topbar";
 import { prisma } from "@/lib/prisma";
 import { MovimentacaoDetalhe } from "@/components/movimentacao-detalhe";
 import { RateioForm } from "@/components/rateio-form";
-import { formatMoeda, formatPercentual, formatData } from "@/lib/format";
+import { formatMoeda, formatPercentual, formatDataCalendario } from "@/lib/format";
 import { atualizarMovimentacaoAction, gerarRateioAction } from "../actions";
 
 export const dynamic = "force-dynamic";
@@ -204,7 +204,7 @@ export default async function MovimentacaoPage({
               </div>
               <div>
                 <div className="text-[11px] text-gray-400">Data de assinatura</div>
-                <div className="text-xs text-gray-800">{formatData(transacaoVinculada.data_assinatura)}</div>
+                <div className="text-xs text-gray-800">{formatDataCalendario(transacaoVinculada.data_assinatura)}</div>
               </div>
             </div>
           </div>

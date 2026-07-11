@@ -6,7 +6,7 @@ import { getAdminSession } from "@/lib/auth";
 import { AdministracaoForm } from "@/components/administracao-form";
 import { StatusTransacaoSelect } from "@/components/status-transacao-select";
 import { FUNCOES_CAPTADOR } from "@/lib/administracoes/opcoes";
-import { formatMoeda, formatData } from "@/lib/format";
+import { formatMoeda, formatDataCalendario } from "@/lib/format";
 import { atualizarAdministracaoAction, apagarAdministracaoAction } from "../actions";
 
 export const dynamic = "force-dynamic";
@@ -153,7 +153,7 @@ export default async function AdministracaoDetalhePage({
                 <span className="text-xs font-medium text-gray-800 truncate">
                   {t.clientes_transacoes_cliente_contraparte_idToclientes?.nome ?? "—"}
                 </span>
-                <span className="text-xs text-gray-500">{formatData(t.data_assinatura)}</span>
+                <span className="text-xs text-gray-500">{formatDataCalendario(t.data_assinatura)}</span>
                 <span className="text-xs text-gray-600 text-right whitespace-nowrap">
                   {formatMoeda(t.valor_transacao)}
                 </span>

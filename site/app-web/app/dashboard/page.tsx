@@ -7,7 +7,7 @@ import { GraficoPizza } from "@/components/grafico-pizza";
 import { prisma } from "@/lib/prisma";
 import {
   formatMoeda,
-  formatData,
+  formatDataCalendario,
   statusTone,
   STATUS_TRANSACAO_EM_ABERTO,
   resolverPeriodo,
@@ -410,7 +410,7 @@ export default async function DashboardPage({
                   <td className="py-2 border-b border-gray-50">
                     <StatusBadge status={t.status ?? "—"} tone={statusTone(t.status)} />
                   </td>
-                  <td className="py-2 border-b border-gray-50 whitespace-nowrap">{formatData(t.data_assinatura)}</td>
+                  <td className="py-2 border-b border-gray-50 whitespace-nowrap">{formatDataCalendario(t.data_assinatura)}</td>
                   <td className="py-2 border-b border-gray-50 text-right whitespace-nowrap">
                     {formatMoeda(t.valor_transacao)}
                   </td>

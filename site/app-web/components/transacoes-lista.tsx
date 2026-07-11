@@ -2,7 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import {
   formatMoeda,
-  formatData,
+  formatDataCalendario,
   formatInscricao,
   calcularPrazoRestante,
   diasParaVencimento,
@@ -221,13 +221,13 @@ export async function TransacoesLista({ tipo, q, novoHref }: { tipo: "Locação"
                             )}
                           </span>
                           <span className={`text-xs whitespace-nowrap ${situacao === "vencido" ? "text-red-700" : "text-gray-500"}`}>
-                            {formatData(t.data_assinatura)}
+                            {formatDataCalendario(t.data_assinatura)}
                           </span>
                           {somenteLocacao && (
                             <span
                               className={`text-xs whitespace-nowrap ${situacao === "vencido" ? "text-red-700" : "text-gray-500"}`}
                             >
-                              {formatData(t.data_vencimento)}
+                              {formatDataCalendario(t.data_vencimento)}
                             </span>
                           )}
                           {somenteLocacao && (

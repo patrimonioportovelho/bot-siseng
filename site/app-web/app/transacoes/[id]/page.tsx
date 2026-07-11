@@ -4,7 +4,7 @@ import { Topbar } from "@/components/topbar";
 import { prisma } from "@/lib/prisma";
 import { getAdminSession } from "@/lib/auth";
 import { TransacaoForm } from "@/components/transacao-form";
-import { formatData, formatMoeda } from "@/lib/format";
+import { formatDataCalendario, formatMoeda } from "@/lib/format";
 import { atualizarTransacaoAction, apagarTransacaoAction } from "../actions";
 
 export const dynamic = "force-dynamic";
@@ -191,7 +191,7 @@ export default async function TransacaoDetalhePage({
         {nomesInteressados && <> · Interessado{interessados.length > 1 ? "s" : ""}: {nomesInteressados}</>}
       </div>
       <div className="text-xs text-gray-400 mb-4">
-        Assinatura: {formatData(transacao.data_assinatura)}
+        Assinatura: {formatDataCalendario(transacao.data_assinatura)}
         {" · "}Valor: {formatMoeda(transacao.valor_transacao)}
       </div>
 

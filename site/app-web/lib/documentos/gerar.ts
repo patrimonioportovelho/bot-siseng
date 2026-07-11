@@ -195,13 +195,19 @@ function percentual(valor: unknown): string {
   return `${n.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%`;
 }
 
+// d aqui é sempre coluna @db.Date (data_assinatura, data_vencimento,
+// data_pagamento, data_nascimento, vencimento, chaves.data...) — não tem
+// horário/fuso próprio, é só um dia do calendário gravado como meia-noite
+// UTC. timeZone "UTC" (não "America/Porto_Velho") evita empurrar essa
+// meia-noite pro dia anterior — era isso que fazia a Data de Assinatura do
+// contrato de Locação/Compra e Venda sair um dia antes do que foi digitado.
 function dataCurta(d: Date | null | undefined): string {
-  return d ? new Date(d).toLocaleDateString("pt-BR", { timeZone: "America/Porto_Velho" }) : "";
+  return d ? new Date(d).toLocaleDateString("pt-BR", { timeZone: "UTC" }) : "";
 }
 
 function mesReferencia(d: Date | null | undefined): string {
   if (!d) return "";
-  return new Date(d).toLocaleDateString("pt-BR", { month: "long", year: "numeric", timeZone: "America/Porto_Velho" });
+  return new Date(d).toLocaleDateString("pt-BR", { month: "long", year: "numeric", timeZone: "UTC" });
 }
 
 // Busca os dados da entidade e monta o objeto plano de placeholders (ver

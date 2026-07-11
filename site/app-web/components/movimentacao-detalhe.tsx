@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { FinanceiroEditarForm } from "@/components/financeiro-editar-form";
-import { formatMoeda, formatData } from "@/lib/format";
+import { formatMoeda, formatDataCalendario } from "@/lib/format";
 
 type CategoriaOpcao = { id: string; nome: string; tipo: string | null };
 type ClienteOpcao = { id: string; nome: string };
@@ -112,7 +112,7 @@ export function MovimentacaoDetalhe({
         <Linha label="Descrição" valor={m.descricao || "—"} />
         <Linha label="Forma de pagamento" valor={m.forma_pagamento || "—"} />
         {temParcelas && <Linha label="N° da parcela" valor={`${m.num_parcela} de ${m.parcelas}`} />}
-        <Linha label="Vencimento" valor={formatData(m.vencimento)} />
+        <Linha label="Vencimento" valor={formatDataCalendario(m.vencimento)} />
         <Linha label="Valor" valor={<span className="font-semibold">{formatMoeda(m.valor)}</span>} />
         <Linha
           label="Pago?"
@@ -122,7 +122,7 @@ export function MovimentacaoDetalhe({
             </span>
           }
         />
-        {m.pago && <Linha label="Data de pagamento" valor={m.data_pagamento ? formatData(m.data_pagamento) : "—"} />}
+        {m.pago && <Linha label="Data de pagamento" valor={m.data_pagamento ? formatDataCalendario(m.data_pagamento) : "—"} />}
         <Linha
           label="Comprovante"
           valor={

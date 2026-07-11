@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useTransition } from "react";
-import { formatData, hojeInputDate, hojePortoVelho } from "@/lib/format";
+import { formatDataCalendario, hojeInputDate, hojePortoVelho } from "@/lib/format";
 import { TIPOS_ATIVIDADE, TIPO_ATIVIDADE_LABEL } from "@/lib/manutencao/opcoes";
 
 type Atividade = { id: string; tipo: string; titulo: string; data: Date | string; feito: boolean; notas: string | null };
@@ -87,7 +87,7 @@ export function ManutencaoAtividades({
                 {a.notas && <div className="text-[11px] text-gray-400">{a.notas}</div>}
               </div>
               <span className={`text-[11px] whitespace-nowrap ${atrasada ? "text-[#B14226]" : "text-gray-400"}`}>
-                {formatData(dataAtividade)}
+                {formatDataCalendario(dataAtividade)}
               </span>
               <button
                 type="button"

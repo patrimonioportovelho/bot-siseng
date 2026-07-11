@@ -94,13 +94,22 @@ export default async function MovimentacaoPage({
       })
     : null;
 
-  const recebimentoOrigem =
-    movimentacao.tipo === "Despesa" && movimentacao.transacao_id
-      ? await prisma.movimentacoes.findFirst({
-          where: { tipo: "Recebimento", transacao_id: movimentacao.transacao_id },
-          select: { id: true, valor: true, pago: true, categorias_financeiras: { select: { nome: true } } }
-        })
-      : null;
+  // Recebimento que efetivamente gerou esta despesa de repasse — via
+  // pagamento_id -> pagamentos.recebimento_id (não mais um "chute" pelo
+  // transacao_id, que numa Locação com vários meses podia linkar com o
+  // recebimento errado).
+  const recebimentoOrigem = movimentacao.pagamento_id
+    ? await prisma.pagamentos
+        .findUnique({ where: { id: movimentacao.pagamento_id }, select: { recebimento_id: true } })
+        .then((pagamento) =>
+          pagamento?.recebimento_id
+            ? prisma.movimentacoes.findUnique({
+                where: { id: pagamento.recebimento_id },
+                select: { id: true, valor: true, pago: true, categorias_financeiras: { select: { nome: true } } }
+              })
+            : null
+        )
+    : null;
 
   const destinatarioRepasse =
     movimentacao.tipo === "Despesa" && movimentacao.parceiro_id && movimentacao.parceiros
@@ -131,10 +140,13 @@ export default async function MovimentacaoPage({
           }
         : null;
 
+  // Filtrado por recebimento_id (este mês/recebimento específico), não por
+  // transacao_id — senão o rateio do mês 1 de uma Locação escondia o botão
+  // de gerar rateio dos meses seguintes, que têm o mesmo transacao_id.
   const pagamentosExistentes =
     movimentacao.tipo === "Recebimento" && transacaoVinculada
       ? await prisma.pagamentos.findMany({
-          where: { transacao_id: transacaoVinculada.id },
+          where: { recebimento_id: movimentacao.id },
           orderBy: { created_at: "asc" },
           include: {
             parceiros: { select: { nome: true } },

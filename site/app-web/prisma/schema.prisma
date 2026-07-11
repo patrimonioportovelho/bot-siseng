@@ -567,6 +567,9 @@ model movimentacoes {
   cliente_proprietario_id  String?                @db.Uuid
   categorias_financeiras   categorias_financeiras @relation(fields: [categoria_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   pagamentos               pagamentos?            @relation(fields: [pagamento_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  // Rateios (pagamentos) que este Recebimento específico gerou — usado pra
+  // saber se o rateio já foi feito PARA ESTE MÊS (não pra transação inteira).
+  pagamentos_rateios      pagamentos[]           @relation("pagamentos_recebimento")
   parceiros                parceiros?             @relation(fields: [parceiro_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   transacoes               transacoes?            @relation(fields: [transacao_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   clientes_interessado     clientes?              @relation("movimentacoes_cliente_interessado_idToclientes", fields: [cliente_interessado_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -602,15 +605,24 @@ model pagamentos {
   valor_report     Decimal?        @db.Decimal(14, 2)
   data_report      DateTime?       @db.Date
   arquivo_url      String?
+  // Recebimento (mensalidade/parcela) que efetivamente disparou este rateio —
+  // essencial pra Locação, que tem N Recebimentos (um por mês) com o mesmo
+  // transacao_id: sem isso, o sistema achava (olhando só o transacao_id) que
+  // "essa transação já foi rateada" assim que o mês 1 rodava, e travava o
+  // rateio dos meses seguintes pra sempre. Nullable pra não quebrar os
+  // registros antigos (serão preenchidos via backfill).
+  recebimento_id   String?         @db.Uuid
   created_at       DateTime        @default(now()) @db.Timestamptz(6)
   updated_at       DateTime        @default(now()) @db.Timestamptz(6)
-  movimentacoes    movimentacoes[]
+  movimentacoes             movimentacoes[]
+  movimentacoes_recebimento movimentacoes?  @relation("pagamentos_recebimento", fields: [recebimento_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   clientes         clientes?       @relation(fields: [cliente_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   parceiros        parceiros       @relation(fields: [parceiro_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   transacoes       transacoes      @relation(fields: [transacao_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([parceiro_id], map: "idx_pagamentos_parceiro")
   @@index([transacao_id], map: "idx_pagamentos_transacao")
+  @@index([recebimento_id], map: "idx_pagamentos_recebimento")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.

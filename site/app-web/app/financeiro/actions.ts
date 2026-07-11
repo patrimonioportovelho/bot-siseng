@@ -292,9 +292,12 @@ export async function gerarRateioAction(formData: FormData) {
     throw new Error("Nenhuma linha de rateio informada.");
   }
 
-  const jaExiste = await prisma.pagamentos.findFirst({ where: { transacao_id: transacaoId } });
+  // Checagem por recebimento_id (não transacao_id): uma Locação tem N
+  // Recebimentos (um por mês) com o mesmo transacao_id, então travar por
+  // transação inteira impedia o rateio dos meses seguintes depois do 1°.
+  const jaExiste = await prisma.pagamentos.findFirst({ where: { recebimento_id: recebimentoId } });
   if (jaExiste) {
-    throw new Error("O rateio dessa transação já foi gerado.");
+    throw new Error("O rateio desse recebimento já foi gerado.");
   }
 
   const [categoria, transacao] = await Promise.all([
@@ -320,6 +323,7 @@ export async function gerarRateioAction(formData: FormData) {
         data: {
           status: "Pendente",
           transacao_id: transacaoId,
+          recebimento_id: recebimentoId,
           cliente_id: transacao.cliente_id,
           tipo: transacao.tipo,
           parceiro_id: linha.parceiro_id,

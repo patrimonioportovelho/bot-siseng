@@ -49,13 +49,15 @@ export function MovimentacaoDetalhe({
   categorias,
   clientes,
   parceiros,
-  action
+  action,
+  excluirAction
 }: {
   movimentacao: MovimentacaoParaVisualizar;
   categorias: CategoriaOpcao[];
   clientes: ClienteOpcao[];
   parceiros: ParceiroOpcao[];
   action: (formData: FormData) => void;
+  excluirAction: (formData: FormData) => void;
 }) {
   const [editando, setEditando] = useState(false);
   const m = movimentacao;
@@ -92,13 +94,31 @@ export function MovimentacaoDetalhe({
     <div className="bg-white border border-gray-200 rounded-xl p-4">
       <div className="flex items-center justify-between mb-1">
         <div className="text-sm font-bold text-gray-800">{m.tipo}</div>
-        <button
-          type="button"
-          onClick={() => setEditando(true)}
-          className="text-xs bg-primary text-white rounded-lg px-3 py-1.5 font-semibold"
-        >
-          Editar
-        </button>
+        <div className="flex gap-1.5">
+          <button
+            type="button"
+            onClick={() => setEditando(true)}
+            className="text-xs bg-primary text-white rounded-lg px-3 py-1.5 font-semibold"
+          >
+            Editar
+          </button>
+          <form
+            action={excluirAction}
+            onSubmit={(e) => {
+              if (!window.confirm("Excluir esta movimentação de vez? Essa ação não pode ser desfeita.")) {
+                e.preventDefault();
+              }
+            }}
+          >
+            <input type="hidden" name="movimentacaoId" value={m.id} />
+            <button
+              type="submit"
+              className="text-xs border border-red-200 text-red-600 rounded-lg px-3 py-1.5 font-semibold hover:bg-red-50"
+            >
+              Excluir
+            </button>
+          </form>
+        </div>
       </div>
 
       <div className="flex flex-col">

@@ -184,6 +184,36 @@ export async function atualizarMovimentacaoAction(formData: FormData) {
   redirect(`/financeiro/${id}?salvo=1`);
 }
 
+// Exclui de vez uma movimentação (Despesa ou Recebimento) — pedido pra
+// corrigir lançamento errado ou duplicado sem deixar rastro no financeiro.
+// Não tenta desfazer rateio nem repasse vinculados: se a movimentação for
+// uma despesa gerada automaticamente (gerado_automaticamente) ou tiver um
+// recebimento/transação ligados, quem exclui deve conferir antes se isso não
+// vai deixar outra tela (Rateio, Transação) com referência solta.
+export async function excluirMovimentacaoAction(formData: FormData) {
+  await requireAdminSession();
+
+  const id = texto(formData, "movimentacaoId");
+  if (!id) throw new Error("Movimentação inválida.");
+
+  const antes = await prisma.movimentacoes.findUnique({ where: { id } });
+  if (!antes) throw new Error("Movimentação não encontrada.");
+
+  await prisma.movimentacoes
+    .delete({ where: { id } })
+    .catch((erro) => registrarEJogarErro({ entidadeTipo: "movimentacoes", entidadeId: id, acao: "excluir", erro }));
+
+  await logAlteracao({
+    entidadeTipo: "movimentacoes",
+    entidadeId: id,
+    acao: "excluir",
+    dadosAntes: antes
+  });
+
+  revalidatePath("/financeiro");
+  redirect(`/financeiro?tipo=${antes.tipo === "Recebimento" ? "recebimento" : "despesa"}&excluido=1`);
+}
+
 // Marca/desmarca como Pago-Recebido direto da lista ou do detalhe, sem abrir
 // o formulário de edição inteiro — usado no botão rápido "Marcar como pago".
 export async function marcarPagoAction(formData: FormData) {

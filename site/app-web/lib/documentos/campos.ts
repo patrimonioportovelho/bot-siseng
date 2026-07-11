@@ -9,7 +9,8 @@ export type TipoDocumento =
   | "recibo_honorarios"
   | "repasse_administracao"
   | "repasse_primeira_locacao"
-  | "contrato_gestao";
+  | "contrato_gestao"
+  | "proposta_compra_venda";
 
 export type CampoDocumento = {
   campo: string;
@@ -213,6 +214,30 @@ export const CAMPOS_DOCUMENTO: Record<TipoDocumento, CampoDocumento[]> = {
     { campo: "DataFechamento", descricao: "Data de fechamento do contrato (dd/mm/aaaa)" },
     { campo: "Corretor", descricao: "Nome do corretor responsável (parceiro logado no portal)" },
     { campo: "CorretorCpf", descricao: "CPF do corretor responsável" },
+    { campo: "Creci", descricao: "CRECI do corretor responsável" }
+  ],
+  // Nasce do formulário "Proposta de Compra e Venda" no portal do corretor
+  // (app/portal/proposta/novo) — diferente do Contrato de Gestão, o imóvel
+  // aqui NUNCA é cadastrado de verdade: é só texto livre, direto no merge do
+  // documento, porque a proposta normalmente é sobre um imóvel externo (sem
+  // proprietário na base). Cliente segue o mesmo padrão de reaproveitar
+  // cadastro existente do corretor ou criar um novo.
+  proposta_compra_venda: [
+    { campo: "ParceiroCorretor", descricao: "Nome do corretor logado no portal que está fazendo a proposta" },
+    { campo: "NomeRazaoSocial", descricao: "Nome/razão social do cliente (comprador/interessado)" },
+    { campo: "CpfCnpj", descricao: "CPF ou CNPJ do cliente" },
+    { campo: "EnderecoCompleto", descricao: "Endereço completo do cliente" },
+    { campo: "EstadoCivil", descricao: "Estado civil do cliente" },
+    { campo: "Descricao", descricao: "Descrição livre do imóvel (não cadastrado no sistema)" },
+    { campo: "Rua", descricao: "Rua do imóvel (texto livre, não persistido)" },
+    { campo: "Numero", descricao: "Número do imóvel (texto livre, não persistido)" },
+    { campo: "Complemento", descricao: "Complemento do imóvel (texto livre, não persistido)" },
+    { campo: "Bairro", descricao: "Bairro do imóvel (texto livre, não persistido)" },
+    { campo: "Cidade", descricao: "Cidade do imóvel (texto livre, não persistido)" },
+    { campo: "Estado", descricao: "Estado do imóvel (texto livre, não persistido)" },
+    { campo: "ValorProposta", descricao: "Valor que o comprador pretende pagar, em R$ e por extenso" },
+    { campo: "FormaPagamento", descricao: "Condições de pagamento propostas, uma por linha" },
+    { campo: "DataFechamento", descricao: "Data da proposta (dd/mm/aaaa)" },
     { campo: "Creci", descricao: "CRECI do corretor responsável" }
   ]
 };

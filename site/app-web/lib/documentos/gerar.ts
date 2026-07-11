@@ -22,7 +22,8 @@ const ARQUIVO_TEMPLATE: Record<TipoDocumento, string> = {
   recibo_honorarios: "recibo_honorarios.docx",
   repasse_administracao: "repasse_administracao.docx",
   repasse_primeira_locacao: "repasse_primeira_locacao.docx",
-  contrato_gestao: "contrato_gestao.docx"
+  contrato_gestao: "contrato_gestao.docx",
+  proposta_compra_venda: "proposta_compra_venda.docx"
 };
 
 // URL do serviço de conversão docx -> PDF (Gotenberg rodando no Railway).
@@ -41,7 +42,8 @@ export type GerarDocumentoParams = {
     | "parceiro"
     | "chaves"
     | "movimentacao"
-    | "gestao";
+    | "gestao"
+    | "proposta";
   entidadeId: string;
   usuarioId?: string;
 };
@@ -62,7 +64,8 @@ export const ENTIDADE_POR_DOCUMENTO: Record<TipoDocumento, GerarDocumentoParams[
   recibo_honorarios: "movimentacao",
   repasse_administracao: "movimentacao",
   repasse_primeira_locacao: "movimentacao",
-  contrato_gestao: "gestao"
+  contrato_gestao: "gestao",
+  proposta_compra_venda: "proposta"
 };
 
 export async function gerarDocumento(params: GerarDocumentoParams): Promise<string> {
@@ -231,6 +234,8 @@ async function montarDadosDoMerge(
       return montarDadosMovimentacao(tipoDocumento, entidadeId);
     case "contrato_gestao":
       return montarDadosContratoGestao(entidadeId);
+    case "proposta_compra_venda":
+      return montarDadosProposta(entidadeId);
   }
 }
 
@@ -610,6 +615,45 @@ async function montarDadosContratoGestao(gestaoId: string): Promise<Record<strin
     Corretor: g.parceiros?.nome ?? "",
     CorretorCpf: formatarCpf(g.parceiros?.cpf ?? ""),
     Creci: g.parceiros?.creci ?? ""
+  };
+}
+
+// Proposta de Compra e Venda — nasce do formulário homônimo no portal do
+// corretor (app/portal/proposta/novo). Diferente do Contrato de Gestão, o
+// imóvel NUNCA é um registro real de `imoveis`: rua/número/complemento/
+// bairro/cidade/estado/descrição ficam gravados só como texto direto nesta
+// linha de `propostas` (a proposta normalmente é sobre imóvel externo, sem
+// proprietário cadastrado). ValorProposta segue o mesmo padrão de
+// ValorTransacao do contrato de compra e venda: número + por extenso.
+async function montarDadosProposta(propostaId: string): Promise<Record<string, unknown>> {
+  const p = await prisma.propostas.findUnique({
+    where: { id: propostaId },
+    include: {
+      clientes: { include: { cidades: true, estados: true } },
+      parceiros: true
+    }
+  });
+  if (!p) throw new Error(`Proposta "${propostaId}" não encontrada.`);
+
+  const cliente = p.clientes;
+
+  return {
+    ParceiroCorretor: p.parceiros?.nome ?? "",
+    NomeRazaoSocial: cliente.nome,
+    CpfCnpj: docTexto(cliente),
+    EnderecoCompleto: enderecoClienteCompleto(cliente),
+    EstadoCivil: cliente.estado_civil ?? "",
+    Descricao: p.descricao ?? "",
+    Rua: p.rua ?? "",
+    Numero: p.numero ?? "",
+    Complemento: p.complemento ?? "",
+    Bairro: p.bairro ?? "",
+    Cidade: p.cidade ?? "",
+    Estado: p.estado ?? "",
+    ValorProposta: `${numero(p.valor_proposta)} (${valorPorExtenso(Number(p.valor_proposta))})`,
+    FormaPagamento: p.forma_pagamento ?? "",
+    DataFechamento: dataCurta(p.data_fechamento),
+    Creci: p.parceiros?.creci ?? ""
   };
 }
 

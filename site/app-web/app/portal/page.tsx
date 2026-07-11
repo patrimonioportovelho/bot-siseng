@@ -47,7 +47,7 @@ export default async function PortalPage() {
       <PortalHeader nome={session.nome} />
 
       <div className="max-w-4xl mx-auto px-4 py-6">
-        <div className="mb-4">
+        <div className="mb-4 flex flex-col gap-3">
           <Link
             href="/portal/gestao/novo"
             className="flex items-center justify-between gap-3 bg-primary text-white rounded-xl px-4 py-4 hover:opacity-90 transition-opacity"
@@ -56,6 +56,19 @@ export default async function PortalPage() {
               <div className="text-sm font-bold">Elaboração de Contrato de Gestão</div>
               <div className="text-xs opacity-80 mt-0.5">
                 Preencha os dados do cliente e do imóvel para gerar o contrato de captação exclusiva
+              </div>
+            </div>
+            <span className="text-xl leading-none">→</span>
+          </Link>
+
+          <Link
+            href="/portal/proposta/novo"
+            className="flex items-center justify-between gap-3 bg-primary text-white rounded-xl px-4 py-4 hover:opacity-90 transition-opacity"
+          >
+            <div>
+              <div className="text-sm font-bold">Proposta de Compra e Venda</div>
+              <div className="text-xs opacity-80 mt-0.5">
+                Preencha os dados do cliente e do imóvel para gerar a proposta (imóvel não é cadastrado)
               </div>
             </div>
             <span className="text-xl leading-none">→</span>

@@ -227,6 +227,7 @@ model clientes {
   lojas                                                  lojas?        @relation(fields: [loja_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   parceiros                                              parceiros?    @relation(fields: [parceiro_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   gestoes                                                gestoes[]
+  propostas                                              propostas[]
   imoveis_proprietarios                                  imoveis_proprietarios[]
   pagamentos                                             pagamentos[]
   transacoes_contrapartes                                transacoes_contrapartes[]
@@ -673,6 +674,7 @@ model parceiros {
   contratos_corretor                                                          contratos_corretor[]
   encerramentos_transacao                                                     encerramentos_transacao[]
   gestoes                                                                     gestoes[]
+  propostas                                                                   propostas[]
   imoveis                                                                     imoveis[]
   logs_acesso                                                                 logs_acesso[]
   logs_alteracao                                                              logs_alteracao[]
@@ -696,6 +698,38 @@ model parceiros {
 
   @@index([loja_id], map: "idx_parceiros_loja")
   @@index([nome], map: "idx_parceiros_nome")
+}
+
+// Nasce do formulário "Proposta de Compra e Venda" no portal do corretor
+// (app/portal/proposta/novo) — diferente da Gestão, o imóvel aqui NUNCA é
+// cadastrado de verdade (rua/numero/complemento/bairro/cidade/estado ficam
+// só em texto, direto nesta linha): a proposta normalmente é sobre um imóvel
+// externo, sem proprietário na base. cliente_id é sempre reaproveitado ou
+// criado do mesmo jeito que em Gestões (nunca editado por aqui). forma_pagamento
+// já vem pronta em texto (várias condições, uma por linha), montada no
+// formulário a partir de linhas tipo/valor/forma/parcelas/momento/data — não
+// existe uma tabela própria de condições porque a proposta não é uma
+// transação de verdade.
+model propostas {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  parceiro_id       String    @db.Uuid
+  cliente_id        String    @db.Uuid
+  descricao         String?
+  rua               String?
+  numero            String?
+  complemento       String?
+  bairro            String?
+  cidade            String?
+  estado            String?
+  valor_proposta    Decimal   @db.Decimal(14, 2)
+  forma_pagamento   String?
+  data_fechamento   DateTime  @default(dbgenerated("CURRENT_DATE")) @db.Date
+  created_at        DateTime  @default(now()) @db.Timestamptz(6)
+  parceiros         parceiros @relation(fields: [parceiro_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  clientes          clientes  @relation(fields: [cliente_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([parceiro_id], map: "idx_propostas_parceiro")
+  @@index([cliente_id], map: "idx_propostas_cliente")
 }
 
 /// Notícias e editais gerenciados em Configurações. Aparecem na página

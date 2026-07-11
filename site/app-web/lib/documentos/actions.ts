@@ -196,6 +196,29 @@ export async function buscarRegistrosAction(
       });
       return rows.map((p) => ({ id: p.id, label: p.nome }));
     }
+    case "proposta": {
+      // Proposta de Compra e Venda nasce sempre do portal do corretor (o
+      // imóvel nem é cadastrado de verdade) — isso aqui só existe pra dar pra
+      // baixar de novo uma proposta já gerada, caso precise, buscando pelo
+      // nome do cliente ou pela rua digitada na hora.
+      const rows = await prisma.propostas.findMany({
+        where: termo
+          ? {
+              OR: [
+                { clientes: { nome: { contains: termo, mode: "insensitive" } } },
+                { rua: { contains: termo, mode: "insensitive" } }
+              ]
+            }
+          : undefined,
+        include: { clientes: true },
+        orderBy: { created_at: "desc" },
+        take: 20
+      });
+      return rows.map((p: { id: string; rua: string | null; clientes: { nome: string } }) => ({
+        id: p.id,
+        label: `${p.clientes.nome} — ${p.rua ?? "sem endereço"}`
+      }));
+    }
   }
 }
 

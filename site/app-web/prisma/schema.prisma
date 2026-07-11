@@ -686,9 +686,10 @@ model parceiros {
   @@index([nome], map: "idx_parceiros_nome")
 }
 
-/// Notícias e editais mostrados na página pública (fora do login) — separado
-/// da tabela "noticias" já existente, que só aparece pro corretor logado no
-/// Portal. Gerenciado em Configurações.
+/// Notícias e editais gerenciados em Configurações. Aparecem na página
+/// pública (fora do login) e, quando portal_corretor = true, também no
+/// mural do Portal do Corretor. Substituiu a tabela "noticias" antiga
+/// (mantida no schema só por compatibilidade, sem tela própria e sem uso).
 model publicacoes_site {
   id                String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tipo              String     @default("Noticia")
@@ -697,6 +698,12 @@ model publicacoes_site {
   corpo             String
   imagem_url        String?
   ativo             Boolean    @default(true)
+  // Controla se a publicação também aparece no mural de Notícias do Portal
+  // do Corretor (app/portal/page.tsx), além do mural público em /login. A
+  // tabela "noticias" citada no comentário acima nunca teve tela de
+  // cadastro própria (só dava pra popular direto no banco) — foi
+  // substituída por esse campo, unificando tudo numa publicação só.
+  portal_corretor   Boolean    @default(false)
   publicado_em      DateTime   @default(now()) @db.Timestamptz(6)
   autor_parceiro_id String?    @db.Uuid
   created_at        DateTime   @default(now()) @db.Timestamptz(6)
@@ -704,6 +711,7 @@ model publicacoes_site {
   parceiros         parceiros? @relation(fields: [autor_parceiro_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([ativo, publicado_em], map: "idx_publicacoes_site_ativo")
+  @@index([portal_corretor, ativo, publicado_em], map: "idx_publicacoes_site_portal")
 }
 
 /// Mensagens do formulário de SAC da página pública — não envia e-mail
@@ -937,6 +945,10 @@ model logs_erro {
   @@index([visto, criado_em], map: "idx_logs_erro_visto")
 }
 
+/// DEPRECADA — sem tela de cadastro própria, ninguém escreve mais aqui.
+/// O mural do Portal do Corretor passou a usar publicacoes_site (campo
+/// portal_corretor). Mantida só pra não quebrar quem já tinha registro
+/// antigo direto no banco; não apagar sem checar antes.
 model noticias {
   id                String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   titulo            String

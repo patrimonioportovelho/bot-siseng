@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { logAlteracao, requireAdm, aprovarSolicitacaoAction, rejeitarSolicitacaoAction, hashSenha } from "@/lib/auth";
+import { subirImagemPublicacao, apagarImagemPublicacao } from "@/lib/supabase-admin";
 
 // Libera (ou troca) o acesso de alguém direto, sem passar pela fila de
 // solicitação — útil pro cadastro inicial de cada parceiro e também pra você
@@ -50,40 +51,63 @@ export async function rejeitarAcessoAction(formData: FormData) {
   redirect("/configuracoes?rejeitado=1");
 }
 
-// Notícias e editais do site público (login) — separado da tabela "noticias"
-// (essa é só pro corretor logado no Portal). Sem publicação automática por
-// e-mail nem nada externo: é só um CRUD simples pra manter o site atualizado.
-function dadosPublicacao(formData: FormData) {
+// Notícias e editais — gerenciadas aqui, aparecem no mural público (/login)
+// e, quando "portal_corretor" estiver marcado, também no mural do Portal do
+// Corretor (substituiu a antiga tabela "noticias", que nunca teve tela de
+// cadastro própria). Sem publicação automática por e-mail nem nada externo:
+// é só um CRUD simples pra manter os dois murais atualizados.
+function dadosBasePublicacao(formData: FormData) {
   return {
     tipo: String(formData.get("tipo") ?? "Noticia"),
     titulo: String(formData.get("titulo") ?? "").trim(),
     resumo: String(formData.get("resumo") ?? "").trim() || null,
     corpo: String(formData.get("corpo") ?? "").trim(),
-    imagem_url: String(formData.get("imagem_url") ?? "").trim() || null,
-    ativo: formData.get("ativo") === "on"
+    ativo: formData.get("ativo") === "on",
+    portal_corretor: formData.get("portal_corretor") === "on"
   };
+}
+
+// Lê o arquivo de imagem do form (se algum foi escolhido). Formulários sem
+// input de arquivo preenchido chegam aqui com um File vazio (size 0) — trata
+// como "nenhuma imagem enviada" em vez de tentar subir um arquivo vazio.
+function arquivoImagem(formData: FormData): File | null {
+  const arquivo = formData.get("imagem");
+  if (arquivo instanceof File && arquivo.size > 0) return arquivo;
+  return null;
 }
 
 export async function criarPublicacaoAction(formData: FormData) {
   const admin = await requireAdm();
-  const dados = dadosPublicacao(formData);
+  const dados = dadosBasePublicacao(formData);
   if (!dados.titulo || !dados.corpo) {
     redirect(`/configuracoes?erro=${encodeURIComponent("Preencha título e texto da publicação.")}`);
   }
 
+  const arquivo = arquivoImagem(formData);
+  let imagem_url: string | null = null;
+  if (arquivo) {
+    try {
+      imagem_url = await subirImagemPublicacao(arquivo);
+    } catch (erro) {
+      const mensagem = erro instanceof Error ? erro.message : "Falha ao subir a imagem.";
+      redirect(`/configuracoes?erro=${encodeURIComponent(mensagem)}`);
+    }
+  }
+
   const criada = await prisma.publicacoes_site.create({
-    data: { ...dados, autor_parceiro_id: admin.parceiroId }
+    data: { ...dados, imagem_url, autor_parceiro_id: admin.parceiroId }
   });
 
   await logAlteracao({
     entidadeTipo: "publicacoes_site",
     entidadeId: criada.id,
     acao: "criar",
-    dadosDepois: dados
+    dadosDepois: { ...dados, imagem_url }
   });
 
   revalidatePath("/configuracoes");
   revalidatePath("/login");
+  revalidatePath("/portal");
   redirect("/configuracoes?salvo_publicacao=1");
 }
 
@@ -91,15 +115,38 @@ export async function atualizarPublicacaoAction(formData: FormData) {
   await requireAdm();
   const id = String(formData.get("publicacaoId") ?? "");
   if (!id) redirect(`/configuracoes?erro=${encodeURIComponent("Publicação inválida.")}`);
-  const dados = dadosPublicacao(formData);
+  const dados = dadosBasePublicacao(formData);
   if (!dados.titulo || !dados.corpo) {
     redirect(`/configuracoes?erro=${encodeURIComponent("Preencha título e texto da publicação.")}`);
   }
 
   const antes = await prisma.publicacoes_site.findUnique({ where: { id } });
+  if (!antes) redirect(`/configuracoes?erro=${encodeURIComponent("Publicação não encontrada.")}`);
+
+  // Três cenários pra imagem: (1) escolheu um arquivo novo — sobe e troca,
+  // apagando a antiga do Storage pra não deixar lixo; (2) marcou "remover
+  // imagem" sem escolher outra — só apaga e limpa o campo; (3) não mexeu em
+  // nada — mantém a imagem que já estava.
+  const arquivo = arquivoImagem(formData);
+  const removerImagem = formData.get("remover_imagem") === "on";
+  let imagem_url = antes!.imagem_url;
+
+  if (arquivo) {
+    try {
+      imagem_url = await subirImagemPublicacao(arquivo);
+    } catch (erro) {
+      const mensagem = erro instanceof Error ? erro.message : "Falha ao subir a imagem.";
+      redirect(`/configuracoes?erro=${encodeURIComponent(mensagem)}`);
+    }
+    await apagarImagemPublicacao(antes!.imagem_url);
+  } else if (removerImagem) {
+    await apagarImagemPublicacao(antes!.imagem_url);
+    imagem_url = null;
+  }
+
   await prisma.publicacoes_site.update({
     where: { id },
-    data: { ...dados, updated_at: new Date() }
+    data: { ...dados, imagem_url, updated_at: new Date() }
   });
 
   await logAlteracao({
@@ -107,11 +154,13 @@ export async function atualizarPublicacaoAction(formData: FormData) {
     entidadeId: id,
     acao: "editar",
     dadosAntes: antes,
-    dadosDepois: dados
+    dadosDepois: { ...dados, imagem_url }
   });
 
   revalidatePath("/configuracoes");
   revalidatePath("/login");
+  revalidatePath("/portal");
+  revalidatePath(`/noticias/${id}`);
   redirect("/configuracoes?salvo_publicacao=1");
 }
 
@@ -138,8 +187,12 @@ export async function alternarAtivoPublicacaoAction(formData: FormData) {
 
   revalidatePath("/configuracoes");
   revalidatePath("/login");
+  revalidatePath("/portal");
 }
 
+// Excluir de verdade (não só desativar) — pedido explícito pra poder
+// cancelar uma publicação sem deixar registro/arquivo parado ocupando
+// espaço à toa. Some da tela e apaga também a imagem do Storage, se tiver.
 export async function excluirPublicacaoAction(formData: FormData) {
   await requireAdm();
   const id = String(formData.get("publicacaoId") ?? "");
@@ -149,6 +202,7 @@ export async function excluirPublicacaoAction(formData: FormData) {
   if (!antes) return;
 
   await prisma.publicacoes_site.delete({ where: { id } });
+  await apagarImagemPublicacao(antes.imagem_url);
 
   await logAlteracao({
     entidadeTipo: "publicacoes_site",
@@ -159,6 +213,7 @@ export async function excluirPublicacaoAction(formData: FormData) {
 
   revalidatePath("/configuracoes");
   revalidatePath("/login");
+  revalidatePath("/portal");
 }
 
 // Mensagens do SAC — o site público só grava a mensagem (ver

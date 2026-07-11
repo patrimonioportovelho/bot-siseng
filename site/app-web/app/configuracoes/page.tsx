@@ -282,10 +282,11 @@ export default async function ConfiguracoesPage({
       </div>
 
       <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4">
-        <div className="text-sm font-bold text-gray-800 mb-1">Notícias e editais (site público)</div>
+        <div className="text-sm font-bold text-gray-800 mb-1">Notícias e editais</div>
         <p className="text-xs text-gray-500 mb-3">
-          Aparecem na página pública (fora do login), na seção "Notícias e editais". Desative em vez de
-          excluir se só quiser tirar de circulação por enquanto.
+          Aparecem na página pública (fora do login), na seção "Notícias e editais", e também no mural do
+          Portal do Corretor se marcar essa opção abaixo. Desative em vez de excluir se só quiser tirar de
+          circulação por enquanto — excluir apaga o registro e a imagem de vez.
         </p>
 
         <details className="mb-4 bg-gray-50/50 border border-dashed border-gray-200 rounded-lg">
@@ -333,14 +334,22 @@ export default async function ConfiguracoesPage({
               />
             </div>
             <div>
-              <label className="text-xs text-gray-600 block mb-1">Imagem (link, opcional)</label>
+              <label className="text-xs text-gray-600 block mb-1">Imagem (opcional)</label>
               <input
-                name="imagem_url"
-                className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full outline-none focus:border-primary"
+                type="file"
+                name="imagem"
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full outline-none focus:border-primary bg-white file:mr-2 file:text-xs file:border-0 file:bg-gray-100 file:rounded file:px-2 file:py-1"
               />
+              <p className="text-[10px] text-gray-400 mt-1">
+                Recomendado: imagem quadrada, 1080x1080px (o mesmo tamanho de um post pronto pra WhatsApp/Instagram).
+              </p>
             </div>
             <label className="flex items-center gap-2 text-xs text-gray-600">
               <input type="checkbox" name="ativo" defaultChecked /> Publicar já (visível no site)
+            </label>
+            <label className="flex items-center gap-2 text-xs text-gray-600">
+              <input type="checkbox" name="portal_corretor" /> Mostrar também no mural do Portal do Corretor
             </label>
             <div>
               <button type="submit" className="text-xs bg-primary text-white rounded-lg px-3 py-1.5 font-semibold">
@@ -358,6 +367,14 @@ export default async function ConfiguracoesPage({
               <details key={p.id} className="border border-gray-200 rounded-lg">
                 <summary className="flex items-center justify-between gap-2 px-3 py-2 cursor-pointer text-xs">
                   <span className="flex items-center gap-2 min-w-0">
+                    {p.imagem_url && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={p.imagem_url}
+                        alt=""
+                        className="w-7 h-7 rounded object-cover shrink-0 border border-gray-200"
+                      />
+                    )}
                     <span
                       className={`text-[10px] font-semibold uppercase rounded-full px-2 py-0.5 border shrink-0 ${
                         p.ativo
@@ -368,6 +385,11 @@ export default async function ConfiguracoesPage({
                       {p.ativo ? "Ativa" : "Inativa"}
                     </span>
                     <span className="text-gray-400 shrink-0">{p.tipo === "Edital" ? "Edital" : "Notícia"}</span>
+                    {p.portal_corretor && (
+                      <span className="text-[10px] font-semibold uppercase rounded-full px-2 py-0.5 border shrink-0 bg-blue-50 text-blue-700 border-blue-200">
+                        Portal
+                      </span>
+                    )}
                     <span className="font-medium text-gray-800 truncate">{p.titulo}</span>
                   </span>
                   <span className="text-gray-400 shrink-0">{formatDataHora(p.publicado_em)}</span>
@@ -418,15 +440,38 @@ export default async function ConfiguracoesPage({
                       />
                     </div>
                     <div>
-                      <label className="text-xs text-gray-600 block mb-1">Imagem (link)</label>
+                      <label className="text-xs text-gray-600 block mb-1">Imagem</label>
+                      {p.imagem_url && (
+                        <div className="flex items-center gap-2 mb-1.5">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={p.imagem_url}
+                            alt=""
+                            className="w-14 h-14 rounded-lg object-cover border border-gray-200"
+                          />
+                          <label className="flex items-center gap-1.5 text-xs text-red-600">
+                            <input type="checkbox" name="remover_imagem" /> Remover imagem atual
+                          </label>
+                        </div>
+                      )}
                       <input
-                        name="imagem_url"
-                        defaultValue={p.imagem_url ?? ""}
-                        className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full outline-none focus:border-primary"
+                        type="file"
+                        name="imagem"
+                        accept="image/png,image/jpeg,image/webp,image/gif"
+                        className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full outline-none focus:border-primary bg-white file:mr-2 file:text-xs file:border-0 file:bg-gray-100 file:rounded file:px-2 file:py-1"
                       />
+                      <p className="text-[10px] text-gray-400 mt-1">
+                        {p.imagem_url
+                          ? "Escolha um arquivo pra trocar a imagem atual. Recomendado: 1080x1080px."
+                          : "Recomendado: imagem quadrada, 1080x1080px."}
+                      </p>
                     </div>
                     <label className="flex items-center gap-2 text-xs text-gray-600">
                       <input type="checkbox" name="ativo" defaultChecked={p.ativo} /> Publicada (visível no site)
+                    </label>
+                    <label className="flex items-center gap-2 text-xs text-gray-600">
+                      <input type="checkbox" name="portal_corretor" defaultChecked={p.portal_corretor} /> Mostrar
+                      também no mural do Portal do Corretor
                     </label>
                     <div>
                       <button

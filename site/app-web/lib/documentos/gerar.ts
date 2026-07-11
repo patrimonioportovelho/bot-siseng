@@ -2,8 +2,8 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import PizZip from "pizzip";
 import Docxtemplater from "docxtemplater";
-import { createClient } from "@supabase/supabase-js";
 import { prisma } from "@/lib/prisma";
+import { supabaseAdmin } from "@/lib/supabase-admin";
 import type { TipoDocumento } from "./campos";
 import { valorPorExtenso, dataPorExtenso, dataPorExtensoComZero, formatarCpf } from "./extenso";
 import { formatTelefone, formatInscricao, formatCnpj } from "@/lib/format";
@@ -30,10 +30,6 @@ const ARQUIVO_TEMPLATE: Record<TipoDocumento, string> = {
 // Se não estiver configurado, o motor devolve o .docx preenchido sem converter,
 // para não travar o desenvolvimento local antes de o serviço existir.
 const DOCUMENT_CONVERTER_URL = process.env.DOCUMENT_CONVERTER_URL;
-
-function supabaseAdmin() {
-  return createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
-}
 
 export type GerarDocumentoParams = {
   tipoDocumento: TipoDocumento;

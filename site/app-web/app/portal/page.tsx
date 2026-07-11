@@ -1,25 +1,28 @@
 import Link from "next/link";
+import { headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import { requirePortalSession } from "@/lib/portal-auth";
 import { PortalHeader } from "@/components/portal-header";
+import { PublicacaoCard } from "@/components/site/publicacao-card";
 import { toggleChecklistAction } from "./actions";
 
 export const dynamic = "force-dynamic";
-
-function formatData(data: Date) {
-  return new Date(data).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric", timeZone: "America/Porto_Velho" });
-}
 
 // Portal do corretor — desde a mudança pra login por email @remax.com.br +
 // função Corretor (lib/portal-auth.ts), toda sessão aqui é de um corretor
 // identificado (session.parceiroId sempre presente); não existe mais o
 // acesso anônimo "sem identificação" que só via notícias.
+//
+// O mural de notícias aqui usa a mesma tabela publicacoes_site do site
+// público (/login), filtrando só quem foi marcado com "portal_corretor" em
+// Configurações — antes disso existia uma tabela "noticias" separada, sem
+// nenhuma tela de cadastro (só dava pra popular direto no banco).
 export default async function PortalPage() {
   const session = await requirePortalSession();
 
   const [noticias, itens, conclusoesDoCorretor] = await Promise.all([
-    prisma.noticias.findMany({
-      where: { ativo: true },
+    prisma.publicacoes_site.findMany({
+      where: { ativo: true, portal_corretor: true },
       orderBy: { publicado_em: "desc" },
       take: 20
     }),
@@ -31,6 +34,11 @@ export default async function PortalPage() {
       where: { parceiro_id: session.parceiroId }
     })
   ]);
+
+  // Link absoluto pro compartilhar (ShareButton/WhatsApp) funcionar mesmo
+  // fora do portal — mesmo padrão usado em /login e /noticias/[id].
+  const host = (await headers()).get("host");
+  const baseUrl = `${host?.includes("localhost") ? "http" : "https"}://${host}`;
 
   const concluidos = new Set(conclusoesDoCorretor.map((c) => c.item_id));
 
@@ -60,13 +68,9 @@ export default async function PortalPage() {
             {noticias.length === 0 && (
               <p className="text-xs text-gray-400">Nenhuma notícia publicada ainda.</p>
             )}
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-3 max-h-[32rem] overflow-auto">
               {noticias.map((n) => (
-                <div key={n.id} className="border-b border-gray-100 pb-3 last:border-0 last:pb-0">
-                  <div className="text-xs text-gray-400 mb-0.5">{formatData(n.publicado_em)}</div>
-                  <div className="text-sm font-semibold text-gray-800">{n.titulo}</div>
-                  <p className="text-xs text-gray-600 mt-1 whitespace-pre-line">{n.corpo}</p>
-                </div>
+                <PublicacaoCard key={n.id} publicacao={n} baseUrl={baseUrl} />
               ))}
             </div>
           </div>

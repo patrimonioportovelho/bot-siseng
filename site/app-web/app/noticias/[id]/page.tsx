@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { headers } from "next/headers";
+import type { Metadata } from "next";
 import { prisma } from "@/lib/prisma";
 import { ShareButton } from "@/components/site/share-button";
 
@@ -14,6 +15,49 @@ const TIPO_BADGE: Record<string, string> = {
   Noticia: "bg-blue-50 text-blue-700 border-blue-200",
   Edital: "bg-amber-50 text-amber-700 border-amber-200"
 };
+
+async function baseUrlAtual() {
+  const host = (await headers()).get("host");
+  return `${host?.includes("localhost") ? "http" : "https"}://${host}`;
+}
+
+// Tags Open Graph pra quando o link (compartilhado pelo ShareButton) for
+// colado no WhatsApp/Instagram/etc. — sem isso, o preview do link sai só
+// com título genérico do site, sem a imagem do flyer nem o resumo. Cada
+// publicação vira uma prévia própria, com a arte 1080x1080 anexada.
+export async function generateMetadata({
+  params
+}: {
+  params: Promise<{ id: string }>;
+}): Promise<Metadata> {
+  const { id } = await params;
+  const publicacao = await prisma.publicacoes_site.findFirst({ where: { id, ativo: true } });
+  if (!publicacao) return {};
+
+  const baseUrl = await baseUrlAtual();
+  const url = `${baseUrl}/noticias/${publicacao.id}`;
+  const descricao = publicacao.resumo ?? publicacao.corpo.slice(0, 160);
+
+  return {
+    title: `${publicacao.titulo} — RE/MAX Engimob`,
+    description: descricao,
+    openGraph: {
+      title: publicacao.titulo,
+      description: descricao,
+      url,
+      siteName: "RE/MAX Engimob",
+      type: "article",
+      locale: "pt_BR",
+      images: publicacao.imagem_url ? [{ url: publicacao.imagem_url, width: 1080, height: 1080 }] : undefined
+    },
+    twitter: {
+      card: publicacao.imagem_url ? "summary_large_image" : "summary",
+      title: publicacao.titulo,
+      description: descricao,
+      images: publicacao.imagem_url ? [publicacao.imagem_url] : undefined
+    }
+  };
+}
 
 // Página pública de uma notícia/edital específico — existe porque o card na
 // home (/login) só mostrava um resumo curto sem jeito nenhum de abrir e ler
@@ -33,8 +77,7 @@ export default async function NoticiaDetalhePage({
 
   if (!publicacao) notFound();
 
-  const host = (await headers()).get("host");
-  const baseUrl = `${host?.includes("localhost") ? "http" : "https"}://${host}`;
+  const baseUrl = await baseUrlAtual();
 
   return (
     <div className="min-h-screen bg-appbg">
@@ -50,7 +93,16 @@ export default async function NoticiaDetalhePage({
       </header>
 
       <main className="max-w-3xl mx-auto px-4 py-8">
-        <div className="bg-white border border-gray-200 rounded-xl p-6">
+        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+          {publicacao.imagem_url && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={publicacao.imagem_url}
+              alt={publicacao.titulo}
+              className="w-full max-h-[520px] object-cover"
+            />
+          )}
+          <div className="p-6">
           <div className="flex items-start justify-between gap-2 mb-3 flex-wrap">
             <div className="flex items-center gap-2">
               <span
@@ -72,6 +124,7 @@ export default async function NoticiaDetalhePage({
           <h1 className="text-xl font-bold text-gray-800 mb-4">{publicacao.titulo}</h1>
 
           <p className="text-sm text-gray-700 whitespace-pre-line leading-relaxed">{publicacao.corpo}</p>
+          </div>
         </div>
       </main>
 

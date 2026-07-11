@@ -55,8 +55,7 @@ export default async function DashboardPage({
     despesasVencidas,
     movimentacoesPagasPeriodo,
     corretoresAtivos,
-    despesasPagasPorCorretor,
-    despesasPendentesPorCorretor
+    pagamentosCorretoresPeriodo
   ] = await Promise.all([
     prisma.imoveis.count({ where: { excluido: false } }),
     prisma.transacoes.count({ where: { excluido: false, status: STATUS_TRANSACAO_EM_ABERTO } }),
@@ -152,30 +151,27 @@ export default async function DashboardPage({
       orderBy: { nome: "asc" },
       select: { id: true, nome: true, funcao: true }
     }),
-    // Recebido: despesas de repasse já pagas ao corretor, pela Data de
-    // pagamento dentro do período — mesmo critério do "Pago no período" logo
-    // acima, só que agrupado por parceiro.
-    prisma.movimentacoes.groupBy({
-      by: ["parceiro_id"],
-      where: {
-        tipo: "Despesa",
-        pago: true,
-        parceiro_id: { not: null },
-        data_pagamento: { gte: inicio, lt: fimExclusivo }
-      },
-      _sum: { valor: true }
-    }),
-    // A Receber: despesas de repasse ainda pendentes, pelo Vencimento dentro
-    // do período — mesmo critério do "A pagar no período" logo acima.
-    prisma.movimentacoes.groupBy({
-      by: ["parceiro_id"],
-      where: {
-        tipo: "Despesa",
-        pago: false,
-        parceiro_id: { not: null },
-        vencimento: { gte: inicio, lt: fimExclusivo }
-      },
-      _sum: { valor: true }
+    // Recebido/A Receber por corretor: a fonte de verdade do rateio é a
+    // tabela `pagamentos` (é ela que já veio da planilha antiga com a
+    // "tabela de honorários" — id_legado ligado à transação —, e é nela que
+    // o rateio automático grava cada parte também). Filtra pela Data de
+    // assinatura da própria transação (mesma régua do VGH/VGV/VGL acima),
+    // não pela Data de pagamento/vencimento da despesa: muita transação
+    // antiga (2025 e antes) tem o rateio gravado em `pagamentos` mas nunca
+    // ganhou a Despesa correspondente em `movimentacoes` — filtrar pelo
+    // pagamento/vencimento da despesa fazia esses anos aparecerem zerados
+    // mesmo com o rateio já existindo. Quando existe uma Despesa vinculada
+    // (pagamento_id), ela manda no status "pago" (é o que o Financeiro
+    // marca no dia a dia); quando não existe, cai pro status histórico
+    // gravado direto em pagamentos.status.
+    prisma.pagamentos.findMany({
+      where: { transacoes: { data_assinatura: { gte: inicio, lt: fimExclusivo }, excluido: false } },
+      select: {
+        parceiro_id: true,
+        valor_parceiro: true,
+        status: true,
+        movimentacoes: { select: { pago: true } }
+      }
     })
   ]);
 
@@ -301,19 +297,18 @@ export default async function DashboardPage({
     .map(([label, valor]) => ({ label, valor }));
 
   // Quadro Corretores: junta o cadastro (todo Corretor/Corretor Estagiário
-  // ativo) com o que já foi de fato pago a ele (Recebido) e o que ainda está
-  // pendente (A Receber), ambos dentro do período selecionado — mesma régua
-  // de "Recebido/Pago" e "A receber/A pagar" já usada no bloco Financeiro
-  // acima, só que agrupado por parceiro em vez de somado geral.
+  // ativo) com o rateio gravado em `pagamentos` pra cada transação assinada
+  // no período. Se a Despesa vinculada existe, ela decide "pago" (é o que o
+  // Financeiro mexe no dia a dia); senão usa o status histórico que já veio
+  // da planilha (pagamentos.status).
   const recebidoPorParceiro = new Map<string, number>();
-  for (const g of despesasPagasPorCorretor) {
-    if (!g.parceiro_id) continue;
-    recebidoPorParceiro.set(g.parceiro_id, Number(g._sum.valor ?? 0));
-  }
   const aReceberPorParceiro = new Map<string, number>();
-  for (const g of despesasPendentesPorCorretor) {
-    if (!g.parceiro_id) continue;
-    aReceberPorParceiro.set(g.parceiro_id, Number(g._sum.valor ?? 0));
+  for (const p of pagamentosCorretoresPeriodo) {
+    const despesaLigada = p.movimentacoes[0];
+    const pago = despesaLigada ? despesaLigada.pago : p.status === "Pago";
+    const valor = Number(p.valor_parceiro ?? 0);
+    const mapa = pago ? recebidoPorParceiro : aReceberPorParceiro;
+    mapa.set(p.parceiro_id, (mapa.get(p.parceiro_id) ?? 0) + valor);
   }
   const corretoresComValores = corretoresAtivos
     .map((c) => ({
@@ -623,8 +618,8 @@ export default async function DashboardPage({
           <div className="text-sm font-bold text-gray-800">Corretores</div>
         </div>
         <p className="text-[11px] text-gray-400 mb-3">
-          Repasses de honorário/comissão por corretor, dentro do período selecionado acima — Recebido pela Data de
-          pagamento, A Receber pelo Vencimento.
+          Repasses de honorário/comissão por corretor, das transações assinadas dentro do período selecionado acima
+          (mesma régua do Vendas & Locação) — Recebido é o que já foi pago, A Receber é o que ainda falta repassar.
         </p>
         <div className="overflow-x-auto">
           <table className="w-full text-xs min-w-[480px]">

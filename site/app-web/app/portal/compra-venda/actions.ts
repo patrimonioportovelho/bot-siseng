@@ -3,10 +3,28 @@
 import { prisma } from "@/lib/prisma";
 import { requirePortalSession } from "@/lib/portal-auth";
 import { logAlteracaoPortal } from "@/lib/auth";
-import { valorEditavelParaDecimal, percentualParaDecimal } from "@/lib/format";
+import { valorEditavelParaDecimal, percentualParaDecimal, formatMoeda, formatData } from "@/lib/format";
 import { registrarEJogarErro } from "@/lib/erros";
 import { STATUS_COMPRA_VENDA_OPCOES } from "@/lib/transacoes/opcoes";
 import { buscarGestaoPorImovel } from "@/lib/transacoes/buscas";
+import { enviarEmail, type EmailAnexo } from "@/lib/email";
+
+const EMAIL_DESTINO_PADRAO = "engimob@remax.com.br";
+
+// Anexos vêm do <input type="file"> do formulário direto no FormData — não
+// sobem pro Supabase Storage em nenhum momento, só passam pela memória do
+// servidor até virarem anexo do email (pedido explícito: não pesar o
+// sistema guardando essa documentação, o arquivamento de verdade é manual,
+// no Drive, a partir do email recebido).
+async function coletarAnexos(formData: FormData): Promise<EmailAnexo[]> {
+  const arquivos = formData.getAll("documentos").filter((v): v is File => v instanceof File && v.size > 0);
+  return Promise.all(
+    arquivos.map(async (arquivo) => ({
+      filename: arquivo.name || "documento",
+      content: Buffer.from(await arquivo.arrayBuffer())
+    }))
+  );
+}
 
 function texto(formData: FormData, campo: string): string | null {
   const v = formData.get(campo);
@@ -105,7 +123,10 @@ async function sincronizarCondicoesPagamento(transacaoId: string, formData: Form
 // nenhuma.
 export async function gerarCompraVendaAction(
   formData: FormData
-): Promise<{ ok: true; idLegado: string | null } | { ok: false; erro: string }> {
+): Promise<
+  | { ok: true; idLegado: string | null; emailEnviado: boolean; emailErro?: string }
+  | { ok: false; erro: string }
+> {
   const session = await requirePortalSession();
 
   try {
@@ -230,7 +251,75 @@ export async function gerarCompraVendaAction(
       dadosDepois: { id_legado: novo.id_legado, imovel_id: imovelId, compradores: compradorIds, gestao_id: gestaoId }
     });
 
-    return { ok: true, idLegado: novo.id_legado };
+    // Email pro administrativo — resumo da transação + a documentação que o
+    // corretor já tiver anexado (o resto, se faltar algo, é reunido depois
+    // por fora). Isso é best-effort: se o envio falhar (ex.: domínio ainda
+    // não verificado no Resend), a transação já está salva do mesmo jeito —
+    // só avisa o corretor pra reportar por outro canal.
+    const [imovelInfo, vendedorInfo, compradoresInfo, lojaInfo] = await Promise.all([
+      prisma.imoveis.findUnique({ where: { id: imovelId }, select: { endereco: true } }),
+      prisma.clientes.findUnique({ where: { id: primeiroProprietario.cliente_id }, select: { nome: true } }),
+      prisma.clientes.findMany({ where: { id: { in: compradorIds } }, select: { nome: true } }),
+      prisma.lojas.findUnique({ where: { id: lojaId }, select: { nome: true } })
+    ]);
+
+    const anexos = await coletarAnexos(formData);
+
+    const linhasResumo = [
+      `<strong>Id:</strong> ${novo.id_legado ?? novo.id}`,
+      `<strong>Loja:</strong> ${lojaInfo?.nome ?? "—"}`,
+      `<strong>Corretor que cadastrou:</strong> ${session.nome}`,
+      `<strong>Imóvel:</strong> ${imovelInfo?.endereco ?? "—"}`,
+      `<strong>Cliente vendedor:</strong> ${vendedorInfo?.nome ?? "—"}`,
+      `<strong>Cliente(s) comprador(es):</strong> ${compradoresInfo.map((c) => c.nome).join(", ") || "—"}`,
+      `<strong>Valor da transação:</strong> ${formatMoeda(valorTransacao)}`,
+      `<strong>Data de assinatura:</strong> ${formatData(dataAssinatura)}`,
+      `<strong>Momento de entrega das chaves:</strong> ${chave ?? "—"}`,
+      `<strong>Honorário informado pelo corretor:</strong> ${porcHonorario ? `${(porcHonorario * 100).toFixed(2)}%` : "—"}`,
+      compraSemGestao
+        ? "<strong>Gestão:</strong> compra sem gestão (venda direta)"
+        : gestaoId
+        ? "<strong>Gestão:</strong> vinculada automaticamente a uma gestão já cadastrada"
+        : historicoData || historicoPrazoMeses || historicoValor
+        ? `<strong>Gestão antiga (não cadastrada):</strong> assinatura ${historicoData ? formatData(historicoData) : "—"}, prazo ${historicoPrazoMeses ?? "—"} meses, valor da época ${historicoValor ? formatMoeda(historicoValor) : "—"}`
+        : "<strong>Gestão:</strong> nenhuma encontrada e nenhum dado histórico informado"
+    ];
+
+    const html = `
+      <div style="font-family: sans-serif; font-size: 14px; color: #1f2937;">
+        <p>Nova <strong>Elaboração de Compra e Venda</strong> cadastrada pelo portal do corretor.</p>
+        <p>${linhasResumo.join("<br/>")}</p>
+        ${
+          anexos.length > 0
+            ? `<p>${anexos.length} arquivo(s) de documentação em anexo.</p>`
+            : "<p>Nenhum documento foi anexado no cadastro — cobrar do corretor se precisar.</p>"
+        }
+        <p style="color:#6b7280; font-size:12px;">A divisão do comissionamento entre os corretores ainda precisa ser preenchida no administrativo.</p>
+      </div>
+    `;
+
+    const resultadoEmail = await enviarEmail({
+      to: process.env.EMAIL_ADM_COMPRA_VENDA || EMAIL_DESTINO_PADRAO,
+      subject: `Compra e Venda ${novo.id_legado ?? ""} — ${imovelInfo?.endereco ?? "imóvel sem endereço"}`,
+      html,
+      attachments: anexos
+    });
+
+    if (!resultadoEmail.ok) {
+      await registrarEJogarErro({
+        entidadeTipo: "transacoes",
+        entidadeId: novo.id,
+        acao: "enviar_email_compra_venda",
+        erro: new Error(resultadoEmail.erro)
+      }).catch(() => undefined);
+    }
+
+    return {
+      ok: true,
+      idLegado: novo.id_legado,
+      emailEnviado: resultadoEmail.ok,
+      emailErro: resultadoEmail.ok ? undefined : resultadoEmail.erro
+    };
   } catch (erro) {
     const mensagem = erro instanceof Error ? erro.message : String(erro);
     return { ok: false, erro: mensagem };

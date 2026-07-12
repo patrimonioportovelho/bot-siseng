@@ -16,7 +16,8 @@
     "@prisma/client": "^6.2.0",
     "docxtemplater": "^3.50.0",
     "pizzip": "^3.1.7",
-    "@supabase/supabase-js": "^2.47.0"
+    "@supabase/supabase-js": "^2.47.0",
+    "resend": "^4.0.1"
   },
   "devDependencies": {
     "typescript": "^5.7.0",

@@ -23,6 +23,22 @@ function hojeISO(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+// Limite do lado do cliente pra não deixar o corretor anexar um total que
+// nem cabe num email (o Resend aceita até ~40MB por envio, já contando a
+// codificação base64 dos anexos — que aumenta o tamanho em ~33%). 20MB de
+// arquivo original dá bastante folga.
+const TAMANHO_MAXIMO_TOTAL = 20 * 1024 * 1024;
+const TIPOS_ACEITOS = ["application/pdf", "image/"];
+
+function tipoAceito(arquivo: File): boolean {
+  return TIPOS_ACEITOS.some((t) => arquivo.type.startsWith(t));
+}
+
+function formatarTamanho(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 function labelImovel(i: ImovelBuscaResultado): string {
   const idExibicao = i.id_legado ?? i.id;
   const nomesProprietarios = i.proprietarios.map((p) => p.nome).join(", ") || "sem proprietário";
@@ -83,10 +99,15 @@ export function PortalCompraVendaForm({
   const [historicoPrazoMeses, setHistoricoPrazoMeses] = useState("");
   const [historicoValor, setHistoricoValor] = useState("");
 
+  const [documentos, setDocumentos] = useState<File[]>([]);
+  const [erroAnexo, setErroAnexo] = useState("");
+
   const [enviando, setEnviando] = useState(false);
-  const [resultado, setResultado] = useState<{ ok: true; idLegado: string | null } | { ok: false; erro: string } | null>(
-    null
-  );
+  const [resultado, setResultado] = useState<
+    | { ok: true; idLegado: string | null; emailEnviado: boolean; emailErro?: string }
+    | { ok: false; erro: string }
+    | null
+  >(null);
 
   const imovelSelecionado = useMemo(() => imoveis.find((i) => i.id === imovelId) ?? null, [imoveis, imovelId]);
   const gestaoEncontrada = imovelSelecionado?.gestaoId ?? null;
@@ -143,6 +164,33 @@ export function PortalCompraVendaForm({
     setCondicoes((atual) => atual.filter((_, i) => i !== indice));
   }
 
+  function adicionarDocumentos(lista: FileList | null) {
+    if (!lista || lista.length === 0) return;
+    setErroAnexo("");
+
+    const novos = Array.from(lista);
+    const invalido = novos.find((f) => !tipoAceito(f));
+    if (invalido) {
+      setErroAnexo(`"${invalido.name}" não é PDF nem imagem — só esses dois tipos são aceitos.`);
+      return;
+    }
+
+    const totalAtual = documentos.reduce((acc, f) => acc + f.size, 0);
+    const totalNovo = novos.reduce((acc, f) => acc + f.size, 0);
+    if (totalAtual + totalNovo > TAMANHO_MAXIMO_TOTAL) {
+      setErroAnexo(`O total dos anexos passaria de ${formatarTamanho(TAMANHO_MAXIMO_TOTAL)} — junte menos arquivos de uma vez ou reduza o tamanho.`);
+      return;
+    }
+
+    setDocumentos((atual) => [...atual, ...novos]);
+  }
+
+  function removerDocumento(indice: number) {
+    setDocumentos((atual) => atual.filter((_, i) => i !== indice));
+  }
+
+  const tamanhoTotalDocumentos = documentos.reduce((acc, f) => acc + f.size, 0);
+
   async function handleGerar() {
     setEnviando(true);
     setResultado(null);
@@ -167,6 +215,7 @@ export function PortalCompraVendaForm({
         formData.set("historico_gestao_prazo_meses", historicoPrazoMeses);
         formData.set("historico_gestao_valor", historicoValor);
       }
+      documentos.forEach((arquivo) => formData.append("documentos", arquivo));
 
       const r = await gerarCompraVendaAction(formData);
       setResultado(r);
@@ -532,6 +581,46 @@ export function PortalCompraVendaForm({
         </div>
       </div>
 
+      <div className="bg-white border border-gray-200 rounded-xl p-4">
+        <div className="text-sm font-bold text-gray-800 mb-1">7. Documentação</div>
+        <p className="text-[11px] text-gray-400 mb-3">
+          PDF ou imagem (RG, comprovante, contrato assinado etc.). Vai direto por email pro administrativo
+          junto com o resumo da transação — não fica guardado no sistema. Total até {formatarTamanho(TAMANHO_MAXIMO_TOTAL)}.
+        </p>
+
+        {documentos.length > 0 && (
+          <div className="flex flex-col gap-1.5 mb-3">
+            {documentos.map((f, i) => (
+              <div key={`${f.name}-${i}`} className="flex items-center justify-between text-xs bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+                <span className="text-gray-700 truncate">
+                  {f.name} <span className="text-gray-400">— {formatarTamanho(f.size)}</span>
+                </span>
+                <button type="button" onClick={() => removerDocumento(i)} className="text-gray-400 hover:text-red-600 ml-2 shrink-0">
+                  remover
+                </button>
+              </div>
+            ))}
+            <div className="text-[11px] text-gray-400">Total: {formatarTamanho(tamanhoTotalDocumentos)}</div>
+          </div>
+        )}
+
+        <label className="inline-block text-xs bg-white border border-gray-300 text-gray-700 rounded-lg px-3 py-1.5 font-semibold cursor-pointer hover:bg-gray-50">
+          + Adicionar documento
+          <input
+            type="file"
+            accept="application/pdf,image/*"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              adicionarDocumentos(e.target.files);
+              e.target.value = "";
+            }}
+          />
+        </label>
+
+        {erroAnexo && <p className="text-xs text-red-600 mt-2">{erroAnexo}</p>}
+      </div>
+
       <div className="flex items-center gap-3">
         <button
           type="button"
@@ -545,6 +634,11 @@ export function PortalCompraVendaForm({
           <span className="text-xs text-green-700 font-semibold">
             Cadastrado com sucesso{resultado.idLegado ? ` — ${resultado.idLegado}` : ""}. O administrativo vai dar
             sequência.
+            {!resultado.emailEnviado && (
+              <span className="block text-amber-700 font-normal mt-0.5">
+                A transação foi salva, mas o email com a documentação não saiu{resultado.emailErro ? `: ${resultado.emailErro}` : "."} Avise o administrativo por outro canal.
+              </span>
+            )}
           </span>
         )}
         {resultado && !resultado.ok && <span className="text-xs text-red-600">{resultado.erro}</span>}

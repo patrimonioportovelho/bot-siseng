@@ -2,17 +2,15 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { signSession, verifySession } from "@/lib/session";
-import { logAcessoPortal } from "@/lib/auth";
+import { logAcessoPortal, hashSenha, verificarSenha } from "@/lib/auth";
 
 const PORTAL_COOKIE = "sis_portal_session";
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 dias
 
 // Domínio exigido pra logar no portal do corretor. Só entra quem tem esse
-// email cadastrado na ficha de parceiro E função = "Corretor" (ativa) — o
-// mesmo parceiro pode inclusive não ter acesso ao admin (papéis diferentes).
-// Sem senha: o acesso é liberado só por conferir email + função + status no
-// cadastro administrativo (é o próprio administrativo que controla quem
-// entra, cadastrando ou desativando o parceiro).
+// email cadastrado na ficha de parceiro, função = "Corretor" (ativa) E a
+// senha certa (ver loginPortal abaixo) — o mesmo parceiro pode inclusive
+// não ter acesso ao admin (papéis diferentes).
 const DOMINIO_PORTAL = "@remax.com.br";
 
 function sessionSecret() {
@@ -50,15 +48,22 @@ export async function requirePortalSession(): Promise<PortalSession> {
 
 type LoginPortalResult = { ok: true } | { ok: false; error: string };
 
-// Login do portal do corretor — só o email, sem senha. Libera acesso quem
-// tiver email "@remax.com.br" e função "Corretor" ativa no cadastro de
-// parceiros; quem não estiver cadastrado assim (função errada, inativo, ou
-// email não encontrado) não entra.
-export async function loginPortal(email: string): Promise<LoginPortalResult> {
+// Login do portal do corretor — email + senha. A senha usa o mesmo campo
+// (parceiros.senha_hash) e o mesmo hash (PBKDF2, lib/auth.ts) do login
+// administrativo: é a MESMA senha nos dois acessos, quando o corretor tem
+// os dois. Continua exigindo email "@remax.com.br" e função "Corretor"
+// ativa no cadastro — isso não mudou, é só mais uma camada.
+//
+// Diferente do admin, o portal não tem fluxo de "solicitação pendente" pra
+// primeiro acesso: quem define a senha inicial (e reseta se o corretor
+// esquecer) é um administrador, na tela Configurações > "Definir senha
+// manualmente" — já existe, não precisou de nada novo. Se o corretor ainda
+// não tem senha definida, a mensagem de erro deixa isso claro.
+export async function loginPortal(email: string, senha: string): Promise<LoginPortalResult> {
   const emailNorm = normalizeEmail(email);
 
-  if (!emailNorm) {
-    return { ok: false, error: "Informe seu email." };
+  if (!emailNorm || !senha) {
+    return { ok: false, error: "Informe seu email e sua senha." };
   }
 
   if (!emailNorm.endsWith(DOMINIO_PORTAL)) {
@@ -71,7 +76,7 @@ export async function loginPortal(email: string): Promise<LoginPortalResult> {
       funcao: "Corretor",
       email: { equals: emailNorm, mode: "insensitive" }
     },
-    select: { id: true, nome: true }
+    select: { id: true, nome: true, senha_hash: true }
   });
 
   if (!parceiro) {
@@ -82,7 +87,50 @@ export async function loginPortal(email: string): Promise<LoginPortalResult> {
     };
   }
 
+  if (!parceiro.senha_hash) {
+    return {
+      ok: false,
+      error: "Você ainda não tem senha definida. Peça para um administrador definir sua senha inicial em Configurações."
+    };
+  }
+
+  const senhaOk = await verificarSenha(senha, parceiro.senha_hash);
+  if (!senhaOk) {
+    return { ok: false, error: "Senha incorreta." };
+  }
+
   return await concederAcessoPortal(parceiro.id, parceiro.nome);
+}
+
+// Troca de senha feita pelo próprio corretor, já logado no portal — pede a
+// senha atual (evita que alguém com a sessão aberta numa máquina compartilhada
+// troque a senha sem saber a atual) e grava o novo hash no mesmo campo
+// senha_hash (então também atualiza a senha de admin, se o corretor tiver).
+export async function trocarSenhaPortal(
+  parceiroId: string,
+  senhaAtual: string,
+  senhaNova: string
+): Promise<LoginPortalResult> {
+  if (!senhaAtual || !senhaNova) {
+    return { ok: false, error: "Preencha a senha atual e a nova senha." };
+  }
+  if (senhaNova.length < 6) {
+    return { ok: false, error: "A nova senha precisa ter pelo menos 6 caracteres." };
+  }
+
+  const parceiro = await prisma.parceiros.findUnique({
+    where: { id: parceiroId },
+    select: { senha_hash: true }
+  });
+
+  if (!parceiro?.senha_hash || !(await verificarSenha(senhaAtual, parceiro.senha_hash))) {
+    return { ok: false, error: "Senha atual incorreta." };
+  }
+
+  const novoHash = await hashSenha(senhaNova);
+  await prisma.parceiros.update({ where: { id: parceiroId }, data: { senha_hash: novoHash } });
+
+  return { ok: true };
 }
 
 async function concederAcessoPortal(parceiroId: string, nome: string): Promise<LoginPortalResult> {

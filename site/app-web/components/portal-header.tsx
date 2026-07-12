@@ -15,6 +15,9 @@ export function PortalHeader({ nome }: { nome: string }) {
           <div className="text-white/60 text-[11px]">SisEng · Portal do corretor · Olá, {nome}</div>
         </div>
         <div className="flex items-center gap-3">
+          <Link href="/portal/senha" className="text-xs text-white/80 hover:text-white font-medium">
+            Trocar senha
+          </Link>
           <Link href="/login" className="text-xs text-white/80 hover:text-white font-medium">
             Voltar ao site
           </Link>

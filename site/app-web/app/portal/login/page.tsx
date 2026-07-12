@@ -1,9 +1,10 @@
 import { loginPortalAction } from "../actions";
 
-// Login só por email — só entra quem tem email @remax.com.br e função
-// "Corretor" ativa no cadastro de parceiros (ver loginPortal em
-// lib/portal-auth.ts). Sem senha: quem controla o acesso é o cadastro
-// administrativo (email certo + função Corretor + status Ativo).
+// Login por email + senha — só entra quem tem email @remax.com.br, função
+// "Corretor" ativa no cadastro de parceiros, e a senha certa (ver
+// loginPortal em lib/portal-auth.ts). A senha inicial é definida por um
+// administrador em Configurações > "Definir senha manualmente" — o corretor
+// troca a própria senha depois de logado, em /portal/senha.
 export default async function PortalLoginPage({
   searchParams
 }: {
@@ -29,8 +30,17 @@ export default async function PortalLoginPage({
           name="email"
           required
           autoFocus
-          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-6 outline-none focus:border-primary"
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-4 outline-none focus:border-primary"
           placeholder="seunome@remax.com.br"
+        />
+
+        <label className="text-xs text-gray-600 block mb-1">Senha</label>
+        <input
+          type="password"
+          name="senha"
+          required
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-6 outline-none focus:border-primary"
+          placeholder="Sua senha"
         />
 
         <button
@@ -42,7 +52,7 @@ export default async function PortalLoginPage({
 
         <p className="text-[11px] text-gray-400 mt-4 leading-relaxed">
           Acesso restrito a quem tem função Corretor ativa no cadastro de parceiros, com esse
-          email cadastrado na ficha.
+          email cadastrado na ficha. Esqueceu a senha? Peça pra um administrador redefinir.
         </p>
       </form>
     </div>

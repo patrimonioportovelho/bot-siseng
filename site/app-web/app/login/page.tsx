@@ -34,7 +34,9 @@ export default async function LoginPage({
   const { erro, pendente, next, sac_ok, sac_erro } = await searchParams;
 
   const publicacoes = await prisma.publicacoes_site.findMany({
-    where: { ativo: true },
+    // Checklist é conteúdo interno (só circula no Portal do Corretor e por
+    // link direto mandado pelo corretor) — nunca aparece no mural público.
+    where: { ativo: true, tipo: { not: "Checklist" } },
     orderBy: { publicado_em: "desc" },
     take: 20
   });

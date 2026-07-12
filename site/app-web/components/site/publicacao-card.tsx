@@ -17,8 +17,15 @@ export type PublicacaoCardData = {
 
 const TIPO_BADGE: Record<string, string> = {
   Noticia: "bg-blue-50 text-blue-700 border-blue-200",
-  Edital: "bg-amber-50 text-amber-700 border-amber-200"
+  Edital: "bg-amber-50 text-amber-700 border-amber-200",
+  Checklist: "bg-emerald-50 text-emerald-700 border-emerald-200"
 };
+
+function tipoLabel(tipo: string) {
+  if (tipo === "Edital") return "Edital";
+  if (tipo === "Checklist") return "Checklist";
+  return "Notícia";
+}
 
 function formatData(data: Date) {
   return new Date(data).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric", timeZone: "America/Porto_Velho" });
@@ -41,7 +48,7 @@ export function PublicacaoCard({ publicacao, baseUrl }: { publicacao: Publicacao
                 TIPO_BADGE[p.tipo] ?? "bg-gray-50 text-gray-600 border-gray-200"
               }`}
             >
-              {p.tipo === "Edital" ? "Edital" : "Notícia"}
+              {tipoLabel(p.tipo)}
             </span>
             <span className="text-[11px] text-gray-400">{formatData(p.publicado_em)}</span>
           </div>
@@ -54,7 +61,7 @@ export function PublicacaoCard({ publicacao, baseUrl }: { publicacao: Publicacao
         <div className="text-sm font-bold text-gray-800">{p.titulo}</div>
         <p className="text-xs text-gray-600 mt-1 whitespace-pre-line line-clamp-3">{p.resumo || p.corpo}</p>
         <a href={`/noticias/${p.id}`} className="text-xs font-semibold text-primary hover:underline mt-2 inline-block">
-          Ler {p.tipo === "Edital" ? "o edital completo" : "a notícia completa"} →
+          {p.tipo === "Checklist" ? "Ver checklist completo" : p.tipo === "Edital" ? "Ler o edital completo" : "Ler a notícia completa"} →
         </a>
       </div>
     </article>

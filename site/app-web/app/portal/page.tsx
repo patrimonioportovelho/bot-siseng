@@ -4,7 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { requirePortalSession } from "@/lib/portal-auth";
 import { PortalHeader } from "@/components/portal-header";
 import { PublicacaoCard } from "@/components/site/publicacao-card";
-import { toggleChecklistAction } from "./actions";
+
+const IMOBVIEW_URL = "https://www.imobview.pro/login";
 
 export const dynamic = "force-dynamic";
 
@@ -20,18 +21,18 @@ export const dynamic = "force-dynamic";
 export default async function PortalPage() {
   const session = await requirePortalSession();
 
-  const [noticias, itens, conclusoesDoCorretor] = await Promise.all([
+  const [noticias, checklists] = await Promise.all([
     prisma.publicacoes_site.findMany({
-      where: { ativo: true, portal_corretor: true },
+      where: { ativo: true, portal_corretor: true, tipo: { not: "Checklist" } },
       orderBy: { publicado_em: "desc" },
       take: 20
     }),
-    prisma.checklist_itens.findMany({
-      where: { ativo: true },
-      orderBy: { ordem: "asc" }
-    }),
-    prisma.checklist_conclusoes.findMany({
-      where: { parceiro_id: session.parceiroId }
+    // Checklists da imobiliária — mesma tabela publicacoes_site, reaproveitando
+    // o formato de publicação (abre em /noticias/[id], dá pra copiar a
+    // mensagem ou mandar direto no WhatsApp pro cliente).
+    prisma.publicacoes_site.findMany({
+      where: { ativo: true, portal_corretor: true, tipo: "Checklist" },
+      orderBy: { titulo: "asc" }
     })
   ]);
 
@@ -39,8 +40,6 @@ export default async function PortalPage() {
   // fora do portal — mesmo padrão usado em /login e /noticias/[id].
   const host = (await headers()).get("host");
   const baseUrl = `${host?.includes("localhost") ? "http" : "https"}://${host}`;
-
-  const concluidos = new Set(conclusoesDoCorretor.map((c) => c.item_id));
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -89,33 +88,36 @@ export default async function PortalPage() {
           </div>
 
           <div className="bg-white border border-gray-200 rounded-xl p-4">
-            <div className="text-sm font-bold text-gray-800 mb-3">Checklist</div>
-            {itens.length === 0 && (
-              <p className="text-xs text-gray-400">Nenhum item de checklist cadastrado ainda.</p>
+            <div className="text-sm font-bold text-gray-800 mb-1">Checklists</div>
+            <p className="text-xs text-gray-500 mb-3">
+              Abra um checklist, copie a mensagem ou já encaminhe pronta no WhatsApp pro cliente.
+            </p>
+            {checklists.length === 0 && (
+              <p className="text-xs text-gray-400">Nenhum checklist cadastrado ainda.</p>
             )}
             <div className="flex flex-col gap-2">
-              {itens.map((item) => {
-                const feito = concluidos.has(item.id);
-                return (
-                  <form key={item.id} action={toggleChecklistAction.bind(null, item.id)}>
-                    <button
-                      type="submit"
-                      className={
-                        "w-full text-left flex items-start gap-2 rounded-lg border px-3 py-2 text-sm transition-colors " +
-                        (feito
-                          ? "bg-[#e3f5ea] border-[#bfe3cd] text-[#1f7a4d]"
-                          : "border-gray-200 text-gray-700 hover:bg-gray-50")
-                      }
-                    >
-                      <span>{feito ? "☑" : "☐"}</span>
-                      <span>
-                        <span className="block">{item.titulo}</span>
-                        {item.descricao && <span className="block text-xs opacity-80">{item.descricao}</span>}
-                      </span>
-                    </button>
-                  </form>
-                );
-              })}
+              {checklists.map((c) => (
+                <Link
+                  key={c.id}
+                  href={`/noticias/${c.id}?from=portal`}
+                  className="flex items-center justify-between gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                >
+                  <span>{c.titulo}</span>
+                  <span className="text-gray-400">→</span>
+                </Link>
+              ))}
+
+              <a
+                href={IMOBVIEW_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-between gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 mt-2"
+              >
+                <span>
+                  ImobView <span className="text-xs text-gray-400">— estudo de mercado</span>
+                </span>
+                <span className="text-gray-400">↗</span>
+              </a>
             </div>
           </div>
         </div>

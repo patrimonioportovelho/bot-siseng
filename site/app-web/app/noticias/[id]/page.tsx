@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import type { Metadata } from "next";
 import { prisma } from "@/lib/prisma";
 import { ShareButton } from "@/components/site/share-button";
+import { ChecklistShareActions } from "@/components/site/checklist-share-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -13,8 +14,15 @@ function formatData(data: Date) {
 
 const TIPO_BADGE: Record<string, string> = {
   Noticia: "bg-blue-50 text-blue-700 border-blue-200",
-  Edital: "bg-amber-50 text-amber-700 border-amber-200"
+  Edital: "bg-amber-50 text-amber-700 border-amber-200",
+  Checklist: "bg-emerald-50 text-emerald-700 border-emerald-200"
 };
+
+function tipoLabel(tipo: string) {
+  if (tipo === "Edital") return "Edital";
+  if (tipo === "Checklist") return "Checklist";
+  return "Notícia";
+}
 
 async function baseUrlAtual() {
   const host = (await headers()).get("host");
@@ -65,11 +73,14 @@ export async function generateMetadata({
 // página cheia de outras seções), que não é um link útil de mandar pra
 // alguém de fora. Aqui cada publicação tem sua própria URL só com ela.
 export default async function NoticiaDetalhePage({
-  params
+  params,
+  searchParams
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ from?: string }>;
 }) {
   const { id } = await params;
+  const { from } = await searchParams;
 
   const publicacao = await prisma.publicacoes_site.findFirst({
     where: { id, ativo: true }
@@ -79,6 +90,19 @@ export default async function NoticiaDetalhePage({
 
   const baseUrl = await baseUrlAtual();
 
+  // O link de "Voltar" muda conforme quem abriu a página: se veio do Portal
+  // do Corretor (link com ?from=portal), volta pro portal. Se é uma
+  // Notícia/Edital normal, volta pro mural público de sempre. Se é um
+  // Checklist aberto direto (ex: cliente que recebeu o link pelo WhatsApp,
+  // sem vir do portal), não faz sentido mostrar "voltar" pra nenhum lugar —
+  // a pessoa nem tem acesso a essas telas.
+  const voltar =
+    from === "portal"
+      ? { href: "/portal", texto: "← Voltar para o Portal" }
+      : publicacao.tipo === "Checklist"
+        ? null
+        : { href: "/login#noticias", texto: "← Voltar para notícias" };
+
   return (
     <div className="min-h-screen bg-appbg">
       <header className="bg-primary">
@@ -86,9 +110,11 @@ export default async function NoticiaDetalhePage({
           <Link href="/login" className="text-white font-bold text-lg leading-tight">
             RE/MAX Engimob
           </Link>
-          <Link href="/login#noticias" className="text-xs text-white/70 hover:text-white whitespace-nowrap">
-            ← Voltar para notícias
-          </Link>
+          {voltar && (
+            <Link href={voltar.href} className="text-xs text-white/70 hover:text-white whitespace-nowrap">
+              {voltar.texto}
+            </Link>
+          )}
         </div>
       </header>
 
@@ -110,7 +136,7 @@ export default async function NoticiaDetalhePage({
                   TIPO_BADGE[publicacao.tipo] ?? "bg-gray-50 text-gray-600 border-gray-200"
                 }`}
               >
-                {publicacao.tipo === "Edital" ? "Edital" : "Notícia"}
+                {tipoLabel(publicacao.tipo)}
               </span>
               <span className="text-xs text-gray-400">{formatData(publicacao.publicado_em)}</span>
             </div>
@@ -124,6 +150,14 @@ export default async function NoticiaDetalhePage({
           <h1 className="text-xl font-bold text-gray-800 mb-4">{publicacao.titulo}</h1>
 
           <p className="text-sm text-gray-700 whitespace-pre-line leading-relaxed">{publicacao.corpo}</p>
+
+          {publicacao.tipo === "Checklist" && (
+            <ChecklistShareActions
+              titulo={publicacao.titulo}
+              corpo={publicacao.corpo}
+              url={`${baseUrl}/noticias/${publicacao.id}`}
+            />
+          )}
           </div>
         </div>
       </main>

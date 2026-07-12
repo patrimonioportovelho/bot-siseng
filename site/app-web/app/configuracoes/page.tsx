@@ -23,7 +23,13 @@ function formatDataHora(data: Date) {
   return new Date(data).toLocaleString("pt-BR", { timeZone: "America/Porto_Velho" });
 }
 
-const TIPOS_PUBLICACAO = ["Noticia", "Edital"];
+const TIPOS_PUBLICACAO = ["Noticia", "Edital", "Checklist"];
+
+function tipoPublicacaoLabel(t: string) {
+  if (t === "Edital") return "Edital";
+  if (t === "Checklist") return "Checklist";
+  return "Notícia";
+}
 
 export default async function ConfiguracoesPage({
   searchParams
@@ -282,11 +288,13 @@ export default async function ConfiguracoesPage({
       </div>
 
       <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4">
-        <div className="text-sm font-bold text-gray-800 mb-1">Notícias e editais</div>
+        <div className="text-sm font-bold text-gray-800 mb-1">Notícias, editais e checklists</div>
         <p className="text-xs text-gray-500 mb-3">
-          Aparecem na página pública (fora do login), na seção "Notícias e editais", e também no mural do
-          Portal do Corretor se marcar essa opção abaixo. Desative em vez de excluir se só quiser tirar de
-          circulação por enquanto — excluir apaga o registro e a imagem de vez.
+          Notícias e editais aparecem na página pública (fora do login), na seção "Notícias e editais", e
+          também no mural do Portal do Corretor se marcar essa opção abaixo. Checklists nunca aparecem na
+          página pública — só no mural do Portal do Corretor (para isso, marque "Mostrar também no mural do
+          Portal do Corretor"). Desative em vez de excluir se só quiser tirar de circulação por enquanto —
+          excluir apaga o registro e a imagem de vez.
         </p>
 
         <details className="mb-4 bg-gray-50/50 border border-dashed border-gray-200 rounded-lg">
@@ -304,7 +312,7 @@ export default async function ConfiguracoesPage({
                 >
                   {TIPOS_PUBLICACAO.map((t) => (
                     <option key={t} value={t}>
-                      {t === "Edital" ? "Edital" : "Notícia"}
+                      {tipoPublicacaoLabel(t)}
                     </option>
                   ))}
                 </select>
@@ -384,7 +392,7 @@ export default async function ConfiguracoesPage({
                     >
                       {p.ativo ? "Ativa" : "Inativa"}
                     </span>
-                    <span className="text-gray-400 shrink-0">{p.tipo === "Edital" ? "Edital" : "Notícia"}</span>
+                    <span className="text-gray-400 shrink-0">{tipoPublicacaoLabel(p.tipo)}</span>
                     {p.portal_corretor && (
                       <span className="text-[10px] font-semibold uppercase rounded-full px-2 py-0.5 border shrink-0 bg-blue-50 text-blue-700 border-blue-200">
                         Portal
@@ -407,7 +415,7 @@ export default async function ConfiguracoesPage({
                         >
                           {TIPOS_PUBLICACAO.map((t) => (
                             <option key={t} value={t}>
-                              {t === "Edital" ? "Edital" : "Notícia"}
+                              {tipoPublicacaoLabel(t)}
                             </option>
                           ))}
                         </select>

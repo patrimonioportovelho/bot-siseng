@@ -23,7 +23,7 @@ const ARQUIVO_TEMPLATE: Record<TipoDocumento, string> = {
   repasse_administracao: "repasse_administracao.docx",
   repasse_primeira_locacao: "repasse_primeira_locacao.docx",
   contrato_gestao: "contrato_gestao.docx",
-  proposta_compra_venda: "proposta_compra_venda.docx"
+  proposta_compra_venda: "PROPOSTA DE COMPRA E VENDA.docx"
 };
 
 // URL do serviço de conversão docx -> PDF (Gotenberg rodando no Railway).

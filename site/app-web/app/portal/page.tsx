@@ -72,6 +72,30 @@ export default async function PortalPage() {
             </div>
             <span className="text-xl leading-none">→</span>
           </Link>
+
+          <Link
+            href="/portal/compra-venda/novo"
+            className="flex items-center justify-between gap-3 bg-primary text-white rounded-xl px-4 py-4 hover:opacity-90 transition-opacity"
+          >
+            <div>
+              <div className="text-sm font-bold">Elaboração de Compra e Venda</div>
+              <div className="text-xs opacity-80 mt-0.5">
+                Puxe o imóvel já captado e o(s) comprador(es) para cadastrar a transação de verdade
+              </div>
+            </div>
+            <span className="text-xl leading-none">→</span>
+          </Link>
+
+          <Link
+            href="/portal/clientes"
+            className="flex items-center justify-between gap-3 bg-white border border-gray-200 text-gray-800 rounded-xl px-4 py-4 hover:bg-gray-50 transition-colors"
+          >
+            <div>
+              <div className="text-sm font-bold">Meus clientes</div>
+              <div className="text-xs text-gray-500 mt-0.5">Todos os clientes cadastrados no seu nome, com os imóveis vinculados</div>
+            </div>
+            <span className="text-xl leading-none text-gray-400">→</span>
+          </Link>
         </div>
 
         <div className="grid md:grid-cols-2 gap-4">

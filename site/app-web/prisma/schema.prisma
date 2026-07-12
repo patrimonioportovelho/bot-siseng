@@ -376,6 +376,7 @@ model gestoes {
   checklist_itens    gestao_checklist_itens[]
   atividades         gestao_atividades[]
   notas              gestao_notas[]
+  transacoes         transacoes[]
 
   @@index([cliente_id], map: "idx_gestoes_cliente")
   @@index([imovel_id], map: "idx_gestoes_imovel")
@@ -857,6 +858,19 @@ model transacoes {
   // padrão, mas o registro em si (e seus documentos já gerados) continua
   // acessível.
   excluido                                                 Boolean                  @default(false)
+  // Elaboração de Compra e Venda pelo portal do corretor — vincula a
+  // transação a uma Gestão existente (pra registrar uma atividade no quadro
+  // dela) quando a venda vem de uma captação já cadastrada. Fica null
+  // quando "compra sem gestão" (venda direta, sem captação nossa) ou quando
+  // a gestão é antiga e nunca foi cadastrada — nesse caso os campos
+  // historico_gestao_* abaixo guardam o que o corretor souber digitar, só
+  // pra comparação (não criam Gestão de verdade).
+  gestao_id                                                String?                  @db.Uuid
+  compra_sem_gestao                                        Boolean                  @default(false)
+  historico_gestao_data_assinatura                         DateTime?                @db.Date
+  historico_gestao_prazo_meses                             Int?                     @db.SmallInt
+  historico_gestao_valor                                   Decimal?                 @db.Decimal(14, 2)
+  criado_no_portal                                         Boolean                  @default(false)
   created_at                                               DateTime                 @default(now()) @db.Timestamptz(6)
   updated_at                                               DateTime                 @default(now()) @db.Timestamptz(6)
   chaves                                                   chaves[]
@@ -874,6 +888,7 @@ model transacoes {
   imoveis                                                  imoveis?                 @relation(fields: [imovel_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   lojas                                                    lojas                    @relation(fields: [loja_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   parceiros_transacoes_parceiro_externo_idToparceiros      parceiros?               @relation("transacoes_parceiro_externo_idToparceiros", fields: [parceiro_externo_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  gestoes                                                  gestoes?                 @relation(fields: [gestao_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([adm_imovel_id], map: "idx_transacoes_adm_imovel")
   @@index([cliente_id], map: "idx_transacoes_cliente")
@@ -882,6 +897,7 @@ model transacoes {
   @@index([corretor_proprietario_id], map: "idx_transacoes_corretor_proprietario")
   @@index([imovel_id], map: "idx_transacoes_imovel")
   @@index([loja_id], map: "idx_transacoes_loja")
+  @@index([gestao_id], map: "idx_transacoes_gestao")
 }
 
 /// Clientes interessados (compradores/locatários) vinculados a uma

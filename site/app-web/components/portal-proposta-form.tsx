@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { ESTADOS_CIVIS } from "@/lib/clientes/opcoes";
-import { TIPO_CONDICAO_OPCOES } from "@/lib/transacoes/opcoes";
+import { TIPO_CONDICAO_OPCOES, FORMA_PAGAMENTO_CONDICAO_OPCOES, MOMENTO_CONDICAO_OPCOES } from "@/lib/transacoes/opcoes";
 import { gerarPropostaAction } from "@/app/portal/proposta/actions";
 
 type ClienteLinha = {
@@ -318,12 +318,18 @@ export function PortalPropostaForm({
           </div>
           <div>
             <label className={LABEL}>Forma de pagamento</label>
-            <input
+            <select
               className={CAMPO}
-              placeholder="transferência bancária"
               value={novaCondicao.forma_pagamento}
               onChange={(e) => setNovaCondicao((a) => ({ ...a, forma_pagamento: e.target.value }))}
-            />
+            >
+              <option value="">—</option>
+              {FORMA_PAGAMENTO_CONDICAO_OPCOES.map((op) => (
+                <option key={op} value={op}>
+                  {op}
+                </option>
+              ))}
+            </select>
           </div>
           <div>
             <label className={LABEL}>Parcelas</label>
@@ -336,12 +342,18 @@ export function PortalPropostaForm({
           </div>
           <div>
             <label className={LABEL}>Momento</label>
-            <input
+            <select
               className={CAMPO}
-              placeholder="assinatura do contrato"
               value={novaCondicao.momento}
               onChange={(e) => setNovaCondicao((a) => ({ ...a, momento: e.target.value }))}
-            />
+            >
+              <option value="">—</option>
+              {MOMENTO_CONDICAO_OPCOES.map((op) => (
+                <option key={op} value={op}>
+                  {op}
+                </option>
+              ))}
+            </select>
           </div>
           <div>
             <label className={LABEL}>Data de pagamento</label>

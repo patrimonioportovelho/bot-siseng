@@ -60,4 +60,21 @@ export function statusOpcoesPorTipo(tipo: string): string[] {
 // pagamento, levantado em cima dos 30 registros já existentes na tabela
 // condicoes_pagamento (majoritariamente Compra e Venda: entrada + saldo
 // financiado, às vezes parcelado direto com o vendedor ou permuta).
-export const TIPO_CONDICAO_OPCOES = ["Entrada", "Financiamento", "Parcelado", "Saldo", "Permuta", "Outro"];
+// ATENÇÃO: espelha o CHECK constraint condicoes_pagamento_tipo_check no
+// banco — qualquer valor fora desta lista quebra o cadastro (erro 23514).
+export const TIPO_CONDICAO_OPCOES = ["Entrada", "Saldo", "Financiamento", "Permuta", "Parcelado"];
+
+// Forma de pagamento de cada condição — espelha o CHECK constraint
+// condicoes_pagamento_forma_pagamento_check no banco. Antes era texto
+// livre, o que permitia digitar qualquer frase e quebrar o cadastro com
+// erro 23514; agora é sempre um destes 4 valores fechados.
+export const FORMA_PAGAMENTO_CONDICAO_OPCOES = ["pix", "transferência bancária", "dinheiro", "parcelado"];
+
+// Momento do pagamento de cada condição — espelha o CHECK constraint
+// condicoes_pagamento_momento_check no banco. Mesma lógica: era texto
+// livre, agora é fechado.
+export const MOMENTO_CONDICAO_OPCOES = [
+  "assinatura do contrato de compra e venda",
+  "conforme parcelas",
+  "assinatura do contrato de financiamento"
+];

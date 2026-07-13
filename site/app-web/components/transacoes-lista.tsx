@@ -56,9 +56,17 @@ export async function TransacoesLista({ tipo, q, novoHref }: { tipo: "Locação"
       : {})
   };
 
+  // Compra e Venda ordena pela data de assinatura (mais recentes primeiro,
+  // sem assinatura ainda vai por último); Locação mantém a ordem de
+  // cadastro (created_at), que já reflete bem o fluxo de acompanhamento
+  // diário do aluguel.
+  const orderBy = somenteLocacao
+    ? ({ created_at: "desc" } as const)
+    : ([{ data_assinatura: { sort: "desc" as const, nulls: "last" as const } }, { created_at: "desc" as const }]);
+
   const transacoes = await prisma.transacoes.findMany({
     where,
-    orderBy: { created_at: "desc" },
+    orderBy,
     include: {
       lojas: true,
       imoveis: { include: { imoveis_proprietarios: { include: { clientes: true }, orderBy: { ordem: "asc" } } } },

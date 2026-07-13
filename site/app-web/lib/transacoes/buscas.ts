@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { formatCpf, formatCnpj } from "@/lib/format";
 
 // Buscas GLOBAIS (todos os corretores) usadas na Elaboração de Compra e
 // Venda do portal — o corretor que está vendendo pode não ser o mesmo que
@@ -75,7 +76,7 @@ export async function listarClientesParaCompraVenda(parceiroIdAtual: string): Pr
       nome: c.nome,
       parceiroId: c.parceiro_id,
       deOutroCorretor,
-      cpfCnpj: deOutroCorretor ? null : c.cpf ?? c.cnpj,
+      cpfCnpj: deOutroCorretor ? null : c.cpf ? formatCpf(c.cpf) : c.cnpj ? formatCnpj(c.cnpj) : null,
       telefone: deOutroCorretor ? null : c.telefone,
       email: deOutroCorretor ? null : c.email
     };

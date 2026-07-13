@@ -269,6 +269,8 @@ type ClienteComEndereco = {
   cnpj: string | null;
   rg: string | null;
   expedicao: string | null;
+  telefone: string | null;
+  email: string | null;
   endereco: string | null;
   cidades: { nome: string } | null;
   estados: { nome: string } | null;
@@ -287,27 +289,55 @@ function nacionalidadeTexto(c: { nacionalidade?: string | null; sexo: string | n
   return c.nacionalidade ?? (c.sexo === "Mulher" ? "brasileira" : "brasileiro");
 }
 
+// Endereço no formato pedido especificamente para o parágrafo de
+// qualificação (ex.: "Rua Angelica, 114, casa 79, Bairro Velho, Porto Velho
+// /Rondônia") — cidade e estado juntos com "/" em vez do " - " usado no
+// resto do sistema (EnderecoCompleto de Gestão/Proposta continua com o
+// separador antigo, só a qualificação do contrato de Compra e Venda/Locação
+// usa este formato).
+function enderecoQualificacaoTexto(c: ClienteComEndereco): string {
+  const cidade = c.cidades?.nome ?? null;
+  const estado = c.estados?.nome ?? null;
+  const localidade = cidade && estado ? `${cidade} /${estado}` : cidade ?? estado;
+  return [c.endereco, localidade].filter((p): p is string => Boolean(p)).join(", ");
+}
+
 // Parágrafo de qualificação completo de uma parte (vendedor/comprador,
-// locador/locatário): "Nome, nacionalidade, profissão, estado civil, RG nº
-// ..., CPF nº ..., residente e domiciliado(a) em ...". Usado tanto sozinho
-// (um só proprietário) quanto unido com "e" quando há mais de um (herdeiros
-// etc.). RG entrou porque a qualificação sem ele fica incompleta pra um
-// contrato de verdade (praxe jurídica sempre traz RG junto do CPF).
+// locador/locatário): "Nome, nacionalidade, estado civil, profissão,
+// portador(a) da carteira de identidade RG nº ... e inscrito(a) sob CPF nº
+// ..., portador(a) do telefone para contato ... e e-mail eletrônico: ...,
+// residente e domiciliado(a) a ...". Usado tanto sozinho (um só
+// proprietário) quanto unido com "e" quando há mais de um (herdeiros etc.).
 function qualificacaoTexto(c: ClienteComEndereco): string {
   const nacionalidade = nacionalidadeTexto(c);
-  const profissao = c.profissao ?? c.cat_profissao ?? "";
   const estadoCivil = (c.estado_civil ?? "").toLowerCase();
-  const rg = c.rg ? `portador(a) da cédula de identidade RG nº ${c.rg}${c.expedicao ? `/${c.expedicao}` : ""}` : "";
-  const doc = c.cpf ? `CPF nº ${formatarCpf(c.cpf)}` : c.cnpj ? `CNPJ nº ${formatCnpj(c.cnpj)}` : "";
-  const endereco = enderecoClienteCompleto(c);
+  const profissao = c.profissao ?? c.cat_profissao ?? "";
+
+  const rgTexto = c.rg ? `RG nº ${c.rg}${c.expedicao ? `/${c.expedicao}` : ""}` : "";
+  const documentoNumero = c.cpf ? `CPF nº ${formatarCpf(c.cpf)}` : c.cnpj ? `CNPJ nº ${formatCnpj(c.cnpj)}` : "";
+  let identificacao = "";
+  if (rgTexto && documentoNumero) {
+    identificacao = `portador(a) da carteira de identidade ${rgTexto} e inscrito(a) sob ${documentoNumero}`;
+  } else if (rgTexto) {
+    identificacao = `portador(a) da carteira de identidade ${rgTexto}`;
+  } else if (documentoNumero) {
+    identificacao = `inscrito(a) sob ${documentoNumero}`;
+  }
+
+  const telefoneTexto = c.telefone ? `portador(a) do telefone para contato ${formatTelefone(c.telefone)}` : "";
+  const emailTexto = c.email ? `e-mail eletrônico: ${c.email}` : "";
+  const contato = telefoneTexto && emailTexto ? `${telefoneTexto} e ${emailTexto}` : telefoneTexto || emailTexto;
+
+  const endereco = enderecoQualificacaoTexto(c);
+
   const partes = [
     c.nome,
     nacionalidade,
-    profissao || null,
     estadoCivil || null,
-    rg || null,
-    doc || null,
-    endereco ? `residente e domiciliado(a) em ${endereco}` : null
+    profissao || null,
+    identificacao || null,
+    contato || null,
+    endereco ? `residente e domiciliado(a) a ${endereco}` : null
   ].filter((p): p is string => Boolean(p));
   return partes.join(", ");
 }
@@ -475,20 +505,34 @@ async function montarDadosTransacao(
     return `${nome}: ${numero(valor)}${dadosBancarios}`;
   }
 
+  // Quando o corretor do proprietário e o da contraparte são a mesma
+  // pessoa (comum — o próprio cliente já indica o corretor de confiança
+  // pros dois lados), unifica numa linha só somando os honorários, em vez
+  // de listar o mesmo corretor duas vezes com valores separados.
+  const mesmoCorretorDosDoisLados = Boolean(
+    corretorProprietario && corretorContraparte && corretorProprietario.id === corretorContraparte.id
+  );
+
   const linhasHonorario: string[] = [];
   linhasHonorario.push(`Honorário total (${percentual(t.porc_honorario)} sobre o valor da transação): ${numero(honorarioTotal)}`);
   if (t.tem_parceria && parceiroExterno) {
     linhasHonorario.push(linhaHonorario(`Parceria — ${parceiroExterno.nome} (${percentual(t.porc_parceria)})`, valorParceria, parceiroExterno));
   }
-  if (corretorProprietario) {
-    linhasHonorario.push(
-      linhaHonorario(`Corretor do proprietário — ${corretorProprietario.nome} (${percentual(t.porc_corretor_proprietario)})`, valorCorretorProprietario, corretorProprietario)
-    );
-  }
-  if (corretorContraparte) {
-    linhasHonorario.push(
-      linhaHonorario(`Corretor da contraparte — ${corretorContraparte.nome} (${percentual(t.porc_corretor_contraparte)})`, valorCorretorContraparte, corretorContraparte)
-    );
+  if (mesmoCorretorDosDoisLados && corretorProprietario) {
+    const fracaoSoma = Number(t.porc_corretor_proprietario ?? 0) + Number(t.porc_corretor_contraparte ?? 0);
+    const valorSoma = valorCorretorProprietario + valorCorretorContraparte;
+    linhasHonorario.push(linhaHonorario(`Corretor — ${corretorProprietario.nome} (${percentual(fracaoSoma)})`, valorSoma, corretorProprietario));
+  } else {
+    if (corretorProprietario) {
+      linhasHonorario.push(
+        linhaHonorario(`Corretor do proprietário — ${corretorProprietario.nome} (${percentual(t.porc_corretor_proprietario)})`, valorCorretorProprietario, corretorProprietario)
+      );
+    }
+    if (corretorContraparte) {
+      linhasHonorario.push(
+        linhaHonorario(`Corretor da contraparte — ${corretorContraparte.nome} (${percentual(t.porc_corretor_contraparte)})`, valorCorretorContraparte, corretorContraparte)
+      );
+    }
   }
   if (Number(t.porc_imobiliaria ?? 0) > 0) {
     linhasHonorario.push(`Imobiliária (${percentual(t.porc_imobiliaria)}): ${numero(valorImobiliaria)}`);

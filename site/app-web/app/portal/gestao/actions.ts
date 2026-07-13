@@ -6,6 +6,7 @@ import { logAlteracaoPortal } from "@/lib/auth";
 import { valorEditavelParaDecimal, percentualParaDecimal } from "@/lib/format";
 import { gerarDocumento } from "@/lib/documentos/gerar";
 import { registrarEJogarErro } from "@/lib/erros";
+import { buscarClienteDuplicado, mensagemClienteDuplicado } from "@/lib/clientes/duplicidade";
 
 function texto(formData: FormData, campo: string): string | null {
   const v = formData.get(campo);
@@ -136,6 +137,24 @@ export async function gerarContratoGestaoAction(
     for (const id of idsExistentes) {
       if (!clientesExistentesPorId.has(id)) {
         return { ok: false, erro: "Um dos clientes selecionados não pertence ao seu cadastro." };
+      }
+    }
+
+    // Antes de criar qualquer cliente novo, confere se já não existe um
+    // cadastro igual (mesmo nome ou mesmo CPF/CNPJ) feito por OUTRO corretor
+    // — a lista de "cliente já cadastrado" do formulário só mostra os
+    // clientes do próprio corretor, então sem essa checagem seria fácil
+    // duplicar sem querer o cadastro que outro corretor já fez. Só o
+    // administrativo decide se transfere o cliente existente.
+    for (const c of clientesForm) {
+      if (c.clienteId) continue;
+      const duplicado = await buscarClienteDuplicado({
+        nome: c.nome,
+        cpfCnpj: c.cpfCnpj,
+        ignorarIds: idsExistentes
+      });
+      if (duplicado) {
+        return { ok: false, erro: mensagemClienteDuplicado(duplicado) };
       }
     }
 

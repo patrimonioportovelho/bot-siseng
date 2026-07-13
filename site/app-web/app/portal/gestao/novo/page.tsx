@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requirePortalSession } from "@/lib/portal-auth";
 import { PortalHeader } from "@/components/portal-header";
 import { PortalGestaoForm } from "@/components/portal-gestao-form";
+import { formatCpf, formatCnpj } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -73,7 +74,7 @@ export default async function PortalGestaoNovoPage() {
             id: c.id,
             nome: c.nome,
             rg: c.rg ?? "",
-            cpfCnpj: c.cpf ?? c.cnpj ?? "",
+            cpfCnpj: c.cpf ? formatCpf(c.cpf) : c.cnpj ? formatCnpj(c.cnpj) : "",
             endereco: c.endereco ?? "",
             nacionalidade: c.nacionalidade ?? "",
             estadoCivil: c.estado_civil ?? "",

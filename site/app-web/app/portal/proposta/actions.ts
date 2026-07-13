@@ -6,6 +6,7 @@ import { logAlteracaoPortal } from "@/lib/auth";
 import { valorEditavelParaDecimal } from "@/lib/format";
 import { gerarDocumento } from "@/lib/documentos/gerar";
 import { registrarEJogarErro } from "@/lib/erros";
+import { buscarClienteDuplicado, mensagemClienteDuplicado } from "@/lib/clientes/duplicidade";
 
 function texto(formData: FormData, campo: string): string | null {
   const v = formData.get(campo);
@@ -156,6 +157,16 @@ export async function gerarPropostaAction(
         return { ok: false, erro: "O cliente selecionado não pertence ao seu cadastro." };
       }
     } else {
+      // Mesma checagem do Contrato de Gestão: a lista de "cliente já
+      // cadastrado" só mostra os clientes do próprio corretor, então sem
+      // isso seria fácil duplicar sem querer o cadastro que outro corretor
+      // já fez pro mesmo cliente. Quem decide se transfere é o
+      // administrativo, não o corretor digitando por cima.
+      const duplicado = await buscarClienteDuplicado({ nome: clienteForm.nome, cpfCnpj: clienteForm.cpfCnpj });
+      if (duplicado) {
+        return { ok: false, erro: mensagemClienteDuplicado(duplicado) };
+      }
+
       const doc = digitos(clienteForm.cpfCnpj);
       const ehCnpj = (doc?.length ?? 0) === 14;
       cliente = await prisma.clientes

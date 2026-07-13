@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requirePortalSession } from "@/lib/portal-auth";
 import { PortalHeader } from "@/components/portal-header";
 import { PortalClientesLista } from "@/components/portal-clientes-lista";
+import { formatCpf, formatCnpj } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -43,7 +44,7 @@ export default async function PortalClientesPage() {
             nome: c.nome,
             telefone: c.telefone,
             email: c.email,
-            cpfCnpj: c.cpf ?? c.cnpj,
+            cpfCnpj: c.cpf ? formatCpf(c.cpf) : c.cnpj ? formatCnpj(c.cnpj) : null,
             imoveis: c.imoveis_proprietarios
               .filter((v) => !v.imoveis.excluido)
               .map((v) => ({ id: v.imoveis.id, endereco: v.imoveis.endereco }))

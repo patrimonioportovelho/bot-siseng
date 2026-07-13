@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requirePortalSession } from "@/lib/portal-auth";
 import { PortalHeader } from "@/components/portal-header";
 import { PortalPropostaForm } from "@/components/portal-proposta-form";
+import { formatCpf, formatCnpj } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -61,7 +62,7 @@ export default async function PortalPropostaNovoPage() {
           clientesDoCorretor={clientesDoCorretor.map((c) => ({
             id: c.id,
             nome: c.nome,
-            cpfCnpj: c.cpf ?? c.cnpj ?? "",
+            cpfCnpj: c.cpf ? formatCpf(c.cpf) : c.cnpj ? formatCnpj(c.cnpj) : "",
             endereco: c.endereco ?? "",
             estadoCivil: c.estado_civil ?? ""
           }))}

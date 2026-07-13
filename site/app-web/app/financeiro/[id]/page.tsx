@@ -4,7 +4,7 @@ import { Topbar } from "@/components/topbar";
 import { prisma } from "@/lib/prisma";
 import { MovimentacaoDetalhe } from "@/components/movimentacao-detalhe";
 import { RateioForm } from "@/components/rateio-form";
-import { formatMoeda, formatPercentual, formatDataCalendario } from "@/lib/format";
+import { formatMoeda, formatPercentual, formatDataCalendario, formatCpf, formatCnpj } from "@/lib/format";
 import { atualizarMovimentacaoAction, gerarRateioAction, excluirMovimentacaoAction, marcarPagoAction } from "../actions";
 
 export const dynamic = "force-dynamic";
@@ -120,7 +120,7 @@ export default async function MovimentacaoPage({
       ? {
           tipoParte: "Parceiro" as const,
           nome: movimentacao.parceiros.nome,
-          documento: movimentacao.parceiros.cpf,
+          documento: movimentacao.parceiros.cpf ? formatCpf(movimentacao.parceiros.cpf) : null,
           banco: movimentacao.parceiros.bancos?.nome ?? null,
           codigo_banco: movimentacao.parceiros.codigo_banco,
           agencia: movimentacao.parceiros.agencia,
@@ -133,7 +133,11 @@ export default async function MovimentacaoPage({
         ? {
             tipoParte: "Proprietário" as const,
             nome: movimentacao.clientes_proprietario.nome,
-            documento: movimentacao.clientes_proprietario.cpf ?? movimentacao.clientes_proprietario.cnpj,
+            documento: movimentacao.clientes_proprietario.cpf
+              ? formatCpf(movimentacao.clientes_proprietario.cpf)
+              : movimentacao.clientes_proprietario.cnpj
+                ? formatCnpj(movimentacao.clientes_proprietario.cnpj)
+                : null,
             banco: movimentacao.clientes_proprietario.bancos?.nome ?? null,
             codigo_banco: movimentacao.clientes_proprietario.codigo_banco,
             agencia: movimentacao.clientes_proprietario.agencia,

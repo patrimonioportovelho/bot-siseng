@@ -75,7 +75,11 @@ export const CAMPOS_DOCUMENTO: Record<TipoDocumento, CampoDocumento[]> = {
     { campo: "ContaVendedor", descricao: "Conta do primeiro Vendedor" },
     { campo: "TipoPixVendedor", descricao: "Tipo de chave PIX do primeiro Vendedor" },
     { campo: "PixVendedor", descricao: "Chave PIX do primeiro Vendedor" },
-    { campo: "TextoHonorarios", descricao: "Dados bancários dos corretores para pagamento da comissão" },
+    {
+      campo: "Honorarios",
+      descricao:
+        "Lista (loop {{#Honorarios}}...{{/Honorarios}}) dos itens de pagamento de comissão, já rateados e em ordem fixa: parceria (Imobiliária parceira/Corretor parceiro), se houver, primeiro; depois o(s) corretor(es) — um único item 'Corretor único' se o corretor do proprietário e o da contraparte forem a mesma pessoa, senão dois itens separados; por último a Imobiliária própria (dados bancários fixos, iguais nas duas lojas). Cada item traz Letra (a, b, c...), Titulo, Detalhes (dados bancários — Banco/Agência/Conta/Pix, com Razão Social e PIX-CNPJ quando é empresa) e ValorTexto (R$ + valor por extenso, renderizado em negrito verdadeiro no template)."
+    },
     { campo: "Chave", descricao: "Momento de entrega das chaves" },
     { campo: "Loja", descricao: "Porto Velho ou Jaru" },
     { campo: "DataAssinaturaExtenso", descricao: "Data de assinatura por extenso" },

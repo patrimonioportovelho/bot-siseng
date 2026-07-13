@@ -390,6 +390,82 @@ function linhaCondicaoPagamento(c: {
   return partes.join(", ");
 }
 
+// Dados bancários fixos da própria imobiliária (JV Serviços de Engenharia,
+// Consultoria e Negócios Imobiliários) — sempre a mesma conta/CNPJ,
+// independente da loja (Porto Velho ou Jaru) da transação. Usado no bloco
+// de honorários do contrato de Compra e Venda (item "Imobiliária /
+// Intermediadora", sempre o último da lista).
+const IMOBILIARIA_DADOS_BANCARIOS = {
+  razaoSocial: "JV SERVIÇOS DE ENGENHARIA, CONSULTORIA E NEGÓCIOS IMOBILIÁRIOS LTDA",
+  banco: "748 – Banco Cooperativo Sicredi S.A. – Bansicredi",
+  agencia: "0821",
+  conta: "75738-8",
+  cnpjPix: "30.902.268/0002-60"
+};
+
+type ParceiroComBanco = {
+  nome: string;
+  empresa?: string | null;
+  funcao?: string | null;
+  cpf?: string | null;
+  bancos: { nome: string; codigo: string | null } | null;
+  codigo_banco: string | null;
+  agencia: string | null;
+  conta: string | null;
+  tipo_pix: string | null;
+  pix: string | null;
+};
+
+// Bloco "Banco / Agência / Conta / Pix {tipo}" de uma pessoa física
+// (corretor da imobiliária ou corretor parceiro externo) — um item do
+// honorário no contrato de Compra e Venda.
+function detalhesBancariosPessoa(p: ParceiroComBanco): string {
+  const banco = p.bancos?.nome ?? p.codigo_banco ?? "—";
+  const codigo = p.bancos?.codigo ?? p.codigo_banco ?? "";
+  const linhas = [`Banco: ${banco}${codigo ? ` / ${codigo}` : ""}`, `Agência: ${p.agencia ?? "—"}`, `Conta: ${p.conta ?? "—"}`];
+  if (p.pix) linhas.push(`Pix${p.tipo_pix ? ` ${p.tipo_pix}` : ""}: ${p.pix}`);
+  return linhas.join("\n");
+}
+
+// Bloco "Banco / Agência / Conta Corrente / Razão Social / PIX (CNPJ)" de
+// uma empresa (imobiliária parceira externa) — parceiros não têm campo de
+// CNPJ próprio, então usa o "cpf" cadastrado quando tiver 14 dígitos
+// (é onde o CNPJ de um parceiro pessoa jurídica acaba ficando gravado).
+function detalhesBancariosEmpresa(razaoSocial: string, p: ParceiroComBanco): string {
+  const banco = p.bancos?.nome ?? p.codigo_banco ?? "—";
+  const codigo = p.bancos?.codigo ?? p.codigo_banco ?? "";
+  const linhas = [
+    `Banco: ${banco}${codigo ? ` / ${codigo}` : ""}`,
+    `Agência: ${p.agencia ?? "—"}`,
+    `Conta Corrente: ${p.conta ?? "—"}`,
+    `Razão Social: ${razaoSocial}`
+  ];
+  const digitosCpf = p.cpf ? p.cpf.replace(/\D/g, "") : "";
+  if (digitosCpf.length === 14) {
+    linhas.push(`PIX (CNPJ): ${formatCnpj(p.cpf)}`);
+  } else if (p.pix) {
+    linhas.push(`Pix${p.tipo_pix ? ` ${p.tipo_pix}` : ""}: ${p.pix}`);
+  }
+  return linhas.join("\n");
+}
+
+// Mesmo bloco "empresa", mas com os dados fixos da própria imobiliária —
+// não depende de nenhum registro de parceiro.
+function detalhesBancariosImobiliariaPropria(): string {
+  const d = IMOBILIARIA_DADOS_BANCARIOS;
+  return [
+    `Banco: ${d.banco}`,
+    `Agência: ${d.agencia}`,
+    `Conta Corrente: ${d.conta}`,
+    `Razão Social: ${d.razaoSocial}`,
+    `PIX (CNPJ): ${d.cnpjPix}`
+  ].join("\n");
+}
+
+function valorComExtenso(valor: number): string {
+  return `${numero(valor)} (${valorPorExtenso(valor)})`;
+}
+
 async function montarDadosTransacao(
   tipoDocumento: "contrato_locacao" | "contrato_compra_venda",
   transacaoId: string
@@ -485,9 +561,7 @@ async function montarDadosTransacao(
   // Rateio do honorário — mesmo cálculo ao vivo já usado no formulário de
   // Comissionamento (ver TransacaoForm): valor total primeiro, parceria
   // (se tiver) descontada antes, e só depois divide o restante entre
-  // corretor do proprietário, corretor da contraparte e imobiliária. Antes
-  // essa parte só listava o banco dos dois corretores, sem nenhum valor ou
-  // percentual — não dava pra saber quanto cada um recebia de fato.
+  // corretor do proprietário, corretor da contraparte e imobiliária.
   const honorarioTotal = Number(t.valor_transacao) * Number(t.porc_honorario ?? 0);
   const valorParceria = t.tem_parceria ? honorarioTotal * Number(t.porc_parceria ?? 0) : 0;
   const restanteRateio = honorarioTotal - valorParceria;
@@ -495,48 +569,78 @@ async function montarDadosTransacao(
   const valorCorretorContraparte = restanteRateio * Number(t.porc_corretor_contraparte ?? 0);
   const valorImobiliaria = restanteRateio * Number(t.porc_imobiliaria ?? 0);
 
-  function linhaHonorario(nome: string, valor: number, corretor: { bancos: { nome: string; codigo: string | null } | null; codigo_banco: string | null; agencia: string | null; conta: string | null; tipo_pix: string | null; pix: string | null } | null): string {
-    const banco = corretor?.bancos?.nome ?? corretor?.codigo_banco ?? "—";
-    const dadosBancarios = corretor
-      ? ` — Banco ${banco}, Ag. ${corretor.agencia ?? "—"}, Conta ${corretor.conta ?? "—"}${
-          corretor.pix ? `, Pix (${corretor.tipo_pix ?? "—"}): ${corretor.pix}` : ""
-        }`
-      : "";
-    return `${nome}: ${numero(valor)}${dadosBancarios}`;
-  }
-
   // Quando o corretor do proprietário e o da contraparte são a mesma
   // pessoa (comum — o próprio cliente já indica o corretor de confiança
-  // pros dois lados), unifica numa linha só somando os honorários, em vez
+  // pros dois lados), unifica num item só somando os honorários, em vez
   // de listar o mesmo corretor duas vezes com valores separados.
   const mesmoCorretorDosDoisLados = Boolean(
     corretorProprietario && corretorContraparte && corretorProprietario.id === corretorContraparte.id
   );
 
-  const linhasHonorario: string[] = [];
-  linhasHonorario.push(`Honorário total (${percentual(t.porc_honorario)} sobre o valor da transação): ${numero(honorarioTotal)}`);
+  // Lista de itens do pagamento de honorários (a, b, c...) — ordem fixa:
+  // parceria (se tiver) sempre primeiro, depois o(s) corretor(es), e a
+  // imobiliária própria sempre por último com os dados bancários fixos
+  // dela (mesma conta/CNPJ pras duas lojas). Cada item vira um bloco no
+  // template (contrato_compra_venda.docx, loop {{#Honorarios}}), com
+  // "Valor:" em negrito de verdade — formatado direto no .docx, não dá
+  // pra fazer isso só com texto substituído.
+  type ItemHonorario = { titulo: string; detalhes: string; valor: number };
+  const itensHonorario: ItemHonorario[] = [];
+
   if (t.tem_parceria && parceiroExterno) {
-    linhasHonorario.push(linhaHonorario(`Parceria — ${parceiroExterno.nome} (${percentual(t.porc_parceria)})`, valorParceria, parceiroExterno));
+    const ehEmpresa = parceiroExterno.funcao === "Imobiliária Externa";
+    itensHonorario.push({
+      titulo: ehEmpresa
+        ? `Imobiliária parceira: ${parceiroExterno.empresa || parceiroExterno.nome}`
+        : `Corretor parceiro: ${parceiroExterno.nome}`,
+      detalhes: ehEmpresa
+        ? detalhesBancariosEmpresa(parceiroExterno.empresa || parceiroExterno.nome, parceiroExterno)
+        : detalhesBancariosPessoa(parceiroExterno),
+      valor: valorParceria
+    });
   }
+
   if (mesmoCorretorDosDoisLados && corretorProprietario) {
-    const fracaoSoma = Number(t.porc_corretor_proprietario ?? 0) + Number(t.porc_corretor_contraparte ?? 0);
-    const valorSoma = valorCorretorProprietario + valorCorretorContraparte;
-    linhasHonorario.push(linhaHonorario(`Corretor — ${corretorProprietario.nome} (${percentual(fracaoSoma)})`, valorSoma, corretorProprietario));
+    itensHonorario.push({
+      titulo: `Corretor único: ${corretorProprietario.nome}`,
+      detalhes: detalhesBancariosPessoa(corretorProprietario),
+      valor: valorCorretorProprietario + valorCorretorContraparte
+    });
   } else {
     if (corretorProprietario) {
-      linhasHonorario.push(
-        linhaHonorario(`Corretor do proprietário — ${corretorProprietario.nome} (${percentual(t.porc_corretor_proprietario)})`, valorCorretorProprietario, corretorProprietario)
-      );
+      itensHonorario.push({
+        titulo: `Corretor do proprietário: ${corretorProprietario.nome}`,
+        detalhes: detalhesBancariosPessoa(corretorProprietario),
+        valor: valorCorretorProprietario
+      });
     }
     if (corretorContraparte) {
-      linhasHonorario.push(
-        linhaHonorario(`Corretor da contraparte — ${corretorContraparte.nome} (${percentual(t.porc_corretor_contraparte)})`, valorCorretorContraparte, corretorContraparte)
-      );
+      itensHonorario.push({
+        titulo: `Corretor da contraparte: ${corretorContraparte.nome}`,
+        detalhes: detalhesBancariosPessoa(corretorContraparte),
+        valor: valorCorretorContraparte
+      });
     }
   }
+
   if (Number(t.porc_imobiliaria ?? 0) > 0) {
-    linhasHonorario.push(`Imobiliária (${percentual(t.porc_imobiliaria)}): ${numero(valorImobiliaria)}`);
+    itensHonorario.push({
+      titulo: `Imobiliária / Intermediadora: ${IMOBILIARIA_DADOS_BANCARIOS.razaoSocial}`,
+      detalhes: detalhesBancariosImobiliariaPropria(),
+      valor: valorImobiliaria
+    });
   }
+
+  if (itensHonorario.length === 0) {
+    itensHonorario.push({ titulo: "A combinar entre as partes", detalhes: "", valor: 0 });
+  }
+
+  const Honorarios = itensHonorario.map((item, indice) => ({
+    Letra: String.fromCharCode(97 + indice),
+    Titulo: item.titulo,
+    Detalhes: item.detalhes,
+    ValorTexto: valorComExtenso(item.valor)
+  }));
 
   return {
     QualificacaoVendedor: listaComE(proprietarios.map(qualificacaoTexto)),
@@ -554,7 +658,7 @@ async function montarDadosTransacao(
     ContaVendedor: primeiroVendedor.conta ?? "",
     TipoPixVendedor: primeiroVendedor.tipo_pix ?? "",
     PixVendedor: primeiroVendedor.pix ?? "",
-    TextoHonorarios: linhasHonorario.length > 0 ? linhasHonorario.join("\n") : "A combinar entre as partes.",
+    Honorarios,
     Chave: t.chave ?? "",
     Loja: t.lojas.nome,
     DataAssinaturaExtenso: dataPorExtenso(t.data_assinatura ?? hoje),

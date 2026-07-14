@@ -89,7 +89,7 @@ CREATE TABLE parceiros (
                               'Corretor Externo','Imobiliária Externa','Prestador de Serviço','Desligado'
                           )),
   loja_id                 UUID REFERENCES lojas(id),   -- só se aplica quando funcao IN ('Corretor','Corretor Estagiário')
-  status_funcao           TEXT NOT NULL DEFAULT 'Ativo' CHECK (status_funcao IN ('Ativo','Desativado')),
+  status_funcao           TEXT NOT NULL DEFAULT 'Ativo' CHECK (status_funcao IN ('Ativo','Inativo','Excluído')),
   cpf                     TEXT,
   data_nascimento         DATE,
   identidade              TEXT,

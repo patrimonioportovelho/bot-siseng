@@ -15,9 +15,9 @@ function texto(formData: FormData, campo: string): string | null {
   return t.length > 0 ? t : null;
 }
 
-// Telefone é digitado com máscara ((xx) xxxxx-xxxx) mas gravado só com
-// dígitos, no mesmo formato já usado no restante da base.
-function telefoneDigitos(formData: FormData, campo: string): string | null {
+// Telefone e CPF são digitados com máscara mas gravados só com dígitos, no
+// mesmo formato já usado no restante da base.
+function somenteDigitos(formData: FormData, campo: string): string | null {
   const t = texto(formData, campo);
   if (t === null) return null;
   const d = t.replace(/\D/g, "");
@@ -54,12 +54,15 @@ function data(formData: FormData, campo: string): Date | null {
 }
 
 // Campos que qualquer parceiro autenticado pode editar em um cadastro já
-// existente. Nome e CPF ficam de fora de propósito: são a âncora de
-// identidade usada no login (nome + CPF) e só mudam via aprovação de acesso
-// em Configurações — nunca por este formulário, nem por ADM.
+// existente. Nome fica de fora de propósito: é a âncora de identidade usada
+// no login (nome + CPF) e só muda via aprovação de acesso em Configurações
+// — nunca por este formulário, nem por ADM. CPF, a pedido do ADM, passou a
+// ser editável por aqui (era protegido antes) — atenção: mudar o CPF de um
+// parceiro que já usa o portal muda o que ele precisa digitar pra entrar.
 function camposEditaveis(formData: FormData) {
   return {
-    telefone: telefoneDigitos(formData, "telefone"),
+    cpf: somenteDigitos(formData, "cpf"),
+    telefone: somenteDigitos(formData, "telefone"),
     email: texto(formData, "email"),
     empresa: texto(formData, "empresa"),
     funcao: texto(formData, "funcao") ?? undefined,
@@ -99,14 +102,10 @@ export async function criarParceiroAction(formData: FormData) {
     throw new Error("Nome e função são obrigatórios.");
   }
 
-  const cpfDigitado = texto(formData, "cpf");
-  const cpf = cpfDigitado ? cpfDigitado.replace(/\D/g, "") : null;
-
   const novo = await prisma.parceiros
     .create({
       data: {
         nome,
-        cpf,
         ...camposEditaveis(formData),
         funcao
       }

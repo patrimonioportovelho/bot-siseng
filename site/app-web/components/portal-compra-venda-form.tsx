@@ -10,7 +10,8 @@ import {
 import { TIPOS_IMOVEL } from "@/lib/imoveis/opcoes";
 import { ESTADOS_CIVIS } from "@/lib/clientes/opcoes";
 import type { ImovelBuscaResultado, ClienteBuscaResultado } from "@/lib/transacoes/buscas";
-import { gerarCompraVendaAction } from "@/app/portal/compra-venda/actions";
+import { gerarCompraVendaAction, prepararUploadDocumentoAction } from "@/app/portal/compra-venda/actions";
+import { supabaseBrowser, BUCKET_DOCUMENTOS_PORTAL } from "@/lib/supabase-browser";
 
 type CondicaoPagamento = {
   tipo: string;
@@ -396,6 +397,7 @@ export function PortalCompraVendaForm({
   const [erroAnexo, setErroAnexo] = useState("");
 
   const [enviando, setEnviando] = useState(false);
+  const [etapaEnvio, setEtapaEnvio] = useState("");
   const [resultado, setResultado] = useState<
     | { ok: true; idLegado: string | null; emailEnviado: boolean; emailErro?: string }
     | { ok: false; erro: string }
@@ -647,8 +649,34 @@ export function PortalCompraVendaForm({
 
   async function handleGerar() {
     setEnviando(true);
+    setEtapaEnvio("");
     setResultado(null);
     try {
+      // Documentos sobem direto pro Supabase Storage ANTES de qualquer
+      // coisa — nunca passam pela Server Action de cadastro. A Vercel tem
+      // um limite FIXO de 4,5MB por requisição de função (não dá pra
+      // configurar, é da plataforma), e um PDF escaneado ou foto de
+      // celular estoura isso fácil. Foi exatamente isso que causava "An
+      // unexpected response was received from the server." sem mais
+      // explicação nenhuma.
+      const documentosEnviados: { caminho: string; nomeOriginal: string }[] = [];
+      for (let i = 0; i < documentos.length; i++) {
+        const arquivo = documentos[i];
+        setEtapaEnvio(`Enviando documento ${i + 1} de ${documentos.length}...`);
+        const preparo = await prepararUploadDocumentoAction(arquivo.name);
+        if (!preparo.ok) {
+          throw new Error(`Falha ao preparar envio de "${arquivo.name}": ${preparo.erro}`);
+        }
+        const { error: erroUpload } = await supabaseBrowser()
+          .storage.from(BUCKET_DOCUMENTOS_PORTAL)
+          .uploadToSignedUrl(preparo.caminho, preparo.token, arquivo, { contentType: arquivo.type });
+        if (erroUpload) {
+          throw new Error(`Falha ao enviar "${arquivo.name}": ${erroUpload.message}`);
+        }
+        documentosEnviados.push({ caminho: preparo.caminho, nomeOriginal: arquivo.name });
+      }
+      setEtapaEnvio("Cadastrando...");
+
       const formData = new FormData();
       formData.set("loja_id", lojaId);
       formData.set("imovel_id", imovelNovo ? "" : imovelId);
@@ -681,7 +709,7 @@ export function PortalCompraVendaForm({
         formData.set("historico_gestao_prazo_meses", historicoPrazoMeses);
         formData.set("historico_gestao_valor", historicoValor);
       }
-      documentos.forEach((arquivo) => formData.append("documentos", arquivo));
+      formData.set("documentosJson", JSON.stringify(documentosEnviados));
 
       const r = await gerarCompraVendaAction(formData);
       setResultado(r);
@@ -707,6 +735,7 @@ export function PortalCompraVendaForm({
       });
     } finally {
       setEnviando(false);
+      setEtapaEnvio("");
     }
   }
 
@@ -1211,7 +1240,7 @@ export function PortalCompraVendaForm({
           onClick={handleGerar}
           className="bg-primary text-white rounded-lg px-5 py-2 text-sm font-semibold disabled:opacity-40 hover:opacity-90"
         >
-          {enviando ? "Cadastrando..." : "Cadastrar transação"}
+          {enviando ? etapaEnvio || "Cadastrando..." : "Cadastrar transação"}
         </button>
         <button
           type="button"

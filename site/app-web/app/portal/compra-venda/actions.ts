@@ -7,24 +7,67 @@ import { valorEditavelParaDecimal, percentualParaDecimal, formatMoeda, formatDat
 import { registrarEJogarErro } from "@/lib/erros";
 import { STATUS_COMPRA_VENDA_OPCOES } from "@/lib/transacoes/opcoes";
 import { buscarGestaoPorImovel } from "@/lib/transacoes/buscas";
-import { enviarEmail, type EmailAnexo } from "@/lib/email";
+import { enviarEmail } from "@/lib/email";
 import { buscarClienteDuplicado, mensagemClienteDuplicado } from "@/lib/clientes/duplicidade";
+import { criarUploadAssinadoDocumento, criarLinkDownloadDocumento } from "@/lib/supabase-admin";
 
 const EMAIL_DESTINO_PADRAO = "engimob@remax.com.br";
 
-// Anexos vêm do <input type="file"> do formulário direto no FormData — não
-// sobem pro Supabase Storage em nenhum momento, só passam pela memória do
-// servidor até virarem anexo do email (pedido explícito: não pesar o
-// sistema guardando essa documentação, o arquivamento de verdade é manual,
-// no Drive, a partir do email recebido).
-async function coletarAnexos(formData: FormData): Promise<EmailAnexo[]> {
-  const arquivos = formData.getAll("documentos").filter((v): v is File => v instanceof File && v.size > 0);
-  return Promise.all(
-    arquivos.map(async (arquivo) => ({
-      filename: arquivo.name || "documento",
-      content: Buffer.from(await arquivo.arrayBuffer())
-    }))
+// Prepara um upload direto do navegador pro Supabase Storage — a Vercel tem
+// um limite FIXO de 4,5MB por requisição de função (Server Action
+// incluída), sem configuração que aumente isso. Documentos escaneados ou
+// foto de celular estouram fácil. Por isso os documentos NÃO passam mais
+// pela Server Action de cadastro: o navegador chama esta action só pra
+// pedir uma URL de upload assinada (chamada minúscula, só o nome do
+// arquivo), sobe o arquivo direto pro Supabase, e manda pra
+// gerarCompraVendaAction só o caminho já salvo (texto pequeno).
+export async function prepararUploadDocumentoAction(
+  nomeArquivo: string
+): Promise<{ ok: true; caminho: string; token: string } | { ok: false; erro: string }> {
+  await requirePortalSession();
+  try {
+    const { caminho, token } = await criarUploadAssinadoDocumento(nomeArquivo);
+    return { ok: true, caminho, token };
+  } catch (erro) {
+    return { ok: false, erro: erro instanceof Error ? erro.message : String(erro) };
+  }
+}
+
+type DocumentoEnviado = { caminho: string; nomeOriginal: string };
+
+function parseDocumentos(formData: FormData): DocumentoEnviado[] {
+  const bruto = texto(formData, "documentosJson");
+  if (!bruto) return [];
+  try {
+    const lista = JSON.parse(bruto);
+    if (!Array.isArray(lista)) return [];
+    return lista
+      .map((d) => ({
+        caminho: String(d?.caminho ?? "").trim(),
+        nomeOriginal: String(d?.nomeOriginal ?? "").trim() || "documento"
+      }))
+      .filter((d) => d.caminho.length > 0);
+  } catch {
+    return [];
+  }
+}
+
+// Gera um link de download (7 dias) pra cada documento já enviado — vai no
+// corpo do email pro administrativo em vez de anexo de verdade. Além de
+// contornar o mesmo limite da Vercel do lado de fora (o corpo do email
+// também tem limite no Gmail), o link nem exige que o email chegue rápido:
+// o arquivo já está salvo desde o upload, o email é só o aviso.
+async function montarLinksDocumentos(documentos: DocumentoEnviado[]): Promise<string> {
+  if (documentos.length === 0) {
+    return "<p>Nenhum documento foi anexado no cadastro — cobrar do corretor se precisar.</p>";
+  }
+  const links = await Promise.all(
+    documentos.map(async (d) => {
+      const url = await criarLinkDownloadDocumento(d.caminho);
+      return url ? `<li><a href="${url}">${d.nomeOriginal}</a></li>` : `<li>${d.nomeOriginal} (link indisponível)</li>`;
+    })
   );
+  return `<p>${documentos.length} documento(s) anexado(s) — link válido por 7 dias:</p><ul>${links.join("")}</ul>`;
 }
 
 function texto(formData: FormData, campo: string): string | null {
@@ -465,7 +508,8 @@ export async function gerarCompraVendaAction(
       prisma.lojas.findUnique({ where: { id: lojaId }, select: { nome: true } })
     ]);
 
-    const anexos = await coletarAnexos(formData);
+    const documentosEnviados = parseDocumentos(formData);
+    const linksDocumentosHtml = await montarLinksDocumentos(documentosEnviados);
 
     const linhasResumo = [
       `<strong>Id:</strong> ${novo.id_legado ?? novo.id}`,
@@ -491,11 +535,7 @@ export async function gerarCompraVendaAction(
       <div style="font-family: sans-serif; font-size: 14px; color: #1f2937;">
         <p>Nova <strong>Elaboração de Compra e Venda</strong> cadastrada pelo portal do corretor.</p>
         <p>${linhasResumo.join("<br/>")}</p>
-        ${
-          anexos.length > 0
-            ? `<p>${anexos.length} arquivo(s) de documentação em anexo.</p>`
-            : "<p>Nenhum documento foi anexado no cadastro — cobrar do corretor se precisar.</p>"
-        }
+        ${linksDocumentosHtml}
         <p style="color:#6b7280; font-size:12px;">A divisão do comissionamento entre os corretores ainda precisa ser preenchida no administrativo.</p>
       </div>
     `;
@@ -503,8 +543,7 @@ export async function gerarCompraVendaAction(
     const resultadoEmail = await enviarEmail({
       to: process.env.EMAIL_ADM_COMPRA_VENDA || EMAIL_DESTINO_PADRAO,
       subject: `Compra e Venda ${novo.id_legado ?? ""} — ${imovelInfo?.endereco ?? "imóvel sem endereço"}`,
-      html,
-      attachments: anexos
+      html
     });
 
     if (!resultadoEmail.ok) {

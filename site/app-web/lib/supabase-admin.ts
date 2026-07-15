@@ -61,3 +61,70 @@ export async function apagarImagemPublicacao(imagemUrl: string | null | undefine
   const supabase = supabaseAdmin();
   await supabase.storage.from(BUCKET_PUBLICACOES).remove([caminho]);
 }
+
+// Documentos anexados nos formulários do portal do corretor (Compra e
+// Venda) — RG, comprovante, contrato assinado etc. Bucket separado do
+// "publicacoes" (privado, não é conteúdo do site).
+//
+// Por que isso existe: a Vercel tem um limite FIXO de 4,5MB por requisição
+// de função serverless (Server Action incluída) — não dá pra aumentar por
+// configuração nenhuma, é limite da plataforma, não do Next.js. Um PDF
+// escaneado ou foto de celular já estoura isso fácil. A solução oficial da
+// própria Vercel é subir o arquivo direto do navegador pro armazenamento
+// (bypassando a função) e só mandar pra Server Action um texto pequeno (o
+// caminho do arquivo já salvo) — é isso que as funções abaixo viabilizam:
+// o navegador pede uma URL assinada de upload (essa chamada é minúscula,
+// só o nome do arquivo) e sobe o arquivo direto pro Supabase, sem passar
+// pela função da Vercel em nenhum momento.
+const BUCKET_DOCUMENTOS_PORTAL = "documentos-portal";
+
+async function garantirBucketDocumentosPortal(): Promise<void> {
+  const supabase = supabaseAdmin();
+  const { data: buckets, error } = await supabase.storage.listBuckets();
+  if (error) throw new Error(`Não consegui verificar o armazenamento: ${error.message}`);
+  if (buckets?.some((b) => b.name === BUCKET_DOCUMENTOS_PORTAL)) return;
+
+  const { error: erroCriar } = await supabase.storage.createBucket(BUCKET_DOCUMENTOS_PORTAL, {
+    public: false,
+    fileSizeLimit: "20MB"
+  });
+  // Corrida entre duas requisições criando o bucket ao mesmo tempo não é um
+  // erro de verdade — só a segunda perde a corrida.
+  if (erroCriar && !erroCriar.message.toLowerCase().includes("already exists")) {
+    throw new Error(`Não consegui preparar o armazenamento: ${erroCriar.message}`);
+  }
+}
+
+function extensaoDoNome(nomeArquivo: string): string {
+  const partes = nomeArquivo.split(".");
+  return partes.length > 1 ? partes[partes.length - 1].slice(0, 10) : "bin";
+}
+
+// Pede ao Supabase uma URL de upload assinada, de uso único, pro navegador
+// subir o arquivo direto (sem passar pela função da Vercel). Devolve o
+// caminho definitivo (guardado depois no formulário) e o token que
+// autoriza esse upload específico.
+export async function criarUploadAssinadoDocumento(
+  nomeArquivo: string
+): Promise<{ caminho: string; token: string }> {
+  await garantirBucketDocumentosPortal();
+  const caminho = `${randomUUID()}.${extensaoDoNome(nomeArquivo)}`;
+  const supabase = supabaseAdmin();
+  const { data, error } = await supabase.storage.from(BUCKET_DOCUMENTOS_PORTAL).createSignedUploadUrl(caminho);
+  if (error || !data) {
+    throw new Error(`Não consegui preparar o upload de "${nomeArquivo}": ${error?.message ?? "erro desconhecido"}`);
+  }
+  return { caminho, token: data.token };
+}
+
+// Link temporário (7 dias) pra baixar um documento já enviado — usado no
+// corpo do email pro administrativo em vez de anexar o arquivo de verdade
+// (isso também evita o limite de anexo do Gmail).
+export async function criarLinkDownloadDocumento(caminho: string): Promise<string | null> {
+  const supabase = supabaseAdmin();
+  const { data, error } = await supabase.storage
+    .from(BUCKET_DOCUMENTOS_PORTAL)
+    .createSignedUrl(caminho, 60 * 60 * 24 * 7);
+  if (error || !data) return null;
+  return data.signedUrl;
+}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   CHAVE_OPCOES,
   TIPO_CONDICAO_OPCOES,
@@ -33,7 +33,10 @@ function hojeISO(): string {
 // Limite do lado do cliente pra não deixar o corretor anexar um total que
 // nem cabe num email (o Gmail aceita até ~25MB por envio, já contando a
 // codificação base64 dos anexos — que aumenta o tamanho em ~33% — e o corpo
-// do email). 15MB de arquivo original fica com folga segura.
+// do email). 15MB de arquivo original fica com folga segura. Isso também
+// precisa bater com o limite de corpo da Server Action (next.config.mjs
+// experimental.serverActions.bodySizeLimit) — se um desses dois mudar, o
+// outro precisa acompanhar.
 const TAMANHO_MAXIMO_TOTAL = 15 * 1024 * 1024;
 const TIPOS_ACEITOS = ["application/pdf", "image/"];
 
@@ -109,6 +112,51 @@ function pessoaDeClienteExistente(c: ClienteBuscaResultado): PessoaLinha {
 
 const CAMPO = "text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full outline-none focus:border-primary bg-white";
 const LABEL = "text-xs text-gray-600 block mb-1";
+
+// Rascunho salvo no navegador (localStorage) — pedido do corretor depois de
+// perder um cadastro inteiro "do zero" (cliente+vendedor+imóvel novos) por
+// causa de um erro no envio. Fica só no aparelho dele, nada sobe pro
+// servidor. Documentos anexados (File) NÃO entram no rascunho — não dá pra
+// serializar isso pro localStorage (e o espaço por origem é pequeno demais
+// pra PDF/foto); o corretor precisa re-anexar antes de cadastrar de novo.
+const RASCUNHO_KEY = "sis_rascunho_compra_venda";
+
+type RascunhoCompraVenda = {
+  salvoEm: number;
+  lojaId: string;
+  imovelId: string;
+  buscaImovel: string;
+  imovelNovo: boolean;
+  tipoImovelNovo: string;
+  ruaNovo: string;
+  nPredialNovo: string;
+  complementoNovo: string;
+  bairroNovo: string;
+  estadoIdNovo: string;
+  cidadeIdNovo: string;
+  matriculaNovo: string;
+  inscricaoNovo: string;
+  vendedores: PessoaLinha[];
+  compradores: PessoaLinha[];
+  compraSemGestao: boolean;
+  dataAssinatura: string;
+  valorTransacaoTexto: string;
+  chave: string;
+  condicoes: CondicaoPagamento[];
+  porcHonorarioTexto: string;
+  temParceria: boolean;
+  parceiroExternoId: string;
+  porcParceriaTexto: string;
+  corretorProprietarioId: string;
+  corretorContraparteId: string;
+  historicoData: string;
+  historicoPrazoMeses: string;
+  historicoValor: string;
+};
+
+function formatarDataHoraRascunho(ms: number): string {
+  return new Date(ms).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
 
 // Bloco reutilizado pra comprador(es) e vendedor(es) — busca+escolhe cliente
 // já cadastrado (de qualquer corretor) ou cadastra um novo na hora, com os
@@ -354,6 +402,9 @@ export function PortalCompraVendaForm({
     | null
   >(null);
 
+  const [rascunhoEncontrado, setRascunhoEncontrado] = useState<RascunhoCompraVenda | null>(null);
+  const [rascunhoSalvoAgora, setRascunhoSalvoAgora] = useState(false);
+
   const imovelSelecionado = useMemo(() => imoveis.find((i) => i.id === imovelId) ?? null, [imoveis, imovelId]);
   const gestaoEncontrada = imovelSelecionado?.gestaoId ?? null;
   // Imóvel novo nunca tem Gestão cadastrada ainda (é a primeira vez que
@@ -375,6 +426,159 @@ export function PortalCompraVendaForm({
       )
       .slice(0, RESULTADOS_MAXIMO);
   }, [buscaImovel, imoveis]);
+
+  // Ao montar, só AVISA que existe um rascunho salvo — não aplica sozinho
+  // (evita sobrescrever o que o corretor já tiver preenchido nesta mesma
+  // visita, e evita descompasso de hidratação do Next, já que localStorage
+  // só existe no navegador).
+  useEffect(() => {
+    try {
+      const bruto = window.localStorage.getItem(RASCUNHO_KEY);
+      if (bruto) setRascunhoEncontrado(JSON.parse(bruto));
+    } catch {
+      // rascunho corrompido ou localStorage indisponível — ignora
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function montarRascunho(): RascunhoCompraVenda {
+    return {
+      salvoEm: Date.now(),
+      lojaId,
+      imovelId,
+      buscaImovel,
+      imovelNovo,
+      tipoImovelNovo,
+      ruaNovo,
+      nPredialNovo,
+      complementoNovo,
+      bairroNovo,
+      estadoIdNovo,
+      cidadeIdNovo,
+      matriculaNovo,
+      inscricaoNovo,
+      vendedores,
+      compradores,
+      compraSemGestao,
+      dataAssinatura,
+      valorTransacaoTexto,
+      chave,
+      condicoes,
+      porcHonorarioTexto,
+      temParceria,
+      parceiroExternoId,
+      porcParceriaTexto,
+      corretorProprietarioId,
+      corretorContraparteId,
+      historicoData,
+      historicoPrazoMeses,
+      historicoValor
+    };
+  }
+
+  // Salva sozinho a cada mudança relevante — o botão "Salvar rascunho"
+  // abaixo só dá a confirmação visual pro corretor, o auto-save já cobre o
+  // esquecimento de clicar nele.
+  useEffect(() => {
+    const temAlgumDado =
+      lojaId.length > 0 ||
+      imovelId.length > 0 ||
+      imovelNovo ||
+      compradores.length > 0 ||
+      vendedores.length > 0 ||
+      valorTransacaoTexto.length > 0;
+    if (!temAlgumDado) return;
+    try {
+      window.localStorage.setItem(RASCUNHO_KEY, JSON.stringify(montarRascunho()));
+    } catch {
+      // localStorage cheio ou indisponível — não trava o formulário por isso
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    lojaId,
+    imovelId,
+    buscaImovel,
+    imovelNovo,
+    tipoImovelNovo,
+    ruaNovo,
+    nPredialNovo,
+    complementoNovo,
+    bairroNovo,
+    estadoIdNovo,
+    cidadeIdNovo,
+    matriculaNovo,
+    inscricaoNovo,
+    vendedores,
+    compradores,
+    compraSemGestao,
+    dataAssinatura,
+    valorTransacaoTexto,
+    chave,
+    condicoes,
+    porcHonorarioTexto,
+    temParceria,
+    parceiroExternoId,
+    porcParceriaTexto,
+    corretorProprietarioId,
+    corretorContraparteId,
+    historicoData,
+    historicoPrazoMeses,
+    historicoValor
+  ]);
+
+  function restaurarRascunho() {
+    const r = rascunhoEncontrado;
+    if (!r) return;
+    setLojaId(r.lojaId);
+    setImovelId(r.imovelId);
+    setBuscaImovel(r.buscaImovel);
+    setImovelNovo(r.imovelNovo);
+    setTipoImovelNovo(r.tipoImovelNovo);
+    setRuaNovo(r.ruaNovo);
+    setNPredialNovo(r.nPredialNovo);
+    setComplementoNovo(r.complementoNovo);
+    setBairroNovo(r.bairroNovo);
+    setEstadoIdNovo(r.estadoIdNovo);
+    setCidadeIdNovo(r.cidadeIdNovo);
+    setMatriculaNovo(r.matriculaNovo);
+    setInscricaoNovo(r.inscricaoNovo);
+    setVendedores(r.vendedores);
+    setCompradores(r.compradores);
+    setCompraSemGestao(r.compraSemGestao);
+    setDataAssinatura(r.dataAssinatura);
+    setValorTransacaoTexto(r.valorTransacaoTexto);
+    setChave(r.chave);
+    setCondicoes(r.condicoes);
+    setPorcHonorarioTexto(r.porcHonorarioTexto);
+    setTemParceria(r.temParceria);
+    setParceiroExternoId(r.parceiroExternoId);
+    setPorcParceriaTexto(r.porcParceriaTexto);
+    setCorretorProprietarioId(r.corretorProprietarioId);
+    setCorretorContraparteId(r.corretorContraparteId);
+    setHistoricoData(r.historicoData);
+    setHistoricoPrazoMeses(r.historicoPrazoMeses);
+    setHistoricoValor(r.historicoValor);
+    setRascunhoEncontrado(null);
+  }
+
+  function descartarRascunho() {
+    try {
+      window.localStorage.removeItem(RASCUNHO_KEY);
+    } catch {
+      // ignora
+    }
+    setRascunhoEncontrado(null);
+  }
+
+  function salvarRascunhoManual() {
+    try {
+      window.localStorage.setItem(RASCUNHO_KEY, JSON.stringify(montarRascunho()));
+      setRascunhoSalvoAgora(true);
+      setTimeout(() => setRascunhoSalvoAgora(false), 2500);
+    } catch {
+      // ignora
+    }
+  }
 
   function selecionarImovel(i: ImovelBuscaResultado) {
     setImovelId(i.id);
@@ -481,6 +685,15 @@ export function PortalCompraVendaForm({
 
       const r = await gerarCompraVendaAction(formData);
       setResultado(r);
+      if (r.ok) {
+        // Cadastrou com sucesso — o rascunho não serve mais pra nada,
+        // limpa pra não confundir numa visita futura.
+        try {
+          window.localStorage.removeItem(RASCUNHO_KEY);
+        } catch {
+          // ignora
+        }
+      }
     } catch (erro) {
       // Sem isso, qualquer erro que escape do try acima (ex.: a função no
       // servidor cair por timeout, erro de rede, ou qualquer exceção que
@@ -505,6 +718,28 @@ export function PortalCompraVendaForm({
 
   return (
     <div className="flex flex-col gap-5">
+      {rascunhoEncontrado && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center justify-between gap-4 flex-wrap">
+          <div className="text-xs text-amber-800">
+            Encontramos um rascunho salvo neste navegador em{" "}
+            <strong>{formatarDataHoraRascunho(rascunhoEncontrado.salvoEm)}</strong>. Quer continuar de onde parou?
+            {" "}(anexos de documento não ficam salvos — se tinha algum, precisa adicionar de novo).
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={restaurarRascunho}
+              className="text-xs bg-amber-600 text-white rounded-lg px-3 py-1.5 font-semibold hover:opacity-90"
+            >
+              Restaurar rascunho
+            </button>
+            <button type="button" onClick={descartarRascunho} className="text-xs text-amber-700 hover:text-amber-900">
+              descartar
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="bg-white border border-gray-200 rounded-xl p-4">
         <div className="text-sm font-bold text-gray-800 mb-3">1. Identificação</div>
         <div className="grid md:grid-cols-2 gap-3">
@@ -933,6 +1168,7 @@ export function PortalCompraVendaForm({
         <p className="text-[11px] text-gray-400 mb-3">
           PDF ou imagem (RG, comprovante, contrato assinado etc.). Vai direto por email pro administrativo
           junto com o resumo da transação — não fica guardado no sistema. Total até {formatarTamanho(TAMANHO_MAXIMO_TOTAL)}.
+          Anexos não entram no rascunho salvo — se recarregar a página, precisa adicionar de novo.
         </p>
 
         {documentos.length > 0 && (
@@ -968,7 +1204,7 @@ export function PortalCompraVendaForm({
         {erroAnexo && <p className="text-xs text-red-600 mt-2">{erroAnexo}</p>}
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 flex-wrap">
         <button
           type="button"
           disabled={!podeGerar || enviando}
@@ -977,6 +1213,14 @@ export function PortalCompraVendaForm({
         >
           {enviando ? "Cadastrando..." : "Cadastrar transação"}
         </button>
+        <button
+          type="button"
+          onClick={salvarRascunhoManual}
+          className="bg-white border border-gray-300 text-gray-700 rounded-lg px-4 py-2 text-sm font-semibold hover:bg-gray-50"
+        >
+          Salvar rascunho
+        </button>
+        {rascunhoSalvoAgora && <span className="text-xs text-green-700 font-semibold">Rascunho salvo neste navegador.</span>}
         {resultado?.ok && (
           <span className="text-xs text-green-700 font-semibold">
             Cadastrado com sucesso{resultado.idLegado ? ` — ${resultado.idLegado}` : ""}. O administrativo vai dar

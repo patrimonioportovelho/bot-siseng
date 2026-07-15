@@ -17,7 +17,7 @@ export const dynamic = "force-dynamic";
 export default async function PortalCompraVendaNovoPage() {
   const session = await requirePortalSession();
 
-  const [corretor, lojas, corretores, parceirosTodos, imoveis, clientes] = await Promise.all([
+  const [corretor, lojas, corretores, parceirosTodos, imoveis, clientes, estados, cidades] = await Promise.all([
     prisma.parceiros.findUnique({
       where: { id: session.parceiroId },
       select: { id: true, nome: true }
@@ -37,7 +37,11 @@ export default async function PortalCompraVendaNovoPage() {
       select: { id: true, nome: true }
     }),
     listarImoveisParaCompraVenda(session.parceiroId),
-    listarClientesParaCompraVenda(session.parceiroId)
+    listarClientesParaCompraVenda(session.parceiroId),
+    // Usados só quando o corretor cadastra um imóvel novo (não existia
+    // ainda no sistema) — mesmo padrão do formulário de Administração.
+    prisma.estados.findMany({ orderBy: { nome: "asc" } }),
+    prisma.cidades.findMany({ orderBy: { nome: "asc" } })
   ]);
 
   if (!corretor) {
@@ -74,6 +78,8 @@ export default async function PortalCompraVendaNovoPage() {
           parceirosTodos={parceirosTodos}
           imoveis={imoveis}
           clientes={clientes}
+          estados={estados.map((e) => ({ id: e.id, nome: e.nome }))}
+          cidades={cidades.map((c) => ({ id: c.id, nome: c.nome, estado_id: c.estado_id }))}
         />
       </div>
     </div>

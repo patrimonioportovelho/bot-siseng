@@ -7,6 +7,8 @@ import {
   FORMA_PAGAMENTO_CONDICAO_OPCOES,
   MOMENTO_CONDICAO_OPCOES
 } from "@/lib/transacoes/opcoes";
+import { TIPOS_IMOVEL } from "@/lib/imoveis/opcoes";
+import { ESTADOS_CIVIS } from "@/lib/clientes/opcoes";
 import type { ImovelBuscaResultado, ClienteBuscaResultado } from "@/lib/transacoes/buscas";
 import { gerarCompraVendaAction } from "@/app/portal/compra-venda/actions";
 
@@ -55,8 +57,226 @@ function labelCliente(c: ClienteBuscaResultado): string {
   return c.cpfCnpj ? `${c.nome} — ${c.cpfCnpj}` : c.nome;
 }
 
+// Quantos resultados mostrar no dropdown de busca quando o corretor ainda
+// não digitou nada — antes ficava em 30 e, como a lista já vem ordenada
+// alfabeticamente do servidor, na prática só dava pra ver clientes/imóveis
+// com nome começando por A/B. 200 cobre o cadastro inteiro da imobiliária
+// na grande maioria dos casos; digitando algo o filtro já reduz sozinho.
+const RESULTADOS_MAXIMO = 200;
+
+// Um comprador ou vendedor do formulário — ou já cadastrado (clienteId
+// presente, escolhido via busca, campos travados) ou novo (digitado na
+// hora, com checagem de duplicidade no servidor). Mesmo padrão do
+// formulário de Administração (components/portal-administracao-form.tsx).
+type PessoaLinha = {
+  clienteId?: string;
+  nome: string;
+  rg: string;
+  cpfCnpj: string;
+  endereco: string;
+  nacionalidade: string;
+  estadoCivil: string;
+  email: string;
+  telefone: string;
+};
+
+function pessoaVazia(): PessoaLinha {
+  return {
+    nome: "",
+    rg: "",
+    cpfCnpj: "",
+    endereco: "",
+    nacionalidade: "Brasileira",
+    estadoCivil: "",
+    email: "",
+    telefone: ""
+  };
+}
+
+function pessoaDeClienteExistente(c: ClienteBuscaResultado): PessoaLinha {
+  return {
+    clienteId: c.id,
+    nome: c.nome,
+    rg: "",
+    cpfCnpj: c.cpfCnpj ?? "",
+    endereco: "",
+    nacionalidade: "",
+    estadoCivil: "",
+    email: c.email ?? "",
+    telefone: c.telefone ?? ""
+  };
+}
+
 const CAMPO = "text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full outline-none focus:border-primary bg-white";
 const LABEL = "text-xs text-gray-600 block mb-1";
+
+// Bloco reutilizado pra comprador(es) e vendedor(es) — busca+escolhe cliente
+// já cadastrado (de qualquer corretor) ou cadastra um novo na hora, com os
+// mesmos campos usados no cadastro de Clientes.
+function BlocoPessoas({
+  titulo,
+  ajuda,
+  pessoas,
+  setPessoas,
+  clientesDisponiveis,
+  busca,
+  setBusca,
+  listaAberta,
+  setListaAberta
+}: {
+  titulo: string;
+  ajuda: string;
+  pessoas: PessoaLinha[];
+  setPessoas: (fn: (atual: PessoaLinha[]) => PessoaLinha[]) => void;
+  clientesDisponiveis: ClienteBuscaResultado[];
+  busca: string;
+  setBusca: (v: string) => void;
+  listaAberta: boolean;
+  setListaAberta: (v: boolean) => void;
+}) {
+  const idsJaAdicionados = new Set(pessoas.map((p) => p.clienteId).filter(Boolean));
+
+  const filtrados = useMemo(() => {
+    const b = busca.trim().toLowerCase();
+    const disponiveis = clientesDisponiveis.filter((c) => !idsJaAdicionados.has(c.id));
+    if (!b) return disponiveis.slice(0, RESULTADOS_MAXIMO);
+    return disponiveis.filter((c) => c.nome.toLowerCase().includes(b)).slice(0, RESULTADOS_MAXIMO);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [busca, clientesDisponiveis, pessoas]);
+
+  function adicionarExistente(c: ClienteBuscaResultado) {
+    setPessoas((atual) => [...atual, pessoaDeClienteExistente(c)]);
+    setBusca("");
+    setListaAberta(false);
+  }
+
+  function adicionarNovo() {
+    setPessoas((atual) => [...atual, pessoaVazia()]);
+  }
+
+  function remover(index: number) {
+    setPessoas((atual) => atual.filter((_, i) => i !== index));
+  }
+
+  function atualizar(index: number, campo: keyof PessoaLinha, valor: string) {
+    setPessoas((atual) => atual.map((p, i) => (i === index ? { ...p, [campo]: valor } : p)));
+  }
+
+  return (
+    <div>
+      <div className="text-sm font-bold text-gray-800 mb-1">{titulo}</div>
+      <p className="text-[11px] text-gray-400 mb-3">{ajuda}</p>
+
+      {pessoas.length > 0 && (
+        <div className="flex flex-col gap-3 mb-3">
+          {pessoas.map((p, index) => (
+            <div key={index} className="border border-gray-100 rounded-lg p-3">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-semibold text-gray-700">
+                  {p.clienteId ? "Cliente já cadastrado" : "Cliente novo"}
+                </span>
+                <button type="button" onClick={() => remover(index)} className="text-[11px] text-gray-400 hover:text-red-600">
+                  remover
+                </button>
+              </div>
+
+              {p.clienteId ? (
+                <div className="text-xs text-gray-700 font-medium">
+                  {p.nome}
+                  {p.cpfCnpj && <span className="text-gray-400 font-normal"> — {p.cpfCnpj}</span>}
+                </div>
+              ) : (
+                <div className="grid md:grid-cols-2 gap-3">
+                  <div>
+                    <label className={LABEL}>Nome</label>
+                    <input className={CAMPO} value={p.nome} onChange={(e) => atualizar(index, "nome", e.target.value)} />
+                  </div>
+                  <div>
+                    <label className={LABEL}>RG</label>
+                    <input className={CAMPO} value={p.rg} onChange={(e) => atualizar(index, "rg", e.target.value)} />
+                  </div>
+                  <div>
+                    <label className={LABEL}>CPF / CNPJ</label>
+                    <input className={CAMPO} value={p.cpfCnpj} onChange={(e) => atualizar(index, "cpfCnpj", e.target.value)} />
+                  </div>
+                  <div>
+                    <label className={LABEL}>Endereço</label>
+                    <input className={CAMPO} value={p.endereco} onChange={(e) => atualizar(index, "endereco", e.target.value)} />
+                  </div>
+                  <div>
+                    <label className={LABEL}>Nacionalidade</label>
+                    <input
+                      className={CAMPO}
+                      value={p.nacionalidade}
+                      onChange={(e) => atualizar(index, "nacionalidade", e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className={LABEL}>Estado civil</label>
+                    <select
+                      className={CAMPO}
+                      value={p.estadoCivil}
+                      onChange={(e) => atualizar(index, "estadoCivil", e.target.value)}
+                    >
+                      <option value="">—</option>
+                      {ESTADOS_CIVIS.map((op) => (
+                        <option key={op} value={op}>
+                          {op}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={LABEL}>Email</label>
+                    <input className={CAMPO} value={p.email} onChange={(e) => atualizar(index, "email", e.target.value)} />
+                  </div>
+                  <div>
+                    <label className={LABEL}>Telefone</label>
+                    <input className={CAMPO} value={p.telefone} onChange={(e) => atualizar(index, "telefone", e.target.value)} />
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="relative">
+        <label className={LABEL}>+ Adicionar cliente já cadastrado — digite para buscar...</label>
+        <input
+          className={CAMPO}
+          placeholder="Nome do cliente..."
+          value={busca}
+          onChange={(e) => {
+            setBusca(e.target.value);
+            setListaAberta(true);
+          }}
+          onFocus={() => setListaAberta(true)}
+          onBlur={() => setTimeout(() => setListaAberta(false), 150)}
+        />
+        {listaAberta && (
+          <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-lg max-h-48 overflow-auto shadow-lg">
+            {filtrados.length === 0 && <p className="text-xs text-gray-400 p-3">Nenhum cliente encontrado.</p>}
+            {filtrados.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onMouseDown={() => adicionarExistente(c)}
+                className="block w-full text-left text-xs px-3 py-2 border-b border-gray-50 last:border-0 hover:bg-gray-50 text-gray-700"
+              >
+                {labelCliente(c)}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <button type="button" onClick={adicionarNovo} className="text-xs text-primary font-semibold mt-3 hover:opacity-80">
+        + Cadastrar cliente novo
+      </button>
+    </div>
+  );
+}
 
 export function PortalCompraVendaForm({
   corretorLogadoId,
@@ -64,7 +284,9 @@ export function PortalCompraVendaForm({
   corretores,
   parceirosTodos,
   imoveis,
-  clientes
+  clientes,
+  estados,
+  cidades
 }: {
   corretorLogadoId: string;
   lojas: { id: string; nome: string }[];
@@ -72,6 +294,8 @@ export function PortalCompraVendaForm({
   parceirosTodos: { id: string; nome: string }[];
   imoveis: ImovelBuscaResultado[];
   clientes: ClienteBuscaResultado[];
+  estados: { id: string; nome: string }[];
+  cidades: { id: string; nome: string; estado_id: string }[];
 }) {
   const [lojaId, setLojaId] = useState("");
 
@@ -79,7 +303,23 @@ export function PortalCompraVendaForm({
   const [buscaImovel, setBuscaImovel] = useState("");
   const [listaImovelAberta, setListaImovelAberta] = useState(false);
 
-  const [compradores, setCompradores] = useState<ClienteBuscaResultado[]>([]);
+  // Imóvel novo — usado quando o imóvel ainda não existe no sistema (venda
+  // direta captada e vendida na mesma hora, sem passar por Gestão antes).
+  const [imovelNovo, setImovelNovo] = useState(false);
+  const [tipoImovelNovo, setTipoImovelNovo] = useState("");
+  const [ruaNovo, setRuaNovo] = useState("");
+  const [nPredialNovo, setNPredialNovo] = useState("");
+  const [complementoNovo, setComplementoNovo] = useState("");
+  const [bairroNovo, setBairroNovo] = useState("");
+  const [estadoIdNovo, setEstadoIdNovo] = useState("");
+  const [cidadeIdNovo, setCidadeIdNovo] = useState("");
+  const [matriculaNovo, setMatriculaNovo] = useState("");
+  const [inscricaoNovo, setInscricaoNovo] = useState("");
+  const [vendedores, setVendedores] = useState<PessoaLinha[]>([]);
+  const [buscaVendedor, setBuscaVendedor] = useState("");
+  const [listaVendedorAberta, setListaVendedorAberta] = useState(false);
+
+  const [compradores, setCompradores] = useState<PessoaLinha[]>([]);
   const [buscaComprador, setBuscaComprador] = useState("");
   const [listaCompradorAberta, setListaCompradorAberta] = useState(false);
 
@@ -116,11 +356,15 @@ export function PortalCompraVendaForm({
 
   const imovelSelecionado = useMemo(() => imoveis.find((i) => i.id === imovelId) ?? null, [imoveis, imovelId]);
   const gestaoEncontrada = imovelSelecionado?.gestaoId ?? null;
-  const mostrarHistoricoGestao = Boolean(imovelSelecionado) && !gestaoEncontrada && !compraSemGestao;
+  // Imóvel novo nunca tem Gestão cadastrada ainda (é a primeira vez que
+  // entra no sistema) — segue a mesma régua de "nenhuma gestão encontrada".
+  const mostrarHistoricoGestao = (Boolean(imovelSelecionado) || imovelNovo) && !gestaoEncontrada && !compraSemGestao;
+
+  const cidadesDoEstadoNovo = useMemo(() => cidades.filter((c) => c.estado_id === estadoIdNovo), [cidades, estadoIdNovo]);
 
   const imoveisFiltrados = useMemo(() => {
     const b = buscaImovel.trim().toLowerCase();
-    if (!b) return imoveis.slice(0, 30);
+    if (!b) return imoveis.slice(0, RESULTADOS_MAXIMO);
     return imoveis
       .filter(
         (i) =>
@@ -129,16 +373,8 @@ export function PortalCompraVendaForm({
           (i.endereco ?? "").toLowerCase().includes(b) ||
           (i.inscricao ?? "").toLowerCase().includes(b)
       )
-      .slice(0, 30);
+      .slice(0, RESULTADOS_MAXIMO);
   }, [buscaImovel, imoveis]);
-
-  const compradoresFiltrados = useMemo(() => {
-    const b = buscaComprador.trim().toLowerCase();
-    const idsJaAdicionados = new Set(compradores.map((c) => c.id));
-    const disponiveis = clientes.filter((c) => !idsJaAdicionados.has(c.id));
-    if (!b) return disponiveis.slice(0, 30);
-    return disponiveis.filter((c) => c.nome.toLowerCase().includes(b)).slice(0, 30);
-  }, [buscaComprador, clientes, compradores]);
 
   function selecionarImovel(i: ImovelBuscaResultado) {
     setImovelId(i.id);
@@ -147,16 +383,25 @@ export function PortalCompraVendaForm({
     if (i.parceiroId) setCorretorProprietarioId(i.parceiroId);
   }
 
-  function adicionarComprador(c: ClienteBuscaResultado) {
-    const eraOPrimeiro = compradores.length === 0;
-    setCompradores((atual) => [...atual, c]);
-    setBuscaComprador("");
-    setListaCompradorAberta(false);
-    if (eraOPrimeiro && c.parceiroId) setCorretorContraparteId(c.parceiroId);
+  function ativarImovelNovo() {
+    setImovelId("");
+    setBuscaImovel("");
+    setImovelNovo(true);
+    if (vendedores.length === 0) setVendedores([pessoaVazia()]);
   }
 
-  function removerComprador(id: string) {
-    setCompradores((atual) => atual.filter((c) => c.id !== id));
+  function cancelarImovelNovo() {
+    setImovelNovo(false);
+    setTipoImovelNovo("");
+    setRuaNovo("");
+    setNPredialNovo("");
+    setComplementoNovo("");
+    setBairroNovo("");
+    setEstadoIdNovo("");
+    setCidadeIdNovo("");
+    setMatriculaNovo("");
+    setInscricaoNovo("");
+    setVendedores([]);
   }
 
   function adicionarCondicao() {
@@ -202,9 +447,21 @@ export function PortalCompraVendaForm({
     try {
       const formData = new FormData();
       formData.set("loja_id", lojaId);
-      formData.set("imovel_id", imovelId);
+      formData.set("imovel_id", imovelNovo ? "" : imovelId);
       formData.set("compra_sem_gestao", compraSemGestao ? "on" : "");
-      compradores.forEach((c) => formData.append("comprador_id", c.id));
+      formData.set("compradoresJson", JSON.stringify(compradores));
+      if (imovelNovo) {
+        formData.set("vendedoresJson", JSON.stringify(vendedores));
+        formData.set("tipo_imovel", tipoImovelNovo);
+        formData.set("rua", ruaNovo);
+        formData.set("n_predial", nPredialNovo);
+        formData.set("complemento", complementoNovo);
+        formData.set("bairro", bairroNovo);
+        formData.set("estado_id", estadoIdNovo);
+        formData.set("cidade_id", cidadeIdNovo);
+        formData.set("matricula", matriculaNovo);
+        formData.set("inscricao", inscricaoNovo);
+      }
       formData.set("data_assinatura", dataAssinatura);
       formData.set("valor_transacao", valorTransacaoTexto);
       formData.set("chave", chave);
@@ -230,7 +487,10 @@ export function PortalCompraVendaForm({
   }
 
   const podeGerar =
-    lojaId.length > 0 && imovelId.length > 0 && compradores.length > 0 && valorTransacaoTexto.trim().length > 0;
+    lojaId.length > 0 &&
+    (imovelNovo ? tipoImovelNovo.length > 0 && ruaNovo.trim().length > 0 && vendedores.length > 0 : imovelId.length > 0) &&
+    compradores.length > 0 &&
+    valorTransacaoTexto.trim().length > 0;
 
   return (
     <div className="flex flex-col gap-5">
@@ -258,106 +518,165 @@ export function PortalCompraVendaForm({
       </div>
 
       <div className="bg-white border border-gray-200 rounded-xl p-4">
-        <div className="text-sm font-bold text-gray-800 mb-1">2. Vínculo</div>
+        <div className="text-sm font-bold text-gray-800 mb-1">2. Imóvel</div>
         <p className="text-[11px] text-gray-400 mb-3">
-          O imóvel pode ser de qualquer captação da imobiliária, não só a sua. Fora do seu próprio cadastro,
-          só aparece o nome — os dados completos já estão registrados.
+          O imóvel pode ser de qualquer captação da imobiliária, não só a sua. Se ainda não existe no sistema,
+          cadastre na hora junto com o(s) vendedor(es).
         </p>
 
-        <div className="grid md:grid-cols-2 gap-3">
-          <div className="relative">
-            <label className={LABEL}>Imóvel</label>
-            <input
-              className={CAMPO}
-              placeholder="Digite endereço, inscrição ou nome do proprietário..."
-              value={buscaImovel}
-              onChange={(e) => {
-                setBuscaImovel(e.target.value);
-                setImovelId("");
-                setListaImovelAberta(true);
-              }}
-              onFocus={() => setListaImovelAberta(true)}
-              onBlur={() => setTimeout(() => setListaImovelAberta(false), 150)}
-            />
-            {listaImovelAberta && (
-              <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-lg max-h-48 overflow-auto shadow-lg">
-                {imoveisFiltrados.length === 0 && <p className="text-xs text-gray-400 p-3">Nenhum imóvel encontrado.</p>}
-                {imoveisFiltrados.map((i) => (
-                  <button
-                    key={i.id}
-                    type="button"
-                    onMouseDown={() => selecionarImovel(i)}
-                    className="block w-full text-left text-xs px-3 py-2 border-b border-gray-50 last:border-0 hover:bg-gray-50 text-gray-700"
-                  >
-                    {labelImovel(i)}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {imovelSelecionado && (
-              <div className="mt-2 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
-                {gestaoEncontrada ? (
-                  <div className="text-xs text-blue-700">
-                    Gestão já cadastrada pra esse imóvel — vai ser vinculada automático (entra uma atividade no
-                    quadro dela; a coluna do quadro não muda sozinha).
-                  </div>
-                ) : (
-                  <div className="text-xs text-gray-600">
-                    Nenhuma Gestão cadastrada pra esse imóvel.
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          <div className="relative">
-            <label className={LABEL}>Cliente(s) comprador(es)</label>
-            {compradores.length > 0 && (
-              <div className="flex flex-col gap-1 mb-2">
-                {compradores.map((c) => (
-                  <div
-                    key={c.id}
-                    className="flex items-center justify-between text-xs bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5"
-                  >
-                    <span className="text-gray-800 font-medium truncate">{c.nome}</span>
-                    <button type="button" onClick={() => removerComprador(c.id)} className="text-gray-400 hover:text-red-600 ml-2">
-                      remover
+        {!imovelNovo ? (
+          <>
+            <div className="relative">
+              <label className={LABEL}>Imóvel</label>
+              <input
+                className={CAMPO}
+                placeholder="Digite endereço, inscrição ou nome do proprietário..."
+                value={buscaImovel}
+                onChange={(e) => {
+                  setBuscaImovel(e.target.value);
+                  setImovelId("");
+                  setListaImovelAberta(true);
+                }}
+                onFocus={() => setListaImovelAberta(true)}
+                onBlur={() => setTimeout(() => setListaImovelAberta(false), 150)}
+              />
+              {listaImovelAberta && (
+                <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-lg max-h-48 overflow-auto shadow-lg">
+                  {imoveisFiltrados.length === 0 && <p className="text-xs text-gray-400 p-3">Nenhum imóvel encontrado.</p>}
+                  {imoveisFiltrados.map((i) => (
+                    <button
+                      key={i.id}
+                      type="button"
+                      onMouseDown={() => selecionarImovel(i)}
+                      className="block w-full text-left text-xs px-3 py-2 border-b border-gray-50 last:border-0 hover:bg-gray-50 text-gray-700"
+                    >
+                      {labelImovel(i)}
                     </button>
-                  </div>
-                ))}
+                  ))}
+                </div>
+              )}
+
+              {imovelSelecionado && (
+                <div className="mt-2 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
+                  {gestaoEncontrada ? (
+                    <div className="text-xs text-blue-700">
+                      Gestão já cadastrada pra esse imóvel — vai ser vinculada automático (entra uma atividade no
+                      quadro dela; a coluna do quadro não muda sozinha).
+                    </div>
+                  ) : (
+                    <div className="text-xs text-gray-600">Nenhuma Gestão cadastrada pra esse imóvel.</div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <button type="button" onClick={ativarImovelNovo} className="text-xs text-primary font-semibold mt-3 hover:opacity-80">
+              + Cadastrar imóvel novo (não existe no sistema ainda)
+            </button>
+          </>
+        ) : (
+          <>
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-semibold text-gray-700">Imóvel novo</span>
+              <button type="button" onClick={cancelarImovelNovo} className="text-[11px] text-gray-400 hover:text-red-600">
+                cancelar e buscar imóvel existente
+              </button>
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-3 mb-4">
+              <div>
+                <label className={LABEL}>Tipo de imóvel</label>
+                <select className={CAMPO} value={tipoImovelNovo} onChange={(e) => setTipoImovelNovo(e.target.value)}>
+                  <option value="">—</option>
+                  {TIPOS_IMOVEL.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
               </div>
-            )}
-            <input
-              className={CAMPO}
-              placeholder="+ Adicionar comprador — digite para buscar..."
-              value={buscaComprador}
-              onChange={(e) => {
-                setBuscaComprador(e.target.value);
-                setListaCompradorAberta(true);
-              }}
-              onFocus={() => setListaCompradorAberta(true)}
-              onBlur={() => setTimeout(() => setListaCompradorAberta(false), 150)}
+              <div>
+                <label className={LABEL}>Rua</label>
+                <input className={CAMPO} value={ruaNovo} onChange={(e) => setRuaNovo(e.target.value)} />
+              </div>
+              <div>
+                <label className={LABEL}>Número</label>
+                <input className={CAMPO} value={nPredialNovo} onChange={(e) => setNPredialNovo(e.target.value)} />
+              </div>
+              <div>
+                <label className={LABEL}>Complemento</label>
+                <input className={CAMPO} value={complementoNovo} onChange={(e) => setComplementoNovo(e.target.value)} />
+              </div>
+              <div>
+                <label className={LABEL}>Bairro</label>
+                <input className={CAMPO} value={bairroNovo} onChange={(e) => setBairroNovo(e.target.value)} />
+              </div>
+              <div>
+                <label className={LABEL}>Estado</label>
+                <select
+                  className={CAMPO}
+                  value={estadoIdNovo}
+                  onChange={(e) => {
+                    setEstadoIdNovo(e.target.value);
+                    setCidadeIdNovo("");
+                  }}
+                >
+                  <option value="">—</option>
+                  {estados.map((e) => (
+                    <option key={e.id} value={e.id}>
+                      {e.nome}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className={LABEL}>Cidade</label>
+                <select className={CAMPO} value={cidadeIdNovo} onChange={(e) => setCidadeIdNovo(e.target.value)}>
+                  <option value="">—</option>
+                  {cidadesDoEstadoNovo.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.nome}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className={LABEL}>Matrícula</label>
+                <input className={CAMPO} value={matriculaNovo} onChange={(e) => setMatriculaNovo(e.target.value)} />
+              </div>
+              <div>
+                <label className={LABEL}>Inscrição</label>
+                <input className={CAMPO} value={inscricaoNovo} onChange={(e) => setInscricaoNovo(e.target.value)} />
+              </div>
+            </div>
+
+            <BlocoPessoas
+              titulo="Vendedor(es) — proprietário(s) do imóvel"
+              ajuda="Pode ter mais de um (ex.: casal, herdeiros). Se já tem cadastro, busque em vez de digitar de novo."
+              pessoas={vendedores}
+              setPessoas={setVendedores}
+              clientesDisponiveis={clientes}
+              busca={buscaVendedor}
+              setBusca={setBuscaVendedor}
+              listaAberta={listaVendedorAberta}
+              setListaAberta={setListaVendedorAberta}
             />
-            {listaCompradorAberta && (
-              <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-lg max-h-48 overflow-auto shadow-lg">
-                {compradoresFiltrados.length === 0 && (
-                  <p className="text-xs text-gray-400 p-3">Nenhum cliente encontrado.</p>
-                )}
-                {compradoresFiltrados.map((c) => (
-                  <button
-                    key={c.id}
-                    type="button"
-                    onMouseDown={() => adicionarComprador(c)}
-                    className="block w-full text-left text-xs px-3 py-2 border-b border-gray-50 last:border-0 hover:bg-gray-50 text-gray-700"
-                  >
-                    {labelCliente(c)}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
+          </>
+        )}
+      </div>
+
+      <div className="bg-white border border-gray-200 rounded-xl p-4">
+        <BlocoPessoas
+          titulo="3. Cliente(s) comprador(es)"
+          ajuda="Pode ter mais de um comprador. Se já tem cadastro (de qualquer corretor), busque em vez de digitar de novo."
+          pessoas={compradores}
+          setPessoas={setCompradores}
+          clientesDisponiveis={clientes}
+          busca={buscaComprador}
+          setBusca={setBuscaComprador}
+          listaAberta={listaCompradorAberta}
+          setListaAberta={setListaCompradorAberta}
+        />
 
         <div className="mt-4 flex items-center gap-2">
           <input
@@ -407,7 +726,7 @@ export function PortalCompraVendaForm({
       </div>
 
       <div className="bg-white border border-gray-200 rounded-xl p-4">
-        <div className="text-sm font-bold text-gray-800 mb-3">3. Datas e valor</div>
+        <div className="text-sm font-bold text-gray-800 mb-3">4. Datas e valor</div>
         <div className="grid md:grid-cols-2 gap-3">
           <div>
             <label className={LABEL}>Data de assinatura</label>
@@ -426,7 +745,7 @@ export function PortalCompraVendaForm({
       </div>
 
       <div className="bg-white border border-gray-200 rounded-xl p-4">
-        <div className="text-sm font-bold text-gray-800 mb-3">4. Momento de entrega das chaves</div>
+        <div className="text-sm font-bold text-gray-800 mb-3">5. Momento de entrega das chaves</div>
         <select className={CAMPO} value={chave} onChange={(e) => setChave(e.target.value)}>
           <option value="">—</option>
           {CHAVE_OPCOES.map((op) => (
@@ -438,7 +757,7 @@ export function PortalCompraVendaForm({
       </div>
 
       <div className="bg-white border border-gray-200 rounded-xl p-4">
-        <div className="text-sm font-bold text-gray-800 mb-1">5. Negócio — condições de pagamento</div>
+        <div className="text-sm font-bold text-gray-800 mb-1">6. Negócio — condições de pagamento</div>
         <p className="text-xs text-gray-400 mb-3">
           Entrada, saldo financiado, parcelado direto, permuta etc. Pode ter mais de uma etapa.
         </p>
@@ -538,7 +857,7 @@ export function PortalCompraVendaForm({
       </div>
 
       <div className="bg-white border border-gray-200 rounded-xl p-4">
-        <div className="text-sm font-bold text-gray-800 mb-1">6. Comissionamento</div>
+        <div className="text-sm font-bold text-gray-800 mb-1">7. Comissionamento</div>
         <p className="text-[11px] text-gray-400 mb-3">
           A divisão entre os corretores (% de cada um e da imobiliária) fica com o administrativo — aqui só o
           honorário total e a parceria, se tiver.
@@ -599,7 +918,7 @@ export function PortalCompraVendaForm({
       </div>
 
       <div className="bg-white border border-gray-200 rounded-xl p-4">
-        <div className="text-sm font-bold text-gray-800 mb-1">7. Documentação</div>
+        <div className="text-sm font-bold text-gray-800 mb-1">8. Documentação</div>
         <p className="text-[11px] text-gray-400 mb-3">
           PDF ou imagem (RG, comprovante, contrato assinado etc.). Vai direto por email pro administrativo
           junto com o resumo da transação — não fica guardado no sistema. Total até {formatarTamanho(TAMANHO_MAXIMO_TOTAL)}.

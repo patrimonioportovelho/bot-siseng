@@ -8,6 +8,7 @@ import { registrarEJogarErro } from "@/lib/erros";
 import { STATUS_COMPRA_VENDA_OPCOES } from "@/lib/transacoes/opcoes";
 import { buscarGestaoPorImovel } from "@/lib/transacoes/buscas";
 import { enviarEmail, type EmailAnexo } from "@/lib/email";
+import { buscarClienteDuplicado, mensagemClienteDuplicado } from "@/lib/clientes/duplicidade";
 
 const EMAIL_DESTINO_PADRAO = "engimob@remax.com.br";
 
@@ -33,6 +34,12 @@ function texto(formData: FormData, campo: string): string | null {
   return t.length > 0 ? t : null;
 }
 
+function digitos(valor: string | null): string | null {
+  if (!valor) return null;
+  const d = valor.replace(/\D/g, "");
+  return d.length > 0 ? d : null;
+}
+
 function booleano(formData: FormData, campo: string): boolean {
   return formData.get(campo) === "on" || formData.get(campo) === "true";
 }
@@ -49,6 +56,66 @@ function inteiro(formData: FormData, campo: string): number | null {
   if (t === null) return null;
   const n = Number(t);
   return Number.isFinite(n) ? Math.trunc(n) : null;
+}
+
+// Um cliente do formulário — comprador ou vendedor(proprietário do imóvel
+// novo) — ou já cadastrado (clienteId presente, reaproveitado sem edição),
+// ou novo (digitado na hora). Mesmo padrão do Contrato de Administração
+// (app/portal/administracao/actions.ts#parseClientes).
+type ClienteDigitado = {
+  clienteId?: string;
+  nome: string;
+  rg: string;
+  cpfCnpj: string;
+  endereco: string;
+  nacionalidade: string;
+  estadoCivil: string;
+  email: string;
+  telefone: string;
+};
+
+function parseClientes(formData: FormData, campo: string): ClienteDigitado[] {
+  const bruto = texto(formData, campo);
+  if (!bruto) return [];
+  try {
+    const lista = JSON.parse(bruto);
+    if (!Array.isArray(lista)) return [];
+    return lista
+      .map((c) => ({
+        clienteId: typeof c?.clienteId === "string" && c.clienteId.length > 0 ? c.clienteId : undefined,
+        nome: String(c?.nome ?? "").trim(),
+        rg: String(c?.rg ?? "").trim(),
+        cpfCnpj: String(c?.cpfCnpj ?? "").trim(),
+        endereco: String(c?.endereco ?? "").trim(),
+        nacionalidade: String(c?.nacionalidade ?? "").trim(),
+        estadoCivil: String(c?.estadoCivil ?? "").trim(),
+        email: String(c?.email ?? "").trim(),
+        telefone: String(c?.telefone ?? "").trim()
+      }))
+      .filter((c) => c.clienteId || c.nome.length > 0);
+  } catch {
+    return [];
+  }
+}
+
+async function criarCliente(c: ClienteDigitado, parceiroId: string) {
+  const doc = digitos(c.cpfCnpj);
+  const ehCnpj = (doc?.length ?? 0) === 14;
+  return prisma.clientes.create({
+    data: {
+      nome: c.nome,
+      tipo_cliente: ehCnpj ? "Pessoa Jurídica" : "Pessoa Física",
+      rg: c.rg || null,
+      cpf: !ehCnpj ? doc : null,
+      cnpj: ehCnpj ? doc : null,
+      endereco: c.endereco || null,
+      nacionalidade: c.nacionalidade || null,
+      estado_civil: c.estadoCivil || null,
+      email: c.email || null,
+      telefone: digitos(c.telefone),
+      parceiro_id: parceiroId
+    }
+  });
 }
 
 // Mesmo esquema de numeração do admin (CV-0001, CV-0002...) — as duas
@@ -115,6 +182,12 @@ async function sincronizarCondicoesPagamento(transacaoId: string, formData: Form
 // frente (inclusive a divisão do comissionamento entre os corretores, que
 // não é preenchida por aqui).
 //
+// Cliente(s) comprador(es) e — quando o imóvel ainda não existe no sistema —
+// o(s) vendedor(es) podem ser cadastrados na hora, com a mesma checagem de
+// duplicidade e o mesmo padrão de "reaproveita se já tem clienteId, cria se
+// for novo" usado no Contrato de Administração
+// (app/portal/administracao/actions.ts).
+//
 // Se o imóvel escolhido já tem uma Gestão cadastrada, vincula automático
 // (gestao_id) e lança uma atividade no quadro dela — sem mudar a coluna do
 // Kanban, isso continua manual, o ADM decide quando mover. Se não tiver
@@ -131,35 +204,164 @@ export async function gerarCompraVendaAction(
 
   try {
     const lojaId = texto(formData, "loja_id");
-    const imovelId = texto(formData, "imovel_id");
+    const imovelIdExistente = texto(formData, "imovel_id");
     const compraSemGestao = booleano(formData, "compra_sem_gestao");
 
-    const compradorIds = formData
-      .getAll("comprador_id")
-      .map((v) => String(v).trim())
-      .filter((v) => v.length > 0);
-
-    if (!lojaId || !imovelId) {
-      return { ok: false, erro: "Selecione a loja e o imóvel." };
+    const compradoresForm = parseClientes(formData, "compradoresJson");
+    if (!lojaId) {
+      return { ok: false, erro: "Selecione a loja." };
     }
-    if (compradorIds.length === 0) {
+    if (compradoresForm.length === 0) {
       return { ok: false, erro: "Adicione ao menos um cliente comprador." };
     }
 
-    const primeiroProprietario = await prisma.imoveis_proprietarios.findFirst({
-      where: { imovel_id: imovelId },
-      orderBy: { ordem: "asc" },
-      select: { cliente_id: true }
-    });
-    if (!primeiroProprietario) {
-      return {
-        ok: false,
-        erro: "O imóvel selecionado não tem proprietário cadastrado — não dá pra gerar a transação."
-      };
+    // Só pede vendedor(es) + dados do imóvel quando o imóvel é novo — se já
+    // existe, o(s) proprietário(s) cadastrado(s) nele é que valem.
+    let vendedoresForm: ClienteDigitado[] = [];
+    let tipoImovelNovo: string | null = null;
+    let ruaNovo: string | null = null;
+    let nPredialNovo: string | null = null;
+    let complementoNovo: string | null = null;
+    let bairroNovo: string | null = null;
+    let cidadeIdNovo: string | null = null;
+    let estadoIdNovo: string | null = null;
+    let matriculaNovo: string | null = null;
+    let inscricaoNovo: string | null = null;
+
+    if (!imovelIdExistente) {
+      vendedoresForm = parseClientes(formData, "vendedoresJson");
+      if (vendedoresForm.length === 0) {
+        return { ok: false, erro: "Cadastre ao menos um vendedor (proprietário) do imóvel novo." };
+      }
+      tipoImovelNovo = texto(formData, "tipo_imovel");
+      ruaNovo = texto(formData, "rua");
+      if (!tipoImovelNovo || !ruaNovo) {
+        return { ok: false, erro: "Preencha ao menos o tipo do imóvel e a rua do imóvel novo." };
+      }
+      nPredialNovo = texto(formData, "n_predial");
+      complementoNovo = texto(formData, "complemento");
+      bairroNovo = texto(formData, "bairro");
+      cidadeIdNovo = texto(formData, "cidade_id");
+      estadoIdNovo = texto(formData, "estado_id");
+      matriculaNovo = texto(formData, "matricula");
+      inscricaoNovo = texto(formData, "inscricao");
+    }
+
+    // Confere se os clienteId enviados (comprador ou vendedor) realmente
+    // existem — o formulário só oferece IDs vindos de uma busca real, mas
+    // não custa nada confirmar antes de gravar qualquer coisa.
+    const idsExistentes = [...compradoresForm, ...vendedoresForm]
+      .map((c) => c.clienteId)
+      .filter((id): id is string => Boolean(id));
+    const clientesExistentes =
+      idsExistentes.length > 0
+        ? await prisma.clientes.findMany({ where: { id: { in: idsExistentes } } })
+        : [];
+    const clientesExistentesPorId = new Map(clientesExistentes.map((c) => [c.id, c]));
+    for (const id of idsExistentes) {
+      if (!clientesExistentesPorId.has(id)) {
+        return { ok: false, erro: "Um dos clientes selecionados não foi encontrado — atualize a página e tente de novo." };
+      }
+    }
+
+    // Antes de criar qualquer cliente novo (comprador ou vendedor), confere
+    // se já não existe um cadastro igual (mesmo nome ou mesmo CPF/CNPJ) —
+    // evita duplicar cliente que outro corretor já cadastrou. Só o
+    // administrativo decide se transfere o cliente existente.
+    const todosNovos = [...compradoresForm, ...vendedoresForm].filter((c) => !c.clienteId);
+    for (const c of todosNovos) {
+      const duplicado = await buscarClienteDuplicado({ nome: c.nome, cpfCnpj: c.cpfCnpj, ignorarIds: idsExistentes });
+      if (duplicado) {
+        return { ok: false, erro: mensagemClienteDuplicado(duplicado) };
+      }
+    }
+
+    const compradoresCriados = await Promise.all(
+      compradoresForm.filter((c) => !c.clienteId).map((c) => criarCliente(c, session.parceiroId))
+    ).catch((erro) => registrarEJogarErro({ entidadeTipo: "clientes", acao: "criar_comprador_via_portal", erro }));
+
+    const vendedoresCriados = await Promise.all(
+      vendedoresForm.filter((c) => !c.clienteId).map((c) => criarCliente(c, session.parceiroId))
+    ).catch((erro) => registrarEJogarErro({ entidadeTipo: "clientes", acao: "criar_vendedor_via_portal", erro }));
+
+    // Remonta as listas na mesma ordem em que apareceram no formulário
+    // (mistura existentes reaproveitados + recém-criados).
+    function remontar(lista: ClienteDigitado[], criados: typeof compradoresCriados) {
+      let proximoNovo = 0;
+      return lista.map((c) => {
+        if (c.clienteId) return clientesExistentesPorId.get(c.clienteId)!;
+        const criado = criados[proximoNovo];
+        proximoNovo += 1;
+        return criado;
+      });
+    }
+
+    const compradoresResultado = remontar(compradoresForm, compradoresCriados);
+    const compradorIds = compradoresResultado.map((c) => c.id);
+
+    const primeiroProprietario: { id: string } | null = imovelIdExistente
+      ? await prisma.imoveis_proprietarios
+          .findFirst({ where: { imovel_id: imovelIdExistente }, orderBy: { ordem: "asc" }, select: { cliente_id: true } })
+          .then((r) => (r ? { id: r.cliente_id } : null))
+      : null;
+
+    let imovelId: string;
+    let vendedorPrincipalId: string;
+
+    if (imovelIdExistente) {
+      if (!primeiroProprietario) {
+        return {
+          ok: false,
+          erro: "O imóvel selecionado não tem proprietário cadastrado — não dá pra gerar a transação."
+        };
+      }
+      imovelId = imovelIdExistente;
+      vendedorPrincipalId = primeiroProprietario.id;
+    } else {
+      const vendedoresResultado = remontar(vendedoresForm, vendedoresCriados);
+      const [cidade, estado] = await Promise.all([
+        cidadeIdNovo ? prisma.cidades.findUnique({ where: { id: cidadeIdNovo } }) : Promise.resolve(null),
+        estadoIdNovo ? prisma.estados.findUnique({ where: { id: estadoIdNovo } }) : Promise.resolve(null)
+      ]);
+      const enderecoCompletoNovo = [
+        [ruaNovo, nPredialNovo].filter(Boolean).join(", ") || null,
+        complementoNovo,
+        bairroNovo,
+        cidade?.nome ?? null,
+        estado?.nome ?? null
+      ]
+        .filter((p): p is string => Boolean(p))
+        .join(" - ");
+
+      const novoImovel = await prisma.imoveis
+        .create({
+          data: {
+            tipo_imovel: tipoImovelNovo!,
+            rua: ruaNovo!,
+            n_predial: nPredialNovo,
+            complemento: complementoNovo,
+            bairro: bairroNovo,
+            cidade_id: cidadeIdNovo,
+            estado_id: estadoIdNovo,
+            endereco: enderecoCompletoNovo || null,
+            matricula: matriculaNovo,
+            inscricao: inscricaoNovo,
+            parceiro_id: session.parceiroId,
+            imoveis_proprietarios: {
+              create: vendedoresResultado.map((c, ordem) => ({ cliente_id: c.id, ordem }))
+            }
+          }
+        })
+        .catch((erro) => registrarEJogarErro({ entidadeTipo: "imoveis", acao: "criar_via_portal_compra_venda", erro }));
+
+      imovelId = novoImovel.id;
+      vendedorPrincipalId = vendedoresResultado[0].id;
     }
 
     // Vínculo com a Gestão — reconfere no servidor (não confia só no que
-    // veio do formulário) qual é a gestão ativa desse imóvel agora.
+    // veio do formulário) qual é a gestão ativa desse imóvel agora. Imóvel
+    // recém-criado nunca tem gestão ainda, então isso só encontra algo
+    // quando o imóvel já existia.
     let gestaoId: string | null = null;
     let historicoData: Date | null = null;
     let historicoPrazoMeses: number | null = null;
@@ -201,7 +403,7 @@ export async function gerarCompraVendaAction(
           id_legado: idLegado,
           loja_id: lojaId,
           imovel_id: imovelId,
-          cliente_id: primeiroProprietario.cliente_id,
+          cliente_id: vendedorPrincipalId,
           cliente_contraparte_id: compradorIds[0],
           status: STATUS_COMPRA_VENDA_OPCOES[0],
           data_assinatura: dataAssinatura,
@@ -258,7 +460,7 @@ export async function gerarCompraVendaAction(
     // jeito — só avisa o corretor pra reportar por outro canal.
     const [imovelInfo, vendedorInfo, compradoresInfo, lojaInfo] = await Promise.all([
       prisma.imoveis.findUnique({ where: { id: imovelId }, select: { endereco: true } }),
-      prisma.clientes.findUnique({ where: { id: primeiroProprietario.cliente_id }, select: { nome: true } }),
+      prisma.clientes.findUnique({ where: { id: vendedorPrincipalId }, select: { nome: true } }),
       prisma.clientes.findMany({ where: { id: { in: compradorIds } }, select: { nome: true } }),
       prisma.lojas.findUnique({ where: { id: lojaId }, select: { nome: true } })
     ]);
@@ -269,7 +471,7 @@ export async function gerarCompraVendaAction(
       `<strong>Id:</strong> ${novo.id_legado ?? novo.id}`,
       `<strong>Loja:</strong> ${lojaInfo?.nome ?? "—"}`,
       `<strong>Corretor que cadastrou:</strong> ${session.nome}`,
-      `<strong>Imóvel:</strong> ${imovelInfo?.endereco ?? "—"}`,
+      `<strong>Imóvel:</strong> ${imovelInfo?.endereco ?? "—"}${!imovelIdExistente ? " (imóvel novo, cadastrado agora)" : ""}`,
       `<strong>Cliente vendedor:</strong> ${vendedorInfo?.nome ?? "—"}`,
       `<strong>Cliente(s) comprador(es):</strong> ${compradoresInfo.map((c) => c.nome).join(", ") || "—"}`,
       `<strong>Valor da transação:</strong> ${formatMoeda(valorTransacao)}`,

@@ -253,9 +253,9 @@ export async function gerarCompraVendaAction(
 
     // Email pro administrativo — resumo da transação + a documentação que o
     // corretor já tiver anexado (o resto, se faltar algo, é reunido depois
-    // por fora). Isso é best-effort: se o envio falhar (ex.: domínio ainda
-    // não verificado no Resend), a transação já está salva do mesmo jeito —
-    // só avisa o corretor pra reportar por outro canal.
+    // por fora). Isso é best-effort: se o envio falhar (ex.: Gmail fora do
+    // ar ou senha de app inválida), a transação já está salva do mesmo
+    // jeito — só avisa o corretor pra reportar por outro canal.
     const [imovelInfo, vendedorInfo, compradoresInfo, lojaInfo] = await Promise.all([
       prisma.imoveis.findUnique({ where: { id: imovelId }, select: { endereco: true } }),
       prisma.clientes.findUnique({ where: { id: primeiroProprietario.cliente_id }, select: { nome: true } }),

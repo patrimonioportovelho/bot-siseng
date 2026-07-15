@@ -29,10 +29,10 @@ function hojeISO(): string {
 }
 
 // Limite do lado do cliente pra não deixar o corretor anexar um total que
-// nem cabe num email (o Resend aceita até ~40MB por envio, já contando a
-// codificação base64 dos anexos — que aumenta o tamanho em ~33%). 20MB de
-// arquivo original dá bastante folga.
-const TAMANHO_MAXIMO_TOTAL = 20 * 1024 * 1024;
+// nem cabe num email (o Gmail aceita até ~25MB por envio, já contando a
+// codificação base64 dos anexos — que aumenta o tamanho em ~33% — e o corpo
+// do email). 15MB de arquivo original fica com folga segura.
+const TAMANHO_MAXIMO_TOTAL = 15 * 1024 * 1024;
 const TIPOS_ACEITOS = ["application/pdf", "image/"];
 
 function tipoAceito(arquivo: File): boolean {

@@ -1,25 +1,39 @@
-import { Resend } from "resend";
+import nodemailer from "nodemailer";
 
-// Envio de email transacional via Resend — usado hoje só pela "Elaboração
+// Envio de email transacional via Gmail SMTP — usado hoje só pela "Elaboração
 // de Compra e Venda" do portal do corretor (lib/erros.ts registra falha
 // técnica igual o resto do sistema, mas o envio de email nunca derruba a
 // ação principal: se o email falhar, a transação já foi salva do mesmo
 // jeito, só o email que não saiu).
 //
-// RESEND_API_KEY e EMAIL_REMETENTE precisam estar no .env (ver .env.example).
-// O remetente precisa ser de um domínio verificado no painel do Resend
-// (Domains → Add Domain → registros SPF/DKIM no DNS) — sem isso o envio
-// falha com erro de domínio não verificado.
+// GMAIL_USER e GMAIL_APP_PASSWORD precisam estar no .env (ver .env.example).
+// GMAIL_APP_PASSWORD é uma "Senha de app" gerada em
+// myaccount.google.com/apppasswords (exige verificação em duas etapas
+// ativada na conta GMAIL_USER) — não é a senha normal da conta Google.
+//
+// O remetente do email sempre é o endereço em GMAIL_USER: o Gmail rejeita
+// (ou marca como suspeito) emails enviados "de" um endereço diferente do
+// autenticado, então não dá pra customizar o "from" livremente como no
+// Resend.
 
-let resendClient: Resend | null = null;
+let transporter: ReturnType<typeof nodemailer.createTransport> | null = null;
 
-function client(): Resend {
-  const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) {
-    throw new Error("RESEND_API_KEY não configurado no .env — veja .env.example.");
+function client() {
+  const user = process.env.GMAIL_USER;
+  const pass = process.env.GMAIL_APP_PASSWORD;
+  if (!user) {
+    throw new Error("GMAIL_USER não configurado no .env — veja .env.example.");
   }
-  if (!resendClient) resendClient = new Resend(apiKey);
-  return resendClient;
+  if (!pass) {
+    throw new Error("GMAIL_APP_PASSWORD não configurado no .env — veja .env.example.");
+  }
+  if (!transporter) {
+    transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: { user, pass }
+    });
+  }
+  return transporter;
 }
 
 export type EmailAnexo = {
@@ -36,13 +50,13 @@ export async function enviarEmail(params: {
   attachments?: EmailAnexo[];
   replyTo?: string;
 }): Promise<EnviarEmailResultado> {
-  const from = process.env.EMAIL_REMETENTE;
+  const from = process.env.GMAIL_USER;
   if (!from) {
-    return { ok: false, erro: "EMAIL_REMETENTE não configurado no .env — veja .env.example." };
+    return { ok: false, erro: "GMAIL_USER não configurado no .env — veja .env.example." };
   }
 
   try {
-    const { error } = await client().emails.send({
+    await client().sendMail({
       from,
       to: params.to,
       subject: params.subject,
@@ -50,10 +64,6 @@ export async function enviarEmail(params: {
       replyTo: params.replyTo,
       attachments: params.attachments?.map((a) => ({ filename: a.filename, content: a.content }))
     });
-
-    if (error) {
-      return { ok: false, erro: error.message ?? "Falha ao enviar email (Resend)." };
-    }
     return { ok: true };
   } catch (erro) {
     return { ok: false, erro: erro instanceof Error ? erro.message : String(erro) };

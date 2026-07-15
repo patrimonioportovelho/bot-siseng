@@ -805,12 +805,13 @@ async function montarDadosProposta(propostaId: string): Promise<Record<string, u
   };
 }
 
-// O imóvel pode ter mais de um proprietário cadastrado (ex.: herdeiros) — o
-// template tem um loop {{#Proprietarios}}...{{/Proprietarios}} tanto no
-// parágrafo de qualificação quanto no bloco de assinatura, então todos
-// entram na mesma lista. Quando há cônjuge, ele é cadastrado como mais um
-// Cliente e adicionado à lista de proprietários do imóvel (não há mais um
-// campo de cônjuge separado).
+// O imóvel pode ter mais de um proprietário cadastrado (ex.: herdeiros) —
+// QualificacaoProprietario junta todos no mesmo parágrafo de qualificação
+// (mesmo formato/função usada em Compra e Venda e Locação), enquanto o
+// template ainda usa um loop nativo {{#Proprietarios}}...{{/Proprietarios}}
+// só no bloco de assinatura (cada proprietário assina em uma linha). Quando
+// há cônjuge, ele é cadastrado como mais um Cliente e adicionado à lista de
+// proprietários do imóvel (não há mais um campo de cônjuge separado).
 async function montarDadosAdmImovel(admImovelId: string): Promise<Record<string, unknown>> {
   const a = await prisma.adm_imoveis.findUnique({
     where: { id: admImovelId },
@@ -844,6 +845,9 @@ async function montarDadosAdmImovel(admImovelId: string): Promise<Record<string,
   }
 
   return {
+    QualificacaoProprietario: listaComE(proprietarios.map(qualificacaoTexto)),
+    // Ainda usado pelo loop {{#Proprietarios}} do bloco de assinatura —
+    // cada proprietário assina em uma linha própria.
     Proprietarios: proprietarios.map((c) => ({
       Nome: c.nome,
       Nacionalidade: c.sexo === "Mulher" ? "brasileira" : "brasileiro",
@@ -852,7 +856,7 @@ async function montarDadosAdmImovel(admImovelId: string): Promise<Record<string,
       Cpf: formatarCpf(c.cpf ?? ""),
       Endereco: enderecoCompleto(c)
     })),
-    Cliente: primeiro.nome,
+    ClienteProprietario: primeiro.nome,
     Banco: primeiro.bancos?.nome ?? "",
     Codigo: primeiro.bancos?.codigo ?? primeiro.codigo_banco ?? "",
     Agencia: primeiro.agencia ?? "",

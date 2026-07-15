@@ -97,11 +97,19 @@ export const CAMPOS_DOCUMENTO: Record<TipoDocumento, CampoDocumento[]> = {
   ],
   contrato_administracao: [
     {
+      campo: "QualificacaoProprietario",
+      descricao:
+        "Qualificação completa do(s) proprietário(s) do imóvel, já unidos com 'e' quando há mais de um (mesmo formato/função de Compra e Venda e Locação)."
+    },
+    {
       campo: "Proprietarios",
       descricao:
-        "Lista de proprietários do imóvel (loop — um bloco de qualificação e um bloco de assinatura por item: Nome, Nacionalidade, Profissao, EstadoCivil, Cpf, Endereco). Se houver cônjuge, ele entra como mais um item da lista."
+        "Lista de proprietários do imóvel (loop, usado só no bloco de assinatura — um bloco por item: Nome, Nacionalidade, Profissao, EstadoCivil, Cpf, Endereco). Se houver cônjuge, ele entra como mais um item da lista."
     },
-    { campo: "Cliente", descricao: "Nome do primeiro proprietário da lista (usado no Favorecido dos dados bancários)" },
+    {
+      campo: "ClienteProprietario",
+      descricao: "Nome do primeiro proprietário da lista (usado no Favorecido dos dados bancários)"
+    },
     { campo: "Banco", descricao: "Banco do primeiro proprietário da lista" },
     { campo: "Codigo", descricao: "Código do banco do primeiro proprietário" },
     { campo: "Agencia", descricao: "Agência do primeiro proprietário" },

@@ -221,6 +221,14 @@ export function PortalGestaoForm({
 
       const r = await gerarContratoGestaoAction(formData);
       setResultado(r);
+    } catch (erro) {
+      // Sem isso, qualquer erro que escape do try acima desaparecia sem
+      // avisar nada na tela.
+      const mensagem = erro instanceof Error ? erro.message : String(erro);
+      setResultado({
+        ok: false,
+        erro: `Não foi possível concluir o cadastro (${mensagem}). Tente de novo — se continuar acontecendo, avise o administrativo com essa mensagem.`
+      });
     } finally {
       setEnviando(false);
     }

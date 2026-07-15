@@ -7,6 +7,13 @@ import { listarImoveisParaCompraVenda, listarClientesParaCompraVenda } from "@/l
 import { FUNCOES_CORRETOR } from "@/lib/transacoes/opcoes";
 
 export const dynamic = "force-dynamic";
+// Cadastrar "tudo do zero" (comprador + vendedor + imóvel novos) numa
+// transação só faz várias consultas em sequência e ainda manda o email de
+// resumo pro administrativo — com o limite padrão de tempo de função do
+// Vercel isso podia estourar antes de terminar, e a tela ficava parada sem
+// avisar nada. Isso também estende o tempo pra Server Action chamada desta
+// página (gerarCompraVendaAction).
+export const maxDuration = 30;
 
 // Formulário "Elaboração de Compra e Venda" — o corretor puxa um imóvel já
 // captado (de qualquer corretor da imobiliária, não só o dele) e um ou mais

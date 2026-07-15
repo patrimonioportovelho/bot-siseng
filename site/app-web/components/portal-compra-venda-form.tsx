@@ -481,6 +481,17 @@ export function PortalCompraVendaForm({
 
       const r = await gerarCompraVendaAction(formData);
       setResultado(r);
+    } catch (erro) {
+      // Sem isso, qualquer erro que escape do try acima (ex.: a função no
+      // servidor cair por timeout, erro de rede, ou qualquer exceção que
+      // não vire um retorno { ok: false }) simplesmente desaparecia — a
+      // tela ficava parada sem avisar nada. Isso é o que estava acontecendo
+      // no cadastro "tudo do zero" (cliente + vendedor + imóvel novos).
+      const mensagem = erro instanceof Error ? erro.message : String(erro);
+      setResultado({
+        ok: false,
+        erro: `Não foi possível concluir o cadastro (${mensagem}). Tente de novo — se continuar acontecendo, avise o administrativo com essa mensagem.`
+      });
     } finally {
       setEnviando(false);
     }

@@ -6,6 +6,10 @@ import { PortalPropostaForm } from "@/components/portal-proposta-form";
 import { formatCpf, formatCnpj } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
+// Mesmo motivo do portal de Compra e Venda (ver comentário lá): cadastro
+// "tudo do zero" faz várias consultas em sequência e ainda gera o
+// documento — estende o tempo antes do timeout padrão da função.
+export const maxDuration = 30;
 
 // Formulário "Proposta de Compra e Venda" — mesma restrição de acesso do
 // Contrato de Gestão (só corretor logado no portal, email @remax.com.br +

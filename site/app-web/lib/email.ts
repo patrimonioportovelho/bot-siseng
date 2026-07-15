@@ -30,7 +30,17 @@ function client() {
   if (!transporter) {
     transporter = nodemailer.createTransport({
       service: "gmail",
-      auth: { user, pass }
+      auth: { user, pass },
+      // Sem isso, um problema de rede/Gmail (ex.: bloqueio de saída SMTP,
+      // credencial inválida travando no handshake) deixa o envio pendurado
+      // até a função serverless do Vercel estourar o tempo máximo dela —
+      // e a transação/contrato já cadastrado nem chega a responder pro
+      // corretor (a tela fica parada, sem erro nenhum). Com os timeouts
+      // abaixo, um problema de conexão vira um erro em ~20s no máximo, que
+      // aí sim é capturado e devolvido pro formulário.
+      connectionTimeout: 15000,
+      greetingTimeout: 15000,
+      socketTimeout: 20000
     });
   }
   return transporter;

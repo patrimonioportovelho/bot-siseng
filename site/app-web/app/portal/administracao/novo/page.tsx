@@ -6,6 +6,10 @@ import { PortalAdministracaoForm } from "@/components/portal-administracao-form"
 import { formatCpf, formatCnpj } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
+// Mesmo motivo do portal de Compra e Venda (ver comentário lá): cadastro
+// "tudo do zero" faz várias consultas em sequência e ainda gera o
+// documento — estende o tempo antes do timeout padrão da função.
+export const maxDuration = 30;
 
 // Formulário "Elaboração de Contrato de Administração" — só corretor logado
 // no portal (email @remax.com.br + função Corretor, ver lib/portal-auth.ts)

@@ -11,9 +11,12 @@ import {
   statusTone,
   STATUS_TRANSACAO_EM_ABERTO,
   resolverPeriodo,
-  hojePortoVelho
+  hojePortoVelho,
+  saudacaoPortoVelho
 } from "@/lib/format";
 import { FUNCOES_CORRETOR } from "@/lib/transacoes/opcoes";
+import { getAdminSession } from "@/lib/auth";
+import { ultimoResetSessaoMs } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
@@ -37,6 +40,28 @@ export default async function DashboardPage({
   const hoje = hojePortoVelho();
   const em90Dias = new Date(hoje);
   em90Dias.setDate(em90Dias.getDate() + 90);
+
+  // Saudação + anúncio de "Elaboração de Compra e Venda" cadastrada pelo
+  // portal do corretor desde o último reset diário de sessão (3h, Porto
+  // Velho — ver lib/session.ts). Como todo mundo precisa logar de novo
+  // depois desse horário, isso funciona na prática como um resumo do que
+  // entrou "de um dia pro outro" toda vez que o administrativo acessa.
+  const adminSession = await getAdminSession();
+  const novasCompraVendaDesdeReset = await prisma.transacoes.findMany({
+    where: {
+      excluido: false,
+      tipo: "Compra e Venda",
+      criado_no_portal: true,
+      created_at: { gte: new Date(ultimoResetSessaoMs()) }
+    },
+    orderBy: { created_at: "desc" },
+    select: {
+      id: true,
+      id_legado: true,
+      clientes_transacoes_cliente_idToclientes: { select: { nome: true } },
+      clientes_transacoes_cliente_contraparte_idToclientes: { select: { nome: true } }
+    }
+  });
 
   const [
     totalImoveis,
@@ -340,6 +365,32 @@ export default async function DashboardPage({
   return (
     <div>
       <Topbar />
+
+      {adminSession && (
+        <div className="bg-primary text-white rounded-xl p-4 mb-4">
+          <div className="text-sm font-bold">{saudacaoPortoVelho(adminSession.nome)}</div>
+          {novasCompraVendaDesdeReset.length > 0 ? (
+            <div className="mt-2 text-xs text-white/80">
+              <span className="font-semibold text-white">
+                {novasCompraVendaDesdeReset.length} Transação{novasCompraVendaDesdeReset.length > 1 ? "ões" : ""} de
+                Compra e Venda cadastrada{novasCompraVendaDesdeReset.length > 1 ? "s" : ""}
+              </span>{" "}
+              pelo portal do corretor:
+              <ul className="mt-1 flex flex-col gap-0.5">
+                {novasCompraVendaDesdeReset.map((t) => (
+                  <li key={t.id}>
+                    · {t.id_legado ?? t.id} —{" "}
+                    {t.clientes_transacoes_cliente_idToclientes?.nome ?? "vendedor não identificado"} →{" "}
+                    {t.clientes_transacoes_cliente_contraparte_idToclientes?.nome ?? "comprador não identificado"}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            <div className="mt-1 text-xs text-white/70">Nenhuma Compra e Venda nova cadastrada pelo portal ainda.</div>
+          )}
+        </div>
+      )}
 
       {(locacoesVencidas > 0 || solicitacoesPendentes > 0) && (
         <div className="flex flex-col gap-2 mb-4">

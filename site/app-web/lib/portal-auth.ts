@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { signSession, verifySession } from "@/lib/session";
+import { signSession, verifySession, sessaoExpiradaPeloResetDiario } from "@/lib/session";
 import { logAcessoPortal, hashSenha, verificarSenha } from "@/lib/auth";
 
 const PORTAL_COOKIE = "sis_portal_session";
@@ -37,7 +37,13 @@ export async function getPortalSession(): Promise<PortalSession | null> {
   const store = await cookies();
   const token = store.get(PORTAL_COOKIE)?.value;
   if (!token) return null;
-  return verifySession<PortalSession>(token, sessionSecret());
+  const session = await verifySession<PortalSession>(token, sessionSecret());
+  if (!session) return null;
+  // Reset diário às 3h (Porto Velho) — ver lib/session.ts. O middleware já
+  // barra isso na maioria das rotas, mas Server Actions podem ser chamadas
+  // fora do caminho normal (revalidação, etc.), por isso checa de novo aqui.
+  if (sessaoExpiradaPeloResetDiario(session.iat)) return null;
+  return session;
 }
 
 export async function requirePortalSession(): Promise<PortalSession> {

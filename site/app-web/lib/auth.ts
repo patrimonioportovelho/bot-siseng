@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { signSession, verifySession } from "@/lib/session";
+import { signSession, verifySession, sessaoExpiradaPeloResetDiario } from "@/lib/session";
 
 const ADMIN_COOKIE = "sis_admin_session";
 const SESSION_TTL_MS = 1000 * 60 * 60 * 12; // 12 horas
@@ -67,7 +67,13 @@ export async function getAdminSession(): Promise<AdminSession | null> {
   const store = await cookies();
   const token = store.get(ADMIN_COOKIE)?.value;
   if (!token) return null;
-  return verifySession<AdminSession>(token, sessionSecret());
+  const session = await verifySession<AdminSession>(token, sessionSecret());
+  if (!session) return null;
+  // Reset diário às 3h (Porto Velho) — ver lib/session.ts. O middleware já
+  // barra isso na maioria das rotas, mas Server Actions podem ser chamadas
+  // fora do caminho normal (revalidação, etc.), por isso checa de novo aqui.
+  if (sessaoExpiradaPeloResetDiario(session.iat)) return null;
+  return session;
 }
 
 export async function requireAdminSession(): Promise<AdminSession> {

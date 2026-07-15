@@ -90,6 +90,21 @@ export function hojePortoVelho(): Date {
   return new Date(ano, mes - 1, dia);
 }
 
+// Saudação de acordo com o horário local de Porto Velho — usada na tela
+// inicial do administrativo (ver app/dashboard/page.tsx), que agora exige
+// login todo dia (ver lib/session.ts#sessaoExpiradaPeloResetDiario).
+export function saudacaoPortoVelho(nome: string): string {
+  const hora = Number(
+    new Intl.DateTimeFormat("en-CA", { timeZone: "America/Porto_Velho", hour: "2-digit", hourCycle: "h23" })
+      .formatToParts(new Date())
+      .find((p) => p.type === "hour")?.value
+  );
+  const primeiroNome = nome.trim().split(" ")[0] || nome;
+  if (hora < 12) return `Bom dia, ${primeiroNome}! Tenha um ótimo dia de trabalho.`;
+  if (hora < 18) return `Boa tarde, ${primeiroNome}! Tenha um ótimo dia de trabalho.`;
+  return `Boa noite, ${primeiroNome}! Tenha um ótimo dia de trabalho.`;
+}
+
 // Mesma ideia, mas como string yyyy-mm-dd — pro defaultValue de campos
 // <input type="date">. Não trocar por `new Date().toISOString().slice(0,10)`:
 // toISOString sempre converte pra UTC e sofre o mesmo problema do dia

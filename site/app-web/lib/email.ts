@@ -11,10 +11,11 @@ import nodemailer from "nodemailer";
 // myaccount.google.com/apppasswords (exige verificação em duas etapas
 // ativada na conta GMAIL_USER) — não é a senha normal da conta Google.
 //
-// O remetente do email sempre é o endereço em GMAIL_USER: o Gmail rejeita
-// (ou marca como suspeito) emails enviados "de" um endereço diferente do
-// autenticado, então não dá pra customizar o "from" livremente como no
-// Resend.
+// O endereço do remetente sempre é o de GMAIL_USER: o Gmail rejeita (ou
+// marca como suspeito) emails enviados "de" um endereço diferente do
+// autenticado, então não dá pra customizar o endereço livremente como no
+// Resend. O NOME de exibição, esse sim dá pra trocar — é só o texto antes
+// do "<endereço>" no header From, o Gmail não mexe nisso.
 
 let transporter: ReturnType<typeof nodemailer.createTransport> | null = null;
 
@@ -60,10 +61,11 @@ export async function enviarEmail(params: {
   attachments?: EmailAnexo[];
   replyTo?: string;
 }): Promise<EnviarEmailResultado> {
-  const from = process.env.GMAIL_USER;
-  if (!from) {
+  const endereco = process.env.GMAIL_USER;
+  if (!endereco) {
     return { ok: false, erro: "GMAIL_USER não configurado no .env — veja .env.example." };
   }
+  const from = `"SisEng" <${endereco}>`;
 
   try {
     await client().sendMail({

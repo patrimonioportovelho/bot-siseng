@@ -7,9 +7,9 @@ import { valorEditavelParaDecimal, percentualParaDecimal, formatMoeda, formatDat
 import { registrarEJogarErro } from "@/lib/erros";
 import { STATUS_COMPRA_VENDA_OPCOES } from "@/lib/transacoes/opcoes";
 import { buscarGestaoPorImovel } from "@/lib/transacoes/buscas";
-import { enviarEmail } from "@/lib/email";
+import { enviarEmail, type EmailAnexo } from "@/lib/email";
 import { buscarClienteDuplicado, mensagemClienteDuplicado } from "@/lib/clientes/duplicidade";
-import { criarUploadAssinadoDocumento, criarLinkDownloadDocumento } from "@/lib/supabase-admin";
+import { criarUploadAssinadoDocumento, criarLinkDownloadDocumento, baixarDocumentoPortal } from "@/lib/supabase-admin";
 
 const EMAIL_DESTINO_PADRAO = "engimob@remax.com.br";
 
@@ -68,6 +68,31 @@ async function montarLinksDocumentos(documentos: DocumentoEnviado[]): Promise<st
     })
   );
   return `<p>${documentos.length} documento(s) anexado(s) — link válido por 7 dias:</p><ul>${links.join("")}</ul>`;
+}
+
+// Limite de orçamento pros anexos de verdade no email: o Gmail aceita até
+// 25MB por mensagem, mas o base64 usado pra anexar infla o tamanho em ~33%
+// — por isso o orçamento aqui é bem mais conservador (18MB de bytes crus
+// vira ~24MB codificado, com folga pro resto do email). Documento que não
+// couber no orçamento não trava o envio: só fica de fora do anexo (o link
+// de download continua indo no corpo do email do mesmo jeito).
+const ORCAMENTO_ANEXOS_BYTES = 18 * 1024 * 1024;
+
+// Baixa os documentos já enviados pelo corretor (do Supabase Storage) e
+// devolve prontos como anexo de verdade do email — é isso que faltava: até
+// aqui só ia o link no corpo, então o PDF nunca chegava anexado de fato pro
+// administrativo abrir direto do cliente de email.
+async function montarAnexosDocumentos(documentos: DocumentoEnviado[]): Promise<EmailAnexo[]> {
+  const anexos: EmailAnexo[] = [];
+  let usado = 0;
+  for (const d of documentos) {
+    const conteudo = await baixarDocumentoPortal(d.caminho);
+    if (!conteudo) continue; // falhou o download — o link no corpo do email cobre esse caso.
+    if (usado + conteudo.length > ORCAMENTO_ANEXOS_BYTES) continue; // não coube no orçamento — só o link mesmo.
+    anexos.push({ filename: d.nomeOriginal, content: conteudo });
+    usado += conteudo.length;
+  }
+  return anexos;
 }
 
 function texto(formData: FormData, campo: string): string | null {
@@ -521,10 +546,12 @@ export async function gerarCompraVendaAction(
     });
 
     // Email pro administrativo — resumo da transação + a documentação que o
-    // corretor já tiver anexado (o resto, se faltar algo, é reunido depois
-    // por fora). Isso é best-effort: se o envio falhar (ex.: Gmail fora do
-    // ar ou senha de app inválida), a transação já está salva do mesmo
-    // jeito — só avisa o corretor pra reportar por outro canal.
+    // corretor já tiver anexado, como anexo de verdade (não só link — ver
+    // montarAnexosDocumentos) sempre que couber no orçamento de tamanho; o
+    // link continua indo no corpo do email também, como reforço. Isso é
+    // best-effort: se o envio falhar (ex.: Gmail fora do ar ou senha de app
+    // inválida), a transação já está salva do mesmo jeito — só avisa o
+    // corretor pra reportar por outro canal.
     const [imovelInfo, vendedorInfo, compradoresInfo, lojaInfo] = await Promise.all([
       prisma.imoveis.findUnique({ where: { id: imovelId }, select: { endereco: true } }),
       prisma.clientes.findUnique({ where: { id: vendedorPrincipalId }, select: { nome: true } }),
@@ -534,6 +561,7 @@ export async function gerarCompraVendaAction(
 
     const documentosEnviados = parseDocumentos(formData);
     const linksDocumentosHtml = await montarLinksDocumentos(documentosEnviados);
+    const anexosDocumentos = await montarAnexosDocumentos(documentosEnviados);
 
     const linhasResumo = [
       `<strong>Id:</strong> ${novo.id_legado ?? novo.id}`,
@@ -567,7 +595,8 @@ export async function gerarCompraVendaAction(
     const resultadoEmail = await enviarEmail({
       to: process.env.EMAIL_ADM_COMPRA_VENDA || EMAIL_DESTINO_PADRAO,
       subject: `Compra e Venda ${novo.id_legado ?? ""} — ${imovelInfo?.endereco ?? "imóvel sem endereço"}`,
-      html
+      html,
+      attachments: anexosDocumentos
     });
 
     if (!resultadoEmail.ok) {

@@ -117,9 +117,10 @@ export async function criarUploadAssinadoDocumento(
   return { caminho, token: data.token };
 }
 
-// Link temporário (7 dias) pra baixar um documento já enviado — usado no
-// corpo do email pro administrativo em vez de anexar o arquivo de verdade
-// (isso também evita o limite de anexo do Gmail).
+// Link temporário (7 dias) pra baixar um documento já enviado — vai junto
+// no corpo do email pro administrativo (além do anexo de verdade, ver
+// baixarDocumentoPortal), como reforço caso o anexo não caiba no limite do
+// Gmail ou o link seja mais prático de abrir direto do celular.
 export async function criarLinkDownloadDocumento(caminho: string): Promise<string | null> {
   const supabase = supabaseAdmin();
   const { data, error } = await supabase.storage
@@ -127,4 +128,20 @@ export async function criarLinkDownloadDocumento(caminho: string): Promise<strin
     .createSignedUrl(caminho, 60 * 60 * 24 * 7);
   if (error || !data) return null;
   return data.signedUrl;
+}
+
+// Baixa o conteúdo de verdade de um documento já enviado (server-side, do
+// Supabase Storage pro Vercel) — usado pra anexar o PDF de fato no email
+// pro administrativo, em vez de só mandar o link. Isso NÃO reintroduz o
+// limite de 4,5MB da Vercel (aquele limite é só pro corpo da requisição do
+// navegador pra função serverless — aqui é a própria função buscando o
+// arquivo do Storage, servidor a servidor). Devolve null se o download
+// falhar (arquivo removido, bucket indisponível etc.) — quem chama trata
+// isso caindo pro link como alternativa.
+export async function baixarDocumentoPortal(caminho: string): Promise<Buffer | null> {
+  const supabase = supabaseAdmin();
+  const { data, error } = await supabase.storage.from(BUCKET_DOCUMENTOS_PORTAL).download(caminho);
+  if (error || !data) return null;
+  const arrayBuffer = await data.arrayBuffer();
+  return Buffer.from(arrayBuffer);
 }

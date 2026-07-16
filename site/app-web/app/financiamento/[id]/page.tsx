@@ -1,0 +1,130 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { Topbar } from "@/components/topbar";
+import { prisma } from "@/lib/prisma";
+import { AvaliacaoForm } from "@/components/avaliacao-form";
+import { AndamentoForm } from "@/components/andamento-form";
+import { LancamentosLista } from "@/components/lancamentos-lista";
+import { formatDataCalendario } from "@/lib/format";
+import {
+  atualizarAvaliacaoAction,
+  criarAndamentoAction,
+  atualizarAndamentoAction,
+  sincronizarLancamentosAction
+} from "../actions";
+
+export const dynamic = "force-dynamic";
+
+export default async function AvaliacaoDetalhePage({
+  params,
+  searchParams
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ salvo?: string }>;
+}) {
+  const { id } = await params;
+  const { salvo } = await searchParams;
+
+  const avaliacao = await prisma.avaliacoes.findUnique({
+    where: { id },
+    include: { clientes: true, bancos: true, parceiros: true }
+  });
+
+  if (!avaliacao) notFound();
+
+  const [clientes, bancos, parceiros, imoveis, andamentos] = await Promise.all([
+    prisma.clientes.findMany({
+      where: { OR: [{ status_cadastro: null }, { status_cadastro: { not: "Arquivado" } }] },
+      orderBy: { nome: "asc" },
+      select: { id: true, nome: true, cpf: true }
+    }),
+    prisma.bancos.findMany({ orderBy: { nome: "asc" } }),
+    prisma.parceiros.findMany({ orderBy: { nome: "asc" }, select: { id: true, nome: true } }),
+    prisma.imoveis.findMany({
+      where: { excluido: false },
+      orderBy: { created_at: "desc" },
+      select: { id: true, endereco: true }
+    }),
+    prisma.andamentos.findMany({
+      where: { avaliacao_id: id },
+      orderBy: { created_at: "desc" },
+      include: { lancamentos_financiamento: { orderBy: { created_at: "asc" } } }
+    })
+  ]);
+
+  return (
+    <div>
+      <Topbar />
+
+      <div className="flex items-center justify-between mb-3">
+        <Link href="/financiamento" className="text-xs text-gray-500 hover:text-gray-800">
+          ← Voltar para Financiamento
+        </Link>
+      </div>
+
+      {salvo === "1" && (
+        <div className="bg-green-50 border border-green-200 text-green-700 text-xs rounded-lg px-3 py-2 mb-4">
+          Salvo com sucesso.
+        </div>
+      )}
+
+      <div className="flex items-center gap-2 mb-1">
+        <div className="text-sm font-bold text-gray-800">{avaliacao.clientes?.nome ?? "Cliente sem cadastro"}</div>
+        <span className="text-[11px] font-semibold text-primary bg-primary/10 rounded-full px-2 py-0.5">
+          Id: {avaliacao.id_legado ?? avaliacao.id}
+        </span>
+      </div>
+      <div className="text-xs text-gray-500 mb-0.5">
+        {avaliacao.tipo_avaliacao ?? "Avaliação"} · {avaliacao.status}
+        {avaliacao.bancos?.nome && <> · {avaliacao.bancos.nome}</>}
+      </div>
+      <div className="text-xs text-gray-400 mb-4">
+        Avaliada em {formatDataCalendario(avaliacao.data_avaliacao)}
+        {avaliacao.parceiros?.nome && <> · Parceiro: {avaliacao.parceiros.nome}</>}
+      </div>
+
+      <AvaliacaoForm avaliacao={avaliacao} clientes={clientes} bancos={bancos} parceiros={parceiros} action={atualizarAvaliacaoAction} />
+
+      <div className="mt-6 mb-2">
+        <div className="text-sm font-bold text-gray-800">
+          Andamento{andamentos.length !== 1 ? "s" : ""}
+        </div>
+        <p className="text-[11px] text-gray-400 mt-0.5">
+          É o processo de fato, depois que a avaliação vira negócio — quando o Andamento chega em &quot;Concluído&quot;,
+          esta avaliação acompanha e também fecha como Concluída.
+        </p>
+      </div>
+
+      {andamentos.length === 0 ? (
+        <AndamentoForm
+          andamento={null}
+          avaliacaoId={avaliacao.id}
+          clientes={clientes}
+          imoveis={imoveis}
+          actionCriar={criarAndamentoAction}
+          actionAtualizar={atualizarAndamentoAction}
+        />
+      ) : (
+        <div className="flex flex-col gap-6">
+          {andamentos.map((and) => (
+            <div key={and.id} className="flex flex-col gap-4">
+              <AndamentoForm
+                andamento={and}
+                avaliacaoId={avaliacao.id}
+                clientes={clientes}
+                imoveis={imoveis}
+                actionCriar={criarAndamentoAction}
+                actionAtualizar={atualizarAndamentoAction}
+              />
+              <LancamentosLista
+                andamentoId={and.id}
+                lancamentosIniciais={and.lancamentos_financiamento}
+                action={sincronizarLancamentosAction}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}

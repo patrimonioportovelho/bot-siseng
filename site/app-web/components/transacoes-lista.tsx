@@ -57,11 +57,19 @@ export async function TransacoesLista({ tipo, q, novoHref }: { tipo: "Locação"
   };
 
   // Compra e Venda ordena pela data de assinatura (mais recentes primeiro,
-  // sem assinatura ainda vai por último); Locação mantém a ordem de
-  // cadastro (created_at), que já reflete bem o fluxo de acompanhamento
-  // diário do aluguel.
+  // sem assinatura ainda vai por último).
+  //
+  // Locação ordena pela Data de vencimento, do mais distante pro mais
+  // próximo — o contrato com mais tempo de sobra fica no topo e vai
+  // "descendo" a lista sozinho conforme o vencimento se aproxima, até virar
+  // vencido (linha vermelha, ver situacaoContratoLocacao) lá embaixo. Isso
+  // dá evidência visual pro administrativo: quem precisa de atenção
+  // (alerta/vencido) se acumula na parte de baixo da lista. Ao renovar
+  // (a Data de vencimento muda pra uma data futura mais distante — ver
+  // components/transacao-form.tsx), o contrato volta a subir sozinho e o
+  // destaque vermelho/âmbar some (é derivado da própria data).
   const orderBy = somenteLocacao
-    ? ({ created_at: "desc" } as const)
+    ? ([{ data_vencimento: { sort: "desc" as const, nulls: "last" as const } }, { created_at: "desc" as const }])
     : ([{ data_assinatura: { sort: "desc" as const, nulls: "last" as const } }, { created_at: "desc" as const }]);
 
   const transacoes = await prisma.transacoes.findMany({

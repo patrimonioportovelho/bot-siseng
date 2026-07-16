@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   TIPOS_TRANSACAO,
   GARANTIA_OPCOES,
@@ -189,22 +189,40 @@ export function TransacaoForm({
   const [temVistoria, setTemVistoria] = useState(t?.tem_vistoria ?? false);
   const [encargos, setEncargos] = useState<string[]>(t?.encargos ?? []);
 
-  // Datas e valor — Data de vencimento não é mais digitada, é calculada
-  // (assinatura + tempo de contrato em meses).
+  // Datas e valor — Data de vencimento é preenchida automaticamente
+  // (assinatura + tempo de contrato em meses) mas continua editável: em
+  // caso de aditivo/renovação o administrativo precisa poder ajustar a data
+  // real na mão, sem depender de mexer em Assinatura/Prazo pra forçar o
+  // recálculo.
   const [dataAssinatura, setDataAssinatura] = useState(inputDate(t?.data_assinatura ?? null));
   const [prazoContratoMesesTexto, setPrazoContratoMesesTexto] = useState(
     t?.prazo_contrato_meses != null ? String(t.prazo_contrato_meses) : ""
   );
   const [valorTransacaoTexto, setValorTransacaoTexto] = useState(formatValorEditavel(t?.valor_transacao));
-  // Se não der pra calcular (falta "Tempo de contrato em meses" — comum em
-  // contrato importado da planilha antiga, que trouxe a Data de vencimento
-  // já pronta mas não o campo em meses), usa o valor já salvo em vez de
-  // deixar em branco. Sem isso, um simples Salvar nesses contratos apagava
-  // a Data de vencimento real do banco (o campo é somente leitura e sempre
-  // mandava o texto calculado, mesmo vazio).
-  const dataVencimentoCalculada = useMemo(() => {
+  // Começa com a Data de vencimento já salva (respeita um ajuste manual
+  // feito antes, ex.: aditivo) — só cai pro cálculo automático se o
+  // contrato ainda não tiver nada salvo (cadastro novo).
+  const [dataVencimento, setDataVencimento] = useState(() => {
+    const salva = inputDate(t?.data_vencimento ?? null);
+    if (salva) return salva;
+    return somarMeses(inputDate(t?.data_assinatura ?? null), t?.prazo_contrato_meses ?? null) || "";
+  });
+  // Depois da primeira renderização, toda vez que Assinatura ou Prazo
+  // mudarem durante a edição, recalcula e substitui a Data de vencimento
+  // sozinha (o comportamento de "preenche conforme os cálculos" que já
+  // existia) — mas como o campo continua editável, o administrativo pode
+  // sobrescrever na hora, sem que o cálculo automático apague o ajuste
+  // manual feito por aditivo/renovação (só mexe de novo se Assinatura ou
+  // Prazo mudarem outra vez).
+  const primeiraRenderVencimento = useRef(true);
+  useEffect(() => {
+    if (primeiraRenderVencimento.current) {
+      primeiraRenderVencimento.current = false;
+      return;
+    }
     const calculada = somarMeses(dataAssinatura, Number(prazoContratoMesesTexto) || null);
-    return calculada || inputDate(t?.data_vencimento ?? null);
+    if (calculada) setDataVencimento(calculada);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dataAssinatura, prazoContratoMesesTexto]);
 
   // Corretores da Comissionamento — vêm automático do proprietário (imóvel
@@ -619,13 +637,14 @@ export function TransacaoForm({
               <label className={LABEL}>Data de vencimento (fim do contrato)</label>
               <input
                 type="date"
-                className={CAMPO + " bg-gray-50 text-gray-500"}
+                className={CAMPO}
                 name="data_vencimento"
-                value={dataVencimentoCalculada}
-                readOnly
+                value={dataVencimento}
+                onChange={(e) => setDataVencimento(e.target.value)}
               />
               <p className="text-[11px] text-gray-400 mt-1">
-                Calculada automaticamente (assinatura + tempo de contrato).
+                Preenchida automaticamente ao definir Assinatura e Prazo — pode ajustar na mão em caso de aditivo ou
+                renovação.
               </p>
             </div>
           )}

@@ -17,6 +17,7 @@ type ClienteLinha = {
   endereco: string;
   nacionalidade: string;
   estadoCivil: string;
+  profissao: string;
   email: string;
   telefone: string;
 };
@@ -56,6 +57,7 @@ function clienteVazio(): ClienteLinha {
     endereco: "",
     nacionalidade: "Brasileira",
     estadoCivil: "",
+    profissao: "",
     email: "",
     telefone: ""
   };
@@ -160,6 +162,7 @@ export function PortalAdministracaoForm({
               endereco: encontrado.endereco,
               nacionalidade: encontrado.nacionalidade,
               estadoCivil: encontrado.estadoCivil,
+              profissao: "",
               email: encontrado.email,
               telefone: encontrado.telefone
             }
@@ -395,6 +398,15 @@ export function PortalAdministracaoForm({
                       </option>
                     ))}
                   </select>
+                </div>
+                <div>
+                  <label className={LABEL}>Profissão</label>
+                  <input
+                    className={c.clienteId ? CAMPO_TRAVADO : CAMPO}
+                    readOnly={Boolean(c.clienteId)}
+                    value={c.profissao}
+                    onChange={(e) => atualizarCliente(index, "profissao", e.target.value)}
+                  />
                 </div>
                 <div>
                   <label className={LABEL}>Email</label>

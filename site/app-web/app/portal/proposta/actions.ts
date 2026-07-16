@@ -38,6 +38,7 @@ type ClienteDigitado = {
   cpfCnpj: string;
   endereco: string;
   estadoCivil: string;
+  profissao: string;
 };
 
 function parseCliente(formData: FormData): ClienteDigitado | null {
@@ -50,7 +51,8 @@ function parseCliente(formData: FormData): ClienteDigitado | null {
       nome: String(c?.nome ?? "").trim(),
       cpfCnpj: String(c?.cpfCnpj ?? "").trim(),
       endereco: String(c?.endereco ?? "").trim(),
-      estadoCivil: String(c?.estadoCivil ?? "").trim()
+      estadoCivil: String(c?.estadoCivil ?? "").trim(),
+      profissao: String(c?.profissao ?? "").trim()
     };
     return cliente.clienteId || cliente.nome.length > 0 ? cliente : null;
   } catch {
@@ -178,6 +180,7 @@ export async function gerarPropostaAction(
             cnpj: ehCnpj ? doc : null,
             endereco: clienteForm.endereco || null,
             estado_civil: clienteForm.estadoCivil || null,
+            profissao: clienteForm.profissao || null,
             parceiro_id: session.parceiroId
           }
         })

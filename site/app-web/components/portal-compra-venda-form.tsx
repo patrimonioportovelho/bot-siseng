@@ -80,6 +80,7 @@ type PessoaLinha = {
   endereco: string;
   nacionalidade: string;
   estadoCivil: string;
+  profissao: string;
   email: string;
   telefone: string;
 };
@@ -92,6 +93,7 @@ function pessoaVazia(): PessoaLinha {
     endereco: "",
     nacionalidade: "Brasileira",
     estadoCivil: "",
+    profissao: "",
     email: "",
     telefone: ""
   };
@@ -106,6 +108,7 @@ function pessoaDeClienteExistente(c: ClienteBuscaResultado): PessoaLinha {
     endereco: "",
     nacionalidade: "",
     estadoCivil: "",
+    profissao: "",
     email: c.email ?? "",
     telefone: c.telefone ?? ""
   };
@@ -274,6 +277,10 @@ function BlocoPessoas({
                         </option>
                       ))}
                     </select>
+                  </div>
+                  <div>
+                    <label className={LABEL}>Profissão</label>
+                    <input className={CAMPO} value={p.profissao} onChange={(e) => atualizar(index, "profissao", e.target.value)} />
                   </div>
                   <div>
                     <label className={LABEL}>Email</label>

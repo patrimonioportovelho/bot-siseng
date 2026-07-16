@@ -113,6 +113,7 @@ type ClienteDigitado = {
   endereco: string;
   nacionalidade: string;
   estadoCivil: string;
+  profissao: string;
   email: string;
   telefone: string;
 };
@@ -132,6 +133,7 @@ function parseClientes(formData: FormData, campo: string): ClienteDigitado[] {
         endereco: String(c?.endereco ?? "").trim(),
         nacionalidade: String(c?.nacionalidade ?? "").trim(),
         estadoCivil: String(c?.estadoCivil ?? "").trim(),
+        profissao: String(c?.profissao ?? "").trim(),
         email: String(c?.email ?? "").trim(),
         telefone: String(c?.telefone ?? "").trim()
       }))
@@ -154,6 +156,7 @@ async function criarCliente(c: ClienteDigitado, parceiroId: string) {
       endereco: c.endereco || null,
       nacionalidade: c.nacionalidade || null,
       estado_civil: c.estadoCivil || null,
+      profissao: c.profissao || null,
       email: c.email || null,
       telefone: digitos(c.telefone),
       parceiro_id: parceiroId

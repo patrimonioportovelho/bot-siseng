@@ -14,6 +14,7 @@ type ClienteLinha = {
   cpfCnpj: string;
   endereco: string;
   estadoCivil: string;
+  profissao: string;
 };
 
 type ClienteDoCorretor = {
@@ -34,7 +35,7 @@ type CondicaoPagamento = {
 };
 
 function clienteVazio(): ClienteLinha {
-  return { nome: "", cpfCnpj: "", endereco: "", estadoCivil: "" };
+  return { nome: "", cpfCnpj: "", endereco: "", estadoCivil: "", profissao: "" };
 }
 
 function condicaoVazia(): CondicaoPagamento {
@@ -94,7 +95,8 @@ export function PortalPropostaForm({
       nome: encontrado.nome,
       cpfCnpj: encontrado.cpfCnpj,
       endereco: encontrado.endereco,
-      estadoCivil: encontrado.estadoCivil
+      estadoCivil: encontrado.estadoCivil,
+      profissao: ""
     });
   }
 
@@ -212,6 +214,15 @@ export function PortalPropostaForm({
                 </option>
               ))}
             </select>
+          </div>
+          <div>
+            <label className={LABEL}>Profissão</label>
+            <input
+              className={cliente.clienteId ? CAMPO_TRAVADO : CAMPO}
+              readOnly={Boolean(cliente.clienteId)}
+              value={cliente.profissao}
+              onChange={(e) => atualizarCliente("profissao", e.target.value)}
+            />
           </div>
         </div>
       </div>

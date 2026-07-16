@@ -8,7 +8,7 @@ import {
   MOMENTO_CONDICAO_OPCOES
 } from "@/lib/transacoes/opcoes";
 import { TIPOS_IMOVEL } from "@/lib/imoveis/opcoes";
-import { ESTADOS_CIVIS } from "@/lib/clientes/opcoes";
+import { ESTADOS_CIVIS, TIPOS_CONTA, TIPOS_PIX } from "@/lib/clientes/opcoes";
 import type { ImovelBuscaResultado, ClienteBuscaResultado } from "@/lib/transacoes/buscas";
 import { gerarCompraVendaAction, prepararUploadDocumentoAction } from "@/app/portal/compra-venda/actions";
 import { supabaseBrowser, BUCKET_DOCUMENTOS_PORTAL } from "@/lib/supabase-browser";
@@ -68,6 +68,8 @@ function labelCliente(c: ClienteBuscaResultado): string {
 // na grande maioria dos casos; digitando algo o filtro já reduz sozinho.
 const RESULTADOS_MAXIMO = 200;
 
+type Banco = { id: string; nome: string; codigo: string | null };
+
 // Um comprador ou vendedor do formulário — ou já cadastrado (clienteId
 // presente, escolhido via busca, campos travados) ou novo (digitado na
 // hora, com checagem de duplicidade no servidor). Mesmo padrão do
@@ -83,6 +85,16 @@ type PessoaLinha = {
   profissao: string;
   email: string;
   telefone: string;
+  // Dados bancários — mesmo cadastro completo do administrativo (ver
+  // components/cliente-form.tsx), liberado aqui pro corretor já deixar o
+  // cliente novo com a conta certinha desde o cadastro.
+  bancoId: string;
+  codigoBanco: string;
+  agencia: string;
+  conta: string;
+  tipoConta: string;
+  tipoPix: string;
+  pix: string;
 };
 
 function pessoaVazia(): PessoaLinha {
@@ -95,7 +107,14 @@ function pessoaVazia(): PessoaLinha {
     estadoCivil: "",
     profissao: "",
     email: "",
-    telefone: ""
+    telefone: "",
+    bancoId: "",
+    codigoBanco: "",
+    agencia: "",
+    conta: "",
+    tipoConta: "",
+    tipoPix: "",
+    pix: ""
   };
 }
 
@@ -110,7 +129,14 @@ function pessoaDeClienteExistente(c: ClienteBuscaResultado): PessoaLinha {
     estadoCivil: "",
     profissao: "",
     email: c.email ?? "",
-    telefone: c.telefone ?? ""
+    telefone: c.telefone ?? "",
+    bancoId: "",
+    codigoBanco: "",
+    agencia: "",
+    conta: "",
+    tipoConta: "",
+    tipoPix: "",
+    pix: ""
   };
 }
 
@@ -174,7 +200,8 @@ function BlocoPessoas({
   busca,
   setBusca,
   listaAberta,
-  setListaAberta
+  setListaAberta,
+  bancos
 }: {
   titulo: string;
   ajuda: string;
@@ -185,6 +212,7 @@ function BlocoPessoas({
   setBusca: (v: string) => void;
   listaAberta: boolean;
   setListaAberta: (v: boolean) => void;
+  bancos: Banco[];
 }) {
   const idsJaAdicionados = new Set(pessoas.map((p) => p.clienteId).filter(Boolean));
 
@@ -212,6 +240,15 @@ function BlocoPessoas({
 
   function atualizar(index: number, campo: keyof PessoaLinha, valor: string) {
     setPessoas((atual) => atual.map((p, i) => (i === index ? { ...p, [campo]: valor } : p)));
+  }
+
+  // Código do banco vem automaticamente ao escolher o Banco — mesmo
+  // comportamento do cadastro administrativo (ver components/cliente-form.tsx).
+  function selecionarBanco(index: number, bancoId: string) {
+    const banco = bancos.find((b) => b.id === bancoId);
+    setPessoas((atual) =>
+      atual.map((p, i) => (i === index ? { ...p, bancoId, codigoBanco: banco?.codigo ?? p.codigoBanco } : p))
+    );
   }
 
   return (
@@ -292,6 +329,68 @@ function BlocoPessoas({
                   </div>
                 </div>
               )}
+
+              {!p.clienteId && (
+                <div className="mt-3 pt-3 border-t border-gray-100">
+                  <div className="text-[11px] font-semibold text-gray-500 mb-2">Dados bancários</div>
+                  <div className="grid md:grid-cols-2 gap-3">
+                    <div>
+                      <label className={LABEL}>Banco</label>
+                      <select className={CAMPO} value={p.bancoId} onChange={(e) => selecionarBanco(index, e.target.value)}>
+                        <option value="">—</option>
+                        {bancos.map((b) => (
+                          <option key={b.id} value={b.id}>
+                            {b.nome}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className={LABEL}>Código do banco</label>
+                      <input
+                        className={CAMPO}
+                        value={p.codigoBanco}
+                        onChange={(e) => atualizar(index, "codigoBanco", e.target.value)}
+                        placeholder="Preenchido ao escolher o banco"
+                      />
+                    </div>
+                    <div>
+                      <label className={LABEL}>Agência</label>
+                      <input className={CAMPO} value={p.agencia} onChange={(e) => atualizar(index, "agencia", e.target.value)} />
+                    </div>
+                    <div>
+                      <label className={LABEL}>Conta</label>
+                      <input className={CAMPO} value={p.conta} onChange={(e) => atualizar(index, "conta", e.target.value)} />
+                    </div>
+                    <div>
+                      <label className={LABEL}>Tipo de conta</label>
+                      <select className={CAMPO} value={p.tipoConta} onChange={(e) => atualizar(index, "tipoConta", e.target.value)}>
+                        <option value="">—</option>
+                        {TIPOS_CONTA.map((op) => (
+                          <option key={op} value={op}>
+                            {op}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className={LABEL}>Tipo de PIX</label>
+                      <select className={CAMPO} value={p.tipoPix} onChange={(e) => atualizar(index, "tipoPix", e.target.value)}>
+                        <option value="">—</option>
+                        {TIPOS_PIX.map((op) => (
+                          <option key={op} value={op}>
+                            {op}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className={LABEL}>Chave PIX</label>
+                      <input className={CAMPO} value={p.pix} onChange={(e) => atualizar(index, "pix", e.target.value)} />
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -342,7 +441,8 @@ export function PortalCompraVendaForm({
   imoveis,
   clientes,
   estados,
-  cidades
+  cidades,
+  bancos
 }: {
   corretorLogadoId: string;
   lojas: { id: string; nome: string }[];
@@ -352,6 +452,7 @@ export function PortalCompraVendaForm({
   clientes: ClienteBuscaResultado[];
   estados: { id: string; nome: string }[];
   cidades: { id: string; nome: string; estado_id: string }[];
+  bancos: Banco[];
 }) {
   const [lojaId, setLojaId] = useState("");
 
@@ -942,6 +1043,7 @@ export function PortalCompraVendaForm({
               setBusca={setBuscaVendedor}
               listaAberta={listaVendedorAberta}
               setListaAberta={setListaVendedorAberta}
+              bancos={bancos}
             />
           </>
         )}
@@ -958,6 +1060,7 @@ export function PortalCompraVendaForm({
           setBusca={setBuscaComprador}
           listaAberta={listaCompradorAberta}
           setListaAberta={setListaCompradorAberta}
+          bancos={bancos}
         />
 
         <div className="mt-4 flex items-center gap-2">

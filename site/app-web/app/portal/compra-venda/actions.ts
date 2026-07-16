@@ -116,6 +116,13 @@ type ClienteDigitado = {
   profissao: string;
   email: string;
   telefone: string;
+  bancoId: string;
+  codigoBanco: string;
+  agencia: string;
+  conta: string;
+  tipoConta: string;
+  tipoPix: string;
+  pix: string;
 };
 
 function parseClientes(formData: FormData, campo: string): ClienteDigitado[] {
@@ -135,7 +142,14 @@ function parseClientes(formData: FormData, campo: string): ClienteDigitado[] {
         estadoCivil: String(c?.estadoCivil ?? "").trim(),
         profissao: String(c?.profissao ?? "").trim(),
         email: String(c?.email ?? "").trim(),
-        telefone: String(c?.telefone ?? "").trim()
+        telefone: String(c?.telefone ?? "").trim(),
+        bancoId: String(c?.bancoId ?? "").trim(),
+        codigoBanco: String(c?.codigoBanco ?? "").trim(),
+        agencia: String(c?.agencia ?? "").trim(),
+        conta: String(c?.conta ?? "").trim(),
+        tipoConta: String(c?.tipoConta ?? "").trim(),
+        tipoPix: String(c?.tipoPix ?? "").trim(),
+        pix: String(c?.pix ?? "").trim()
       }))
       .filter((c) => c.clienteId || c.nome.length > 0);
   } catch {
@@ -159,6 +173,13 @@ async function criarCliente(c: ClienteDigitado, parceiroId: string) {
       profissao: c.profissao || null,
       email: c.email || null,
       telefone: digitos(c.telefone),
+      banco_id: c.bancoId || null,
+      codigo_banco: c.codigoBanco || null,
+      agencia: c.agencia || null,
+      conta: c.conta || null,
+      tipo_conta: c.tipoConta || null,
+      tipo_pix: c.tipoPix || null,
+      pix: c.pix || null,
       parceiro_id: parceiroId
     }
   });

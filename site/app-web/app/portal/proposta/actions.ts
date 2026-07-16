@@ -39,6 +39,13 @@ type ClienteDigitado = {
   endereco: string;
   estadoCivil: string;
   profissao: string;
+  bancoId: string;
+  codigoBanco: string;
+  agencia: string;
+  conta: string;
+  tipoConta: string;
+  tipoPix: string;
+  pix: string;
 };
 
 function parseCliente(formData: FormData): ClienteDigitado | null {
@@ -52,7 +59,14 @@ function parseCliente(formData: FormData): ClienteDigitado | null {
       cpfCnpj: String(c?.cpfCnpj ?? "").trim(),
       endereco: String(c?.endereco ?? "").trim(),
       estadoCivil: String(c?.estadoCivil ?? "").trim(),
-      profissao: String(c?.profissao ?? "").trim()
+      profissao: String(c?.profissao ?? "").trim(),
+      bancoId: String(c?.bancoId ?? "").trim(),
+      codigoBanco: String(c?.codigoBanco ?? "").trim(),
+      agencia: String(c?.agencia ?? "").trim(),
+      conta: String(c?.conta ?? "").trim(),
+      tipoConta: String(c?.tipoConta ?? "").trim(),
+      tipoPix: String(c?.tipoPix ?? "").trim(),
+      pix: String(c?.pix ?? "").trim()
     };
     return cliente.clienteId || cliente.nome.length > 0 ? cliente : null;
   } catch {
@@ -181,6 +195,13 @@ export async function gerarPropostaAction(
             endereco: clienteForm.endereco || null,
             estado_civil: clienteForm.estadoCivil || null,
             profissao: clienteForm.profissao || null,
+            banco_id: clienteForm.bancoId || null,
+            codigo_banco: clienteForm.codigoBanco || null,
+            agencia: clienteForm.agencia || null,
+            conta: clienteForm.conta || null,
+            tipo_conta: clienteForm.tipoConta || null,
+            tipo_pix: clienteForm.tipoPix || null,
+            pix: clienteForm.pix || null,
             parceiro_id: session.parceiroId
           }
         })

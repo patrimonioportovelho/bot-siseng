@@ -2,8 +2,10 @@
 
 import { useMemo, useState } from "react";
 import { TIPOS_IMOVEL } from "@/lib/imoveis/opcoes";
-import { ESTADOS_CIVIS } from "@/lib/clientes/opcoes";
+import { ESTADOS_CIVIS, TIPOS_CONTA, TIPOS_PIX } from "@/lib/clientes/opcoes";
 import { gerarContratoGestaoAction } from "@/app/portal/gestao/actions";
+
+type Banco = { id: string; nome: string; codigo: string | null };
 
 type ClienteLinha = {
   // Presente só quando o corretor escolheu um cliente já cadastrado (em vez
@@ -19,6 +21,16 @@ type ClienteLinha = {
   profissao: string;
   email: string;
   telefone: string;
+  // Dados bancários — mesmo cadastro completo do administrativo (ver
+  // components/cliente-form.tsx), liberado aqui pro corretor já deixar o
+  // cliente novo com a conta certinha desde o cadastro.
+  bancoId: string;
+  codigoBanco: string;
+  agencia: string;
+  conta: string;
+  tipoConta: string;
+  tipoPix: string;
+  pix: string;
 };
 
 type ImovelDoCliente = {
@@ -59,7 +71,14 @@ function clienteVazio(): ClienteLinha {
     estadoCivil: "",
     profissao: "",
     email: "",
-    telefone: ""
+    telefone: "",
+    bancoId: "",
+    codigoBanco: "",
+    agencia: "",
+    conta: "",
+    tipoConta: "",
+    tipoPix: "",
+    pix: ""
   };
 }
 
@@ -75,12 +94,14 @@ export function PortalGestaoForm({
   corretor,
   estados,
   cidades,
-  clientesDoCorretor
+  clientesDoCorretor,
+  bancos
 }: {
   corretor: { id: string; nome: string; creci: string | null; cpf: string | null };
   estados: { id: string; nome: string }[];
   cidades: { id: string; nome: string; estado_id: string }[];
   clientesDoCorretor: ClienteDoCorretor[];
+  bancos: Banco[];
 }) {
   const [clientes, setClientes] = useState<ClienteLinha[]>([clienteVazio()]);
 
@@ -118,6 +139,15 @@ export function PortalGestaoForm({
     setClientes((atual) => atual.map((c, i) => (i === index ? { ...c, [campo]: valor } : c)));
   }
 
+  // Código do banco vem automaticamente ao escolher o Banco — mesmo
+  // comportamento do cadastro administrativo (ver components/cliente-form.tsx).
+  function selecionarBanco(index: number, bancoId: string) {
+    const banco = bancos.find((b) => b.id === bancoId);
+    setClientes((atual) =>
+      atual.map((c, i) => (i === index ? { ...c, bancoId, codigoBanco: banco?.codigo ?? c.codigoBanco } : c))
+    );
+  }
+
   // Ao escolher um cliente já cadastrado, preenche tudo com o que já está no
   // banco e trava os campos — o corretor não edita cadastro existente por
   // aqui, só usa. Escolhendo "+ Novo cliente" de volta, limpa a linha.
@@ -141,7 +171,14 @@ export function PortalGestaoForm({
               estadoCivil: encontrado.estadoCivil,
               profissao: "",
               email: encontrado.email,
-              telefone: encontrado.telefone
+              telefone: encontrado.telefone,
+              bancoId: "",
+              codigoBanco: "",
+              agencia: "",
+              conta: "",
+              tipoConta: "",
+              tipoPix: "",
+              pix: ""
             }
           : c
       )
@@ -374,6 +411,97 @@ export function PortalGestaoForm({
                     value={c.telefone}
                     onChange={(e) => atualizarCliente(index, "telefone", e.target.value)}
                   />
+                </div>
+              </div>
+
+              <div className="mt-3 pt-3 border-t border-gray-100">
+                <div className="text-[11px] font-semibold text-gray-500 mb-2">Dados bancários</div>
+                <div className="grid md:grid-cols-2 gap-3">
+                  <div>
+                    <label className={LABEL}>Banco</label>
+                    <select
+                      className={c.clienteId ? CAMPO_TRAVADO : CAMPO}
+                      disabled={Boolean(c.clienteId)}
+                      value={c.bancoId}
+                      onChange={(e) => selecionarBanco(index, e.target.value)}
+                    >
+                      <option value="">—</option>
+                      {bancos.map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {b.nome}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={LABEL}>Código do banco</label>
+                    <input
+                      className={c.clienteId ? CAMPO_TRAVADO : CAMPO}
+                      readOnly={Boolean(c.clienteId)}
+                      value={c.codigoBanco}
+                      onChange={(e) => atualizarCliente(index, "codigoBanco", e.target.value)}
+                      placeholder="Preenchido ao escolher o banco"
+                    />
+                  </div>
+                  <div>
+                    <label className={LABEL}>Agência</label>
+                    <input
+                      className={c.clienteId ? CAMPO_TRAVADO : CAMPO}
+                      readOnly={Boolean(c.clienteId)}
+                      value={c.agencia}
+                      onChange={(e) => atualizarCliente(index, "agencia", e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className={LABEL}>Conta</label>
+                    <input
+                      className={c.clienteId ? CAMPO_TRAVADO : CAMPO}
+                      readOnly={Boolean(c.clienteId)}
+                      value={c.conta}
+                      onChange={(e) => atualizarCliente(index, "conta", e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className={LABEL}>Tipo de conta</label>
+                    <select
+                      className={c.clienteId ? CAMPO_TRAVADO : CAMPO}
+                      disabled={Boolean(c.clienteId)}
+                      value={c.tipoConta}
+                      onChange={(e) => atualizarCliente(index, "tipoConta", e.target.value)}
+                    >
+                      <option value="">—</option>
+                      {TIPOS_CONTA.map((op) => (
+                        <option key={op} value={op}>
+                          {op}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={LABEL}>Tipo de PIX</label>
+                    <select
+                      className={c.clienteId ? CAMPO_TRAVADO : CAMPO}
+                      disabled={Boolean(c.clienteId)}
+                      value={c.tipoPix}
+                      onChange={(e) => atualizarCliente(index, "tipoPix", e.target.value)}
+                    >
+                      <option value="">—</option>
+                      {TIPOS_PIX.map((op) => (
+                        <option key={op} value={op}>
+                          {op}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className={LABEL}>Chave PIX</label>
+                    <input
+                      className={c.clienteId ? CAMPO_TRAVADO : CAMPO}
+                      readOnly={Boolean(c.clienteId)}
+                      value={c.pix}
+                      onChange={(e) => atualizarCliente(index, "pix", e.target.value)}
+                    />
+                  </div>
                 </div>
               </div>
             </div>

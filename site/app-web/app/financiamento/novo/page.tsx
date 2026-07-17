@@ -11,7 +11,7 @@ export default async function NovaAvaliacaoPage() {
     prisma.clientes.findMany({
       where: { OR: [{ status_cadastro: null }, { status_cadastro: { not: "Arquivado" } }] },
       orderBy: { nome: "asc" },
-      select: { id: true, nome: true, cpf: true }
+      select: { id: true, nome: true, cpf: true, telefone: true, parceiro_id: true }
     }),
     prisma.bancos.findMany({ orderBy: { nome: "asc" } }),
     prisma.parceiros.findMany({ orderBy: { nome: "asc" }, select: { id: true, nome: true } })

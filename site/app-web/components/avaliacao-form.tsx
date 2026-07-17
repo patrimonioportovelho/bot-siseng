@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import {
   STATUS_AVALIACAO_OPCOES,
   TIPO_AVALIACAO_OPCOES,
@@ -13,7 +13,7 @@ import { formatCpf, formatTelefone, formatMoeda, formatDataCalendario, formatVal
 
 type Banco = { id: string; nome: string };
 type Parceiro = { id: string; nome: string };
-type Cliente = { id: string; nome: string; cpf: string | null };
+type Cliente = { id: string; nome: string; cpf: string | null; telefone: string | null; parceiro_id: string | null };
 
 type AvaliacaoExistente = {
   id: string;
@@ -173,25 +173,36 @@ export function AvaliacaoForm({
   const bancoAtual = a ? bancos.find((b) => b.id === a.banco_id) ?? null : null;
   const parceiroAtual = a ? parceiros.find((p) => p.id === a.parceiro_id) ?? null : null;
 
-  // Cliente: busca entre os já cadastrados, mas também aceita digitar um
-  // nome que ainda não existe — nesse caso o server action cria o cliente
-  // na hora (ligado ao Parceiro escolhido ao lado), sem precisar ir cadastrar
-  // em outra tela primeiro. É assim que uma Consulta de CPF de alguém novo
-  // vira cliente de verdade: nome completo + CPF preenchidos aqui já bastam.
+  // Cliente: busca entre TODOS os já cadastrados (sem cortar a lista — só
+  // limita a exibição inicial antes de digitar nada, pra não jogar milhares
+  // de nomes na tela de uma vez; assim que tem termo de busca, mostra tudo
+  // que bate, sem limite), mas também aceita digitar um nome que ainda não
+  // existe — nesse caso o server action cria o cliente na hora (ligado ao
+  // Parceiro escolhido ao lado), sem precisar ir cadastrar em outra tela
+  // primeiro. É assim que uma Consulta de CPF de alguém novo vira cliente de
+  // verdade: nome completo + CPF preenchidos aqui já bastam.
   const [clienteId, setClienteId] = useState(a?.cliente_id ?? "");
   const [buscaCliente, setBuscaCliente] = useState(clienteAtual?.nome ?? "");
   const [listaClienteAberta, setListaClienteAberta] = useState(false);
+  const [parceiroId, setParceiroId] = useState(a?.parceiro_id ?? "");
+  const telefoneRef = useRef<HTMLInputElement>(null);
+  const cpfRef = useRef<HTMLInputElement>(null);
 
   const clientesFiltrados = useMemo(() => {
     const t = buscaCliente.trim().toLowerCase();
-    if (!t) return clientes.slice(0, 30);
-    return clientes.filter((c) => c.nome.toLowerCase().includes(t)).slice(0, 30);
+    if (!t) return clientes.slice(0, 50);
+    return clientes.filter((c) => c.nome.toLowerCase().includes(t));
   }, [buscaCliente, clientes]);
 
+  // Selecionar um cliente já cadastrado preenche Parceiro responsável,
+  // Telefone e CPF direto do cadastro dele — evita redigitar o que já existe.
   function selecionarCliente(c: Cliente) {
     setClienteId(c.id);
     setBuscaCliente(c.nome);
     setListaClienteAberta(false);
+    if (c.parceiro_id) setParceiroId(c.parceiro_id);
+    if (c.telefone && telefoneRef.current) telefoneRef.current.value = formatTelefone(c.telefone);
+    if (c.cpf && cpfRef.current) cpfRef.current.value = formatCpf(c.cpf);
   }
 
   function aoEnviar(e: React.FormEvent<HTMLFormElement>) {
@@ -271,7 +282,7 @@ export function AvaliacaoForm({
           </div>
           <div>
             <label className={LABEL}>Parceiro responsável</label>
-            <select className={CAMPO} name="parceiro_id" defaultValue={a?.parceiro_id ?? ""}>
+            <select className={CAMPO} name="parceiro_id" value={parceiroId} onChange={(e) => setParceiroId(e.target.value)}>
               <option value="">—</option>
               {parceiros.map((p) => (
                 <option key={p.id} value={p.id}>
@@ -283,6 +294,7 @@ export function AvaliacaoForm({
           <div>
             <label className={LABEL}>Telefone</label>
             <input
+              ref={telefoneRef}
               className={CAMPO}
               name="telefone"
               placeholder="(69) 99999-9999"
@@ -291,7 +303,13 @@ export function AvaliacaoForm({
           </div>
           <div>
             <label className={LABEL}>CPF {consultaCpf && <span className="text-amber-600">*</span>}</label>
-            <input className={CAMPO} name="cpf" placeholder="000.000.000-00" defaultValue={a?.cpf ? formatCpf(a.cpf) : ""} />
+            <input
+              ref={cpfRef}
+              className={CAMPO}
+              name="cpf"
+              placeholder="000.000.000-00"
+              defaultValue={a?.cpf ? formatCpf(a.cpf) : ""}
+            />
           </div>
         </div>
       </div>

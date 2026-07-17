@@ -87,6 +87,19 @@ export default async function PortalPage() {
           </Link>
 
           <Link
+            href="/portal/avaliacao-cpf/novo"
+            className="flex items-center justify-between gap-3 bg-primary text-white rounded-xl px-4 py-4 hover:opacity-90 transition-opacity"
+          >
+            <div>
+              <div className="text-sm font-bold">Avaliação de CPF</div>
+              <div className="text-xs opacity-80 mt-0.5">
+                Cliente quer comprar um imóvel — cadastre completo, anexe os documentos e o administrativo avalia
+              </div>
+            </div>
+            <span className="text-xl leading-none">→</span>
+          </Link>
+
+          <Link
             href="/portal/administracao/novo"
             className="flex items-center justify-between gap-3 bg-primary text-white rounded-xl px-4 py-4 hover:opacity-90 transition-opacity"
           >

@@ -42,13 +42,41 @@ function booleano(formData: FormData, campo: string): boolean {
 
 // ==================== Avaliação ====================
 
-function camposAvaliacao(formData: FormData) {
+// Consulta de CPF é só pra ver se o nome tá limpo — pra isso precisa do nome
+// completo e do CPF (regra do usuário). Se o admin digitou um nome que ainda
+// não existe no banco (não escolheu ninguém da busca), esse nome + CPF já
+// bastam pra criar o cliente na hora, ligado ao parceiro escolhido na mesma
+// tela — evita ter que ir cadastrar em outro lugar antes de rodar a consulta.
+async function resolverClienteId(
+  formData: FormData,
+  dados: { parceiroId: string | null; telefone: string | null; cpf: string | null }
+): Promise<string | null> {
+  const clienteId = texto(formData, "cliente_id");
+  if (clienteId) return clienteId;
+
+  const nomeNovo = texto(formData, "cliente_nome_busca");
+  if (!nomeNovo) return null;
+
+  const criado = await prisma.clientes.create({
+    data: {
+      tipo_cliente: "Pessoa Física",
+      nome: nomeNovo,
+      cpf: dados.cpf,
+      telefone: dados.telefone,
+      parceiro_id: dados.parceiroId,
+      status_cadastro: dados.cpf ? "Completo" : "Rascunho"
+    }
+  });
+  return criado.id;
+}
+
+function camposAvaliacao(formData: FormData, clienteId: string | null) {
   return {
     tipo_avaliacao: texto(formData, "tipo_avaliacao"),
     banco_id: texto(formData, "banco_id"),
     status: texto(formData, "status") ?? undefined,
     data_avaliacao: data(formData, "data_avaliacao"),
-    cliente_id: texto(formData, "cliente_id"),
+    cliente_id: clienteId,
     telefone: somenteDigitos(formData, "telefone"),
     cpf: somenteDigitos(formData, "cpf"),
     parceiro_id: texto(formData, "parceiro_id"),
@@ -73,7 +101,18 @@ function camposAvaliacao(formData: FormData) {
 export async function criarAvaliacaoAction(formData: FormData) {
   await requireAdminSession();
 
-  const campos = camposAvaliacao(formData);
+  const parceiroId = texto(formData, "parceiro_id");
+  const telefone = somenteDigitos(formData, "telefone");
+  const cpf = somenteDigitos(formData, "cpf");
+  const status = texto(formData, "status");
+
+  const semNome = !texto(formData, "cliente_id") && !texto(formData, "cliente_nome_busca");
+  if (status === "Consulta de CPF" && (semNome || !cpf)) {
+    throw new Error("Consulta de CPF precisa do nome completo e do CPF preenchidos.");
+  }
+
+  const clienteId = await resolverClienteId(formData, { parceiroId, telefone, cpf });
+  const campos = camposAvaliacao(formData, clienteId);
   if (!campos.cliente_id && !campos.cpf) {
     throw new Error("Selecione o cliente ou informe ao menos o CPF pra identificar a avaliação.");
   }
@@ -102,7 +141,18 @@ export async function atualizarAvaliacaoAction(formData: FormData) {
   const antes = await prisma.avaliacoes.findUnique({ where: { id } });
   if (!antes) throw new Error("Avaliação não encontrada.");
 
-  const campos = camposAvaliacao(formData);
+  const parceiroId = texto(formData, "parceiro_id");
+  const telefone = somenteDigitos(formData, "telefone");
+  const cpf = somenteDigitos(formData, "cpf");
+  const status = texto(formData, "status");
+
+  const semNome = !texto(formData, "cliente_id") && !texto(formData, "cliente_nome_busca");
+  if (status === "Consulta de CPF" && (semNome || !cpf)) {
+    throw new Error("Consulta de CPF precisa do nome completo e do CPF preenchidos.");
+  }
+
+  const clienteId = await resolverClienteId(formData, { parceiroId, telefone, cpf });
+  const campos = camposAvaliacao(formData, clienteId);
 
   const depois = await prisma.avaliacoes
     .update({ where: { id }, data: campos })

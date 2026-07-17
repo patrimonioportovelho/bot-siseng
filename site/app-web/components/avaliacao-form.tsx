@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import {
   STATUS_AVALIACAO_OPCOES,
   TIPO_AVALIACAO_OPCOES,
@@ -167,10 +167,44 @@ export function AvaliacaoForm({
   const [modoEdicao, setModoEdicao] = useState(!a);
   const [usaFgts, setUsaFgts] = useState(a?.usa_fgts ?? false);
   const [usaSubsidio, setUsaSubsidio] = useState(a?.usa_subsidio ?? false);
+  const [status, setStatus] = useState(a?.status ?? "Montagem de processo");
 
   const clienteAtual = a ? clientes.find((c) => c.id === a.cliente_id) ?? null : null;
   const bancoAtual = a ? bancos.find((b) => b.id === a.banco_id) ?? null : null;
   const parceiroAtual = a ? parceiros.find((p) => p.id === a.parceiro_id) ?? null : null;
+
+  // Cliente: busca entre os já cadastrados, mas também aceita digitar um
+  // nome que ainda não existe — nesse caso o server action cria o cliente
+  // na hora (ligado ao Parceiro escolhido ao lado), sem precisar ir cadastrar
+  // em outra tela primeiro. É assim que uma Consulta de CPF de alguém novo
+  // vira cliente de verdade: nome completo + CPF preenchidos aqui já bastam.
+  const [clienteId, setClienteId] = useState(a?.cliente_id ?? "");
+  const [buscaCliente, setBuscaCliente] = useState(clienteAtual?.nome ?? "");
+  const [listaClienteAberta, setListaClienteAberta] = useState(false);
+
+  const clientesFiltrados = useMemo(() => {
+    const t = buscaCliente.trim().toLowerCase();
+    if (!t) return clientes.slice(0, 30);
+    return clientes.filter((c) => c.nome.toLowerCase().includes(t)).slice(0, 30);
+  }, [buscaCliente, clientes]);
+
+  function selecionarCliente(c: Cliente) {
+    setClienteId(c.id);
+    setBuscaCliente(c.nome);
+    setListaClienteAberta(false);
+  }
+
+  function aoEnviar(e: React.FormEvent<HTMLFormElement>) {
+    if (status === "Consulta de CPF") {
+      const cpfDigitado = new FormData(e.currentTarget).get("cpf");
+      const nomeOk = clienteId.length > 0 || buscaCliente.trim().length > 0;
+      const cpfOk = typeof cpfDigitado === "string" && cpfDigitado.replace(/\D/g, "").length >= 11;
+      if (!nomeOk || !cpfOk) {
+        e.preventDefault();
+        alert("Consulta de CPF precisa do nome completo e do CPF preenchidos — é o que vai pro banco de dados ligado ao parceiro.");
+      }
+    }
+  }
 
   if (a && !modoEdicao) {
     return (
@@ -184,24 +218,56 @@ export function AvaliacaoForm({
     );
   }
 
+  const consultaCpf = status === "Consulta de CPF";
+
   return (
-    <form action={action} className="flex flex-col gap-4">
+    <form action={action} onSubmit={aoEnviar} className="flex flex-col gap-4">
       {a && <input type="hidden" name="avaliacaoId" value={a.id} />}
+      <input type="hidden" name="cliente_id" value={clienteId} />
+      <input type="hidden" name="cliente_nome_busca" value={buscaCliente} />
 
       <div className="bg-white border border-gray-200 rounded-xl p-4">
         <div className="text-sm font-bold text-gray-800 mb-3">Cliente e parceiro</div>
+        {consultaCpf && (
+          <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 mb-3">
+            Consulta de CPF é só pra ver se o nome tá limpo — precisa do nome completo e do CPF. Preenchendo os dois,
+            o cliente já é cadastrado no banco de dados, ligado ao parceiro escolhido ao lado.
+          </p>
+        )}
         <div className="grid md:grid-cols-2 gap-3">
-          <div>
-            <label className={LABEL}>Cliente</label>
-            <select className={CAMPO} name="cliente_id" defaultValue={a?.cliente_id ?? ""}>
-              <option value="">—</option>
-              {clientes.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.nome}
-                  {c.cpf ? ` — ${formatCpf(c.cpf)}` : ""}
-                </option>
-              ))}
-            </select>
+          <div className="relative">
+            <label className={LABEL}>Cliente {consultaCpf && <span className="text-amber-600">*</span>}</label>
+            <input
+              className={CAMPO}
+              placeholder="Digite o nome — se não existir, é criado ao salvar"
+              value={buscaCliente}
+              onChange={(e) => {
+                setBuscaCliente(e.target.value);
+                setClienteId("");
+                setListaClienteAberta(true);
+              }}
+              onFocus={() => setListaClienteAberta(true)}
+              onBlur={() => setTimeout(() => setListaClienteAberta(false), 150)}
+            />
+            {!clienteId && buscaCliente.trim().length > 0 && (
+              <p className="text-[11px] text-gray-400 mt-1">Nenhum cliente selecionado — esse nome vai criar um cadastro novo.</p>
+            )}
+            {listaClienteAberta && (
+              <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-lg max-h-48 overflow-auto shadow-lg">
+                {clientesFiltrados.length === 0 && <p className="text-xs text-gray-400 p-3">Nenhum cliente encontrado.</p>}
+                {clientesFiltrados.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onMouseDown={() => selecionarCliente(c)}
+                    className="block w-full text-left text-xs px-3 py-2 border-b border-gray-50 last:border-0 hover:bg-gray-50 text-gray-700"
+                  >
+                    {c.nome}
+                    {c.cpf ? ` — ${formatCpf(c.cpf)}` : ""}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           <div>
             <label className={LABEL}>Parceiro responsável</label>
@@ -224,7 +290,7 @@ export function AvaliacaoForm({
             />
           </div>
           <div>
-            <label className={LABEL}>CPF</label>
+            <label className={LABEL}>CPF {consultaCpf && <span className="text-amber-600">*</span>}</label>
             <input className={CAMPO} name="cpf" placeholder="000.000.000-00" defaultValue={a?.cpf ? formatCpf(a.cpf) : ""} />
           </div>
         </div>
@@ -235,7 +301,7 @@ export function AvaliacaoForm({
         <div className="grid md:grid-cols-2 gap-3">
           <div>
             <label className={LABEL}>Status</label>
-            <select className={CAMPO} name="status" defaultValue={a?.status ?? "Montagem de processo"}>
+            <select className={CAMPO} name="status" value={status} onChange={(e) => setStatus(e.target.value)}>
               {STATUS_AVALIACAO_OPCOES.map((s) => (
                 <option key={s} value={s}>
                   {s}
@@ -381,7 +447,9 @@ export function AvaliacaoForm({
         <div className="text-sm font-bold text-gray-800 mb-3">Imagem da consulta e observações</div>
         <div className="flex flex-col gap-3">
           <div>
-            <label className={LABEL}>Link da imagem da consulta</label>
+            <label className={LABEL}>
+              Link da imagem da consulta {consultaCpf && <span className="text-[11px] text-gray-400 font-normal">— print do resultado da Consulta de CPF</span>}
+            </label>
             <input
               className={CAMPO}
               name="imagem_consulta_url"

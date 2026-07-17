@@ -103,47 +103,61 @@ export default async function AvaliacaoDetalhePage({
 
       <AvaliacaoForm avaliacao={avaliacao} clientes={clientes} bancos={bancos} parceiros={parceiros} action={atualizarAvaliacaoAction} />
 
-      <div className="mt-6 mb-2">
-        <div className="text-sm font-bold text-gray-800">
-          Andamento{andamentos.length !== 1 ? "s" : ""}
+      {/* Andamento só faz sentido depois que o crédito foi Aprovado — é
+          quando a avaliação vira negócio de verdade. Se já existe algum
+          Andamento cadastrado, continua aparecendo pra edição mesmo que o
+          status tenha mudado depois (ex.: Concluído, pelo sincronismo
+          automático em sincronizarStatusAvaliacao). */}
+      {avaliacao.status !== "Aprovado" && andamentos.length === 0 ? (
+        <div className="mt-6 bg-gray-50 border border-gray-200 rounded-xl p-4 text-xs text-gray-500">
+          Andamento só é iniciado quando a Avaliação estiver com status <strong>Aprovado</strong> — é quando o
+          crédito vira negócio de fato e entra o processo do imóvel.
         </div>
-        <p className="text-[11px] text-gray-400 mt-0.5">
-          É o processo de fato, depois que a avaliação vira negócio — quando o Andamento chega em &quot;Concluído&quot;,
-          esta avaliação acompanha e também fecha como Concluída.
-        </p>
-      </div>
-
-      {andamentos.length === 0 ? (
-        <AndamentoForm
-          andamento={null}
-          avaliacaoId={avaliacao.id}
-          clientes={clientes}
-          imoveis={imoveisComProprietarios}
-          valorAprovadoCliente={avaliacao.valor_aprovado}
-          actionCriar={criarAndamentoAction}
-          actionAtualizar={atualizarAndamentoAction}
-        />
       ) : (
-        <div className="flex flex-col gap-6">
-          {andamentos.map((and) => (
-            <div key={and.id} className="flex flex-col gap-4">
-              <AndamentoForm
-                andamento={and}
-                avaliacaoId={avaliacao.id}
-                clientes={clientes}
-                imoveis={imoveisComProprietarios}
-                valorAprovadoCliente={avaliacao.valor_aprovado}
-                actionCriar={criarAndamentoAction}
-                actionAtualizar={atualizarAndamentoAction}
-              />
-              <LancamentosLista
-                andamentoId={and.id}
-                lancamentosIniciais={and.lancamentos_financiamento}
-                action={sincronizarLancamentosAction}
-              />
+        <>
+          <div className="mt-6 mb-2">
+            <div className="text-sm font-bold text-gray-800">
+              Andamento{andamentos.length !== 1 ? "s" : ""}
             </div>
-          ))}
-        </div>
+            <p className="text-[11px] text-gray-400 mt-0.5">
+              É o processo de fato, depois que a avaliação vira negócio — quando o Andamento chega em
+              &quot;Concluído&quot;, esta avaliação acompanha e também fecha como Concluída.
+            </p>
+          </div>
+
+          {andamentos.length === 0 ? (
+            <AndamentoForm
+              andamento={null}
+              avaliacaoId={avaliacao.id}
+              clientes={clientes}
+              imoveis={imoveisComProprietarios}
+              valorAprovadoCliente={avaliacao.valor_aprovado}
+              actionCriar={criarAndamentoAction}
+              actionAtualizar={atualizarAndamentoAction}
+            />
+          ) : (
+            <div className="flex flex-col gap-6">
+              {andamentos.map((and) => (
+                <div key={and.id} className="flex flex-col gap-4">
+                  <AndamentoForm
+                    andamento={and}
+                    avaliacaoId={avaliacao.id}
+                    clientes={clientes}
+                    imoveis={imoveisComProprietarios}
+                    valorAprovadoCliente={avaliacao.valor_aprovado}
+                    actionCriar={criarAndamentoAction}
+                    actionAtualizar={atualizarAndamentoAction}
+                  />
+                  <LancamentosLista
+                    andamentoId={and.id}
+                    lancamentosIniciais={and.lancamentos_financiamento}
+                    action={sincronizarLancamentosAction}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+        </>
       )}
     </div>
   );

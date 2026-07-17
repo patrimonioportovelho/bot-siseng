@@ -3,24 +3,32 @@
 // existiam na planilha raiz (aba Avaliacao/Andamento/Lancamento/
 // StatusAndamento/StatusAndamentoCom), na importação de 2026-07.
 
-// Status de uma Avaliação (aprovação de crédito junto ao banco). Ordem
-// pensada pra listagem: "Montagem de processo" é o ponto de partida (default
-// do banco, ainda sem nenhuma avaliação real na planilha antiga — provável
-// que só passe a existir a partir de cadastros novos feitos aqui), depois os
-// estágios em andamento, depois os desfechos positivos, por último os
-// negativos/encerrados.
+// Status de uma Avaliação (aprovação de crédito junto ao banco). Ordem de
+// prioridade definida pelo usuário — é essa ordem que manda tanto no select
+// quanto no agrupamento do dashboard (ver STATUS_AVALIACAO_PRIORIDADE):
+// "Montagem de processo" abre a lista por ser o ponto de partida (ainda nem
+// entrou em Consulta de CPF), depois Aprovado (que é onde a avaliação vira
+// negócio de verdade e precisa de acompanhamento de vencimento), Standbye,
+// Condicionado, Avaliação vencida, Avaliação cancelada, Restrição, Concluído,
+// Reprovação, e por último Consulta de CPF (é só o passo inicial, sem
+// urgência ainda).
 export const STATUS_AVALIACAO_OPCOES = [
   "Montagem de processo",
-  "Consulta de CPF",
-  "Standbye",
-  "Restrição",
-  "Condicionado",
   "Aprovado",
+  "Standbye",
+  "Condicionado",
+  "Avaliação vencida",
+  "Avaliação cancelada",
+  "Restrição",
   "Concluído",
   "Reprovação",
-  "Avaliação cancelada",
-  "Avaliação vencida"
+  "Consulta de CPF"
 ];
+
+// Ordem de prioridade pro agrupamento do dashboard — mesma lista acima, só
+// dando nome mais claro pra quem for usar como critério de ordenação (em vez
+// de reaproveitar STATUS_AVALIACAO_OPCOES "por acaso" ter a ordem certa).
+export const STATUS_AVALIACAO_PRIORIDADE = STATUS_AVALIACAO_OPCOES;
 
 // Situações que contam como "em andamento" pro dashboard — usado pra
 // destacar/agrupar o que ainda precisa de acompanhamento.

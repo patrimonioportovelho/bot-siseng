@@ -43,7 +43,15 @@ export default async function AvaliacaoDetalhePage({
     prisma.imoveis.findMany({
       where: { excluido: false },
       orderBy: { created_at: "desc" },
-      select: { id: true, endereco: true }
+      select: {
+        id: true,
+        endereco: true,
+        inscricao: true,
+        imoveis_proprietarios: {
+          orderBy: { ordem: "asc" },
+          select: { clientes: { select: { id: true, nome: true } } }
+        }
+      }
     }),
     prisma.andamentos.findMany({
       where: { avaliacao_id: id },
@@ -51,6 +59,16 @@ export default async function AvaliacaoDetalhePage({
       include: { lancamentos_financiamento: { orderBy: { created_at: "asc" } } }
     })
   ]);
+
+  // Cliente vendedor e Imóvel andam juntos no Andamento (mesmo padrão do
+  // cadastro de Administração) — aqui já resolve os proprietários de cada
+  // imóvel pra alimentar a busca em cascata dentro do AndamentoForm.
+  const imoveisComProprietarios = imoveis.map((i) => ({
+    id: i.id,
+    endereco: i.endereco,
+    inscricao: i.inscricao,
+    proprietarios: i.imoveis_proprietarios.map((v) => v.clientes)
+  }));
 
   return (
     <div>
@@ -100,7 +118,8 @@ export default async function AvaliacaoDetalhePage({
           andamento={null}
           avaliacaoId={avaliacao.id}
           clientes={clientes}
-          imoveis={imoveis}
+          imoveis={imoveisComProprietarios}
+          valorAprovadoCliente={avaliacao.valor_aprovado}
           actionCriar={criarAndamentoAction}
           actionAtualizar={atualizarAndamentoAction}
         />
@@ -112,7 +131,8 @@ export default async function AvaliacaoDetalhePage({
                 andamento={and}
                 avaliacaoId={avaliacao.id}
                 clientes={clientes}
-                imoveis={imoveis}
+                imoveis={imoveisComProprietarios}
+                valorAprovadoCliente={avaliacao.valor_aprovado}
                 actionCriar={criarAndamentoAction}
                 actionAtualizar={atualizarAndamentoAction}
               />

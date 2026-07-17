@@ -80,7 +80,9 @@ export default async function DashboardPage({
     despesasVencidas,
     movimentacoesPagasPeriodo,
     corretoresAtivos,
-    pagamentosCorretoresPeriodo
+    pagamentosCorretoresPeriodo,
+    avaliacoesPeriodo,
+    andamentosConcluidosPeriodo
   ] = await Promise.all([
     prisma.imoveis.count({ where: { excluido: false } }),
     prisma.transacoes.count({ where: { excluido: false, status: STATUS_TRANSACAO_EM_ABERTO } }),
@@ -197,6 +199,19 @@ export default async function DashboardPage({
         status: true,
         movimentacoes: { select: { pago: true } }
       }
+    }),
+    // Financiamento: Avaliações levantadas dentro do período (por Data de
+    // avaliação) — mesma régua de "assinado no período" usada em Vendas &
+    // Locação/VGA, só que aqui é "levantado no período".
+    prisma.avaliacoes.findMany({
+      where: { data_avaliacao: { gte: inicio, lt: fimExclusivo } },
+      select: { status: true, valor_aprovado: true }
+    }),
+    // Andamentos concluídos dentro do período (por Data de conclusão) — é
+    // quando o financiamento de fato virou negócio fechado.
+    prisma.andamentos.findMany({
+      where: { status_andamento: "Concluído", data_conclusao: { gte: inicio, lt: fimExclusivo } },
+      select: { valor_financiado: true }
     })
   ]);
 
@@ -346,6 +361,18 @@ export default async function DashboardPage({
     .sort((a, b) => b.recebido + b.aReceber - (a.recebido + a.aReceber));
   const totalRecebidoCorretores = corretoresComValores.reduce((acc, c) => acc + c.recebido, 0);
   const totalAReceberCorretores = corretoresComValores.reduce((acc, c) => acc + c.aReceber, 0);
+
+  // Financiamento: quantidade de Avaliações levantadas no período, quantas já
+  // estão Aprovadas (e o valor somado dessas), e quantos Andamentos fecharam
+  // (Concluído) dentro do período, com o valor financiado somado.
+  const avaliacoesQtdPeriodo = avaliacoesPeriodo.length;
+  const avaliacoesAprovadasPeriodo = avaliacoesPeriodo.filter((a) => a.status === "Aprovado");
+  const valorAprovadoPeriodo = avaliacoesAprovadasPeriodo.reduce((acc, a) => acc + Number(a.valor_aprovado ?? 0), 0);
+  const andamentosConcluidosQtdPeriodo = andamentosConcluidosPeriodo.length;
+  const valorFinanciadoConcluidoPeriodo = andamentosConcluidosPeriodo.reduce(
+    (acc, a) => acc + Number(a.valor_financiado ?? 0),
+    0
+  );
 
   // Links dos atalhos de período — preserva "personalizado" só quando ele
   // próprio é o link ativo (senão os campos de data ficam sem sentido).
@@ -595,6 +622,38 @@ export default async function DashboardPage({
           formatarValor={(v) => String(v)}
           mensagemVazia="Sem negócios registrados nesse período."
         />
+      </div>
+
+      <div className="bg-white border border-gray-200 rounded-xl p-4 mb-5">
+        <div className="flex items-center justify-between mb-1 flex-wrap gap-2">
+          <div className="text-sm font-bold text-gray-800">Financiamento</div>
+          <Link href="/financiamento" className="text-xs text-primary font-semibold hover:underline">
+            Ver Financiamento completo →
+          </Link>
+        </div>
+        <p className="text-[11px] text-gray-400 mb-3">
+          Avaliações pela Data de avaliação e Andamentos concluídos pela Data de conclusão, dentro do período
+          selecionado acima.
+        </p>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="bg-gray-50 border border-gray-100 rounded-xl p-3">
+            <div className="text-xs text-gray-500">Avaliações no período</div>
+            <div className="text-lg font-bold mt-1 text-gray-900">{avaliacoesQtdPeriodo}</div>
+          </div>
+          <div className="bg-gray-50 border border-gray-100 rounded-xl p-3">
+            <div className="text-xs text-gray-500">Aprovadas no período</div>
+            <div className="text-lg font-bold mt-1 text-indigo-700">{avaliacoesAprovadasPeriodo.length}</div>
+            <div className="text-[11px] text-gray-400">{formatMoeda(valorAprovadoPeriodo)} aprovado(s)</div>
+          </div>
+          <div className="bg-gray-50 border border-gray-100 rounded-xl p-3">
+            <div className="text-xs text-gray-500">Andamentos concluídos</div>
+            <div className="text-lg font-bold mt-1 text-[#3C7A57]">{andamentosConcluidosQtdPeriodo}</div>
+          </div>
+          <div className="bg-gray-50 border border-gray-100 rounded-xl p-3">
+            <div className="text-xs text-gray-500">Valor financiado (concluídos)</div>
+            <div className="text-lg font-bold mt-1 text-gray-900">{formatMoeda(valorFinanciadoConcluidoPeriodo)}</div>
+          </div>
+        </div>
       </div>
 
       <div className="bg-white border border-gray-200 rounded-xl p-4">

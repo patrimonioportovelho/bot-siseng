@@ -79,24 +79,41 @@ function Ficha({
   clienteVendedorNome,
   imovelLabel,
   valorAprovadoCliente,
-  onEditar
+  onEditar,
+  actionApagar,
+  podeApagar
 }: {
   andamento: AndamentoExistente;
   clienteVendedorNome: string | null;
   imovelLabel: string | null;
   valorAprovadoCliente: unknown;
   onEditar: () => void;
+  actionApagar?: (formData: FormData) => void;
+  podeApagar?: boolean;
 }) {
   const n = andamento;
 
   const BotaoEditar = (
-    <button
-      type="button"
-      onClick={onEditar}
-      className="text-xs border border-gray-300 text-gray-700 rounded-lg px-3 py-1.5 hover:bg-gray-50 font-semibold"
-    >
-      Editar
-    </button>
+    <div className="flex items-center gap-2">
+      <button
+        type="button"
+        onClick={onEditar}
+        className="text-xs border border-gray-300 text-gray-700 rounded-lg px-3 py-1.5 hover:bg-gray-50 font-semibold"
+      >
+        Editar
+      </button>
+      {podeApagar && actionApagar && (
+        <form action={actionApagar}>
+          <input type="hidden" name="andamentoId" value={n.id} />
+          <button
+            type="submit"
+            className="text-xs border border-red-200 text-red-600 rounded-lg px-3 py-1.5 hover:bg-red-50 font-semibold"
+          >
+            Excluir
+          </button>
+        </form>
+      )}
+    </div>
   );
 
   return (
@@ -146,7 +163,9 @@ export function AndamentoForm({
   imoveis,
   valorAprovadoCliente,
   actionCriar,
-  actionAtualizar
+  actionAtualizar,
+  actionApagar,
+  podeApagar
 }: {
   andamento: AndamentoExistente | null;
   avaliacaoId: string;
@@ -155,6 +174,8 @@ export function AndamentoForm({
   valorAprovadoCliente: unknown;
   actionCriar: (formData: FormData) => void;
   actionAtualizar: (formData: FormData) => void;
+  actionApagar?: (formData: FormData) => void;
+  podeApagar?: boolean;
 }) {
   const n = andamento;
   const [modoEdicao, setModoEdicao] = useState(!n);
@@ -225,6 +246,8 @@ export function AndamentoForm({
         imovelLabel={imovelAtualParaFicha ? labelImovel(imovelAtualParaFicha) : null}
         valorAprovadoCliente={valorAprovadoCliente}
         onEditar={() => setModoEdicao(true)}
+        actionApagar={actionApagar}
+        podeApagar={podeApagar}
       />
     );
   }

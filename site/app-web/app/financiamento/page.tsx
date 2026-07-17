@@ -62,19 +62,26 @@ function Cartao({ titulo, valor, destaque }: { titulo: string; valor: string; de
   );
 }
 
-export default async function FinanciamentoPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
-  const { q } = await searchParams;
+export default async function FinanciamentoPage({
+  searchParams
+}: {
+  searchParams: Promise<{ q?: string; excluido?: string }>;
+}) {
+  const { q, excluido } = await searchParams;
   const termo = (q ?? "").trim();
 
-  const where = termo
-    ? {
-        OR: [
-          { clientes: { nome: { contains: termo, mode: "insensitive" as const } } },
-          { cpf: { contains: termo.replace(/\D/g, ""), mode: "insensitive" as const } },
-          { id_legado: { contains: termo, mode: "insensitive" as const } }
-        ]
-      }
-    : undefined;
+  const where = {
+    excluido: false,
+    ...(termo
+      ? {
+          OR: [
+            { clientes: { nome: { contains: termo, mode: "insensitive" as const } } },
+            { cpf: { contains: termo.replace(/\D/g, ""), mode: "insensitive" as const } },
+            { id_legado: { contains: termo, mode: "insensitive" as const } }
+          ]
+        }
+      : {})
+  };
 
   const [avaliacoes, andamentosEmAberto] = await Promise.all([
     prisma.avaliacoes.findMany({
@@ -85,8 +92,9 @@ export default async function FinanciamentoPage({ searchParams }: { searchParams
         bancos: { select: { nome: true } },
         _count: { select: { andamentos: true } }
       }
+      // criado_no_portal já vem incluso (campo escalar da própria tabela avaliacoes)
     }),
-    prisma.andamentos.count({ where: { status_andamento: { not: "Concluído" } } })
+    prisma.andamentos.count({ where: { status_andamento: { not: "Concluído" }, excluido: false } })
   ]);
 
   // Cartões de resumo — sempre refletem o filtro de busca atual, pra dar uma
@@ -153,6 +161,12 @@ export default async function FinanciamentoPage({ searchParams }: { searchParams
         </Link>
       </div>
 
+      {excluido === "1" && (
+        <div className="bg-green-50 border border-green-200 text-green-700 text-xs rounded-lg px-3 py-2 mb-4">
+          Avaliação apagada com sucesso.
+        </div>
+      )}
+
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
         <Cartao titulo="Avaliações (filtro atual)" valor={String(total)} />
         <Cartao titulo="Aprovados com negociação" valor={String(aprovadosComAndamento)} destaque="roxo" />
@@ -208,15 +222,33 @@ export default async function FinanciamentoPage({ searchParams }: { searchParams
                 {doGrupo.map((a) => {
                   const sit = mostraValidade ? situacaoVencimento(a.data_validade, false, DIAS_ALERTA_VALIDADE) : null;
                   const dias = mostraValidade ? diasParaVencimento(a.data_validade) : null;
+                  // Avaliação cadastrada pelo corretor no portal ("Avaliação de CPF")
+                  // fica com um fundo/faixa fúcsia pra chamar atenção do administrativo
+                  // — pedido explícito: "consulta nova cadastrada por corretor precisa
+                  // mudar a cor para ficar em evidência".
+                  const doPortal = a.criado_no_portal === true;
                   return (
                     <Link
                       key={a.id}
                       href={`/financiamento/${a.id}`}
-                      className={`grid grid-cols-1 gap-1 md:grid-cols-[1.4fr_1fr_1fr_100px_100px_90px_120px] md:gap-3 md:items-center px-3 py-2.5 rounded-lg hover:bg-gray-50 transition-colors ${
-                        sit === "vencido" ? "bg-red-50/60" : sit === "alerta" ? "bg-amber-50/60" : ""
+                      className={`grid grid-cols-1 gap-1 md:grid-cols-[1.4fr_1fr_1fr_100px_100px_90px_120px] md:gap-3 md:items-center px-3 py-2.5 rounded-lg hover:bg-gray-50 transition-colors border-l-4 ${
+                        doPortal
+                          ? "bg-fuchsia-50/70 border-fuchsia-400 hover:bg-fuchsia-50"
+                          : sit === "vencido"
+                          ? "bg-red-50/60 border-transparent"
+                          : sit === "alerta"
+                          ? "bg-amber-50/60 border-transparent"
+                          : "border-transparent"
                       }`}
                     >
-                      <span className="text-xs font-medium text-gray-800 truncate">{a.clientes?.nome ?? "Cliente sem cadastro"}</span>
+                      <span className="text-xs font-medium text-gray-800 truncate flex items-center gap-1.5">
+                        {a.clientes?.nome ?? "Cliente sem cadastro"}
+                        {doPortal && (
+                          <span className="shrink-0 text-[10px] font-semibold bg-fuchsia-100 text-fuchsia-700 rounded-full px-1.5 py-0.5">
+                            corretor
+                          </span>
+                        )}
+                      </span>
                       <span className="text-xs text-gray-500 truncate">{a.bancos?.nome ?? "—"}</span>
                       <span className="text-xs text-gray-500 truncate">{a.tipo_avaliacao ?? "—"}</span>
                       <span className="text-xs text-gray-500 whitespace-nowrap">{formatDataCalendario(a.data_avaliacao)}</span>

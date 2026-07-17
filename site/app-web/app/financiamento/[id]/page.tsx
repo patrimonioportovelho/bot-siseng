@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Topbar } from "@/components/topbar";
 import { prisma } from "@/lib/prisma";
+import { getAdminSession } from "@/lib/auth";
 import { AvaliacaoForm } from "@/components/avaliacao-form";
 import { AndamentoForm } from "@/components/andamento-form";
 import { LancamentosLista } from "@/components/lancamentos-lista";
@@ -10,7 +11,9 @@ import {
   atualizarAvaliacaoAction,
   criarAndamentoAction,
   atualizarAndamentoAction,
-  sincronizarLancamentosAction
+  sincronizarLancamentosAction,
+  apagarAvaliacaoAction,
+  apagarAndamentoAction
 } from "../actions";
 
 export const dynamic = "force-dynamic";
@@ -24,13 +27,14 @@ export default async function AvaliacaoDetalhePage({
 }) {
   const { id } = await params;
   const { salvo } = await searchParams;
+  const session = await getAdminSession();
 
   const avaliacao = await prisma.avaliacoes.findUnique({
     where: { id },
     include: { clientes: true, bancos: true, parceiros: true }
   });
 
-  if (!avaliacao) notFound();
+  if (!avaliacao || avaliacao.excluido) notFound();
 
   const [clientes, bancos, parceiros, imoveis, andamentos] = await Promise.all([
     prisma.clientes.findMany({
@@ -54,7 +58,7 @@ export default async function AvaliacaoDetalhePage({
       }
     }),
     prisma.andamentos.findMany({
-      where: { avaliacao_id: id },
+      where: { avaliacao_id: id, excluido: false },
       orderBy: { created_at: "desc" },
       include: { lancamentos_financiamento: { orderBy: { created_at: "asc" } } }
     })
@@ -78,6 +82,17 @@ export default async function AvaliacaoDetalhePage({
         <Link href="/financiamento" className="text-xs text-gray-500 hover:text-gray-800">
           ← Voltar para Financiamento
         </Link>
+        {session?.isAdm && !avaliacao.excluido && (
+          <form action={apagarAvaliacaoAction}>
+            <input type="hidden" name="avaliacaoId" value={avaliacao.id} />
+            <button
+              type="submit"
+              className="text-xs border border-red-200 text-red-600 rounded-lg px-3 py-1.5 hover:bg-red-50"
+            >
+              Apagar cadastro
+            </button>
+          </form>
+        )}
       </div>
 
       {salvo === "1" && (
@@ -134,6 +149,8 @@ export default async function AvaliacaoDetalhePage({
               valorAprovadoCliente={avaliacao.valor_aprovado}
               actionCriar={criarAndamentoAction}
               actionAtualizar={atualizarAndamentoAction}
+              actionApagar={apagarAndamentoAction}
+              podeApagar={!!session?.isAdm}
             />
           ) : (
             <div className="flex flex-col gap-6">
@@ -147,6 +164,8 @@ export default async function AvaliacaoDetalhePage({
                     valorAprovadoCliente={avaliacao.valor_aprovado}
                     actionCriar={criarAndamentoAction}
                     actionAtualizar={atualizarAndamentoAction}
+                    actionApagar={apagarAndamentoAction}
+                    podeApagar={!!session?.isAdm}
                   />
                   <LancamentosLista
                     andamentoId={and.id}

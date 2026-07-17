@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { requireAdminSession, logAlteracao } from "@/lib/auth";
+import { requireAdminSession, requireAdm, logAlteracao } from "@/lib/auth";
 import { registrarEJogarErro } from "@/lib/erros";
 
 function texto(formData: FormData, campo: string): string | null {
@@ -171,6 +171,34 @@ export async function atualizarAvaliacaoAction(formData: FormData) {
   redirect(`/financiamento/${id}?salvo=1`);
 }
 
+// "Apagar" aqui é sempre soft-delete (excluido=true) — mesmo padrão de
+// app/imoveis/actions.ts#apagarImovelAction: a avaliação pode ter Andamentos
+// e lançamentos vinculados, um DELETE de verdade quebraria essas
+// referências (ou exigiria apagar tudo em cascata, perdendo histórico à
+// toa). Só ADM pode apagar.
+export async function apagarAvaliacaoAction(formData: FormData) {
+  const admin = await requireAdm();
+
+  const id = texto(formData, "avaliacaoId");
+  if (!id) throw new Error("Avaliação inválida.");
+
+  const antes = await prisma.avaliacoes.findUnique({ where: { id } });
+  if (!antes) throw new Error("Avaliação não encontrada.");
+
+  await prisma.avaliacoes.update({ where: { id }, data: { excluido: true, updated_at: new Date() } });
+
+  await logAlteracao({
+    entidadeTipo: "avaliacoes",
+    entidadeId: id,
+    acao: "excluir",
+    dadosAntes: { status: antes.status },
+    dadosDepois: { excluido: true, excluido_por: admin.nome }
+  });
+
+  revalidatePath("/financiamento");
+  redirect("/financiamento?excluido=1");
+}
+
 // ==================== Andamento ====================
 
 function camposAndamento(formData: FormData) {
@@ -259,6 +287,33 @@ export async function atualizarAndamentoAction(formData: FormData) {
     acao: "editar",
     dadosAntes: antes,
     dadosDepois: depois
+  });
+
+  revalidatePath(`/financiamento/${antes.avaliacao_id}`);
+  revalidatePath("/financiamento");
+  redirect(`/financiamento/${antes.avaliacao_id}?salvo=1`);
+}
+
+// Mesmo soft-delete de apagarAvaliacaoAction, só que aqui não some da tela —
+// continua em /financiamento/[id], só o Andamento apagado some da lista
+// (dá pra criar um novo Andamento na hora, se foi engano).
+export async function apagarAndamentoAction(formData: FormData) {
+  const admin = await requireAdm();
+
+  const id = texto(formData, "andamentoId");
+  if (!id) throw new Error("Andamento inválido.");
+
+  const antes = await prisma.andamentos.findUnique({ where: { id } });
+  if (!antes) throw new Error("Andamento não encontrado.");
+
+  await prisma.andamentos.update({ where: { id }, data: { excluido: true, updated_at: new Date() } });
+
+  await logAlteracao({
+    entidadeTipo: "andamentos",
+    entidadeId: id,
+    acao: "excluir",
+    dadosAntes: { status_andamento: antes.status_andamento },
+    dadosDepois: { excluido: true, excluido_por: admin.nome }
   });
 
   revalidatePath(`/financiamento/${antes.avaliacao_id}`);

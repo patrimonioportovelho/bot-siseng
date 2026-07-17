@@ -63,6 +63,24 @@ export default async function DashboardPage({
     }
   });
 
+  // Mesma lógica, agora pras Avaliações de CPF cadastradas pelo corretor via
+  // portal (/portal/avaliacao-cpf) — pedido do usuário: "no bom dia, aparecer
+  // também por favor".
+  const novasAvaliacoesCpfDesdeReset = await prisma.avaliacoes.findMany({
+    where: {
+      excluido: false,
+      criado_no_portal: true,
+      created_at: { gte: new Date(ultimoResetSessaoMs()) }
+    },
+    orderBy: { created_at: "desc" },
+    select: {
+      id: true,
+      id_legado: true,
+      clientes: { select: { nome: true } },
+      parceiros: { select: { nome: true } }
+    }
+  });
+
   const [
     totalImoveis,
     transacoesAbertas,
@@ -465,6 +483,23 @@ export default async function DashboardPage({
             </div>
           ) : (
             <div className="mt-1 text-xs text-white/70">Nenhuma Compra e Venda nova cadastrada pelo portal ainda.</div>
+          )}
+          {novasAvaliacoesCpfDesdeReset.length > 0 && (
+            <div className="mt-3 text-xs text-white/80 pt-3 border-t border-white/20">
+              <span className="font-semibold text-white">
+                {novasAvaliacoesCpfDesdeReset.length} Avaliação{novasAvaliacoesCpfDesdeReset.length > 1 ? "ões" : ""} de
+                CPF cadastrada{novasAvaliacoesCpfDesdeReset.length > 1 ? "s" : ""}
+              </span>{" "}
+              pelo portal do corretor:
+              <ul className="mt-1 flex flex-col gap-0.5">
+                {novasAvaliacoesCpfDesdeReset.map((a) => (
+                  <li key={a.id}>
+                    · {a.id_legado ?? a.id} — {a.clientes?.nome ?? "cliente não identificado"}
+                    {a.parceiros?.nome && <> (parceiro: {a.parceiros.nome})</>}
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
         </div>
       )}

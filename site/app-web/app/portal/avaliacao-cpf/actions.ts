@@ -270,7 +270,8 @@ export async function criarAvaliacaoCpfAction(
           telefone: clienteTelefone,
           cpf: clienteCpf,
           parceiro_id: session.parceiroId,
-          observacao: "Cadastrado pelo corretor via portal — cliente quer comprar imóvel."
+          observacao: "Cadastrado pelo corretor via portal — cliente quer comprar imóvel.",
+          criado_no_portal: true
         }
       })
       .catch((erro) => registrarEJogarErro({ entidadeTipo: "avaliacoes", acao: "criar_via_portal_avaliacao_cpf", erro }));

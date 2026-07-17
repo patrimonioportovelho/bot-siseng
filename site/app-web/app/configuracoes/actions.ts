@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { logAlteracao, requireAdm, aprovarSolicitacaoAction, rejeitarSolicitacaoAction, hashSenha } from "@/lib/auth";
+import { logAlteracao, requireAdm, requireAdminSession, aprovarSolicitacaoAction, rejeitarSolicitacaoAction, hashSenha } from "@/lib/auth";
 import { subirImagemPublicacao, apagarImagemPublicacao } from "@/lib/supabase-admin";
 
 // Libera (ou troca) o acesso de alguém direto, sem passar pela fila de
@@ -76,8 +76,11 @@ function arquivoImagem(formData: FormData): File | null {
   return null;
 }
 
+// Notícias, editais e checklists ficam abertos a qualquer administrativo
+// logado (não só isAdm) — pedido explícito do usuário, diferente do resto
+// desta tela (aprovação de acesso, senha, logs), que continua isAdm-only.
 export async function criarPublicacaoAction(formData: FormData) {
-  const admin = await requireAdm();
+  const admin = await requireAdminSession();
   const dados = dadosBasePublicacao(formData);
   if (!dados.titulo || !dados.corpo) {
     redirect(`/configuracoes?erro=${encodeURIComponent("Preencha título e texto da publicação.")}`);
@@ -112,7 +115,7 @@ export async function criarPublicacaoAction(formData: FormData) {
 }
 
 export async function atualizarPublicacaoAction(formData: FormData) {
-  await requireAdm();
+  await requireAdminSession();
   const id = String(formData.get("publicacaoId") ?? "");
   if (!id) redirect(`/configuracoes?erro=${encodeURIComponent("Publicação inválida.")}`);
   const dados = dadosBasePublicacao(formData);
@@ -165,7 +168,7 @@ export async function atualizarPublicacaoAction(formData: FormData) {
 }
 
 export async function alternarAtivoPublicacaoAction(formData: FormData) {
-  await requireAdm();
+  await requireAdminSession();
   const id = String(formData.get("publicacaoId") ?? "");
   if (!id) return;
 
@@ -194,7 +197,7 @@ export async function alternarAtivoPublicacaoAction(formData: FormData) {
 // cancelar uma publicação sem deixar registro/arquivo parado ocupando
 // espaço à toa. Some da tela e apaga também a imagem do Storage, se tiver.
 export async function excluirPublicacaoAction(formData: FormData) {
-  await requireAdm();
+  await requireAdminSession();
   const id = String(formData.get("publicacaoId") ?? "");
   if (!id) return;
 

@@ -45,20 +45,25 @@ export default async function ConfiguracoesPage({
   const { salvo, erro, aprovado, rejeitado, salvo_publicacao } = await searchParams;
   const session = await getAdminSession();
 
-  if (!session?.isAdm) {
+  if (!session) {
     return (
       <div>
         <Topbar />
-
         <div className="bg-white border border-gray-200 rounded-xl p-6 text-center">
-          <p className="text-xs text-gray-500">
-            Aprovação de acessos, edição de CPF e logs de auditoria ficam visíveis apenas para
-            administradores. Para gerar documentos, veja <Link href="/documentos" className="text-primary">Documentos</Link> no menu.
-          </p>
+          <p className="text-xs text-gray-500">Sessão inválida — faça login novamente.</p>
         </div>
       </div>
     );
   }
+
+  const isAdm = session.isAdm;
+
+  // Notícias, editais e checklists ficam abertos a qualquer administrativo
+  // logado — pedido explícito do usuário. O resto da tela (aprovação de
+  // acesso, senha manual, logs de auditoria, lojas, SAC, erros de cadastro)
+  // continua só pra isAdm — só a exibição é que fica condicionada (as
+  // queries seguem rodando pra todo mundo, são baratas e mantêm os tipos
+  // simples, mesmo padrão do resto do arquivo).
 
   // Erros de cadastro com mais de 3 dias somem sozinhos toda vez que essa
   // página é aberta — dá tempo de revisar sem deixar a tabela crescendo.
@@ -123,6 +128,8 @@ export default async function ConfiguracoesPage({
         <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg px-3 py-2 mb-4">{erro}</div>
       )}
 
+      {isAdm && (
+      <>
       <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4">
         <div className="text-sm font-bold text-gray-800 mb-1">Solicitações de acesso pendentes</div>
         <p className="text-xs text-gray-500 mb-3">
@@ -286,6 +293,7 @@ export default async function ConfiguracoesPage({
           {alteracoes.length === 0 && <p className="text-xs text-gray-400">Nenhuma alteração registrada ainda.</p>}
         </div>
       </div>
+      </>)}
 
       <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4">
         <div className="text-sm font-bold text-gray-800 mb-1">Notícias, editais e checklists</div>
@@ -514,6 +522,8 @@ export default async function ConfiguracoesPage({
         )}
       </div>
 
+      {isAdm && (
+      <>
       <div className="bg-white border border-gray-200 rounded-xl p-4">
         <div className="text-sm font-bold text-gray-800 mb-1">Mensagens do SAC</div>
         <p className="text-xs text-gray-500 mb-3">
@@ -610,6 +620,7 @@ export default async function ConfiguracoesPage({
           </div>
         )}
       </div>
+      </>)}
     </div>
   );
 }

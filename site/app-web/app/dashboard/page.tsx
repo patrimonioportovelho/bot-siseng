@@ -81,8 +81,7 @@ export default async function DashboardPage({
     movimentacoesPagasPeriodo,
     corretoresAtivos,
     pagamentosCorretoresPeriodo,
-    avaliacoesPeriodo,
-    andamentosConcluidosPeriodo
+    avaliacoesPeriodo
   ] = await Promise.all([
     prisma.imoveis.count({ where: { excluido: false } }),
     prisma.transacoes.count({ where: { excluido: false, status: STATUS_TRANSACAO_EM_ABERTO } }),
@@ -201,17 +200,17 @@ export default async function DashboardPage({
       }
     }),
     // Financiamento: Avaliações levantadas dentro do período (por Data de
-    // avaliação) — mesma régua de "assinado no período" usada em Vendas &
-    // Locação/VGA, só que aqui é "levantado no período".
+    // avaliação) — pedido do usuário é filtrar SEMPRE pela Data de avaliação,
+    // inclusive pros Andamentos vinculados (por isso eles vêm aninhados aqui,
+    // em vez de uma query separada filtrando por Data de conclusão).
     prisma.avaliacoes.findMany({
       where: { data_avaliacao: { gte: inicio, lt: fimExclusivo } },
-      select: { status: true, valor_aprovado: true }
-    }),
-    // Andamentos concluídos dentro do período (por Data de conclusão) — é
-    // quando o financiamento de fato virou negócio fechado.
-    prisma.andamentos.findMany({
-      where: { status_andamento: "Concluído", data_conclusao: { gte: inicio, lt: fimExclusivo } },
-      select: { valor_financiado: true }
+      select: {
+        status: true,
+        valor_aprovado: true,
+        data_avaliacao: true,
+        andamentos: { select: { status_andamento: true, data_conclusao: true, valor_financiado: true } }
+      }
     })
   ]);
 
@@ -362,17 +361,68 @@ export default async function DashboardPage({
   const totalRecebidoCorretores = corretoresComValores.reduce((acc, c) => acc + c.recebido, 0);
   const totalAReceberCorretores = corretoresComValores.reduce((acc, c) => acc + c.aReceber, 0);
 
-  // Financiamento: quantidade de Avaliações levantadas no período, quantas já
-  // estão Aprovadas (e o valor somado dessas), e quantos Andamentos fecharam
-  // (Concluído) dentro do período, com o valor financiado somado.
+  // Financiamento — tudo sempre filtrado pela Data de avaliação (pedido do
+  // usuário), inclusive os Andamentos vinculados a essas avaliações.
   const avaliacoesQtdPeriodo = avaliacoesPeriodo.length;
+  const porStatusAvaliacaoPeriodo = new Map<string, number>();
+  for (const a of avaliacoesPeriodo) {
+    porStatusAvaliacaoPeriodo.set(a.status, (porStatusAvaliacaoPeriodo.get(a.status) ?? 0) + 1);
+  }
   const avaliacoesAprovadasPeriodo = avaliacoesPeriodo.filter((a) => a.status === "Aprovado");
-  const valorAprovadoPeriodo = avaliacoesAprovadasPeriodo.reduce((acc, a) => acc + Number(a.valor_aprovado ?? 0), 0);
-  const andamentosConcluidosQtdPeriodo = andamentosConcluidosPeriodo.length;
-  const valorFinanciadoConcluidoPeriodo = andamentosConcluidosPeriodo.reduce(
-    (acc, a) => acc + Number(a.valor_financiado ?? 0),
-    0
-  );
+  const standbyPeriodoQtd = porStatusAvaliacaoPeriodo.get("Standbye") ?? 0;
+  const restricaoPeriodoQtd = porStatusAvaliacaoPeriodo.get("Restrição") ?? 0;
+  const concluidasPeriodoQtd = porStatusAvaliacaoPeriodo.get("Concluído") ?? 0;
+  const valorAprovadoPeriodo = avaliacoesPeriodo
+    .filter((a) => a.status === "Aprovado" || a.status === "Concluído")
+    .reduce((acc, a) => acc + Number(a.valor_aprovado ?? 0), 0);
+
+  // Andamentos concluídos dentro das avaliações do período, e o tempo médio
+  // (em dias) desde a Data de avaliação (a "pesquisa" que deu início ao
+  // processo) até a Data de conclusão do Andamento.
+  let andamentosConcluidosQtdPeriodo = 0;
+  let valorFinanciadoConcluidoPeriodo = 0;
+  const temposConclusaoDias: number[] = [];
+  for (const a of avaliacoesPeriodo) {
+    for (const and of a.andamentos) {
+      if (and.status_andamento !== "Concluído") continue;
+      andamentosConcluidosQtdPeriodo += 1;
+      valorFinanciadoConcluidoPeriodo += Number(and.valor_financiado ?? 0);
+      if (and.data_conclusao && a.data_avaliacao) {
+        const dias = Math.round(
+          (new Date(and.data_conclusao).getTime() - new Date(a.data_avaliacao).getTime()) / (1000 * 60 * 60 * 24)
+        );
+        if (dias >= 0) temposConclusaoDias.push(dias);
+      }
+    }
+  }
+  const tempoMedioConclusaoDias =
+    temposConclusaoDias.length > 0
+      ? Math.round(temposConclusaoDias.reduce((acc, d) => acc + d, 0) / temposConclusaoDias.length)
+      : null;
+
+  // Crescimento: quantidade de Avaliações levantadas mês a mês, dentro do
+  // período — dá pra ver a curva subindo/descendo ao trocar o filtro de data.
+  const porMesAvaliacoes = new Map<string, { qtd: number; ordem: number }>();
+  for (const a of avaliacoesPeriodo) {
+    if (!a.data_avaliacao) continue;
+    const d = new Date(a.data_avaliacao);
+    const chave = `${d.getFullYear()}-${d.getMonth()}`;
+    const atual = porMesAvaliacoes.get(chave) ?? { qtd: 0, ordem: d.getFullYear() * 12 + d.getMonth() };
+    atual.qtd += 1;
+    porMesAvaliacoes.set(chave, atual);
+  }
+  const dadosGraficoAvaliacoesMes = [...porMesAvaliacoes.entries()]
+    .sort((a, b) => a[1].ordem - b[1].ordem)
+    .map(([chave, v]) => {
+      const [ano, mes] = chave.split("-").map(Number);
+      return { label: `${MESES_ABREV[mes]}/${String(ano).slice(2)}`, avaliacoes: v.qtd };
+    });
+
+  // Composição por status, no período — visão rápida de quantas Restrições,
+  // Standby, etc, sem precisar abrir o Financiamento.
+  const dadosPizzaStatusAvaliacoes = [...porStatusAvaliacaoPeriodo.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([label, valor]) => ({ label, valor }));
 
   // Links dos atalhos de período — preserva "personalizado" só quando ele
   // próprio é o link ativo (senão os campos de data ficam sem sentido).
@@ -632,18 +682,32 @@ export default async function DashboardPage({
           </Link>
         </div>
         <p className="text-[11px] text-gray-400 mb-3">
-          Avaliações pela Data de avaliação e Andamentos concluídos pela Data de conclusão, dentro do período
-          selecionado acima.
+          Tudo pela Data de avaliação (inclusive os Andamentos vinculados), dentro do período selecionado acima.
         </p>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
           <div className="bg-gray-50 border border-gray-100 rounded-xl p-3">
             <div className="text-xs text-gray-500">Avaliações no período</div>
             <div className="text-lg font-bold mt-1 text-gray-900">{avaliacoesQtdPeriodo}</div>
           </div>
           <div className="bg-gray-50 border border-gray-100 rounded-xl p-3">
-            <div className="text-xs text-gray-500">Aprovadas no período</div>
+            <div className="text-xs text-gray-500">Aprovadas</div>
             <div className="text-lg font-bold mt-1 text-indigo-700">{avaliacoesAprovadasPeriodo.length}</div>
             <div className="text-[11px] text-gray-400">{formatMoeda(valorAprovadoPeriodo)} aprovado(s)</div>
+          </div>
+          <div className="bg-amber-50 border border-amber-100 rounded-xl p-3">
+            <div className="text-xs text-amber-700">Em Standby</div>
+            <div className="text-lg font-bold mt-1 text-amber-700">{standbyPeriodoQtd}</div>
+          </div>
+          <div className="bg-red-50 border border-red-100 rounded-xl p-3">
+            <div className="text-xs text-red-700">Restrições</div>
+            <div className="text-lg font-bold mt-1 text-red-700">{restricaoPeriodoQtd}</div>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+          <div className="bg-gray-50 border border-gray-100 rounded-xl p-3">
+            <div className="text-xs text-gray-500">Concluídas</div>
+            <div className="text-lg font-bold mt-1 text-[#3C7A57]">{concluidasPeriodoQtd}</div>
           </div>
           <div className="bg-gray-50 border border-gray-100 rounded-xl p-3">
             <div className="text-xs text-gray-500">Andamentos concluídos</div>
@@ -652,6 +716,33 @@ export default async function DashboardPage({
           <div className="bg-gray-50 border border-gray-100 rounded-xl p-3">
             <div className="text-xs text-gray-500">Valor financiado (concluídos)</div>
             <div className="text-lg font-bold mt-1 text-gray-900">{formatMoeda(valorFinanciadoConcluidoPeriodo)}</div>
+          </div>
+          <div className="bg-gray-50 border border-gray-100 rounded-xl p-3">
+            <div className="text-xs text-gray-500">Tempo médio até conclusão</div>
+            <div className="text-lg font-bold mt-1 text-gray-900">
+              {tempoMedioConclusaoDias !== null ? `${tempoMedioConclusaoDias} dias` : "—"}
+            </div>
+            <div className="text-[11px] text-gray-400">da Data de avaliação até a conclusão do Andamento</div>
+          </div>
+        </div>
+
+        <div className="grid md:grid-cols-2 gap-4">
+          <div>
+            <div className="text-xs font-semibold text-gray-600 mb-2">Avaliações levantadas, mês a mês</div>
+            <GraficoBarras
+              dados={dadosGraficoAvaliacoesMes}
+              series={[{ chave: "avaliacoes", cor: "#33587F", nome: "Avaliações" }]}
+              formatarValor={(v) => String(v)}
+              mensagemVazia="Sem avaliações levantadas nesse período."
+            />
+          </div>
+          <div>
+            <div className="text-xs font-semibold text-gray-600 mb-2">Avaliações por status</div>
+            <GraficoPizza
+              dados={dadosPizzaStatusAvaliacoes}
+              formatarValor={(v) => String(v)}
+              mensagemVazia="Sem avaliações nesse período."
+            />
           </div>
         </div>
       </div>

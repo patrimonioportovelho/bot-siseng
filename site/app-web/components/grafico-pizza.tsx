@@ -5,15 +5,17 @@ const CORES_PADRAO = ["#33587F", "#A9822E", "#3C7A57", "#B14226", "#6B4E9C", "#1
 
 export function GraficoPizza({
   dados,
-  formatarValor
+  formatarValor,
+  mensagemVazia = "Sem despesas pagas no período."
 }: {
   dados: { label: string; valor: number }[];
   formatarValor: (v: number) => string;
+  mensagemVazia?: string;
 }) {
   const total = dados.reduce((acc, d) => acc + d.valor, 0);
 
   if (total <= 0) {
-    return <p className="text-xs text-gray-400">Sem despesas pagas no período.</p>;
+    return <p className="text-xs text-gray-400">{mensagemVazia}</p>;
   }
 
   const raio = 15.9155;

@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { getAdminSession } from "@/lib/auth";
 import { TransacaoForm } from "@/components/transacao-form";
 import { GerarBoletosForm } from "@/components/gerar-boletos-form";
+import { MovimentacoesTransacaoLista } from "@/components/movimentacoes-transacao-lista";
 import { formatDataCalendario, formatMoeda } from "@/lib/format";
 import { atualizarTransacaoAction, apagarTransacaoAction, gerarBoletosAction } from "../actions";
 
@@ -78,6 +79,15 @@ export default async function TransacaoDetalhePage({
   ]);
 
   if (!transacao) notFound();
+
+  // Relatório de movimentações financeiras ligadas a esta transação
+  // (Recebimentos e Despesas) — pedido do usuário: "acompanhamento mais
+  // rápido", tanto pra Locação quanto pra Compra e Venda.
+  const movimentacoesDaTransacao = await prisma.movimentacoes.findMany({
+    where: { transacao_id: id },
+    orderBy: [{ vencimento: "asc" }, { created_at: "asc" }],
+    include: { categorias_financeiras: { select: { nome: true } }, parceiros: { select: { nome: true } } }
+  });
 
   const ehLocacaoComOuSemAdm =
     transacao.tipo === "Locação" &&
@@ -245,6 +255,8 @@ export default async function TransacaoDetalhePage({
         condicoesIniciais={condicoesIniciais}
         action={atualizarTransacaoAction}
       />
+
+      <MovimentacoesTransacaoLista movimentacoes={movimentacoesDaTransacao} />
     </div>
   );
 }

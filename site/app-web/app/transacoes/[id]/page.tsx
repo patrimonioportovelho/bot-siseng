@@ -225,8 +225,23 @@ export default async function TransacaoDetalhePage({
         {" · "}Valor: {formatMoeda(transacao.valor_transacao)}
       </div>
 
+      <TransacaoForm
+        transacao={transacao}
+        lojas={lojas}
+        clientes={clientesComParceiro}
+        imoveis={imoveisComProprietarios}
+        parceiros={parceiros}
+        administracoes={administracoes}
+        imoveisComAdmAtivaIds={imoveisComAdmAtivaIds}
+        interessadosIniciais={interessadosComParceiro}
+        condicoesIniciais={condicoesIniciais}
+        action={atualizarTransacaoAction}
+      />
+
+      {/* Fica logo acima do relatório de Movimentações — faz sentido gerar
+          o boleto e já conferir/acompanhar ele na lista logo abaixo. */}
       {ehLocacaoComOuSemAdm && (
-        <div className="mb-5">
+        <div className="mt-5">
           <GerarBoletosForm
             transacao={{
               id: transacao.id,
@@ -242,19 +257,6 @@ export default async function TransacaoDetalhePage({
           />
         </div>
       )}
-
-      <TransacaoForm
-        transacao={transacao}
-        lojas={lojas}
-        clientes={clientesComParceiro}
-        imoveis={imoveisComProprietarios}
-        parceiros={parceiros}
-        administracoes={administracoes}
-        imoveisComAdmAtivaIds={imoveisComAdmAtivaIds}
-        interessadosIniciais={interessadosComParceiro}
-        condicoesIniciais={condicoesIniciais}
-        action={atualizarTransacaoAction}
-      />
 
       <MovimentacoesTransacaoLista movimentacoes={movimentacoesDaTransacao} />
     </div>

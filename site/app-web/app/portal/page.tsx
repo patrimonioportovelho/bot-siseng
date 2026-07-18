@@ -5,8 +5,10 @@ import { prisma } from "@/lib/prisma";
 import { requirePortalSession } from "@/lib/portal-auth";
 import { PortalHeader } from "@/components/portal-header";
 import { PublicacaoCard } from "@/components/site/publicacao-card";
-import { formatMoeda, situacaoVencimento, STATUS_TRANSACAO_EM_ABERTO } from "@/lib/format";
+import { formatMoeda, situacaoVencimento, hojePortoVelho, STATUS_TRANSACAO_EM_ABERTO } from "@/lib/format";
 import { STATUS_AVALIACAO_ATIVOS, STATUS_AVALIACAO_ENCERRADOS } from "@/lib/financiamento/opcoes";
+import { calcularAlcancado, avaliarMeta } from "@/lib/metas/calculo";
+import { tipoMetaOpcao } from "@/lib/metas/opcoes";
 
 const IMOBVIEW_URL = "https://www.imobview.pro/login";
 
@@ -73,7 +75,10 @@ export default async function PortalPage() {
   const session = await requirePortalSession();
   const pid = session.parceiroId;
 
+  const hoje = hojePortoVelho();
+
   const [
+    metasAtivas,
     noticias,
     checklists,
     clientesQtd,
@@ -92,6 +97,18 @@ export default async function PortalPage() {
     honorariosRecebidos,
     honorariosPendentes
   ] = await Promise.all([
+    // Metas ativas AGORA (o período já começou e ainda não terminou) que
+    // valem pra este corretor: individuais dele (parceiro_id = pid) ou
+    // Gerais (parceiro_id null, soma de todo mundo). Ordenada pela mais
+    // urgente primeiro (prazo mais próximo).
+    prisma.metas.findMany({
+      where: {
+        OR: [{ parceiro_id: pid }, { parceiro_id: null }],
+        periodo_inicio: { lte: hoje },
+        periodo_fim: { gte: hoje }
+      },
+      orderBy: { periodo_fim: "asc" }
+    }),
     prisma.publicacoes_site.findMany({
       where: { ativo: true, portal_corretor: true, tipo: { not: "Checklist" } },
       orderBy: { publicado_em: "desc" },
@@ -183,6 +200,14 @@ export default async function PortalPage() {
     return sit === "alerta" || sit === "vencido";
   }).length;
 
+  // Progresso de cada meta ativa é apurado na hora (não fica guardado em
+  // lugar nenhum) — sempre reflete o cadastro real mais recente. Ver
+  // lib/metas/calculo.ts pra como cada tipo é contado e como a mensagem
+  // ("faltam X dias, você precisa...") é montada.
+  const metasComProgresso = await Promise.all(
+    metasAtivas.map(async (m) => ({ meta: m, avaliacao: avaliarMeta(m, await calcularAlcancado(m)) }))
+  );
+
   return (
     <div className="min-h-screen bg-gray-50">
       <PortalHeader nome={session.nome} />
@@ -193,6 +218,58 @@ export default async function PortalPage() {
           Um resumo rápido de tudo que está no seu nome: clientes, imóveis, negócios em andamento, avaliações de
           crédito e honorários. As ações pra criar um novo cadastro ficaram no menu ao lado.
         </p>
+
+        {metasComProgresso.length > 0 && (
+          <Secao titulo="Suas metas">
+            <div className="grid md:grid-cols-2 gap-3">
+              {metasComProgresso.map(({ meta, avaliacao }) => {
+                const opcao = tipoMetaOpcao(meta.tipo_meta);
+                const barraCor =
+                  avaliacao.situacao === "concluida"
+                    ? "bg-green-500"
+                    : avaliacao.situacao === "atrasada"
+                    ? "bg-red-500"
+                    : avaliacao.situacao === "atencao"
+                    ? "bg-amber-500"
+                    : "bg-primary";
+                const badgeCor =
+                  avaliacao.situacao === "concluida"
+                    ? "bg-green-50 text-green-700 border-green-200"
+                    : avaliacao.situacao === "atrasada"
+                    ? "bg-red-50 text-red-700 border-red-200"
+                    : avaliacao.situacao === "atencao"
+                    ? "bg-amber-50 text-amber-700 border-amber-200"
+                    : "bg-blue-50 text-blue-700 border-blue-200";
+                const badgeTexto =
+                  avaliacao.situacao === "concluida"
+                    ? "Concluída"
+                    : avaliacao.situacao === "atrasada"
+                    ? "Atrasada"
+                    : avaliacao.situacao === "atencao"
+                    ? "Atenção"
+                    : "No prazo";
+                return (
+                  <div key={meta.id} className="bg-white border border-gray-200 rounded-xl p-4">
+                    <div className="flex items-center justify-between gap-2 mb-1 flex-wrap">
+                      <div className="text-sm font-bold text-gray-800">{opcao?.label ?? meta.tipo_meta}</div>
+                      <span className={`text-[10px] font-semibold rounded-full px-2 py-0.5 border ${badgeCor}`}>
+                        {badgeTexto}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-gray-400 mb-2">
+                      {meta.parceiro_id ? "Meta individual" : "Meta geral — soma de todo mundo"}
+                    </div>
+                    <div className="w-full bg-gray-100 rounded-full h-2 mb-2 overflow-hidden">
+                      <div className={`h-2 rounded-full ${barraCor}`} style={{ width: `${Math.min(100, avaliacao.percentual)}%` }} />
+                    </div>
+                    <p className="text-xs text-gray-700">{avaliacao.percentual}% — {avaliacao.mensagem}</p>
+                    {meta.observacao && <p className="text-[11px] text-gray-400 mt-2">{meta.observacao}</p>}
+                  </div>
+                );
+              })}
+            </div>
+          </Secao>
+        )}
 
         <Secao titulo="Sua carteira">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

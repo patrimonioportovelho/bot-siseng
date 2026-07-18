@@ -15,7 +15,11 @@ export default async function PortalLoginPage({
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
       <form action={loginPortalAction} className="bg-white border border-gray-200 rounded-xl p-8 w-full max-w-sm shadow-sm">
-        <div className="text-lg font-bold text-gray-900 mb-1">Acesso SisEng</div>
+        <div className="flex items-center gap-2 mb-1">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo-192.png" alt="SisEng" className="h-9 w-9" />
+          <div className="text-lg font-bold text-gray-900">Acesso</div>
+        </div>
         <div className="text-sm text-gray-500 mb-6">Portal do corretor</div>
 
         {erro && (

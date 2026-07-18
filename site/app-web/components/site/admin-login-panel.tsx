@@ -49,8 +49,12 @@ export function AdminLoginPanel({
               ✕
             </button>
 
-            <div className="text-lg font-bold text-gray-900 mb-1">Acesso administrativo</div>
-            <div className="text-sm text-gray-500 mb-6">SisEng</div>
+            <div className="flex items-center gap-2 mb-1">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/logo-192.png" alt="SisEng" className="h-8 w-8" />
+              <div className="text-lg font-bold text-gray-900">Acesso administrativo</div>
+            </div>
+            <div className="text-sm text-gray-500 mb-6">Painel administrativo</div>
 
             {erro && (
               <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg p-3 mb-4">{erro}</div>

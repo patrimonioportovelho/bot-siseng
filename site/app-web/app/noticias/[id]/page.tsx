@@ -107,8 +107,9 @@ export default async function NoticiaDetalhePage({
     <div className="min-h-screen bg-appbg">
       <header className="bg-primary">
         <div className="max-w-3xl mx-auto px-4 py-4 flex items-center justify-between">
-          <Link href="/login" className="text-white font-bold text-lg leading-tight">
-            RE/MAX Engimob
+          <Link href="/login" className="flex items-center">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logo-192.png" alt="SisEng" className="h-9 w-9" />
           </Link>
           {voltar && (
             <Link href={voltar.href} className="text-xs text-white/70 hover:text-white whitespace-nowrap">

@@ -52,9 +52,10 @@ export default async function LoginPage({
       {/* Header */}
       <header className="bg-primary">
         <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div>
-            <div className="text-white font-bold text-lg leading-tight">RE/MAX Engimob</div>
-            <div className="text-white/60 text-[11px]">SisEng · sistema interno</div>
+          <div className="flex items-center gap-2">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logo-192.png" alt="SisEng" className="h-10 w-10" />
+            <div className="text-white/60 text-[11px]">sistema interno</div>
           </div>
           <div className="flex items-center gap-2">
             <a

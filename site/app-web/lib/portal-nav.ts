@@ -13,5 +13,6 @@ export const PORTAL_NAV_ITEMS: NavItem[] = [
   { label: "Elaboração de Compra e Venda", href: "/portal/compra-venda/novo" },
   { label: "Avaliação de CPF", href: "/portal/avaliacao-cpf/novo" },
   { label: "Elaboração de Contrato de Administração", href: "/portal/administracao/novo" },
+  { label: "Elaboração de Locação", href: "/portal/locacao/novo" },
   { label: "Meus clientes", href: "/portal/clientes" }
 ];

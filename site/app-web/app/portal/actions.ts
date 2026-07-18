@@ -16,6 +16,23 @@ export async function loginPortalAction(formData: FormData) {
   redirect("/portal");
 }
 
+// Mesma ação de login, só muda pra onde volta em caso de erro — usada pelo
+// painel "Acesso do corretor" que abre por cima do site público
+// (app/login/page.tsx, components/site/portal-login-panel.tsx), igual ao
+// painel de Acesso administrativo. loginPortalAction (acima) continua sendo
+// usada pela página /portal/login "de verdade", pra onde o middleware manda
+// o corretor quando a sessão expira estando já dentro do portal.
+export async function loginPortalViaSiteAction(formData: FormData) {
+  const email = String(formData.get("email") ?? "");
+  const senha = String(formData.get("senha") ?? "");
+
+  const result = await loginPortal(email, senha);
+  if (!result.ok) {
+    redirect(`/login?erro_portal=${encodeURIComponent(result.error)}`);
+  }
+  redirect("/portal");
+}
+
 export async function trocarSenhaPortalAction(formData: FormData) {
   const session = await requirePortalSession();
 

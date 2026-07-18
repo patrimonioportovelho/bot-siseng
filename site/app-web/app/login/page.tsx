@@ -1,7 +1,9 @@
 import { headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import { loginAction, criarMensagemSacAction } from "./actions";
+import { loginPortalViaSiteAction } from "@/app/portal/actions";
 import { AdminLoginPanel } from "@/components/site/admin-login-panel";
+import { PortalLoginPanel } from "@/components/site/portal-login-panel";
 import { ShareButton } from "@/components/site/share-button";
 import { PublicacaoCard } from "@/components/site/publicacao-card";
 
@@ -29,9 +31,16 @@ const SERVICOS = [
 export default async function LoginPage({
   searchParams
 }: {
-  searchParams: Promise<{ erro?: string; pendente?: string; next?: string; sac_ok?: string; sac_erro?: string }>;
+  searchParams: Promise<{
+    erro?: string;
+    pendente?: string;
+    next?: string;
+    sac_ok?: string;
+    sac_erro?: string;
+    erro_portal?: string;
+  }>;
 }) {
-  const { erro, pendente, next, sac_ok, sac_erro } = await searchParams;
+  const { erro, pendente, next, sac_ok, sac_erro, erro_portal } = await searchParams;
 
   const publicacoes = await prisma.publicacoes_site.findMany({
     // Checklist é conteúdo interno (só circula no Portal do Corretor e por
@@ -58,12 +67,7 @@ export default async function LoginPage({
             <div className="text-white/60 text-[11px]">sistema interno</div>
           </div>
           <div className="flex items-center gap-2">
-            <a
-              href="/portal/login"
-              className="text-xs bg-accent text-white rounded-lg px-3 py-1.5 font-semibold hover:opacity-90 transition-opacity whitespace-nowrap"
-            >
-              Acesso do corretor
-            </a>
+            <PortalLoginPanel action={loginPortalViaSiteAction} erro={erro_portal} />
             <AdminLoginPanel action={loginAction} erro={erro} pendente={pendente} next={next} />
           </div>
         </div>

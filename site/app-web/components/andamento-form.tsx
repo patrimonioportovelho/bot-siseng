@@ -6,7 +6,7 @@ import {
   STATUS_ANDAMENTO_COM_OPCOES,
   TIPO_CONTRATO_ANDAMENTO_OPCOES
 } from "@/lib/financiamento/opcoes";
-import { formatMoeda, formatDataCalendario, formatValorEditavel, formatInscricao } from "@/lib/format";
+import { formatMoeda, formatDataCalendario, formatValorEditavel, formatInscricao, formatProcesso } from "@/lib/format";
 
 type Cliente = { id: string; nome: string };
 type Imovel = {
@@ -125,7 +125,7 @@ function Ficha({
           <Linha label="Data de início" valor={formatDataCalendario(n.data_inicio)} />
           <Linha label="Data de conclusão" valor={formatDataCalendario(n.data_conclusao)} />
           <Linha label="Tipo de contrato" valor={n.tipo_contrato} />
-          <Linha label="Processo" valor={n.processo} />
+          <Linha label="Processo" valor={formatProcesso(n.processo)} />
           <Linha label="Imóvel" valor={imovelLabel} />
           <Linha label="Cliente vendedor" valor={clienteVendedorNome} />
           <Linha label="Abrir conta?" valor={n.abrir_conta ? "Sim" : "Não"} />
@@ -314,7 +314,12 @@ export function AndamentoForm({
           </div>
           <div>
             <label className={LABEL}>Processo</label>
-            <input className={CAMPO} name="processo" defaultValue={n?.processo ?? ""} />
+            <input
+              className={CAMPO}
+              name="processo"
+              placeholder="1.2345.6789012-3"
+              defaultValue={formatProcesso(n?.processo)}
+            />
           </div>
           <div className="relative">
             <label className={LABEL}>Cliente vendedor</label>

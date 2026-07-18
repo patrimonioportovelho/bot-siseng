@@ -22,6 +22,17 @@ function somenteDigitos(formData: FormData, campo: string): string | null {
   return d.length > 0 ? d : null;
 }
 
+// Número de Processo tem formato fixo x.xxxx.xxxxxxx-x (13 dígitos) — só
+// reduz a só-dígitos quando o valor digitado já fecha nesse tanto, senão
+// mantém como texto livre (mesmo critério de inscricaoValor em
+// app/imoveis/actions.ts).
+function processoValor(formData: FormData, campo: string): string | null {
+  const t = texto(formData, campo);
+  if (t === null) return null;
+  const d = t.replace(/\D/g, "");
+  return d.length === 13 ? d : t;
+}
+
 function decimal(formData: FormData, campo: string): number | null {
   const t = texto(formData, campo);
   if (t === null) return null;
@@ -210,7 +221,7 @@ function camposAndamento(formData: FormData) {
     tipo_contrato: texto(formData, "tipo_contrato"),
     status_andamento: texto(formData, "status_andamento") ?? undefined,
     status_andamento_complementar: texto(formData, "status_andamento_complementar"),
-    processo: texto(formData, "processo"),
+    processo: processoValor(formData, "processo"),
     valor_avaliado: decimal(formData, "valor_avaliado"),
     valor_venda: decimal(formData, "valor_venda"),
     tem_entrada: booleano(formData, "tem_entrada"),

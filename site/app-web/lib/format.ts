@@ -201,6 +201,17 @@ export function formatInscricao(valor: unknown): string {
   return `${d.slice(0, 2)}.${d.slice(2, 4)}.${d.slice(4, 7)}.${d.slice(7, 11)}.${d.slice(11, 14)}`;
 }
 
+// Número de Processo do Andamento (Financiamento) — formato fixo pedido
+// x.xxxx.xxxxxxx-x (13 dígitos: 1+4+7+1). Mesmo critério de formatInscricao:
+// só aplica a máscara quando o valor já fecha em 13 dígitos, senão devolve
+// como veio (registro antigo pode ter anotação em texto livre).
+export function formatProcesso(valor: unknown): string {
+  if (!valor) return "";
+  const d = String(valor).replace(/\D/g, "");
+  if (d.length !== 13) return String(valor);
+  return `${d.slice(0, 1)}.${d.slice(1, 5)}.${d.slice(5, 12)}-${d.slice(12, 13)}`;
+}
+
 // Formata telefone (10 ou 11 dígitos) como (xx) xxxxx-xxxx ou (xx) xxxx-xxxx.
 export function formatTelefone(tel: unknown): string {
   if (!tel) return "";

@@ -44,5 +44,10 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/).*)"]
+  // Além dos já existentes, exclui qualquer arquivo estático de imagem em
+  // public/ (logo.png, logo-192.png, logo-512.png, icon.png, etc.) — sem
+  // isso, o middleware tratava o próprio pedido da imagem como se fosse uma
+  // página, exigindo sessão e redirecionando pro login (por isso a logo
+  // aparecia quebrada pra quem não tinha sessão de admin ativa).
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/|.*\\.(?:png|jpg|jpeg|gif|svg|webp|ico)$).*)"]
 };

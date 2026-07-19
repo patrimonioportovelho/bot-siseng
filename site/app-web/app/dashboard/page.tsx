@@ -110,7 +110,9 @@ export default async function DashboardPage({
     pagamentosCorretoresPeriodo,
     avaliacoesPeriodo,
     movimentacoesNegocioPeriodo,
-    movimentacoesNegocioAnterior
+    movimentacoesNegocioAnterior,
+    clientesCadastradosPorParceiroPeriodo,
+    imoveisCaptadosPorParceiroPeriodo
   ] = await Promise.all([
     prisma.imoveis.count({ where: { excluido: false } }),
     prisma.transacoes.count({ where: { excluido: false, status: STATUS_TRANSACAO_EM_ABERTO } }),
@@ -126,7 +128,9 @@ export default async function DashboardPage({
         porc_honorario: true,
         tem_parceria: true,
         porc_parceria: true,
-        data_assinatura: true
+        data_assinatura: true,
+        corretor_proprietario_id: true,
+        corretor_contraparte_id: true
       }
     }),
     prisma.transacoes.count({
@@ -238,6 +242,7 @@ export default async function DashboardPage({
         status: true,
         valor_aprovado: true,
         data_avaliacao: true,
+        parceiro_id: true,
         andamentos: { select: { status_andamento: true, data_conclusao: true, valor_financiado: true } }
       }
     }),
@@ -264,7 +269,21 @@ export default async function DashboardPage({
           },
           select: { tipo: true, valor: true, data_pagamento: true }
         })
-      : Promise.resolve([])
+      : Promise.resolve([]),
+    // Quadro Corretores: colunas de quantidade "Cliente" e "Imóveis"
+    // (pedido do usuário) — clientes cadastrados e imóveis captados por
+    // cada corretor, dentro do período selecionado acima (mesma régua de
+    // Data de cadastro já usada em "novosImoveisPeriodo").
+    prisma.clientes.groupBy({
+      by: ["parceiro_id"],
+      where: { parceiro_id: { not: null }, data_cadastro: { gte: inicio, lt: fimExclusivo } },
+      _count: { _all: true }
+    }),
+    prisma.imoveis.groupBy({
+      by: ["parceiro_id"],
+      where: { excluido: false, parceiro_id: { not: null }, data_cadastro: { gte: inicio, lt: fimExclusivo } },
+      _count: { _all: true }
+    })
   ]);
 
   // Gráfico "Evolução do período": agrupa as Movimentações de negócio (só
@@ -370,6 +389,18 @@ export default async function DashboardPage({
     return atual;
   }
 
+  // Quadro Corretores: quantas Compra e Venda / Locação cada corretor fechou
+  // no período (pedido do usuário) — crédito pra qualquer lado da transação
+  // (corretor_proprietario_id e/ou corretor_contraparte_id, quando os dois
+  // existem e são diferentes, cada um conta a sua própria), mesma régua de
+  // "OR" já usada em lib/metas/calculo.ts pra apurar metas por corretor.
+  const compraVendaPorParceiro = new Map<string, number>();
+  const locacaoPorParceiro = new Map<string, number>();
+  function creditarCorretor(mapa: Map<string, number>, t: { corretor_proprietario_id: string | null; corretor_contraparte_id: string | null }) {
+    const ids = new Set([t.corretor_proprietario_id, t.corretor_contraparte_id].filter((v): v is string => Boolean(v)));
+    for (const id of ids) mapa.set(id, (mapa.get(id) ?? 0) + 1);
+  }
+
   for (const t of transacoesPeriodo) {
     const honorario = Number(t.valor_transacao) * Number(t.porc_honorario ?? 0);
     honorarioBruto += honorario;
@@ -381,11 +412,13 @@ export default async function DashboardPage({
       vendasValor += Number(t.valor_transacao);
       vendasQtd += 1;
       linha.vendas += 1;
+      creditarCorretor(compraVendaPorParceiro, t);
     } else if (t.tipo === "Locação") {
       locacaoValor += Number(t.valor_transacao);
       locacaoQtd += 1;
       linha.locacoes += 1;
       if (t.status === STATUS_LOCACAO_SEM_ADM) locacaoSemAdmQtd += 1;
+      creditarCorretor(locacaoPorParceiro, t);
     }
 
     if (t.status && STATUS_CANCELADAS.includes(t.status)) {
@@ -468,11 +501,39 @@ export default async function DashboardPage({
     const mapa = pago ? recebidoPorParceiro : aReceberPorParceiro;
     mapa.set(p.parceiro_id, (mapa.get(p.parceiro_id) ?? 0) + valor);
   }
+
+  // Colunas de quantidade do quadro Corretores (pedido do usuário): Clientes
+  // Aprovados vem do Financiamento (Avaliação com status Aprovado, mesma
+  // régua de Data de avaliação da seção lá embaixo); Cliente e Imóveis vêm
+  // dos groupBy já buscados acima (Data de cadastro no período); Locação e
+  // Compra e Venda vêm do loop de transacoesPeriodo, mais acima.
+  const aprovadosPorParceiro = new Map<string, number>();
+  for (const a of avaliacoesPeriodo) {
+    if (a.status === "Aprovado" && a.parceiro_id) {
+      aprovadosPorParceiro.set(a.parceiro_id, (aprovadosPorParceiro.get(a.parceiro_id) ?? 0) + 1);
+    }
+  }
+  const clientesCadastradosPorParceiro = new Map(
+    clientesCadastradosPorParceiroPeriodo
+      .filter((g): g is typeof g & { parceiro_id: string } => Boolean(g.parceiro_id))
+      .map((g) => [g.parceiro_id, g._count._all])
+  );
+  const imoveisCaptadosPorParceiro = new Map(
+    imoveisCaptadosPorParceiroPeriodo
+      .filter((g): g is typeof g & { parceiro_id: string } => Boolean(g.parceiro_id))
+      .map((g) => [g.parceiro_id, g._count._all])
+  );
+
   const corretoresComValores = corretoresAtivos
     .map((c) => ({
       id: c.id,
       nome: c.nome,
       funcao: c.funcao,
+      clientesAprovados: aprovadosPorParceiro.get(c.id) ?? 0,
+      locacoes: locacaoPorParceiro.get(c.id) ?? 0,
+      compraVenda: compraVendaPorParceiro.get(c.id) ?? 0,
+      clientesCadastrados: clientesCadastradosPorParceiro.get(c.id) ?? 0,
+      imoveisCaptados: imoveisCaptadosPorParceiro.get(c.id) ?? 0,
       recebido: recebidoPorParceiro.get(c.id) ?? 0,
       aReceber: aReceberPorParceiro.get(c.id) ?? 0
     }))
@@ -1104,14 +1165,21 @@ export default async function DashboardPage({
           <div className="text-sm font-bold text-gray-800">Corretores</div>
         </div>
         <p className="text-[11px] text-gray-400 mb-3">
-          Repasses de honorário/comissão por corretor, das transações assinadas dentro do período selecionado acima
-          (mesma régua do Vendas & Locação) — Recebido é o que já foi pago, A Receber é o que ainda falta repassar.
+          Tudo dentro do período selecionado acima (mesma régua do Vendas & Locação): Clientes Aprovados vem do
+          Financiamento (por Data de avaliação), Cliente e Imóveis contam quem/o que foi cadastrado por esse
+          corretor, Locação e Compra e Venda contam as transações assinadas. Recebido é o honorário já pago,
+          A Receber é o que ainda falta repassar.
         </p>
         <div className="overflow-x-auto">
-          <table className="w-full text-xs min-w-[480px]">
+          <table className="w-full text-xs min-w-[820px]">
             <thead>
               <tr className="text-left text-gray-500">
                 <th className="font-normal py-1.5 border-b border-gray-100">Parceiro (corretor)</th>
+                <th className="font-normal py-1.5 border-b border-gray-100 text-right">Clientes Aprovados</th>
+                <th className="font-normal py-1.5 border-b border-gray-100 text-right">Locação</th>
+                <th className="font-normal py-1.5 border-b border-gray-100 text-right">Compra e Venda</th>
+                <th className="font-normal py-1.5 border-b border-gray-100 text-right">Cliente</th>
+                <th className="font-normal py-1.5 border-b border-gray-100 text-right">Imóveis</th>
                 <th className="font-normal py-1.5 border-b border-gray-100 text-right">Recebido</th>
                 <th className="font-normal py-1.5 border-b border-gray-100 text-right">A Receber</th>
               </tr>
@@ -1125,6 +1193,21 @@ export default async function DashboardPage({
                     </Link>
                     <span className="text-[11px] text-gray-400"> — {c.funcao}</span>
                   </td>
+                  <td className="py-2 border-b border-gray-50 text-right whitespace-nowrap text-gray-700">
+                    {c.clientesAprovados}
+                  </td>
+                  <td className="py-2 border-b border-gray-50 text-right whitespace-nowrap text-gray-700">
+                    {c.locacoes}
+                  </td>
+                  <td className="py-2 border-b border-gray-50 text-right whitespace-nowrap text-gray-700">
+                    {c.compraVenda}
+                  </td>
+                  <td className="py-2 border-b border-gray-50 text-right whitespace-nowrap text-gray-700">
+                    {c.clientesCadastrados}
+                  </td>
+                  <td className="py-2 border-b border-gray-50 text-right whitespace-nowrap text-gray-700">
+                    {c.imoveisCaptados}
+                  </td>
                   <td className="py-2 border-b border-gray-50 text-right whitespace-nowrap text-[#3C7A57] font-semibold">
                     {formatMoeda(c.recebido)}
                   </td>
@@ -1135,7 +1218,7 @@ export default async function DashboardPage({
               ))}
               {corretoresComValores.length === 0 && (
                 <tr>
-                  <td colSpan={3} className="py-4 text-center text-gray-400">
+                  <td colSpan={8} className="py-4 text-center text-gray-400">
                     Nenhum corretor ativo cadastrado.
                   </td>
                 </tr>
@@ -1145,6 +1228,21 @@ export default async function DashboardPage({
               <tfoot>
                 <tr>
                   <td className="py-2 font-bold text-gray-700">Total</td>
+                  <td className="py-2 text-right font-bold text-gray-700 whitespace-nowrap">
+                    {corretoresComValores.reduce((acc, c) => acc + c.clientesAprovados, 0)}
+                  </td>
+                  <td className="py-2 text-right font-bold text-gray-700 whitespace-nowrap">
+                    {corretoresComValores.reduce((acc, c) => acc + c.locacoes, 0)}
+                  </td>
+                  <td className="py-2 text-right font-bold text-gray-700 whitespace-nowrap">
+                    {corretoresComValores.reduce((acc, c) => acc + c.compraVenda, 0)}
+                  </td>
+                  <td className="py-2 text-right font-bold text-gray-700 whitespace-nowrap">
+                    {corretoresComValores.reduce((acc, c) => acc + c.clientesCadastrados, 0)}
+                  </td>
+                  <td className="py-2 text-right font-bold text-gray-700 whitespace-nowrap">
+                    {corretoresComValores.reduce((acc, c) => acc + c.imoveisCaptados, 0)}
+                  </td>
                   <td className="py-2 text-right font-bold text-[#3C7A57] whitespace-nowrap">
                     {formatMoeda(totalRecebidoCorretores)}
                   </td>

@@ -558,6 +558,151 @@ export default async function DashboardPage({
     queryPeriodoAtual.set("fim", periodoResolvido.fimTexto);
   }
 
+  // Seção "Perfil de Clientes e Imóveis" (pedido do usuário): idade, renda,
+  // estado civil dos clientes; valor de venda/avaliação, bairro, cidade e
+  // tipo dos imóveis; parceiro com mais clientes e com mais imóveis
+  // captados. Deliberadamente NÃO filtrado pelo período do dashboard (essas
+  // características são da carteira inteira, não fazem sentido "só do mês")
+  // — confirmado com o usuário.
+  const [clientesPerfil, imoveisPerfil, topParceirosClientes, topParceirosImoveisCaptados] = await Promise.all([
+    prisma.clientes.findMany({
+      select: { estado_civil: true, renda_bruta: true, data_nascimento: true }
+    }),
+    prisma.imoveis.findMany({
+      where: { excluido: false },
+      select: {
+        valor_venda: true,
+        valor_avaliacao: true,
+        bairro: true,
+        tipo_imovel: true,
+        cidades: { select: { nome: true } }
+      }
+    }),
+    prisma.clientes.groupBy({
+      by: ["parceiro_id"],
+      where: { parceiro_id: { not: null } },
+      _count: { _all: true },
+      orderBy: { _count: { parceiro_id: "desc" } },
+      take: 5
+    }),
+    prisma.imoveis.groupBy({
+      by: ["parceiro_id"],
+      where: { excluido: false, parceiro_id: { not: null } },
+      _count: { _all: true },
+      orderBy: { _count: { parceiro_id: "desc" } },
+      take: 5
+    })
+  ]);
+
+  const idsParceirosPerfil = [...topParceirosClientes, ...topParceirosImoveisCaptados]
+    .map((p) => p.parceiro_id)
+    .filter((id): id is string => Boolean(id));
+  const parceirosPerfilNomes =
+    idsParceirosPerfil.length > 0
+      ? await prisma.parceiros.findMany({ where: { id: { in: idsParceirosPerfil } }, select: { id: true, nome: true } })
+      : [];
+  const nomeParceiroPerfil = new Map(parceirosPerfilNomes.map((p) => [p.id, p.nome]));
+
+  const hojeParaIdade = hojePortoVelho();
+  function idadeAnos(nascimento: Date): number {
+    let idade = hojeParaIdade.getFullYear() - nascimento.getFullYear();
+    const aindaNaoFezAniversario =
+      hojeParaIdade.getMonth() < nascimento.getMonth() ||
+      (hojeParaIdade.getMonth() === nascimento.getMonth() && hojeParaIdade.getDate() < nascimento.getDate());
+    if (aindaNaoFezAniversario) idade -= 1;
+    return idade;
+  }
+
+  const FAIXAS_IDADE = [
+    { label: "Até 24 anos", min: 0, max: 24 },
+    { label: "25 a 34 anos", min: 25, max: 34 },
+    { label: "35 a 44 anos", min: 35, max: 44 },
+    { label: "45 a 59 anos", min: 45, max: 59 },
+    { label: "60+ anos", min: 60, max: Infinity }
+  ];
+  const FAIXAS_RENDA = [
+    { label: "Até R$ 2.000", min: 0, max: 2000 },
+    { label: "R$ 2.000 a 5.000", min: 2000.01, max: 5000 },
+    { label: "R$ 5.000 a 10.000", min: 5000.01, max: 10000 },
+    { label: "R$ 10.000 a 20.000", min: 10000.01, max: 20000 },
+    { label: "Acima de R$ 20.000", min: 20000.01, max: Infinity }
+  ];
+
+  let somaIdades = 0;
+  let qtdIdades = 0;
+  const porFaixaIdade = new Map(FAIXAS_IDADE.map((f) => [f.label, 0]));
+  let somaRendas = 0;
+  let qtdRendas = 0;
+  const porFaixaRenda = new Map(FAIXAS_RENDA.map((f) => [f.label, 0]));
+  const porEstadoCivil = new Map<string, number>();
+
+  for (const c of clientesPerfil) {
+    if (c.data_nascimento) {
+      const idade = idadeAnos(new Date(c.data_nascimento));
+      if (idade >= 0 && idade <= 120) {
+        somaIdades += idade;
+        qtdIdades += 1;
+        const faixa = FAIXAS_IDADE.find((f) => idade >= f.min && idade <= f.max);
+        if (faixa) porFaixaIdade.set(faixa.label, (porFaixaIdade.get(faixa.label) ?? 0) + 1);
+      }
+    }
+    const renda = Number(c.renda_bruta ?? 0);
+    if (c.renda_bruta && renda > 0) {
+      somaRendas += renda;
+      qtdRendas += 1;
+      const faixa = FAIXAS_RENDA.find((f) => renda >= f.min && renda <= f.max);
+      if (faixa) porFaixaRenda.set(faixa.label, (porFaixaRenda.get(faixa.label) ?? 0) + 1);
+    }
+    if (c.estado_civil) porEstadoCivil.set(c.estado_civil, (porEstadoCivil.get(c.estado_civil) ?? 0) + 1);
+  }
+
+  const idadeMedia = qtdIdades > 0 ? Math.round(somaIdades / qtdIdades) : null;
+  const rendaMedia = qtdRendas > 0 ? somaRendas / qtdRendas : null;
+  const dadosPizzaIdade = [...porFaixaIdade.entries()].filter(([, v]) => v > 0).map(([label, valor]) => ({ label, valor }));
+  const dadosPizzaRenda = [...porFaixaRenda.entries()].filter(([, v]) => v > 0).map(([label, valor]) => ({ label, valor }));
+  const dadosPizzaEstadoCivil = [...porEstadoCivil.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([label, valor]) => ({ label, valor }));
+
+  let somaVenda = 0;
+  let qtdVenda = 0;
+  let somaAvaliacao = 0;
+  let qtdAvaliacao = 0;
+  const porBairro = new Map<string, number>();
+  const porCidade = new Map<string, number>();
+  const porTipoImovel = new Map<string, number>();
+
+  for (const im of imoveisPerfil) {
+    const valorVenda = Number(im.valor_venda ?? 0);
+    if (im.valor_venda && valorVenda > 0) {
+      somaVenda += valorVenda;
+      qtdVenda += 1;
+    }
+    const valorAvaliacao = Number(im.valor_avaliacao ?? 0);
+    if (im.valor_avaliacao && valorAvaliacao > 0) {
+      somaAvaliacao += valorAvaliacao;
+      qtdAvaliacao += 1;
+    }
+    const bairro = im.bairro?.trim();
+    if (bairro) porBairro.set(bairro, (porBairro.get(bairro) ?? 0) + 1);
+    if (im.cidades?.nome) porCidade.set(im.cidades.nome, (porCidade.get(im.cidades.nome) ?? 0) + 1);
+    if (im.tipo_imovel) porTipoImovel.set(im.tipo_imovel, (porTipoImovel.get(im.tipo_imovel) ?? 0) + 1);
+  }
+
+  const valorVendaMedio = qtdVenda > 0 ? somaVenda / qtdVenda : null;
+  const valorAvaliacaoMedio = qtdAvaliacao > 0 ? somaAvaliacao / qtdAvaliacao : null;
+  const topBairros = [...porBairro.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8)
+    .map(([label, valor]) => ({ label, valor }));
+  const topCidades = [...porCidade.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8)
+    .map(([label, valor]) => ({ label, valor }));
+  const dadosPizzaTipoImovel = [...porTipoImovel.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([label, valor]) => ({ label, valor }));
+
   return (
     <div>
       <Topbar />
@@ -1010,6 +1155,137 @@ export default async function DashboardPage({
               </tfoot>
             )}
           </table>
+        </div>
+      </div>
+
+      <div className="bg-white border border-gray-200 rounded-xl p-4 mt-5">
+        <div className="text-sm font-bold text-gray-800 mb-1">Perfil de Clientes e Imóveis</div>
+        <p className="text-[11px] text-gray-400 mb-4">
+          Visão geral da carteira toda — {clientesPerfil.length} cliente(s) e {imoveisPerfil.length} imóvel(is)
+          cadastrado(s). Não é filtrado pelo período selecionado acima (essas características são da base
+          inteira, não fazem sentido só "do mês").
+        </p>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+          <div className="bg-gray-50 border border-gray-100 rounded-xl p-3">
+            <div className="text-xs text-gray-500">Idade média</div>
+            <div className="text-lg font-bold mt-1 text-gray-900">{idadeMedia !== null ? `${idadeMedia} anos` : "—"}</div>
+            <div className="text-[11px] text-gray-400">{qtdIdades} com data de nascimento</div>
+          </div>
+          <div className="bg-gray-50 border border-gray-100 rounded-xl p-3">
+            <div className="text-xs text-gray-500">Renda média</div>
+            <div className="text-lg font-bold mt-1 text-gray-900">{rendaMedia !== null ? formatMoeda(rendaMedia) : "—"}</div>
+            <div className="text-[11px] text-gray-400">{qtdRendas} com renda informada</div>
+          </div>
+          <div className="bg-gray-50 border border-gray-100 rounded-xl p-3">
+            <div className="text-xs text-gray-500">Valor de venda médio</div>
+            <div className="text-lg font-bold mt-1 text-gray-900">
+              {valorVendaMedio !== null ? formatMoeda(valorVendaMedio) : "—"}
+            </div>
+            <div className="text-[11px] text-gray-400">{qtdVenda} imóvel(is) com valor de venda</div>
+          </div>
+          <div className="bg-gray-50 border border-gray-100 rounded-xl p-3">
+            <div className="text-xs text-gray-500">Valor de avaliação médio</div>
+            <div className="text-lg font-bold mt-1 text-gray-900">
+              {valorAvaliacaoMedio !== null ? formatMoeda(valorAvaliacaoMedio) : "—"}
+            </div>
+            <div className="text-[11px] text-gray-400">{qtdAvaliacao} imóvel(is) com avaliação</div>
+          </div>
+        </div>
+
+        <div className="grid md:grid-cols-3 gap-4 mb-5">
+          <div>
+            <div className="text-xs font-semibold text-gray-600 mb-2">Clientes por faixa etária</div>
+            <GraficoPizza
+              dados={dadosPizzaIdade}
+              formatarValor={(v) => String(v)}
+              mensagemVazia="Sem data de nascimento cadastrada."
+            />
+          </div>
+          <div>
+            <div className="text-xs font-semibold text-gray-600 mb-2">Clientes por faixa de renda</div>
+            <GraficoPizza
+              dados={dadosPizzaRenda}
+              formatarValor={(v) => String(v)}
+              mensagemVazia="Sem renda cadastrada."
+            />
+          </div>
+          <div>
+            <div className="text-xs font-semibold text-gray-600 mb-2">Clientes por estado civil</div>
+            <GraficoPizza
+              dados={dadosPizzaEstadoCivil}
+              formatarValor={(v) => String(v)}
+              mensagemVazia="Sem estado civil cadastrado."
+            />
+          </div>
+        </div>
+
+        <div className="grid md:grid-cols-2 gap-4 mb-5">
+          <div>
+            <div className="text-xs font-semibold text-gray-600 mb-2">Imóveis por tipo</div>
+            <GraficoPizza
+              dados={dadosPizzaTipoImovel}
+              formatarValor={(v) => String(v)}
+              mensagemVazia="Sem tipo de imóvel cadastrado."
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <div className="text-xs font-semibold text-gray-600 mb-2">Top bairros</div>
+              <ul className="flex flex-col gap-1">
+                {topBairros.map((b) => (
+                  <li key={b.label} className="flex justify-between gap-2 text-xs text-gray-600 border-b border-gray-50 py-1">
+                    <span className="truncate">{b.label}</span>
+                    <span className="text-gray-400 whitespace-nowrap">{b.valor}</span>
+                  </li>
+                ))}
+                {topBairros.length === 0 && <li className="text-xs text-gray-400">Sem bairro cadastrado.</li>}
+              </ul>
+            </div>
+            <div>
+              <div className="text-xs font-semibold text-gray-600 mb-2">Top cidades</div>
+              <ul className="flex flex-col gap-1">
+                {topCidades.map((c) => (
+                  <li key={c.label} className="flex justify-between gap-2 text-xs text-gray-600 border-b border-gray-50 py-1">
+                    <span className="truncate">{c.label}</span>
+                    <span className="text-gray-400 whitespace-nowrap">{c.valor}</span>
+                  </li>
+                ))}
+                {topCidades.length === 0 && <li className="text-xs text-gray-400">Sem cidade cadastrada.</li>}
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid md:grid-cols-2 gap-4">
+          <div>
+            <div className="text-xs font-semibold text-gray-600 mb-2">Parceiros com mais clientes</div>
+            <ul className="flex flex-col gap-1">
+              {topParceirosClientes.map((p) => (
+                <li key={p.parceiro_id} className="flex justify-between gap-2 text-xs text-gray-600 border-b border-gray-50 py-1">
+                  <span className="truncate">{p.parceiro_id ? nomeParceiroPerfil.get(p.parceiro_id) ?? "—" : "—"}</span>
+                  <span className="text-gray-400 whitespace-nowrap">{p._count._all} cliente(s)</span>
+                </li>
+              ))}
+              {topParceirosClientes.length === 0 && (
+                <li className="text-xs text-gray-400">Nenhum cliente vinculado a um parceiro.</li>
+              )}
+            </ul>
+          </div>
+          <div>
+            <div className="text-xs font-semibold text-gray-600 mb-2">Parceiros com mais imóveis captados</div>
+            <ul className="flex flex-col gap-1">
+              {topParceirosImoveisCaptados.map((p) => (
+                <li key={p.parceiro_id} className="flex justify-between gap-2 text-xs text-gray-600 border-b border-gray-50 py-1">
+                  <span className="truncate">{p.parceiro_id ? nomeParceiroPerfil.get(p.parceiro_id) ?? "—" : "—"}</span>
+                  <span className="text-gray-400 whitespace-nowrap">{p._count._all} imóvel(is)</span>
+                </li>
+              ))}
+              {topParceirosImoveisCaptados.length === 0 && (
+                <li className="text-xs text-gray-400">Nenhum imóvel vinculado a um parceiro.</li>
+              )}
+            </ul>
+          </div>
         </div>
       </div>
     </div>

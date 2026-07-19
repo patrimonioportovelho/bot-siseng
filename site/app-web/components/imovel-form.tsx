@@ -178,32 +178,6 @@ export function ImovelForm({
         <div className="text-sm font-bold text-gray-800 mb-3">Localização</div>
         <div className="grid md:grid-cols-2 gap-3">
           <div>
-            <label className={LABEL}>Rua</label>
-            <input className={CAMPO} name="rua" defaultValue={i?.rua ?? ""} />
-          </div>
-          <div>
-            <label className={LABEL}>Número</label>
-            <input className={CAMPO} name="n_predial" defaultValue={i?.n_predial ?? ""} />
-          </div>
-          <div>
-            <label className={LABEL}>Complemento</label>
-            <input className={CAMPO} name="complemento" defaultValue={i?.complemento ?? ""} />
-          </div>
-          <div>
-            <label className={LABEL}>Bairro</label>
-            <input className={CAMPO} name="bairro" defaultValue={i?.bairro ?? ""} list="lista-bairros" />
-            <datalist id="lista-bairros">
-              {bairrosDaCidade.map((b) => (
-                <option key={b} value={b} />
-              ))}
-            </datalist>
-            {cidadeId && bairrosDaCidade.length > 0 && (
-              <p className="text-[11px] text-gray-400 mt-1">
-                {bairrosDaCidade.length} bairro(s) já cadastrado(s) nessa cidade aparecem como sugestão ao digitar.
-              </p>
-            )}
-          </div>
-          <div>
             <label className={LABEL}>Estado</label>
             <select
               className={CAMPO}
@@ -232,6 +206,32 @@ export function ImovelForm({
                 </option>
               ))}
             </select>
+          </div>
+          <div>
+            <label className={LABEL}>Rua</label>
+            <input className={CAMPO} name="rua" defaultValue={i?.rua ?? ""} />
+          </div>
+          <div>
+            <label className={LABEL}>Número</label>
+            <input className={CAMPO} name="n_predial" defaultValue={i?.n_predial ?? ""} />
+          </div>
+          <div>
+            <label className={LABEL}>Complemento</label>
+            <input className={CAMPO} name="complemento" defaultValue={i?.complemento ?? ""} />
+          </div>
+          <div>
+            <label className={LABEL}>Bairro</label>
+            <input className={CAMPO} name="bairro" defaultValue={i?.bairro ?? ""} list="lista-bairros" />
+            <datalist id="lista-bairros">
+              {bairrosDaCidade.map((b) => (
+                <option key={b} value={b} />
+              ))}
+            </datalist>
+            {cidadeId && bairrosDaCidade.length > 0 && (
+              <p className="text-[11px] text-gray-400 mt-1">
+                {bairrosDaCidade.length} bairro(s) já cadastrado(s) nessa cidade aparecem como sugestão ao digitar.
+              </p>
+            )}
           </div>
         </div>
       </div>

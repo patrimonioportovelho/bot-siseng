@@ -35,12 +35,12 @@ export function PublicacaoCard({ publicacao, baseUrl }: { publicacao: Publicacao
   const p = publicacao;
 
   return (
-    <article id={`noticia-${p.id}`} className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+    <article id={`noticia-${p.id}`} className="bg-white border border-gray-200 rounded-xl overflow-hidden h-full flex flex-col">
       {p.imagem_url && (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={p.imagem_url} alt={p.titulo} className="w-full aspect-square object-cover" />
       )}
-      <div className="p-4">
+      <div className="p-4 flex-1 flex flex-col min-h-0">
         <div className="flex items-start justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-2 mb-1.5">
             <span
@@ -60,16 +60,22 @@ export function PublicacaoCard({ publicacao, baseUrl }: { publicacao: Publicacao
         </div>
         <div className="text-sm font-bold text-gray-800">{p.titulo}</div>
         {/* Sem imagem, o card fica bem mais baixo que os vizinhos com foto
-            (que já ocupam um quadrado inteiro no topo) — pra manter o
-            padrão visual, mostra bem mais texto aqui em vez de cortar cedo. */}
+            (que já ocupam um quadrado inteiro no topo). Em vez de um número
+            fixo de linhas, o texto cresce (flex-1) até preencher exatamente
+            o espaço que sobrar — sempre bate com a altura dos vizinhos,
+            tenha o texto o tamanho que tiver. Com imagem, o quadrado já
+            ocupa a maior parte da altura, então mantém só um resumo curto. */}
         <p
           className={`text-xs text-gray-600 mt-1 whitespace-pre-line ${
-            p.imagem_url ? "line-clamp-3" : "line-clamp-6"
+            p.imagem_url ? "line-clamp-3" : "flex-1 overflow-hidden"
           }`}
         >
           {p.resumo || p.corpo}
         </p>
-        <a href={`/noticias/${p.id}`} className="text-xs font-semibold text-primary hover:underline mt-2 inline-block">
+        <a
+          href={`/noticias/${p.id}`}
+          className="text-xs font-semibold text-primary hover:underline inline-block mt-auto pt-2"
+        >
           {p.tipo === "Checklist" ? "Ver checklist completo" : p.tipo === "Edital" ? "Ler o edital completo" : "Ler a notícia completa"} →
         </a>
       </div>

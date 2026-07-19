@@ -21,7 +21,7 @@ export default async function ImovelDetalhePage({
   const { salvo } = await searchParams;
   const session = await getAdminSession();
 
-  const [imovel, clientes, parceiros, estados, cidades, manutencoes] = await Promise.all([
+  const [imovel, clientes, parceiros, estados, cidades, manutencoes, bairrosCadastrados] = await Promise.all([
     prisma.imoveis.findUnique({
       where: { id },
       include: {
@@ -52,6 +52,13 @@ export default async function ImovelDetalhePage({
       where: { imovel_id: id, excluido: false },
       orderBy: { created_at: "desc" },
       include: { parceiros: { select: { nome: true } } }
+    }),
+    // Autocomplete de Bairro por Cidade (tipo EnumList do AppSheet) — ver
+    // mesmo comentário em app/imoveis/novo/page.tsx.
+    prisma.imoveis.findMany({
+      where: { excluido: false, bairro: { not: null }, cidade_id: { not: null } },
+      select: { cidade_id: true, bairro: true },
+      distinct: ["cidade_id", "bairro"]
     })
   ]);
 
@@ -152,6 +159,7 @@ export default async function ImovelDetalhePage({
         parceiros={parceiros}
         estados={estados}
         cidades={cidades}
+        bairrosCadastrados={bairrosCadastrados}
         action={atualizarImovelAction}
       />
     </div>

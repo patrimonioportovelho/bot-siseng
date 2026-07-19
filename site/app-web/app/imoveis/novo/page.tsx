@@ -8,7 +8,7 @@ import { criarImovelAction } from "../actions";
 export const dynamic = "force-dynamic";
 
 export default async function NovoImovelPage() {
-  const [clientes, parceiros, estados, cidades] = await Promise.all([
+  const [clientes, parceiros, estados, cidades, bairrosCadastrados] = await Promise.all([
     prisma.clientes.findMany({
       // NULL em status_cadastro conta como "não arquivado" — todo cliente
       // criado pela tela nova fica com esse campo NULL (nunca é setado na
@@ -24,7 +24,15 @@ export default async function NovoImovelPage() {
       select: { id: true, nome: true }
     }),
     prisma.estados.findMany({ orderBy: { nome: "asc" } }),
-    prisma.cidades.findMany({ orderBy: { nome: "asc" }, select: { id: true, nome: true, estado_id: true } })
+    prisma.cidades.findMany({ orderBy: { nome: "asc" }, select: { id: true, nome: true, estado_id: true } }),
+    // Autocomplete de Bairro por Cidade (tipo EnumList do AppSheet, pedido do
+    // usuário) — a lista de sugestões vem dos bairros já digitados em outros
+    // imóveis, sem cadastro manual nenhum de "bairros possíveis".
+    prisma.imoveis.findMany({
+      where: { excluido: false, bairro: { not: null }, cidade_id: { not: null } },
+      select: { cidade_id: true, bairro: true },
+      distinct: ["cidade_id", "bairro"]
+    })
   ]);
 
   return (
@@ -44,6 +52,7 @@ export default async function NovoImovelPage() {
         parceiros={parceiros}
         estados={estados}
         cidades={cidades}
+        bairrosCadastrados={bairrosCadastrados}
         action={criarImovelAction}
       />
     </div>

@@ -8,6 +8,7 @@ type ClienteOpcao = { id: string; nome: string; id_legado: string | null; parcei
 type ParceiroOpcao = { id: string; nome: string };
 type EstadoOpcao = { id: string; nome: string };
 type CidadeOpcao = { id: string; nome: string; estado_id: string };
+type BairroCadastrado = { cidade_id: string | null; bairro: string | null };
 
 type ImovelExistente = {
   id: string;
@@ -47,6 +48,7 @@ export function ImovelForm({
   parceiros,
   estados,
   cidades,
+  bairrosCadastrados,
   action
 }: {
   imovel: ImovelExistente | null;
@@ -55,6 +57,7 @@ export function ImovelForm({
   parceiros: ParceiroOpcao[];
   estados: EstadoOpcao[];
   cidades: CidadeOpcao[];
+  bairrosCadastrados: BairroCadastrado[];
   action: (formData: FormData) => void;
 }) {
   const i = imovel;
@@ -66,6 +69,23 @@ export function ImovelForm({
   const [mostrarLista, setMostrarLista] = useState(false);
   const [parceiroId, setParceiroId] = useState(i?.parceiro_id ?? "");
   const [estadoId, setEstadoId] = useState(i?.estado_id ?? "");
+  const [cidadeId, setCidadeId] = useState(i?.cidade_id ?? "");
+
+  // Autocomplete de Bairro "que vai aprendendo sozinho" (tipo EnumList do
+  // AppSheet, pedido do usuário): em vez de uma lista fixa cadastrada à mão,
+  // sugere os bairros que já foram digitados em outros imóveis da MESMA
+  // cidade — a lista cresce sozinha conforme o cadastro vai enchendo. Como é
+  // um <datalist>, continua sendo um campo de texto livre — a sugestão só
+  // ajuda a digitar mais rápido e a manter o nome do bairro consistente
+  // (evita "Centro" e "centro" virando dois bairros diferentes).
+  const bairrosDaCidade = useMemo(() => {
+    const set = new Set(
+      bairrosCadastrados
+        .filter((b) => b.cidade_id === cidadeId && b.bairro && b.bairro.trim())
+        .map((b) => b.bairro!.trim())
+    );
+    return [...set].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [bairrosCadastrados, cidadeId]);
 
   const clientesFiltrados = useMemo(() => {
     const t = buscaCliente.trim().toLowerCase();
@@ -171,7 +191,17 @@ export function ImovelForm({
           </div>
           <div>
             <label className={LABEL}>Bairro</label>
-            <input className={CAMPO} name="bairro" defaultValue={i?.bairro ?? ""} />
+            <input className={CAMPO} name="bairro" defaultValue={i?.bairro ?? ""} list="lista-bairros" />
+            <datalist id="lista-bairros">
+              {bairrosDaCidade.map((b) => (
+                <option key={b} value={b} />
+              ))}
+            </datalist>
+            {cidadeId && bairrosDaCidade.length > 0 && (
+              <p className="text-[11px] text-gray-400 mt-1">
+                {bairrosDaCidade.length} bairro(s) já cadastrado(s) nessa cidade aparecem como sugestão ao digitar.
+              </p>
+            )}
           </div>
           <div>
             <label className={LABEL}>Estado</label>
@@ -179,7 +209,10 @@ export function ImovelForm({
               className={CAMPO}
               name="estado_id"
               value={estadoId}
-              onChange={(e) => setEstadoId(e.target.value)}
+              onChange={(e) => {
+                setEstadoId(e.target.value);
+                setCidadeId("");
+              }}
             >
               <option value="">—</option>
               {estados.map((e) => (
@@ -191,7 +224,7 @@ export function ImovelForm({
           </div>
           <div>
             <label className={LABEL}>Cidade</label>
-            <select className={CAMPO} name="cidade_id" defaultValue={i?.cidade_id ?? ""}>
+            <select className={CAMPO} name="cidade_id" value={cidadeId} onChange={(e) => setCidadeId(e.target.value)}>
               <option value="">—</option>
               {cidadesDoEstado.map((c) => (
                 <option key={c.id} value={c.id}>

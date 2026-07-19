@@ -3,6 +3,7 @@ import { Topbar } from "@/components/topbar";
 import { prisma } from "@/lib/prisma";
 import { getAdminSession } from "@/lib/auth";
 import { StatusSacSelect } from "@/components/configuracoes/status-sac-select";
+import { PublicacaoForm } from "@/components/publicacao-form";
 import {
   definirSenhaParceiroAction,
   aprovarAcessoAction,
@@ -309,70 +310,9 @@ export default async function ConfiguracoesPage({
           <summary className="text-xs font-semibold text-gray-700 cursor-pointer px-3 py-2">
             + Nova publicação
           </summary>
-          <form action={criarPublicacaoAction} className="p-3 pt-0 flex flex-col gap-2">
-            <div className="grid md:grid-cols-2 gap-2">
-              <div>
-                <label className="text-xs text-gray-600 block mb-1">Tipo</label>
-                <select
-                  name="tipo"
-                  defaultValue="Noticia"
-                  className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full outline-none focus:border-primary bg-white"
-                >
-                  {TIPOS_PUBLICACAO.map((t) => (
-                    <option key={t} value={t}>
-                      {tipoPublicacaoLabel(t)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-xs text-gray-600 block mb-1">Título</label>
-                <input
-                  name="titulo"
-                  required
-                  className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full outline-none focus:border-primary"
-                />
-              </div>
-            </div>
-            <div>
-              <label className="text-xs text-gray-600 block mb-1">Resumo (opcional, aparece na lista)</label>
-              <input
-                name="resumo"
-                className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full outline-none focus:border-primary"
-              />
-            </div>
-            <div>
-              <label className="text-xs text-gray-600 block mb-1">Texto completo</label>
-              <textarea
-                name="corpo"
-                required
-                className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full outline-none focus:border-primary min-h-24"
-              />
-            </div>
-            <div>
-              <label className="text-xs text-gray-600 block mb-1">Imagem (opcional)</label>
-              <input
-                type="file"
-                name="imagem"
-                accept="image/png,image/jpeg,image/webp,image/gif"
-                className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full outline-none focus:border-primary bg-white file:mr-2 file:text-xs file:border-0 file:bg-gray-100 file:rounded file:px-2 file:py-1"
-              />
-              <p className="text-[10px] text-gray-400 mt-1">
-                Recomendado: imagem quadrada, 1080x1080px (o mesmo tamanho de um post pronto pra WhatsApp/Instagram).
-              </p>
-            </div>
-            <label className="flex items-center gap-2 text-xs text-gray-600">
-              <input type="checkbox" name="ativo" defaultChecked /> Publicar já (visível no site)
-            </label>
-            <label className="flex items-center gap-2 text-xs text-gray-600">
-              <input type="checkbox" name="portal_corretor" /> Mostrar também no mural do Portal do Corretor
-            </label>
-            <div>
-              <button type="submit" className="text-xs bg-primary text-white rounded-lg px-3 py-1.5 font-semibold">
-                Salvar publicação
-              </button>
-            </div>
-          </form>
+          <div className="p-3 pt-0">
+            <PublicacaoForm publicacao={null} action={criarPublicacaoAction} />
+          </div>
         </details>
 
         {publicacoes.length === 0 ? (
@@ -411,93 +351,9 @@ export default async function ConfiguracoesPage({
                   <span className="text-gray-400 shrink-0">{formatDataHora(p.publicado_em)}</span>
                 </summary>
                 <div className="p-3 pt-0">
-                  <form action={atualizarPublicacaoAction} className="flex flex-col gap-2 mb-2">
-                    <input type="hidden" name="publicacaoId" value={p.id} />
-                    <div className="grid md:grid-cols-2 gap-2">
-                      <div>
-                        <label className="text-xs text-gray-600 block mb-1">Tipo</label>
-                        <select
-                          name="tipo"
-                          defaultValue={p.tipo}
-                          className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full outline-none focus:border-primary bg-white"
-                        >
-                          {TIPOS_PUBLICACAO.map((t) => (
-                            <option key={t} value={t}>
-                              {tipoPublicacaoLabel(t)}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-xs text-gray-600 block mb-1">Título</label>
-                        <input
-                          name="titulo"
-                          required
-                          defaultValue={p.titulo}
-                          className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full outline-none focus:border-primary"
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="text-xs text-gray-600 block mb-1">Resumo</label>
-                      <input
-                        name="resumo"
-                        defaultValue={p.resumo ?? ""}
-                        className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full outline-none focus:border-primary"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs text-gray-600 block mb-1">Texto completo</label>
-                      <textarea
-                        name="corpo"
-                        required
-                        defaultValue={p.corpo}
-                        className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full outline-none focus:border-primary min-h-24"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs text-gray-600 block mb-1">Imagem</label>
-                      {p.imagem_url && (
-                        <div className="flex items-center gap-2 mb-1.5">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={p.imagem_url}
-                            alt=""
-                            className="w-14 h-14 rounded-lg object-cover border border-gray-200"
-                          />
-                          <label className="flex items-center gap-1.5 text-xs text-red-600">
-                            <input type="checkbox" name="remover_imagem" /> Remover imagem atual
-                          </label>
-                        </div>
-                      )}
-                      <input
-                        type="file"
-                        name="imagem"
-                        accept="image/png,image/jpeg,image/webp,image/gif"
-                        className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full outline-none focus:border-primary bg-white file:mr-2 file:text-xs file:border-0 file:bg-gray-100 file:rounded file:px-2 file:py-1"
-                      />
-                      <p className="text-[10px] text-gray-400 mt-1">
-                        {p.imagem_url
-                          ? "Escolha um arquivo pra trocar a imagem atual. Recomendado: 1080x1080px."
-                          : "Recomendado: imagem quadrada, 1080x1080px."}
-                      </p>
-                    </div>
-                    <label className="flex items-center gap-2 text-xs text-gray-600">
-                      <input type="checkbox" name="ativo" defaultChecked={p.ativo} /> Publicada (visível no site)
-                    </label>
-                    <label className="flex items-center gap-2 text-xs text-gray-600">
-                      <input type="checkbox" name="portal_corretor" defaultChecked={p.portal_corretor} /> Mostrar
-                      também no mural do Portal do Corretor
-                    </label>
-                    <div>
-                      <button
-                        type="submit"
-                        className="text-xs bg-primary text-white rounded-lg px-3 py-1.5 font-semibold"
-                      >
-                        Salvar alterações
-                      </button>
-                    </div>
-                  </form>
+                  <div className="mb-2">
+                    <PublicacaoForm publicacao={p} action={atualizarPublicacaoAction} />
+                  </div>
                   <div className="flex gap-1.5">
                     <form action={alternarAtivoPublicacaoAction}>
                       <input type="hidden" name="publicacaoId" value={p.id} />

@@ -28,3 +28,8 @@ export function supabaseBrowser() {
 // esse arquivo não pode importar de lá porque lib/supabase-admin.ts usa a
 // service role key (só pode rodar no servidor).
 export const BUCKET_DOCUMENTOS_PORTAL = "documentos-portal";
+
+// Precisa bater com BUCKET_PUBLICACOES em lib/supabase-admin.ts — usado pro
+// upload direto da imagem de capa das publicações (Notícias/Editais), pelo
+// mesmo motivo do bucket acima (limite de 4,5MB da Vercel).
+export const BUCKET_PUBLICACOES = "publicacoes";

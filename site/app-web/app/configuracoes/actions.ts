@@ -4,7 +4,11 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { logAlteracao, requireAdm, requireAdminSession, aprovarSolicitacaoAction, rejeitarSolicitacaoAction, hashSenha } from "@/lib/auth";
-import { subirImagemPublicacao, apagarImagemPublicacao } from "@/lib/supabase-admin";
+import {
+  apagarImagemPublicacao,
+  criarUploadAssinadoImagemPublicacao,
+  publicUrlImagemPublicacao
+} from "@/lib/supabase-admin";
 
 // Libera (ou troca) o acesso de alguém direto, sem passar pela fila de
 // solicitação — útil pro cadastro inicial de cada parceiro e também pra você
@@ -67,13 +71,24 @@ function dadosBasePublicacao(formData: FormData) {
   };
 }
 
-// Lê o arquivo de imagem do form (se algum foi escolhido). Formulários sem
-// input de arquivo preenchido chegam aqui com um File vazio (size 0) — trata
-// como "nenhuma imagem enviada" em vez de tentar subir um arquivo vazio.
-function arquivoImagem(formData: FormData): File | null {
-  const arquivo = formData.get("imagem");
-  if (arquivo instanceof File && arquivo.size > 0) return arquivo;
-  return null;
+// A Vercel tem um limite FIXO de 4,5MB por requisição de Server Action — não
+// dá pra aumentar por configuração. Mandar o arquivo de imagem direto no
+// FormData da action (como era antes) estourava isso fácil com uma foto de
+// capa em boa resolução, e a tela quebrava com "An unexpected response was
+// received from the server" (a Vercel corta a requisição e o Next não sabe
+// explicar o motivo). A partir daqui a imagem já sobe direto do navegador
+// pro Storage via URL assinada (ver components/publicacao-form.tsx) antes da
+// action ser chamada — ela só recebe "imagem_caminho", um texto pequeno.
+export async function prepararUploadImagemPublicacaoAction(
+  nomeArquivo: string
+): Promise<{ ok: true; caminho: string; token: string } | { ok: false; erro: string }> {
+  await requireAdminSession();
+  try {
+    const { caminho, token } = await criarUploadAssinadoImagemPublicacao(nomeArquivo);
+    return { ok: true, caminho, token };
+  } catch (erro) {
+    return { ok: false, erro: erro instanceof Error ? erro.message : "Falha ao preparar o upload da imagem." };
+  }
 }
 
 // Notícias, editais e checklists ficam abertos a qualquer administrativo
@@ -86,16 +101,8 @@ export async function criarPublicacaoAction(formData: FormData) {
     redirect(`/configuracoes?erro=${encodeURIComponent("Preencha título e texto da publicação.")}`);
   }
 
-  const arquivo = arquivoImagem(formData);
-  let imagem_url: string | null = null;
-  if (arquivo) {
-    try {
-      imagem_url = await subirImagemPublicacao(arquivo);
-    } catch (erro) {
-      const mensagem = erro instanceof Error ? erro.message : "Falha ao subir a imagem.";
-      redirect(`/configuracoes?erro=${encodeURIComponent(mensagem)}`);
-    }
-  }
+  const imagemCaminho = String(formData.get("imagem_caminho") ?? "").trim();
+  const imagem_url = imagemCaminho ? publicUrlImagemPublicacao(imagemCaminho) : null;
 
   const criada = await prisma.publicacoes_site.create({
     data: { ...dados, imagem_url, autor_parceiro_id: admin.parceiroId }
@@ -126,21 +133,17 @@ export async function atualizarPublicacaoAction(formData: FormData) {
   const antes = await prisma.publicacoes_site.findUnique({ where: { id } });
   if (!antes) redirect(`/configuracoes?erro=${encodeURIComponent("Publicação não encontrada.")}`);
 
-  // Três cenários pra imagem: (1) escolheu um arquivo novo — sobe e troca,
-  // apagando a antiga do Storage pra não deixar lixo; (2) marcou "remover
+  // Três cenários pra imagem: (1) o navegador já subiu um arquivo novo direto
+  // pro Storage (ver prepararUploadImagemPublicacaoAction) e manda o caminho
+  // aqui — troca e apaga a antiga pra não deixar lixo; (2) marcou "remover
   // imagem" sem escolher outra — só apaga e limpa o campo; (3) não mexeu em
   // nada — mantém a imagem que já estava.
-  const arquivo = arquivoImagem(formData);
+  const imagemCaminho = String(formData.get("imagem_caminho") ?? "").trim();
   const removerImagem = formData.get("remover_imagem") === "on";
   let imagem_url = antes!.imagem_url;
 
-  if (arquivo) {
-    try {
-      imagem_url = await subirImagemPublicacao(arquivo);
-    } catch (erro) {
-      const mensagem = erro instanceof Error ? erro.message : "Falha ao subir a imagem.";
-      redirect(`/configuracoes?erro=${encodeURIComponent(mensagem)}`);
-    }
+  if (imagemCaminho) {
+    imagem_url = publicUrlImagemPublicacao(imagemCaminho);
     await apagarImagemPublicacao(antes!.imagem_url);
   } else if (removerImagem) {
     await apagarImagemPublicacao(antes!.imagem_url);

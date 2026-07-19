@@ -46,6 +46,42 @@ export async function subirImagemPublicacao(arquivo: File): Promise<string> {
   return data.publicUrl;
 }
 
+// Mesmo problema do limite de 4,5MB da Vercel (ver comentário grande mais
+// abaixo, em criarUploadAssinadoDocumento) só que pro upload de imagem das
+// publicações (Notícias/Editais/Checklists) em Configurações — uma foto de
+// capa em boa resolução ("recomendado 1080x1080") passa fácil disso e a
+// tela quebrava com "An unexpected response was received from the server."
+// Mesma solução: o navegador sobe a imagem direto pro Storage via URL
+// assinada, e a Server Action só recebe o caminho já salvo (texto pequeno).
+const EXTENSOES_IMAGEM_ACEITAS = new Set(["jpg", "jpeg", "png", "webp", "gif"]);
+
+export async function criarUploadAssinadoImagemPublicacao(
+  nomeArquivo: string
+): Promise<{ caminho: string; token: string }> {
+  const extensaoBruta = extensaoDoNome(nomeArquivo).toLowerCase();
+  const extensao = EXTENSOES_IMAGEM_ACEITAS.has(extensaoBruta) ? extensaoBruta : null;
+  if (!extensao) {
+    throw new Error("Formato de imagem não suportado. Envie um JPG, PNG, WEBP ou GIF.");
+  }
+
+  const caminho = `${randomUUID()}.${extensao}`;
+  const supabase = supabaseAdmin();
+  const { data, error } = await supabase.storage.from(BUCKET_PUBLICACOES).createSignedUploadUrl(caminho);
+  if (error || !data) {
+    throw new Error(`Não consegui preparar o upload da imagem: ${error?.message ?? "erro desconhecido"}`);
+  }
+  return { caminho, token: data.token };
+}
+
+// URL pública definitiva a partir do caminho já salvo no bucket (usado depois
+// que o navegador já subiu o arquivo direto via URL assinada) — é só
+// formatação de string, não bate na rede.
+export function publicUrlImagemPublicacao(caminho: string): string {
+  const supabase = supabaseAdmin();
+  const { data } = supabase.storage.from(BUCKET_PUBLICACOES).getPublicUrl(caminho);
+  return data.publicUrl;
+}
+
 // Apaga do Storage a imagem de uma publicação — chamado ao trocar a imagem
 // por uma nova ou ao excluir a publicação, pra não deixar arquivo órfão
 // ocupando espaço no bucket à toa.

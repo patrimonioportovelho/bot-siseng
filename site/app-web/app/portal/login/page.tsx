@@ -1,10 +1,11 @@
 import { loginPortalAction } from "../actions";
 
-// Login por email + senha — só entra quem tem email @remax.com.br, função
-// "Corretor" ativa no cadastro de parceiros, e a senha certa (ver
-// loginPortal em lib/portal-auth.ts). A senha inicial é definida por um
-// administrador em Configurações > "Definir senha manualmente" — o corretor
-// troca a própria senha depois de logado, em /portal/senha.
+// Login por email + senha — só entra quem tem email @remax.com.br e função
+// "Corretor" ativa no cadastro de parceiros (ver loginPortal em
+// lib/portal-auth.ts). Primeiro acesso: o próprio corretor escolhe a senha
+// aqui mesmo, sem precisar de aprovação — ela já vira a senha definitiva.
+// Depois de logado, ele pode trocar a própria senha em /portal/senha, ou
+// pedir pra um administrador redefinir em Configurações se esquecer.
 export default async function PortalLoginPage({
   searchParams
 }: {
@@ -56,7 +57,8 @@ export default async function PortalLoginPage({
 
         <p className="text-[11px] text-gray-400 mt-4 leading-relaxed">
           Acesso restrito a quem tem função Corretor ativa no cadastro de parceiros, com esse
-          email cadastrado na ficha. Esqueceu a senha? Peça pra um administrador redefinir.
+          email cadastrado na ficha. Primeiro acesso? Escolha a senha que quiser aqui mesmo — já
+          fica valendo na hora. Esqueceu a senha depois? Peça pra um administrador redefinir.
         </p>
       </form>
     </div>

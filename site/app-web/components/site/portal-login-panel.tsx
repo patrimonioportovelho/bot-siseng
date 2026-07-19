@@ -10,6 +10,12 @@ import { useState } from "react";
 // enquanto já está dentro do portal — mas aqui, a partir do site público,
 // fica igual ao acesso administrativo (pedido do usuário). Abre sozinho se
 // já vier um erro da tentativa anterior, pra pessoa não perder a mensagem.
+//
+// Primeiro acesso é self-service (pedido explícito do usuário, diferente do
+// acesso administrativo): quem digita esse email/senha pela primeira vez
+// (email @remax.com.br + função Corretor ativa no cadastro) já sai logado —
+// a senha digitada vira a senha definitiva na hora. Ver loginPortal em
+// lib/portal-auth.ts.
 export function PortalLoginPanel({
   action,
   erro
@@ -87,7 +93,9 @@ export function PortalLoginPanel({
 
             <p className="text-[11px] text-gray-400 mt-4 leading-relaxed">
               Acesso restrito a quem tem função Corretor ativa no cadastro de parceiros, com esse email
-              cadastrado na ficha. Esqueceu a senha? Peça pra um administrador redefinir.
+              cadastrado na ficha. Primeiro acesso? Digite o email e escolha a senha que quiser aqui
+              mesmo — já fica valendo na hora. Esqueceu a senha depois? Peça pra um administrador
+              redefinir.
             </p>
           </form>
         </div>

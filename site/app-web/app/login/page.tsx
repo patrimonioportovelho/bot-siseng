@@ -33,14 +33,13 @@ export default async function LoginPage({
 }: {
   searchParams: Promise<{
     erro?: string;
-    pendente?: string;
     next?: string;
     sac_ok?: string;
     sac_erro?: string;
     erro_portal?: string;
   }>;
 }) {
-  const { erro, pendente, next, sac_ok, sac_erro, erro_portal } = await searchParams;
+  const { erro, next, sac_ok, sac_erro, erro_portal } = await searchParams;
 
   const publicacoes = await prisma.publicacoes_site.findMany({
     // Checklist é conteúdo interno (só circula no Portal do Corretor e por
@@ -68,7 +67,7 @@ export default async function LoginPage({
           </div>
           <div className="flex items-center gap-2">
             <PortalLoginPanel action={loginPortalViaSiteAction} erro={erro_portal} />
-            <AdminLoginPanel action={loginAction} erro={erro} pendente={pendente} next={next} />
+            <AdminLoginPanel action={loginAction} erro={erro} next={next} />
           </div>
         </div>
       </header>

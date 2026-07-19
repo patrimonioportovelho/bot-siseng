@@ -5,20 +5,22 @@ import { useState } from "react";
 // Painel de "Acesso administrativo" — vive dentro da página pública
 // (app/login/page.tsx) como um botão discreto que abre o formulário de
 // login já existente por cima do site, em vez de ocupar a tela inteira
-// como antes. Abre sozinho se já vier um erro/pendência da tentativa
-// anterior, pra pessoa não perder a mensagem.
+// como antes. Abre sozinho se já vier um erro da tentativa anterior, pra
+// pessoa não perder a mensagem.
+//
+// Sem autoatendimento no primeiro acesso (pedido explícito do usuário):
+// diferente do Portal do Corretor, aqui só entra quem já tem senha definida
+// por um administrador em Configurações — ver loginAdmin em lib/auth.ts.
 export function AdminLoginPanel({
   action,
   erro,
-  pendente,
   next
 }: {
   action: (formData: FormData) => void;
   erro?: string;
-  pendente?: string;
   next?: string;
 }) {
-  const [aberto, setAberto] = useState(Boolean(erro || pendente));
+  const [aberto, setAberto] = useState(Boolean(erro));
 
   return (
     <>
@@ -60,12 +62,6 @@ export function AdminLoginPanel({
               <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg p-3 mb-4">{erro}</div>
             )}
 
-            {pendente && (
-              <div className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
-                {pendente}
-              </div>
-            )}
-
             <input type="hidden" name="next" value={next ?? "/dashboard"} />
 
             <label className="text-xs text-gray-600 block mb-1">Email</label>
@@ -95,10 +91,9 @@ export function AdminLoginPanel({
             </button>
 
             <p className="text-[11px] text-gray-400 mt-4 leading-relaxed">
-              O email precisa estar cadastrado na ficha de parceiro ativo. Se for seu primeiro acesso,
-              escolha a senha que quiser aqui — sua solicitação fica pendente até um administrador
-              aprovar, e depois disso essa mesma senha já funciona. Toda ação no sistema fica registrada
-              nos logs de auditoria.
+              O email precisa estar cadastrado na ficha de parceiro ativo. Se ainda não tem senha, peça
+              para um administrador cadastrar sua senha inicial em Configurações. Toda ação no sistema
+              fica registrada nos logs de auditoria.
             </p>
           </form>
         </div>

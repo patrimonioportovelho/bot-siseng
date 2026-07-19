@@ -88,29 +88,30 @@ export async function requireAdm(): Promise<AdminSession> {
   return session;
 }
 
-type LoginResult =
-  | { ok: true }
-  | { ok: false; pendente: true; error: string }
-  | { ok: false; pendente: false; error: string };
+type LoginResult = { ok: true } | { ok: false; error: string };
 
 // Login por Email + Senha (substituiu o antigo Nome + CPF — bater CPF
 // exigia que a pessoa já tivesse CPF cadastrado, o que travava quem ainda
 // não tinha, ex.: colaborador administrativo recém-entrado). O e-mail
 // identifica o parceiro sem ambiguidade (sem a comparação "tolerante" de
-// nomes de antes); a senha só existe depois de aprovada por um admin — no
-// primeiro acesso, vira uma solicitação pendente. O campo de Nome completo
-// foi tirado do formulário (pedia de novo um dado que o email já resolve
-// sozinho); o nome que aparece pra o ADM aprovar a solicitação vem direto da
-// ficha do parceiro (parceiro.nome), não mais digitado na hora do login.
+// nomes de antes).
+//
+// Diferente do portal do corretor (ver loginPortal em lib/portal-auth.ts),
+// aqui NÃO tem autoatendimento no primeiro acesso — pedido explícito do
+// usuário: "o acesso ao administrativo, só se o administrador passar a
+// senha". Sem senha definida, a pessoa é só informada de que precisa pedir
+// pra um administrador cadastrar a senha inicial em Configurações (mesma
+// tela que já existia pra isso — "Definir senha manualmente"). O fluxo antigo
+// de "solicitação de acesso" (solicitacoes_acesso) continua existindo só pra
+// quem já tinha um pedido pendente de antes dessa mudança — não é mais
+// alimentado por login nenhum.
 export async function loginAdmin(email: string, senha: string): Promise<LoginResult> {
   const emailNorm = normalizeEmail(email);
 
   if (!emailNorm || !senha) {
-    return { ok: false, pendente: false, error: "Informe email e senha." };
+    return { ok: false, error: "Informe email e senha." };
   }
 
-  // Não limitamos mais por função — qualquer parceiro ativo pode pedir acesso,
-  // desde que o email já esteja cadastrado na ficha dele.
   const parceiro = await prisma.parceiros.findFirst({
     where: {
       status_funcao: "Ativo",
@@ -122,56 +123,23 @@ export async function loginAdmin(email: string, senha: string): Promise<LoginRes
   if (!parceiro) {
     return {
       ok: false,
-      pendente: false,
       error:
         "Email não encontrado no cadastro de parceiros. Peça para um administrador cadastrar seu email na ficha de parceiro."
     };
   }
 
-  // Parceiro já tem senha definida (aprovada antes, ou definida manualmente
-  // por um admin) -> login direto, senha precisa bater.
-  if (parceiro.senha_hash) {
-    const senhaOk = await verificarSenha(senha, parceiro.senha_hash);
-    if (!senhaOk) {
-      return { ok: false, pendente: false, error: "Senha incorreta." };
-    }
-    return await concederAcesso(parceiro.id, parceiro.nome);
+  if (!parceiro.senha_hash) {
+    return {
+      ok: false,
+      error: "Você ainda não tem senha definida. Peça para um administrador definir sua senha inicial em Configurações."
+    };
   }
 
-  // Ainda sem senha definida -> primeiro acesso. Guarda a senha escolhida
-  // (já com hash) numa solicitação pendente, pra um ADM aprovar depois.
-  const senhaHash = await hashSenha(senha);
-  const pendente = await prisma.solicitacoes_acesso.findFirst({
-    where: { parceiro_id: parceiro.id, status: "pendente" }
-  });
-
-  if (pendente) {
-    await prisma.solicitacoes_acesso.update({
-      where: { id: pendente.id },
-      data: {
-        nome_informado: parceiro.nome,
-        email_informado: emailNorm,
-        senha_hash_informada: senhaHash,
-        criado_em: new Date()
-      }
-    });
-  } else {
-    await prisma.solicitacoes_acesso.create({
-      data: {
-        parceiro_id: parceiro.id,
-        nome_informado: parceiro.nome,
-        email_informado: emailNorm,
-        senha_hash_informada: senhaHash
-      }
-    });
+  const senhaOk = await verificarSenha(senha, parceiro.senha_hash);
+  if (!senhaOk) {
+    return { ok: false, error: "Senha incorreta." };
   }
-
-  return {
-    ok: false,
-    pendente: true,
-    error:
-      "Solicitação enviada! Assim que um administrador aprovar, você já consegue entrar com esse email e senha."
-  };
+  return await concederAcesso(parceiro.id, parceiro.nome);
 }
 
 async function concederAcesso(parceiroId: string, nome: string): Promise<LoginResult> {

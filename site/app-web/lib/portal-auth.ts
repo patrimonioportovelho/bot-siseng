@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { signSession, verifySession, sessaoExpiradaPeloResetDiario } from "@/lib/session";
-import { logAcessoPortal, hashSenha, verificarSenha } from "@/lib/auth";
+import { logAcessoPortal, logAlteracaoPortal, hashSenha, verificarSenha } from "@/lib/auth";
 
 const PORTAL_COOKIE = "sis_portal_session";
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 dias
@@ -60,11 +60,15 @@ type LoginPortalResult = { ok: true } | { ok: false; error: string };
 // os dois. Continua exigindo email "@remax.com.br" e função "Corretor"
 // ativa no cadastro — isso não mudou, é só mais uma camada.
 //
-// Diferente do admin, o portal não tem fluxo de "solicitação pendente" pra
-// primeiro acesso: quem define a senha inicial (e reseta se o corretor
-// esquecer) é um administrador, na tela Configurações > "Definir senha
-// manualmente" — já existe, não precisou de nada novo. Se o corretor ainda
-// não tem senha definida, a mensagem de erro deixa isso claro.
+// Primeiro acesso (pedido explícito do usuário): diferente do acesso
+// administrativo (que agora exige um administrador definir a senha
+// manualmente em Configurações), aqui o próprio corretor cria a senha na
+// hora — sem fila de aprovação. As mesmas verificações de sempre (email
+// @remax.com.br + função Corretor ativa no cadastro, checadas acima) já são
+// a trava de segurança: só existe "primeiro acesso" pra quem já é um
+// Corretor de verdade cadastrado por um admin. Se a pessoa errar a senha
+// depois de já ter uma definida, cai no "Senha incorreta" normal — só quem
+// nunca definiu senha nenhuma passa a cair nesse fluxo de criação.
 export async function loginPortal(email: string, senha: string): Promise<LoginPortalResult> {
   const emailNorm = normalizeEmail(email);
 
@@ -94,10 +98,18 @@ export async function loginPortal(email: string, senha: string): Promise<LoginPo
   }
 
   if (!parceiro.senha_hash) {
-    return {
-      ok: false,
-      error: "Você ainda não tem senha definida. Peça para um administrador definir sua senha inicial em Configurações."
-    };
+    if (senha.length < 6) {
+      return { ok: false, error: "Esse é seu primeiro acesso — escolha uma senha com pelo menos 6 caracteres." };
+    }
+    const novoHash = await hashSenha(senha);
+    await prisma.parceiros.update({ where: { id: parceiro.id }, data: { senha_hash: novoHash } });
+    await logAlteracaoPortal({
+      parceiroId: parceiro.id,
+      entidadeTipo: "parceiros",
+      entidadeId: parceiro.id,
+      acao: "criar_senha_primeiro_acesso_portal"
+    });
+    return await concederAcessoPortal(parceiro.id, parceiro.nome);
   }
 
   const senhaOk = await verificarSenha(senha, parceiro.senha_hash);

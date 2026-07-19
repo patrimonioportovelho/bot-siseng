@@ -134,9 +134,10 @@ export default async function ConfiguracoesPage({
       <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4">
         <div className="text-sm font-bold text-gray-800 mb-1">Solicitações de acesso pendentes</div>
         <p className="text-xs text-gray-500 mb-3">
-          Qualquer parceiro ativo pode pedir acesso (nome, email e uma senha escolhida na tela de
-          login). Aqui você confirma se é mesmo a pessoa antes de liberar — uma vez aprovado, a senha
-          escolhida fica valendo no cadastro do parceiro (ver ficha completa em <Link href="/parceiros" className="text-primary">Parceiros</Link>) e o acesso passa a ser direto.
+          O acesso administrativo não tem mais autoatendimento: quem ainda não tem senha precisa que
+          um administrador cadastre a senha inicial aqui mesmo em Configurações (abaixo, "Definir senha
+          manualmente") — ver ficha completa em <Link href="/parceiros" className="text-primary">Parceiros</Link>. Essa lista só existe pra tratar pedidos antigos que já
+          estavam pendentes antes dessa mudança.
         </p>
         {pendentes.length === 0 ? (
           <p className="text-xs text-gray-400">Nenhuma solicitação pendente.</p>

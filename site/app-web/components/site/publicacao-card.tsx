@@ -59,7 +59,16 @@ export function PublicacaoCard({ publicacao, baseUrl }: { publicacao: Publicacao
           <ShareButton url={`${baseUrl}/noticias/${p.id}`} title={p.titulo} text={p.resumo ?? undefined} />
         </div>
         <div className="text-sm font-bold text-gray-800">{p.titulo}</div>
-        <p className="text-xs text-gray-600 mt-1 whitespace-pre-line line-clamp-3">{p.resumo || p.corpo}</p>
+        {/* Sem imagem, o card fica bem mais baixo que os vizinhos com foto
+            (que já ocupam um quadrado inteiro no topo) — pra manter o
+            padrão visual, mostra bem mais texto aqui em vez de cortar cedo. */}
+        <p
+          className={`text-xs text-gray-600 mt-1 whitespace-pre-line ${
+            p.imagem_url ? "line-clamp-3" : "line-clamp-6"
+          }`}
+        >
+          {p.resumo || p.corpo}
+        </p>
         <a href={`/noticias/${p.id}`} className="text-xs font-semibold text-primary hover:underline mt-2 inline-block">
           {p.tipo === "Checklist" ? "Ver checklist completo" : p.tipo === "Edital" ? "Ler o edital completo" : "Ler a notícia completa"} →
         </a>

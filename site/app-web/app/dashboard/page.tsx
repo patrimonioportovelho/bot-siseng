@@ -3,6 +3,7 @@ import { Topbar } from "@/components/topbar";
 import { KpiCard } from "@/components/kpi-card";
 import { StatusBadge } from "@/components/status-badge";
 import { GraficoBarras } from "@/components/grafico-barras";
+import { GraficoFluxoCaixa } from "@/components/grafico-fluxo-caixa";
 import { GraficoPizza } from "@/components/grafico-pizza";
 import { prisma } from "@/lib/prisma";
 import {
@@ -40,6 +41,14 @@ export default async function DashboardPage({
   const hoje = hojePortoVelho();
   const em90Dias = new Date(hoje);
   em90Dias.setDate(em90Dias.getDate() + 90);
+
+  // Janela "um mês antes", mesmo tanto de dias do período selecionado —
+  // alimenta só a linha pontilhada de comparação do gráfico "Evolução do
+  // período" (só desenhada quando o preset é "Este mês", ver mais abaixo).
+  const duracaoDiasPeriodo = Math.round((fimExclusivo.getTime() - inicio.getTime()) / 86400000);
+  const inicioAnterior = new Date(inicio.getFullYear(), inicio.getMonth() - 1, inicio.getDate());
+  const fimAnteriorExclusivo = new Date(inicioAnterior);
+  fimAnteriorExclusivo.setDate(fimAnteriorExclusivo.getDate() + duracaoDiasPeriodo);
 
   // Saudação + anúncio de "Elaboração de Compra e Venda" cadastrada pelo
   // portal do corretor desde o último reset diário de sessão (3h, Porto
@@ -99,7 +108,9 @@ export default async function DashboardPage({
     movimentacoesPagasPeriodo,
     corretoresAtivos,
     pagamentosCorretoresPeriodo,
-    avaliacoesPeriodo
+    avaliacoesPeriodo,
+    movimentacoesNegocioPeriodo,
+    movimentacoesNegocioAnterior
   ] = await Promise.all([
     prisma.imoveis.count({ where: { excluido: false } }),
     prisma.transacoes.count({ where: { excluido: false, status: STATUS_TRANSACAO_EM_ABERTO } }),
@@ -229,8 +240,98 @@ export default async function DashboardPage({
         data_avaliacao: true,
         andamentos: { select: { status_andamento: true, data_conclusao: true, valor_financiado: true } }
       }
-    })
+    }),
+    // Gráfico "Evolução do período" (hero do dashboard, pedido do usuário):
+    // só o dinheiro de fato pago/recebido (Financeiro) que está vinculado a
+    // uma transação de Compra e Venda ou Locação — Administração entra por
+    // tabela através da Locação com gestão (Movimentações não tem vínculo
+    // direto com adm_imoveis).
+    prisma.movimentacoes.findMany({
+      where: {
+        pago: true,
+        data_pagamento: { gte: inicio, lt: fimExclusivo },
+        transacoes: { tipo: { in: ["Compra e Venda", "Locação"] } }
+      },
+      select: { tipo: true, valor: true, data_pagamento: true }
+    }),
+    // Mesma busca, um mês antes — só pra linha pontilhada de comparação.
+    duracaoDiasPeriodo > 0
+      ? prisma.movimentacoes.findMany({
+          where: {
+            pago: true,
+            data_pagamento: { gte: inicioAnterior, lt: fimAnteriorExclusivo },
+            transacoes: { tipo: { in: ["Compra e Venda", "Locação"] } }
+          },
+          select: { tipo: true, valor: true, data_pagamento: true }
+        })
+      : Promise.resolve([])
   ]);
+
+  // Gráfico "Evolução do período": agrupa as Movimentações de negócio (só
+  // Compra e Venda/Locação, ver query acima) dia a dia, e calcula o saldo
+  // acumulado ao longo do período. A comparação com "mês anterior" só é
+  // desenhada quando o preset é "Este mês" (pra qualquer outro período,
+  // "um mês antes" não teria uma leitura tão direta).
+  function chaveDia(data: Date) {
+    return `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, "0")}-${String(data.getDate()).padStart(2, "0")}`;
+  }
+
+  const porDiaNegocio = new Map<string, { entradas: number; saidas: number }>();
+  for (const m of movimentacoesNegocioPeriodo) {
+    if (!m.data_pagamento) continue;
+    const chave = chaveDia(new Date(m.data_pagamento));
+    const atual = porDiaNegocio.get(chave) ?? { entradas: 0, saidas: 0 };
+    if (m.tipo === "Recebimento") atual.entradas += Number(m.valor);
+    else atual.saidas += Number(m.valor);
+    porDiaNegocio.set(chave, atual);
+  }
+
+  const mostrarComparativoAnterior = periodoResolvido.preset === "mes";
+  const saldoPorIndiceAnterior = new Map<number, number>();
+  if (mostrarComparativoAnterior && duracaoDiasPeriodo > 0) {
+    const porDiaAnterior = new Map<string, { entradas: number; saidas: number }>();
+    for (const m of movimentacoesNegocioAnterior) {
+      if (!m.data_pagamento) continue;
+      const chave = chaveDia(new Date(m.data_pagamento));
+      const atual = porDiaAnterior.get(chave) ?? { entradas: 0, saidas: 0 };
+      if (m.tipo === "Recebimento") atual.entradas += Number(m.valor);
+      else atual.saidas += Number(m.valor);
+      porDiaAnterior.set(chave, atual);
+    }
+    let saldoAcumuladoAnterior = 0;
+    for (let i = 0; i < duracaoDiasPeriodo; i++) {
+      const dAnterior = new Date(inicioAnterior);
+      dAnterior.setDate(dAnterior.getDate() + i);
+      const v = porDiaAnterior.get(chaveDia(dAnterior)) ?? { entradas: 0, saidas: 0 };
+      saldoAcumuladoAnterior += v.entradas - v.saidas;
+      saldoPorIndiceAnterior.set(i, saldoAcumuladoAnterior);
+    }
+  }
+
+  let saldoAcumuladoNegocio = 0;
+  const dadosFluxoCaixa: {
+    dataIso: string;
+    label: string;
+    entradas: number;
+    saidas: number;
+    saldoAcumulado: number;
+    anterior: number | null;
+  }[] = [];
+  for (let i = 0; i < duracaoDiasPeriodo; i++) {
+    const diaAtual = new Date(inicio);
+    diaAtual.setDate(diaAtual.getDate() + i);
+    const chave = chaveDia(diaAtual);
+    const v = porDiaNegocio.get(chave) ?? { entradas: 0, saidas: 0 };
+    saldoAcumuladoNegocio += v.entradas - v.saidas;
+    dadosFluxoCaixa.push({
+      dataIso: chave,
+      label: String(diaAtual.getDate()).padStart(2, "0"),
+      entradas: v.entradas,
+      saidas: v.saidas,
+      saldoAcumulado: saldoAcumuladoNegocio,
+      anterior: mostrarComparativoAnterior ? saldoPorIndiceAnterior.get(i) ?? null : null
+    });
+  }
 
   // VGH (Valor Geral de Honorários): soma de valor_transacao x porc_honorario
   // de TODA transação assinada no período (Compra e Venda + Locação, é o que
@@ -585,6 +686,10 @@ export default async function DashboardPage({
             Aplicar
           </button>
         </form>
+      </div>
+
+      <div className="bg-white border border-gray-200 rounded-xl p-4 mb-5">
+        <GraficoFluxoCaixa dados={dadosFluxoCaixa} mostrarComparativoAnterior={mostrarComparativoAnterior} />
       </div>
 
       <div className="bg-white border border-gray-200 rounded-xl p-4 mb-5">

@@ -78,7 +78,7 @@ export function FinanceiroForm({
 }) {
   const [tipo, setTipo] = useState<"Despesa" | "Recebimento">("Despesa");
   const [categoriaId, setCategoriaId] = useState("");
-  const [formaPagamento, setFormaPagamento] = useState<"À vista" | "Parcelado">("À vista");
+  const [formaPagamento, setFormaPagamento] = useState<"À vista" | "Parcelado" | "Recorrente">("À vista");
   const [pago, setPago] = useState(false);
 
   const [valor, setValor] = useState("");
@@ -267,11 +267,12 @@ export function FinanceiroForm({
     setListaProprietarioAberta(false);
   }
 
-  // Aqui "Valor" é sempre o valor total da dívida (à vista ou parcelada) —
-  // no modo Parcelado, o valor de cada parcela é o total dividido pela
-  // quantidade informada, não um valor digitado à parte. O preview abaixo é
-  // só ilustrativo; quem calcula de verdade (com o resto da divisão jogado
-  // na última parcela) é criarMovimentacaoAction, no servidor.
+  // No modo Parcelado, "Valor" é o total da dívida — cada parcela é o total
+  // dividido pela quantidade informada (resto jogado na última), não um
+  // valor digitado à parte. Já no modo Recorrência, "Valor" é o valor de
+  // CADA lançamento — não divide nada, só repete o mesmo valor em N meses
+  // (ex.: uma taxa fixa cobrada todo mês). O preview abaixo é só ilustrativo;
+  // quem calcula de verdade é criarMovimentacaoAction, no servidor.
   const valorTotalNum = Number(valor.replace(/\./g, "").replace(",", ".")) || 0;
   const parcelasNum = Number(parcelasQtd) || 0;
   const valorParcelaPreview = parcelasNum > 0 ? valorTotalNum / parcelasNum : null;
@@ -545,10 +546,19 @@ export function FinanceiroForm({
           >
             Parcelado
           </button>
+          <button
+            type="button"
+            onClick={() => setFormaPagamento("Recorrente")}
+            className={`text-xs px-4 py-2 rounded-lg border font-semibold ${
+              formaPagamento === "Recorrente" ? "bg-primary text-white border-primary" : "border-gray-200 text-gray-600 bg-white"
+            }`}
+          >
+            Recorrência
+          </button>
           <input type="hidden" name="forma_pagamento" value={formaPagamento} />
         </div>
 
-        {formaPagamento === "À vista" ? (
+        {formaPagamento === "À vista" && (
           <div className="grid md:grid-cols-2 gap-3">
             <div>
               <label className={LABEL}>Valor</label>
@@ -566,7 +576,9 @@ export function FinanceiroForm({
               <input className={CAMPO} type="date" name="vencimento" defaultValue={hojeInputDate()} required />
             </div>
           </div>
-        ) : (
+        )}
+
+        {formaPagamento === "Parcelado" && (
           <div className="grid md:grid-cols-3 gap-3">
             <div>
               <label className={LABEL}>Valor total da dívida</label>
@@ -599,6 +611,44 @@ export function FinanceiroForm({
               <p className="text-[11px] text-gray-500 md:col-span-3">
                 {parcelasQtd || 0} parcelas de {formatMoeda(valorParcelaPreview)} (a última pode variar poucos centavos
                 por causa do arredondamento), uma por mês a partir do vencimento informado.
+              </p>
+            )}
+          </div>
+        )}
+
+        {formaPagamento === "Recorrente" && (
+          <div className="grid md:grid-cols-3 gap-3">
+            <div>
+              <label className={LABEL}>Valor (repete em cada mês)</label>
+              <input
+                className={CAMPO}
+                name="valor"
+                value={valor}
+                onChange={(e) => setValor(e.target.value)}
+                placeholder="0,00"
+                required
+              />
+            </div>
+            <div>
+              <label className={LABEL}>Quantos meses</label>
+              <input
+                className={CAMPO}
+                name="parcelas"
+                type="number"
+                min={2}
+                value={parcelasQtd}
+                onChange={(e) => setParcelasQtd(e.target.value)}
+                required
+              />
+            </div>
+            <div>
+              <label className={LABEL}>Vencimento da 1ª ocorrência</label>
+              <input className={CAMPO} type="date" name="vencimento" defaultValue={hojeInputDate()} required />
+            </div>
+            {parcelasNum > 0 && (
+              <p className="text-[11px] text-gray-500 md:col-span-3">
+                {parcelasNum} lançamentos de {formatMoeda(valorTotalNum)} cada (mesmo valor todas as vezes, não
+                divide), um por mês a partir do vencimento informado — total de {formatMoeda(valorTotalNum * parcelasNum)}.
               </p>
             )}
           </div>

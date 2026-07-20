@@ -581,7 +581,7 @@ CREATE TABLE movimentacoes (
   pagamento_id                UUID REFERENCES pagamentos(id),
   descricao                   TEXT,
   valor                        NUMERIC(14,2) NOT NULL,
-  forma_pagamento              TEXT CHECK (forma_pagamento IN ('À vista','Parcelado')),
+  forma_pagamento              TEXT CHECK (forma_pagamento IN ('À vista','Parcelado','Recorrente')),
   parcelas                     SMALLINT,
   num_parcela                  SMALLINT,
   id_parcelamento              UUID,   -- agrupa as parcelas de um mesmo lançamento recorrente

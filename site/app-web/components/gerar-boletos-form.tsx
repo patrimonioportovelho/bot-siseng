@@ -124,12 +124,12 @@ export function GerarBoletosForm({
     setLinhas((prev) => prev.filter((_, i) => i !== indice));
   }
 
-  // Linha extra manual — com opção de Recorrência pra quando a movimentação
-  // vier parcelada (ex.: um acordo de 12x). Ligando a Recorrência e
-  // informando a quantidade, divide o Valor total em N parcelas (mesma conta
-  // em centavos de criarMovimentacaoAction, resto na última) e lança uma
-  // linha por mês a partir do Vencimento informado — igual ao parcelamento
-  // do Financeiro.
+  // Linha extra manual — com opção de Recorrência pra quando a mesma cobrança
+  // se repete por vários meses (ex.: uma taxa fixa lançada por 12 meses
+  // seguidos). Diferente do Parcelado do Financeiro (que DIVIDE um valor
+  // total em N pedaços), a Recorrência aqui REPETE o mesmo Valor informado
+  // em cada uma das N linhas, uma por mês a partir do Vencimento — dividir
+  // um valor total em parcelas só fica disponível lá no Financeiro.
   const [novaLinha, setNovaLinha] = useState({
     categoriaId: "",
     descricao: "",
@@ -140,24 +140,17 @@ export function GerarBoletosForm({
   });
 
   function adicionarLinhaExtra() {
-    const valorTotal = valorEditavelParaDecimal(novaLinha.valorTexto) ?? 0;
     const qtd = novaLinha.recorrente ? Math.max(1, Number(novaLinha.parcelasTexto) || 1) : 1;
-
-    const totalCentavos = Math.round(valorTotal * 100);
-    const baseCentavos = Math.floor(totalCentavos / qtd);
-    const restoCentavos = totalCentavos - baseCentavos * qtd;
-
     const categoriaId = novaLinha.categoriaId || categorias.find((c) => c.nome === CATEGORIA_MENSAL)?.id || "";
 
     const novasLinhas: Linha[] = Array.from({ length: qtd }, (_, indice) => {
       const i = indice + 1;
-      const vencimentoParcela = i === 1 ? novaLinha.vencimento : somarMeses(novaLinha.vencimento, i - 1) || novaLinha.vencimento;
-      const valorParcela = (baseCentavos + (i === qtd ? restoCentavos : 0)) / 100;
+      const vencimentoOcorrencia = i === 1 ? novaLinha.vencimento : somarMeses(novaLinha.vencimento, i - 1) || novaLinha.vencimento;
       return {
         categoriaId,
-        rotulo: qtd > 1 ? `Extra — parcela ${i}/${qtd}` : "Extra",
-        valorTexto: formatValorEditavel(valorParcela),
-        vencimento: vencimentoParcela,
+        rotulo: qtd > 1 ? `Extra — recorrência ${i}/${qtd}` : "Extra",
+        valorTexto: novaLinha.valorTexto,
+        vencimento: vencimentoOcorrencia,
         descricao: novaLinha.descricao
       };
     });
@@ -309,7 +302,7 @@ export function GerarBoletosForm({
           />
         </div>
         <div>
-          <label className={LABEL}>{novaLinha.recorrente ? "Valor total da dívida" : "Valor"}</label>
+          <label className={LABEL}>{novaLinha.recorrente ? "Valor (repete em cada mês)" : "Valor"}</label>
           <input
             className={CAMPO}
             placeholder="0,00"
@@ -318,7 +311,7 @@ export function GerarBoletosForm({
           />
         </div>
         <div>
-          <label className={LABEL}>{novaLinha.recorrente ? "Vencimento da 1ª parcela" : "Vencimento"}</label>
+          <label className={LABEL}>{novaLinha.recorrente ? "Vencimento da 1ª ocorrência" : "Vencimento"}</label>
           <input
             type="date"
             className={CAMPO}
@@ -341,11 +334,11 @@ export function GerarBoletosForm({
               checked={novaLinha.recorrente}
               onChange={(e) => setNovaLinha((a) => ({ ...a, recorrente: e.target.checked }))}
             />
-            Recorrência (recebemos parcelado)
+            Recorrência (mesmo valor todo mês)
           </label>
           {novaLinha.recorrente && (
             <>
-              <label className="text-xs text-gray-600">Quantas parcelas</label>
+              <label className="text-xs text-gray-600">Quantos meses</label>
               <input
                 type="number"
                 min={2}
@@ -354,8 +347,8 @@ export function GerarBoletosForm({
                 onChange={(e) => setNovaLinha((a) => ({ ...a, parcelasTexto: e.target.value }))}
               />
               <span className="text-[11px] text-gray-400">
-                Divide o valor total em N parcelas iguais (resto na última) — uma por mês a partir do vencimento
-                acima.
+                Lança o mesmo valor em N meses seguidos, a partir do vencimento acima (não divide — pra dividir um
+                valor total em parcelas, use o Financeiro).
               </span>
             </>
           )}

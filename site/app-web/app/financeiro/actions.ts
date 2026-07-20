@@ -40,9 +40,12 @@ function data(formData: FormData, campo: string): Date | null {
 }
 
 // Cadastro de uma nova movimentação (Despesa ou Recebimento). À vista gera
-// uma única linha; Parcelado gera N linhas (uma por parcela), cada uma 1 mês
-// depois da anterior a partir do Vencimento informado — ex.: vencimento
-// 07/07 com 12 parcelas gera 07/07, 07/08, 07/09 ... até a 12ª.
+// uma única linha; Parcelado gera N linhas dividindo o Valor total em N
+// pedaços (uma por parcela, 1 mês depois da anterior a partir do Vencimento
+// informado — ex.: vencimento 07/07 com 12 parcelas gera 07/07, 07/08,
+// 07/09 ... até a 12ª); Recorrente gera N linhas também mensais, mas
+// repetindo o mesmo Valor em cada uma (sem dividir) — pra cobrança fixa que
+// se repete por vários meses.
 export async function criarMovimentacaoAction(formData: FormData) {
   await requireAdminSession();
 
@@ -102,6 +105,39 @@ export async function criarMovimentacaoAction(formData: FormData) {
             valor: valorParcela,
             vencimento: vencimentoParcela,
             parcelas,
+            num_parcela: i,
+            id_parcelamento: idParcelamento,
+            pago: false
+          }
+        })
+        .catch((erro) => registrarEJogarErro({ entidadeTipo: "movimentacoes", acao: "criar", erro }));
+      idsCriados.push(criada.id);
+    }
+  } else if (formaPagamento === "Recorrente") {
+    // Diferente do Parcelado acima (que DIVIDE um valor total em N pedaços),
+    // a Recorrência REPETE o mesmo Valor informado em cada uma das N
+    // ocorrências — ex.: uma taxa fixa de R$ 50 lançada todo mês por 12
+    // meses. Mesma cadência mensal e o mesmo agrupamento por id_parcelamento
+    // do Parcelado, só sem a conta de divisão/resto.
+    const repeticoes = inteiro(formData, "parcelas");
+    const valorUnico = valorMonetario(formData, "valor");
+    if (!repeticoes || repeticoes < 1 || !valorUnico) {
+      throw new Error("Informe o valor e a quantidade de meses.");
+    }
+
+    const idParcelamento = randomUUID();
+
+    for (let i = 1; i <= repeticoes; i++) {
+      const vencimentoOcorrenciaTexto = i === 1 ? vencimentoBase : somarMeses(vencimentoBase, i - 1) || vencimentoBase;
+      const vencimentoOcorrencia = new Date(vencimentoOcorrenciaTexto + "T00:00:00");
+
+      const criada = await prisma.movimentacoes
+        .create({
+          data: {
+            ...base,
+            valor: valorUnico,
+            vencimento: vencimentoOcorrencia,
+            parcelas: repeticoes,
             num_parcela: i,
             id_parcelamento: idParcelamento,
             pago: false

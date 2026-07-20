@@ -132,6 +132,8 @@ export async function criarAvaliacaoAction(formData: FormData) {
     .create({ data: { ...campos, status: campos.status ?? "Montagem de processo" } })
     .catch((erro) => registrarEJogarErro({ entidadeTipo: "avaliacoes", acao: "criar", erro }));
 
+  await sincronizarCoTitulares(novo.id, formData);
+
   await logAlteracao({
     entidadeTipo: "avaliacoes",
     entidadeId: novo.id,
@@ -168,6 +170,8 @@ export async function atualizarAvaliacaoAction(formData: FormData) {
   const depois = await prisma.avaliacoes
     .update({ where: { id }, data: campos })
     .catch((erro) => registrarEJogarErro({ entidadeTipo: "avaliacoes", entidadeId: id, acao: "editar", erro }));
+
+  await sincronizarCoTitulares(id, formData);
 
   await logAlteracao({
     entidadeTipo: "avaliacoes",
@@ -208,6 +212,30 @@ export async function apagarAvaliacaoAction(formData: FormData) {
 
   revalidatePath("/financiamento");
   redirect("/financiamento?excluido=1");
+}
+
+// Análise de crédito muitas vezes é conjunta (cônjuge, por exemplo) — além do
+// titular principal (avaliacoes.cliente_id), a avaliação pode ter N
+// co-titulares extras. A lista vem do formulário como vários campos
+// "cotitular_id" repetidos (mesmo padrão de sincronizarProprietarios em
+// app/imoveis/actions.ts) — apaga os vínculos atuais e recria na ordem em
+// que foram adicionados no formulário.
+async function sincronizarCoTitulares(avaliacaoId: string, formData: FormData) {
+  const ids = formData
+    .getAll("cotitular_id")
+    .map((v) => String(v).trim())
+    .filter((v) => v.length > 0);
+
+  await prisma.$transaction([
+    prisma.avaliacoes_clientes.deleteMany({ where: { avaliacao_id: avaliacaoId } }),
+    ...(ids.length > 0
+      ? [
+          prisma.avaliacoes_clientes.createMany({
+            data: ids.map((clienteId, ordem) => ({ avaliacao_id: avaliacaoId, cliente_id: clienteId, ordem }))
+          })
+        ]
+      : [])
+  ]);
 }
 
 // ==================== Andamento ====================

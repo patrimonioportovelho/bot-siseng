@@ -328,6 +328,20 @@ COMMENT ON COLUMN andamentos.status_andamento IS
   '(StatusAndamento/StatusAndamentoCom) com lista aberta, por isso ficam sem CHECK — ver seção de status '
   'dinâmicos no README antes de travar valores fixos aqui.';
 
+-- Clientes adicionais vinculados a uma Avaliação além do titular
+-- (avaliacoes.cliente_id) — caso do cônjuge/co-titular na análise de
+-- crédito conjunta. Mesmo padrão de imoveis_proprietarios (seção 3).
+CREATE TABLE avaliacoes_clientes (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  avaliacao_id UUID NOT NULL REFERENCES avaliacoes(id) ON DELETE CASCADE,
+  cliente_id   UUID NOT NULL REFERENCES clientes(id),
+  ordem        SMALLINT NOT NULL DEFAULT 0,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (avaliacao_id, cliente_id)
+);
+CREATE INDEX idx_avaliacoes_clientes_avaliacao ON avaliacoes_clientes(avaliacao_id);
+CREATE INDEX idx_avaliacoes_clientes_cliente ON avaliacoes_clientes(cliente_id);
+
 CREATE TABLE lancamentos_financiamento (
   id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   id_legado          TEXT UNIQUE,

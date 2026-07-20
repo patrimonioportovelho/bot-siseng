@@ -131,9 +131,27 @@ model avaliacoes {
   bancos              bancos?      @relation(fields: [banco_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   clientes            clientes?    @relation(fields: [cliente_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   parceiros           parceiros?   @relation(fields: [parceiro_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  avaliacoes_clientes avaliacoes_clientes[]
 
   @@index([cliente_id], map: "idx_avaliacoes_cliente")
   @@index([parceiro_id], map: "idx_avaliacoes_parceiro")
+}
+
+/// Clientes adicionais vinculados a uma Avaliação além do titular
+/// (avaliacoes.cliente_id) — caso do cônjuge/co-titular na análise de
+/// crédito conjunta. Mesmo padrão de imoveis_proprietarios.
+model avaliacoes_clientes {
+  id           String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  avaliacao_id String     @db.Uuid
+  cliente_id   String     @db.Uuid
+  ordem        Int        @default(0) @db.SmallInt
+  created_at   DateTime   @default(now()) @db.Timestamptz(6)
+  avaliacoes   avaliacoes @relation(fields: [avaliacao_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  clientes     clientes   @relation(fields: [cliente_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([avaliacao_id, cliente_id])
+  @@index([avaliacao_id], map: "idx_avaliacoes_clientes_avaliacao")
+  @@index([cliente_id], map: "idx_avaliacoes_clientes_cliente")
 }
 
 model bancos {
@@ -240,6 +258,7 @@ model clientes {
   gestoes                                                gestoes[]
   propostas                                              propostas[]
   imoveis_proprietarios                                  imoveis_proprietarios[]
+  avaliacoes_clientes                                    avaliacoes_clientes[]
   pagamentos                                             pagamentos[]
   transacoes_contrapartes                                transacoes_contrapartes[]
   transacoes_transacoes_cliente_contraparte_idToclientes transacoes[]  @relation("transacoes_cliente_contraparte_idToclientes")

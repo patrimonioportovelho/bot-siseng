@@ -74,12 +74,14 @@ function Linha({ label, valor }: { label: string; valor: ReactNode }) {
 function Ficha({
   avaliacao,
   clienteNome,
+  cotitulares,
   bancoNome,
   parceiroNome,
   onEditar
 }: {
   avaliacao: AvaliacaoExistente;
   clienteNome: string | null;
+  cotitulares: Cliente[];
   bancoNome: string | null;
   parceiroNome: string | null;
   onEditar: () => void;
@@ -101,6 +103,9 @@ function Ficha({
       <Cartao titulo="Cliente e parceiro" acao={BotaoEditar}>
         <div className="grid md:grid-cols-2 gap-3">
           <Linha label="Cliente" valor={clienteNome} />
+          {cotitulares.length > 0 && (
+            <Linha label="Co-titulares (cônjuge / análise conjunta)" valor={cotitulares.map((c) => c.nome).join(", ")} />
+          )}
           <Linha label="Parceiro responsável" valor={parceiroNome} />
           <Linha label="Telefone" valor={a.telefone ? formatTelefone(a.telefone) : null} />
           <Linha label="CPF" valor={a.cpf ? formatCpf(a.cpf) : null} />
@@ -151,12 +156,14 @@ function Ficha({
 export function AvaliacaoForm({
   avaliacao,
   clientes,
+  cotitularesIniciais,
   bancos,
   parceiros,
   action
 }: {
   avaliacao: AvaliacaoExistente | null;
   clientes: Cliente[];
+  cotitularesIniciais?: Cliente[];
   bancos: Banco[];
   parceiros: Parceiro[];
   action: (formData: FormData) => void;
@@ -188,11 +195,37 @@ export function AvaliacaoForm({
   const telefoneRef = useRef<HTMLInputElement>(null);
   const cpfRef = useRef<HTMLInputElement>(null);
 
+  // Análise de crédito conjunta (cônjuge, por exemplo): além do cliente
+  // titular acima, aceita adicionar outros clientes à avaliação — mesmo
+  // padrão de "proprietarios" em imovel-form.tsx (lista client-side + campos
+  // ocultos repetidos, sincronizada de vez no servidor ao salvar).
+  const [cotitulares, setCotitulares] = useState<Cliente[]>(cotitularesIniciais ?? []);
+  const [buscaCotitular, setBuscaCotitular] = useState("");
+  const [listaCotitularAberta, setListaCotitularAberta] = useState(false);
+
   const clientesFiltrados = useMemo(() => {
     const t = buscaCliente.trim().toLowerCase();
     if (!t) return clientes.slice(0, 50);
     return clientes.filter((c) => c.nome.toLowerCase().includes(t));
   }, [buscaCliente, clientes]);
+
+  const cotitularesFiltrados = useMemo(() => {
+    const t = buscaCotitular.trim().toLowerCase();
+    const idsExcluidos = new Set([clienteId, ...cotitulares.map((c) => c.id)].filter(Boolean));
+    const disponiveis = clientes.filter((c) => !idsExcluidos.has(c.id));
+    if (!t) return disponiveis.slice(0, 30);
+    return disponiveis.filter((c) => c.nome.toLowerCase().includes(t)).slice(0, 30);
+  }, [buscaCotitular, clientes, cotitulares, clienteId]);
+
+  function adicionarCotitular(c: Cliente) {
+    setCotitulares((atual) => [...atual, c]);
+    setBuscaCotitular("");
+    setListaCotitularAberta(false);
+  }
+
+  function removerCotitular(id: string) {
+    setCotitulares((atual) => atual.filter((c) => c.id !== id));
+  }
 
   // Selecionar um cliente já cadastrado preenche Parceiro responsável,
   // Telefone e CPF direto do cadastro dele — evita redigitar o que já existe.
@@ -222,6 +255,7 @@ export function AvaliacaoForm({
       <Ficha
         avaliacao={a}
         clienteNome={clienteAtual?.nome ?? null}
+        cotitulares={cotitularesIniciais ?? []}
         bancoNome={bancoAtual?.nome ?? null}
         parceiroNome={parceiroAtual?.nome ?? null}
         onEditar={() => setModoEdicao(true)}
@@ -236,6 +270,9 @@ export function AvaliacaoForm({
       {a && <input type="hidden" name="avaliacaoId" value={a.id} />}
       <input type="hidden" name="cliente_id" value={clienteId} />
       <input type="hidden" name="cliente_nome_busca" value={buscaCliente} />
+      {cotitulares.map((c) => (
+        <input key={c.id} type="hidden" name="cotitular_id" value={c.id} />
+      ))}
 
       <div className="bg-white border border-gray-200 rounded-xl p-4">
         <div className="text-sm font-bold text-gray-800 mb-3">Cliente e parceiro</div>
@@ -310,6 +347,61 @@ export function AvaliacaoForm({
               placeholder="000.000.000-00"
               defaultValue={a?.cpf ? formatCpf(a.cpf) : ""}
             />
+          </div>
+        </div>
+
+        <div className="mt-4 pt-3 border-t border-gray-100">
+          <label className={LABEL}>
+            Co-titulares (cônjuge / análise conjunta){" "}
+            <span className="text-[11px] text-gray-400 font-normal">— opcional, quando o crédito é analisado em conjunto</span>
+          </label>
+          {cotitulares.length > 0 && (
+            <div className="flex flex-col gap-1.5 mb-2">
+              {cotitulares.map((c) => (
+                <div
+                  key={c.id}
+                  className="flex items-center justify-between gap-2 bg-gray-50 border border-gray-100 rounded-lg px-3 py-1.5"
+                >
+                  <span className="text-xs text-gray-800 font-medium">{c.nome}</span>
+                  <button
+                    type="button"
+                    onClick={() => removerCotitular(c.id)}
+                    className="text-[11px] text-red-600 hover:underline font-semibold"
+                  >
+                    Remover
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="relative">
+            <input
+              className={CAMPO}
+              placeholder="Buscar cliente já cadastrado para adicionar..."
+              value={buscaCotitular}
+              onChange={(e) => {
+                setBuscaCotitular(e.target.value);
+                setListaCotitularAberta(true);
+              }}
+              onFocus={() => setListaCotitularAberta(true)}
+              onBlur={() => setTimeout(() => setListaCotitularAberta(false), 150)}
+            />
+            {listaCotitularAberta && (
+              <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-lg max-h-48 overflow-auto shadow-lg">
+                {cotitularesFiltrados.length === 0 && <p className="text-xs text-gray-400 p-3">Nenhum cliente encontrado.</p>}
+                {cotitularesFiltrados.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onMouseDown={() => adicionarCotitular(c)}
+                    className="block w-full text-left text-xs px-3 py-2 border-b border-gray-50 last:border-0 hover:bg-gray-50 text-gray-700"
+                  >
+                    {c.nome}
+                    {c.cpf ? ` — ${formatCpf(c.cpf)}` : ""}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>

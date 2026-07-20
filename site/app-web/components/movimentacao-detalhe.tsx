@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { FinanceiroEditarForm } from "@/components/financeiro-editar-form";
+import { BotaoComConfirmacao } from "@/components/botao-com-confirmacao";
 import { formatMoeda, formatDataCalendario } from "@/lib/format";
 
 type CategoriaOpcao = { id: string; nome: string; tipo: string | null };
@@ -106,21 +107,14 @@ export function MovimentacaoDetalhe({
           >
             Editar
           </button>
-          <form
-            action={excluirAction}
-            onSubmit={(e) => {
-              if (!window.confirm("Excluir esta movimentação de vez? Essa ação não pode ser desfeita.")) {
-                e.preventDefault();
-              }
-            }}
-          >
+          <form action={excluirAction}>
             <input type="hidden" name="movimentacaoId" value={m.id} />
-            <button
-              type="submit"
+            <BotaoComConfirmacao
+              mensagem="Excluir esta movimentação de vez? Essa ação não pode ser desfeita."
               className="text-xs border border-red-200 text-red-600 rounded-lg px-3 py-1.5 font-semibold hover:bg-red-50"
             >
               Excluir
-            </button>
+            </BotaoComConfirmacao>
           </form>
         </div>
       </div>

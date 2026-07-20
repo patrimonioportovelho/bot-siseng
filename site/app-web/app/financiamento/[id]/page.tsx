@@ -31,7 +31,15 @@ export default async function AvaliacaoDetalhePage({
 
   const avaliacao = await prisma.avaliacoes.findUnique({
     where: { id },
-    include: { clientes: true, bancos: true, parceiros: true }
+    include: {
+      clientes: true,
+      bancos: true,
+      parceiros: true,
+      avaliacoes_clientes: {
+        orderBy: { ordem: "asc" },
+        include: { clientes: { select: { id: true, nome: true, cpf: true, telefone: true, parceiro_id: true } } }
+      }
+    }
   });
 
   if (!avaliacao || avaliacao.excluido) notFound();
@@ -124,7 +132,14 @@ export default async function AvaliacaoDetalhePage({
         {avaliacao.parceiros?.nome && <> · Parceiro: {avaliacao.parceiros.nome}</>}
       </div>
 
-      <AvaliacaoForm avaliacao={avaliacao} clientes={clientes} bancos={bancos} parceiros={parceiros} action={atualizarAvaliacaoAction} />
+      <AvaliacaoForm
+        avaliacao={avaliacao}
+        clientes={clientes}
+        cotitularesIniciais={avaliacao.avaliacoes_clientes.map((v) => v.clientes)}
+        bancos={bancos}
+        parceiros={parceiros}
+        action={atualizarAvaliacaoAction}
+      />
 
       {/* Andamento só faz sentido depois que o crédito foi Aprovado — é
           quando a avaliação vira negócio de verdade. Se já existe algum

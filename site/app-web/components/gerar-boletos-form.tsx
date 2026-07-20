@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { formatMoeda, formatValorEditavel, valorEditavelParaDecimal, hojeInputDate, somarMeses } from "@/lib/format";
+import { BotaoComConfirmacao } from "@/components/botao-com-confirmacao";
 
 type CategoriaOpcao = { id: string; nome: string };
 
@@ -363,20 +364,18 @@ export function GerarBoletosForm({
         <form
           action={action}
           onSubmit={(e) => {
-            if (linhas.length === 0) {
-              e.preventDefault();
-              return;
-            }
-            if (!window.confirm(`Gerar ${linhas.length} movimentação(ões) conforme a prévia acima?`)) {
-              e.preventDefault();
-            }
+            if (linhas.length === 0) e.preventDefault();
           }}
         >
           <input type="hidden" name="transacao_id" value={transacao.id} />
           <input type="hidden" name="linhas" value={JSON.stringify(linhasParaEnviar)} />
-          <button type="submit" className="text-xs bg-primary text-white rounded-lg px-5 py-2 font-semibold">
+          <BotaoComConfirmacao
+            mensagem={`Gerar ${linhas.length} movimentação(ões) conforme a prévia acima?`}
+            className="text-xs bg-primary text-white rounded-lg px-5 py-2 font-semibold"
+            onClickAntes={() => linhas.length > 0}
+          >
             Confirmar e gerar movimentação
-          </button>
+          </BotaoComConfirmacao>
         </form>
       </div>
     </div>

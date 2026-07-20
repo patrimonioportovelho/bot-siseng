@@ -676,15 +676,31 @@ COMMENT ON TABLE documentos_gerados IS 'Auditoria nativa de geração de documen
 -- 8. METAS E DESEMPENHO DE PARCEIROS (novo módulo, não existia no AppSheet)
 -- ============================================================
 
+-- tipo_meta e unidade abaixo refletem o catálogo real em
+-- site/app-web/lib/metas/opcoes.ts (TIPOS_META) — os dois têm que ficar
+-- sincronizados manualmente; se um tipo de meta novo for adicionado lá,
+-- os dois CHECKs abaixo (metas_tipo_meta_check, metas_unidade_check)
+-- precisam ser alterados aqui também, senão o cadastro quebra (já
+-- aconteceu: esta tabela chegou a ser criada com um catálogo antigo,
+-- de antes da implementação real, e nunca foi atualizada — toda meta
+-- nova violava os dois CHECKs).
 CREATE TABLE metas (
   id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  parceiro_id             UUID REFERENCES parceiros(id),   -- NULL = meta agregada da loja inteira
+  -- NULL = meta Geral (soma de todos os corretores). Combinado com
+  -- loja_id também NULL ("Todas as lojas"), vira uma meta da imobiliária
+  -- inteira — por isso NÃO existe CHECK exigindo parceiro_id ou loja_id
+  -- preenchido; os dois nulos ao mesmo tempo é um caso válido.
+  parceiro_id             UUID REFERENCES parceiros(id),
   loja_id                 UUID REFERENCES lojas(id),
   tipo_meta               TEXT NOT NULL CHECK (tipo_meta IN (
-                              'Vendas_Fechadas','Locacoes_Fechadas','Honorarios_Recebidos',
-                              'Captacoes_Imovel','Avaliacoes_Aprovadas','Novos_Clientes'
+                              'imoveis_captados','vendas_fechadas','valor_vendas','locacoes_fechadas',
+                              'administracoes_captadas','administracoes_locadas','creditos_aprovados',
+                              'consultas_cpf','clientes_cadastrados'
                           )),
-  unidade                 TEXT NOT NULL CHECK (unidade IN ('Valor (R$)','Quantidade')),
+  unidade                 TEXT NOT NULL CHECK (unidade IN (
+                              'imóvel','venda','valor (R$)','locação','administração','crédito',
+                              'consulta','cliente'
+                          )),
   periodo_tipo            TEXT NOT NULL CHECK (periodo_tipo IN ('Mensal','Trimestral','Semestral','Anual')),
   periodo_inicio          DATE NOT NULL,
   periodo_fim             DATE NOT NULL,
@@ -693,8 +709,7 @@ CREATE TABLE metas (
   criado_por_usuario_id   UUID REFERENCES usuarios(id),
   created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
-  CHECK (periodo_fim >= periodo_inicio),
-  CHECK (parceiro_id IS NOT NULL OR loja_id IS NOT NULL)
+  CHECK (periodo_fim >= periodo_inicio)
 );
 CREATE INDEX idx_metas_parceiro ON metas(parceiro_id);
 CREATE INDEX idx_metas_loja ON metas(loja_id);
@@ -702,63 +717,11 @@ CREATE INDEX idx_metas_periodo ON metas(periodo_inicio, periodo_fim);
 CREATE TRIGGER trg_metas_updated_at BEFORE UPDATE ON metas
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 COMMENT ON TABLE metas IS
-  'Metas individuais (por corretor) ou coletivas (por loja) de vendas, locações, honorários, '
-  'captação de imóveis, avaliações aprovadas ou novos clientes. O valor realizado NÃO é armazenado '
-  'aqui — é sempre calculado ao vivo pela view vw_metas_progresso, para nunca ficar dessincronizado '
-  'dos dados reais de transacoes/pagamentos/imoveis/avaliacoes/clientes.';
-
--- View: progresso de cada meta, calculado dinamicamente a partir dos dados operacionais.
-CREATE VIEW vw_metas_progresso AS
-SELECT
-  m.*,
-  CASE m.tipo_meta
-    WHEN 'Vendas_Fechadas' THEN (
-      SELECT CASE WHEN m.unidade = 'Valor (R$)' THEN COALESCE(SUM(t.valor_transacao),0) ELSE COUNT(*) END
-      FROM transacoes t
-      WHERE t.tipo = 'Compra e Venda'
-        AND t.data_assinatura BETWEEN m.periodo_inicio AND m.periodo_fim
-        AND (m.parceiro_id IS NULL OR t.corretor_proprietario_id = m.parceiro_id OR t.corretor_contraparte_id = m.parceiro_id)
-        AND (m.loja_id IS NULL OR t.loja_id = m.loja_id)
-    )
-    WHEN 'Locacoes_Fechadas' THEN (
-      SELECT CASE WHEN m.unidade = 'Valor (R$)' THEN COALESCE(SUM(t.valor_transacao),0) ELSE COUNT(*) END
-      FROM transacoes t
-      WHERE t.tipo = 'Locação'
-        AND t.data_assinatura BETWEEN m.periodo_inicio AND m.periodo_fim
-        AND (m.parceiro_id IS NULL OR t.corretor_proprietario_id = m.parceiro_id OR t.corretor_contraparte_id = m.parceiro_id)
-        AND (m.loja_id IS NULL OR t.loja_id = m.loja_id)
-    )
-    WHEN 'Honorarios_Recebidos' THEN (
-      SELECT COALESCE(SUM(p.valor_parceiro),0)
-      FROM pagamentos p
-      WHERE p.status = 'Pago'
-        AND p.data_pagamento BETWEEN m.periodo_inicio AND m.periodo_fim
-        AND (m.parceiro_id IS NULL OR p.parceiro_id = m.parceiro_id)
-    )
-    WHEN 'Captacoes_Imovel' THEN (
-      SELECT COUNT(*)
-      FROM imoveis i
-      WHERE i.data_cadastro BETWEEN m.periodo_inicio AND m.periodo_fim
-        AND (m.parceiro_id IS NULL OR i.parceiro_id = m.parceiro_id)
-    )
-    WHEN 'Avaliacoes_Aprovadas' THEN (
-      SELECT COUNT(*)
-      FROM avaliacoes a
-      WHERE a.status = 'Aprovado'
-        AND a.data_avaliacao BETWEEN m.periodo_inicio AND m.periodo_fim
-        AND (m.parceiro_id IS NULL OR a.parceiro_id = m.parceiro_id)
-    )
-    WHEN 'Novos_Clientes' THEN (
-      SELECT COUNT(*)
-      FROM clientes c
-      WHERE c.data_cadastro BETWEEN m.periodo_inicio AND m.periodo_fim
-        AND (m.parceiro_id IS NULL OR c.parceiro_id = m.parceiro_id)
-    )
-  END AS valor_realizado
-FROM metas m;
-COMMENT ON VIEW vw_metas_progresso IS
-  'Adiciona valor_realizado a cada meta. O percentual (realizado/meta*100) é calculado na aplicação '
-  'para poder aplicar as faixas de cor (verde >=100%, amarelo 70-99%, vermelho <70%) sem duplicar lógica em SQL.';
+  'Metas individuais (por corretor), por loja, ou Gerais (toda a imobiliária) de imóveis captados, '
+  'vendas/locações fechadas, administrações, créditos de financiamento e clientes cadastrados. '
+  'O valor realizado NÃO é armazenado aqui — é calculado ao vivo em TypeScript por '
+  'site/app-web/lib/metas/calculo.ts (calcularAlcancado/avaliarMeta), direto contra os dados '
+  'operacionais, pra nunca ficar dessincronizado. Não existe view de progresso no banco.';
 
 -- View: ranking do mês corrente entre corretores ativos (gamificação/leaderboard).
 CREATE VIEW vw_ranking_mes_atual AS

@@ -155,6 +155,20 @@ export async function calcularAlcancado(meta: MetaParaCalculo): Promise<number> 
 
 export type SituacaoMeta = "concluida" | "no_prazo" | "atencao" | "atrasada" | "vencida";
 
+// Classificação puramente cosmética (gamificação, pedido do usuário: "faça
+// que além de desafiador, divertido") — não é gravada em lugar nenhum, é só
+// derivada do percentual pra dar uma sensação de progresso tipo "subir de
+// nível", igual jogo. Diamante exige ter batido a meta de verdade (não é só
+// chegar perto).
+export type ClassificacaoMeta = "bronze" | "prata" | "ouro" | "diamante";
+
+function classificarMeta(percentual: number, concluida: boolean): ClassificacaoMeta {
+  if (concluida) return "diamante";
+  if (percentual >= 80) return "ouro";
+  if (percentual >= 50) return "prata";
+  return "bronze";
+}
+
 export type AvaliacaoMeta = {
   alcancado: number;
   alvo: number;
@@ -164,6 +178,13 @@ export type AvaliacaoMeta = {
   diasTotais: number | null;
   situacao: SituacaoMeta;
   mensagem: string;
+  classificacao: ClassificacaoMeta;
+  // Ritmo necessário DAQUI PRA FRENTE (não é a média do período inteiro) —
+  // quanto falta dividido pelos dias que restam, formatado pronto pra
+  // mostrar ("3 imóveis/dia"). Null quando já concluída/vencida ou quando a
+  // meta não tem prazo (diasRestantes null).
+  ritmoDiarioTexto: string | null;
+  ritmoSemanalTexto: string | null;
 };
 
 // Ritmo esperado: quantos % da meta já deveriam ter sido feitos até hoje,
@@ -179,7 +200,7 @@ function ritmoEsperadoPercentual(diasTotais: number, diasRestantes: number): num
 // Formata uma quantidade (natureza "valor" vira R$, "quantidade" vira
 // "N unidade(s)" com plural correto do português, sem tentar regra
 // genérica — cada tipo já traz singular/plural certos em opcoes.ts).
-function formatarQuantidade(valor: number, opcao: ReturnType<typeof tipoMetaOpcao>): string {
+export function formatarQuantidade(valor: number, opcao: ReturnType<typeof tipoMetaOpcao>): string {
   if (!opcao) return String(valor);
   if (opcao.natureza === "valor") return formatMoeda(valor);
   const inteiro = Math.round(valor);
@@ -237,5 +258,24 @@ export function avaliarMeta(meta: MetaParaCalculo, alcancado: number): Avaliacao
       : `Faltam ${faltaTexto} — você está atrás do ritmo. Priorize ${acao}.`;
   }
 
-  return { alcancado, alvo, percentual, falta, diasRestantes, diasTotais, situacao, mensagem };
+  // Ritmo necessário só faz sentido enquanto ainda dá pra agir — com a meta
+  // já concluída ou o prazo vencido, mostrar "quanto por dia" só confundiria.
+  const podeCalcularRitmo = !concluida && situacao !== "vencida" && diasRestantes !== null && diasRestantes > 0;
+  const ritmoDiarioTexto = podeCalcularRitmo ? formatarQuantidade(falta / diasRestantes!, opcao) : null;
+  const ritmoSemanalTexto = podeCalcularRitmo ? formatarQuantidade((falta / diasRestantes!) * 7, opcao) : null;
+  const classificacao = classificarMeta(percentual, concluida);
+
+  return {
+    alcancado,
+    alvo,
+    percentual,
+    falta,
+    diasRestantes,
+    diasTotais,
+    situacao,
+    mensagem,
+    classificacao,
+    ritmoDiarioTexto,
+    ritmoSemanalTexto
+  };
 }

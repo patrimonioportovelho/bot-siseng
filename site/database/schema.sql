@@ -86,7 +86,8 @@ CREATE TABLE parceiros (
   empresa                 TEXT,
   funcao                  TEXT NOT NULL CHECK (funcao IN (
                               'Administrativo','Corretor','Corretor Estagiário','Parceiro Externa',
-                              'Corretor Externo','Imobiliária Externa','Prestador de Serviço','Desligado'
+                              'Corretor Externo','Imobiliária Externa','Prestador de Serviço',
+                              'Avaliador Bancário','Desligado'
                           )),
   loja_id                 UUID REFERENCES lojas(id),   -- só se aplica quando funcao IN ('Corretor','Corretor Estagiário')
   status_funcao           TEXT NOT NULL DEFAULT 'Ativo' CHECK (status_funcao IN ('Ativo','Inativo','Excluído')),
@@ -119,6 +120,12 @@ CREATE INDEX idx_parceiros_nome ON parceiros(nome);
 CREATE TRIGGER trg_parceiros_updated_at BEFORE UPDATE ON parceiros
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 COMMENT ON TABLE parceiros IS 'Cadastro amplo: corretores internos, estagiários, prestadores de serviço, administrativo, corretores/imobiliárias parceiras externas. Nem todo parceiro tem login (ver usuarios).';
+COMMENT ON COLUMN parceiros.funcao IS
+  'Ao adicionar um novo valor aqui, atualizar também: (1) o CHECK constraint acima e o CHECK live no '
+  'Supabase (podem ficar dessincronizados — ver histórico de bugs desse tipo no README/CLAUDE.md); '
+  '(2) lib/parceiros/opcoes.ts (FUNCOES_EQUIPE/FUNCOES_EXTERNAS), que alimenta o <select> do formulário. '
+  '''Avaliador Bancário'' é um cadastro de referência (banco de dados dos avaliadores de cada banco '
+  'parceiro, ver andamentos.avaliador_id) — não precisa de login/acesso ao sistema.';
 
 CREATE TABLE usuarios (
   id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -301,11 +308,17 @@ CREATE TABLE andamentos (
   valor_financiado               NUMERIC(14,2),
   observacao                     TEXT,
   data_conclusao                 DATE,
+  -- Avaliador bancário responsável por esta avaliação/andamento — parceiro
+  -- com funcao = 'Avaliador Bancário' (ver comentário na tabela parceiros).
+  -- É só um cadastro de referência (banco de dados dos avaliadores de cada
+  -- banco parceiro), não precisa de login/acesso ao sistema.
+  avaliador_id                   UUID REFERENCES parceiros(id),
   created_at                     TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at                     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX idx_andamentos_avaliacao ON andamentos(avaliacao_id);
 CREATE INDEX idx_andamentos_imovel ON andamentos(imovel_id);
+CREATE INDEX idx_andamentos_avaliador ON andamentos(avaliador_id);
 CREATE TRIGGER trg_andamentos_updated_at BEFORE UPDATE ON andamentos
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 COMMENT ON COLUMN andamentos.status_andamento IS

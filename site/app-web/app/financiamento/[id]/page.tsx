@@ -36,7 +36,7 @@ export default async function AvaliacaoDetalhePage({
 
   if (!avaliacao || avaliacao.excluido) notFound();
 
-  const [clientes, bancos, parceiros, imoveis, andamentos] = await Promise.all([
+  const [clientes, bancos, parceiros, avaliadores, imoveis, andamentos] = await Promise.all([
     prisma.clientes.findMany({
       where: { OR: [{ status_cadastro: null }, { status_cadastro: { not: "Arquivado" } }] },
       orderBy: { nome: "asc" },
@@ -44,6 +44,14 @@ export default async function AvaliacaoDetalhePage({
     }),
     prisma.bancos.findMany({ orderBy: { nome: "asc" } }),
     prisma.parceiros.findMany({ orderBy: { nome: "asc" }, select: { id: true, nome: true } }),
+    // Só parceiros com a função "Avaliador Bancário" — é o banco de dados
+    // dos avaliadores dos bancos parceiros (pedido do usuário), separado da
+    // lista geral de parceiros usada em outros campos desta mesma tela.
+    prisma.parceiros.findMany({
+      where: { funcao: "Avaliador Bancário", status_funcao: "Ativo" },
+      orderBy: { nome: "asc" },
+      select: { id: true, nome: true, empresa: true }
+    }),
     prisma.imoveis.findMany({
       where: { excluido: false },
       orderBy: { created_at: "desc" },
@@ -146,6 +154,7 @@ export default async function AvaliacaoDetalhePage({
               avaliacaoId={avaliacao.id}
               clientes={clientes}
               imoveis={imoveisComProprietarios}
+              avaliadores={avaliadores}
               valorAprovadoCliente={avaliacao.valor_aprovado}
               actionCriar={criarAndamentoAction}
               actionAtualizar={atualizarAndamentoAction}
@@ -161,6 +170,7 @@ export default async function AvaliacaoDetalhePage({
                     avaliacaoId={avaliacao.id}
                     clientes={clientes}
                     imoveis={imoveisComProprietarios}
+                    avaliadores={avaliadores}
                     valorAprovadoCliente={avaliacao.valor_aprovado}
                     actionCriar={criarAndamentoAction}
                     actionAtualizar={atualizarAndamentoAction}

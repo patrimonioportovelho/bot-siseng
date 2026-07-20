@@ -15,6 +15,11 @@ type Imovel = {
   inscricao: string | null;
   proprietarios: { id: string; nome: string }[];
 };
+// Só entram aqui parceiros com funcao = "Avaliador Bancário" (filtro já
+// aplicado na query da página) — banco de dados dos avaliadores dos bancos
+// parceiros, pedido do usuário. empresa costuma guardar o banco/instituição
+// do avaliador, ajuda a diferenciar homônimos.
+type Avaliador = { id: string; nome: string; empresa: string | null };
 
 type AndamentoExistente = {
   id: string;
@@ -36,6 +41,7 @@ type AndamentoExistente = {
   valor_financiado: unknown;
   observacao: string | null;
   data_conclusao: Date | null;
+  avaliador_id: string | null;
 };
 
 function inputDate(d: Date | null) {
@@ -78,6 +84,7 @@ function Ficha({
   andamento,
   clienteVendedorNome,
   imovelLabel,
+  avaliadorLabel,
   valorAprovadoCliente,
   onEditar,
   actionApagar,
@@ -86,6 +93,7 @@ function Ficha({
   andamento: AndamentoExistente;
   clienteVendedorNome: string | null;
   imovelLabel: string | null;
+  avaliadorLabel: string | null;
   valorAprovadoCliente: unknown;
   onEditar: () => void;
   actionApagar?: (formData: FormData) => void;
@@ -128,6 +136,7 @@ function Ficha({
           <Linha label="Processo" valor={formatProcesso(n.processo)} />
           <Linha label="Imóvel" valor={imovelLabel} />
           <Linha label="Cliente vendedor" valor={clienteVendedorNome} />
+          <Linha label="Responsável pela avaliação" valor={avaliadorLabel} />
           <Linha label="Abrir conta?" valor={n.abrir_conta ? "Sim" : "Não"} />
         </div>
       </Cartao>
@@ -161,6 +170,7 @@ export function AndamentoForm({
   avaliacaoId,
   clientes,
   imoveis,
+  avaliadores,
   valorAprovadoCliente,
   actionCriar,
   actionAtualizar,
@@ -171,6 +181,7 @@ export function AndamentoForm({
   avaliacaoId: string;
   clientes: Cliente[];
   imoveis: Imovel[];
+  avaliadores: Avaliador[];
   valorAprovadoCliente: unknown;
   actionCriar: (formData: FormData) => void;
   actionAtualizar: (formData: FormData) => void;
@@ -237,6 +248,7 @@ export function AndamentoForm({
 
   const imovelAtualParaFicha = n ? imoveis.find((i) => i.id === n.imovel_id) ?? null : null;
   const clienteVendedorAtualParaFicha = n ? clientes.find((c) => c.id === n.cliente_vendedor_id) ?? null : null;
+  const avaliadorAtualParaFicha = n ? avaliadores.find((a) => a.id === n.avaliador_id) ?? null : null;
 
   if (n && !modoEdicao) {
     return (
@@ -244,6 +256,11 @@ export function AndamentoForm({
         andamento={n}
         clienteVendedorNome={clienteVendedorAtualParaFicha?.nome ?? null}
         imovelLabel={imovelAtualParaFicha ? labelImovel(imovelAtualParaFicha) : null}
+        avaliadorLabel={
+          avaliadorAtualParaFicha
+            ? [avaliadorAtualParaFicha.nome, avaliadorAtualParaFicha.empresa].filter(Boolean).join(" — ")
+            : null
+        }
         valorAprovadoCliente={valorAprovadoCliente}
         onEditar={() => setModoEdicao(true)}
         actionApagar={actionApagar}
@@ -382,6 +399,22 @@ export function AndamentoForm({
                   </button>
                 ))}
               </div>
+            )}
+          </div>
+          <div>
+            <label className={LABEL}>Responsável pela avaliação</label>
+            <select className={CAMPO} name="avaliador_id" defaultValue={n?.avaliador_id ?? ""}>
+              <option value="">—</option>
+              {avaliadores.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.empresa ? `${a.nome} — ${a.empresa}` : a.nome}
+                </option>
+              ))}
+            </select>
+            {avaliadores.length === 0 && (
+              <p className="text-[11px] text-gray-400 mt-1">
+                Nenhum avaliador bancário cadastrado ainda — crie um em Parceiros com a função "Avaliador Bancário".
+              </p>
             )}
           </div>
           <div className="flex items-center gap-2 mt-5">

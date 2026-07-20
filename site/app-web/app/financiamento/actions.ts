@@ -218,6 +218,7 @@ function camposAndamento(formData: FormData) {
     cliente_vendedor_id: texto(formData, "cliente_vendedor_id"),
     abrir_conta: booleano(formData, "abrir_conta"),
     imovel_id: texto(formData, "imovel_id"),
+    avaliador_id: texto(formData, "avaliador_id"),
     tipo_contrato: texto(formData, "tipo_contrato"),
     status_andamento: texto(formData, "status_andamento") ?? undefined,
     status_andamento_complementar: texto(formData, "status_andamento_complementar"),

@@ -78,15 +78,23 @@ model andamentos {
   observacao                    String?
   data_conclusao                DateTime?                   @db.Date
   excluido                      Boolean                     @default(false)
+  // Avaliador bancário responsável por esta avaliação/andamento — só
+  // parceiros com funcao = "Avaliador Bancário" aparecem no select (ver
+  // lib/parceiros/opcoes.ts e app/financiamento/[id]/page.tsx). É um banco
+  // de dados dos avaliadores de cada banco parceiro, não um usuário do
+  // sistema (não precisa de login).
+  avaliador_id                  String?                     @db.Uuid
   created_at                    DateTime                    @default(now()) @db.Timestamptz(6)
   updated_at                    DateTime                    @default(now()) @db.Timestamptz(6)
   avaliacoes                    avaliacoes                  @relation(fields: [avaliacao_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   clientes                      clientes?                   @relation(fields: [cliente_vendedor_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   imoveis                       imoveis?                    @relation(fields: [imovel_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  parceiros                     parceiros?                  @relation(fields: [avaliador_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   lancamentos_financiamento     lancamentos_financiamento[]
 
   @@index([avaliacao_id], map: "idx_andamentos_avaliacao")
   @@index([imovel_id], map: "idx_andamentos_imovel")
+  @@index([avaliador_id], map: "idx_andamentos_avaliador")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -672,6 +680,7 @@ model parceiros {
   created_at                                                                  DateTime                  @default(now()) @db.Timestamptz(6)
   updated_at                                                                  DateTime                  @default(now()) @db.Timestamptz(6)
   adm_imoveis                                                                 adm_imoveis[]
+  andamentos                                                                  andamentos[]
   avaliacoes                                                                  avaliacoes[]
   checklist_conclusoes                                                        checklist_conclusoes[]
   clientes                                                                    clientes[]

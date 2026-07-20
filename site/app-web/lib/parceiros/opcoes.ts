@@ -11,6 +11,7 @@ export const FUNCOES_EXTERNAS = [
   "Imobiliária Externa",
   "Parceiro Externa",
   "Prestador de Serviço",
+  "Avaliador Bancário",
   "Desligado"
 ];
 

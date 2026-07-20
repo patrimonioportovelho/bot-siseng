@@ -248,7 +248,13 @@ CREATE TRIGGER trg_imoveis_updated_at BEFORE UPDATE ON imoveis
 CREATE TABLE avaliacoes (
   id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   id_legado             TEXT UNIQUE,
-  tipo_avaliacao        TEXT CHECK (tipo_avaliacao IN ('Financiamento','Locação','Analise de crédito')),
+  -- CORRIGIDO 2026-07-20: o constraint vivia com "Analise de crédito" (sem
+  -- acento) enquanto o formulário sempre mandou "Análise de crédito" (com
+  -- acento) — toda tentativa de salvar com esse Tipo de avaliação quebrava
+  -- com erro de constraint (23514) e perdia o cadastro digitado. Dados
+  -- antigos foram normalizados para a grafia acentuada antes de travar o
+  -- constraint nesse valor.
+  tipo_avaliacao        TEXT CHECK (tipo_avaliacao IN ('Financiamento','Locação','Análise de crédito')),
   banco_id              UUID REFERENCES bancos(id),
   status                TEXT NOT NULL DEFAULT 'Montagem de processo' CHECK (status IN (
                             'Montagem de processo','Aprovado','Standbye','Condicionado','Avaliação vencida',

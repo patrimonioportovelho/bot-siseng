@@ -647,14 +647,21 @@ CREATE TABLE relatorios (
 --   9. repasse_primeira_locacao    (Movimentacao, bot "Repasse Primeira Locação", MakeDoc nativo)
 CREATE TABLE documentos_gerados (
   id                        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  -- gestao e proposta foram adicionados depois dos 9 modelos originais
+  -- (contrato de Gestão e Proposta de Compra e Venda do portal do corretor)
+  -- — ficaram de fora do CHECK por um tempo até isso quebrar a geração real
+  -- (violava o constraint tanto no sucesso quanto ao logar o próprio erro).
   entidade_tipo             TEXT NOT NULL CHECK (entidade_tipo IN (
-                                'transacao','adm_imovel','cont_corretor','parceiro','chaves','movimentacao'
+                                'transacao','adm_imovel','cont_corretor','cont_corretor_estagiario',
+                                'parceiro','chaves','movimentacao','gestao','proposta'
                             )),
   entidade_id               UUID NOT NULL,
   tipo_documento            TEXT NOT NULL CHECK (tipo_documento IN (
                                 'contrato_locacao','contrato_compra_venda','carta_preferencia',
-                                'contrato_administracao','contrato_associacao_corretor','termo_entrega_chaves',
-                                'recibo_honorarios','repasse_administracao','repasse_primeira_locacao'
+                                'contrato_administracao','contrato_associacao_corretor',
+                                'contrato_associacao_corretor_estagiario','termo_entrega_chaves',
+                                'recibo_honorarios','repasse_administracao','repasse_primeira_locacao',
+                                'contrato_gestao','proposta_compra_venda'
                             )),
   arquivo_url               TEXT,
   gerado_por_usuario_id     UUID REFERENCES usuarios(id),

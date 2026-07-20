@@ -22,6 +22,8 @@ sistema troca pelos dados reais.
 | `recibo_honorarios.docx` | Movimentação |
 | `repasse_administracao.docx` | Movimentação |
 | `repasse_primeira_locacao.docx` | Movimentação |
+| `contrato_gestao.docx` | Gestão |
+| `PROPOSTA DE COMPRA E VENDA.docx` | Proposta (portal do corretor) |
 
 O sistema escolhe automaticamente entre os dois contratos de corretor
 conforme a função do parceiro (Corretor ou Corretor Estagiário). Os dois já
@@ -59,3 +61,11 @@ aqui for atualizado, ele precisa ser enviado também para o bucket
 manualmente pelo painel do Supabase (Storage → templates → upload) ou por
 um script simples de sincronização — se quiser, posso montar esse script
 depois que o Supabase estiver configurado.
+
+**Ao adicionar um modelo novo** (como aconteceu com `contrato_gestao` e
+`proposta_compra_venda`, que ficaram faltando um tempo): além de subir o
+.docx no bucket `templates`, o valor precisa entrar nos dois CHECK
+constraints da tabela `documentos_gerados` no banco
+(`entidade_tipo` e `tipo_documento` — ver `site/database/schema.sql`),
+senão a geração quebra tanto no sucesso quanto ao tentar logar o próprio
+erro.

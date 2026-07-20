@@ -3,7 +3,20 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { loginPortal, logoutPortal, requirePortalSession, trocarSenhaPortal } from "@/lib/portal-auth";
+import {
+  loginPortal,
+  logoutPortal,
+  requirePortalSession,
+  trocarSenhaPortal,
+  verificarEmailPortal
+} from "@/lib/portal-auth";
+
+// Passo 1 do login em duas etapas — chamada direto do componente cliente
+// (não é action de form/FormData, é função normal com retorno) pra saber se
+// o email já tem senha definida antes de mostrar o campo de senha certo.
+export async function verificarEmailPortalAction(email: string) {
+  return await verificarEmailPortal(email);
+}
 
 export async function loginPortalAction(formData: FormData) {
   const email = String(formData.get("email") ?? "");
@@ -11,7 +24,7 @@ export async function loginPortalAction(formData: FormData) {
 
   const result = await loginPortal(email, senha);
   if (!result.ok) {
-    redirect(`/portal/login?erro=${encodeURIComponent(result.error)}`);
+    redirect(`/portal/login?erro=${encodeURIComponent(result.error)}&email=${encodeURIComponent(email)}`);
   }
   redirect("/portal");
 }
@@ -28,7 +41,7 @@ export async function loginPortalViaSiteAction(formData: FormData) {
 
   const result = await loginPortal(email, senha);
   if (!result.ok) {
-    redirect(`/login?erro_portal=${encodeURIComponent(result.error)}`);
+    redirect(`/login?erro_portal=${encodeURIComponent(result.error)}&email_portal=${encodeURIComponent(email)}`);
   }
   redirect("/portal");
 }

@@ -54,6 +54,48 @@ export async function requirePortalSession(): Promise<PortalSession> {
 
 type LoginPortalResult = { ok: true } | { ok: false; error: string };
 
+export type VerificarEmailPortalResult =
+  | { ok: true; nome: string; primeiroAcesso: boolean }
+  | { ok: false; error: string };
+
+// Passo 1 do login em duas etapas (pedido do usuário): confere o email ANTES
+// de pedir a senha, pra poder avisar explicitamente "esse é seu primeiro
+// acesso, crie uma senha" em vez de mostrar só um campo "Senha" ambíguo — foi
+// isso que confundiu os corretores testando o acesso (achavam que precisavam
+// de uma senha que o admin ainda não tinha passado, quando na verdade era só
+// escolher uma na hora). Não confere senha nenhuma aqui, só existência +
+// função ativa + se já tem senha definida.
+export async function verificarEmailPortal(email: string): Promise<VerificarEmailPortalResult> {
+  const emailNorm = normalizeEmail(email);
+
+  if (!emailNorm) {
+    return { ok: false, error: "Informe seu email." };
+  }
+
+  if (!emailNorm.endsWith(DOMINIO_PORTAL)) {
+    return { ok: false, error: `O portal do corretor só aceita email ${DOMINIO_PORTAL}.` };
+  }
+
+  const parceiro = await prisma.parceiros.findFirst({
+    where: {
+      status_funcao: "Ativo",
+      funcao: "Corretor",
+      email: { equals: emailNorm, mode: "insensitive" }
+    },
+    select: { nome: true, senha_hash: true }
+  });
+
+  if (!parceiro) {
+    return {
+      ok: false,
+      error:
+        "Email não encontrado como Corretor ativo no cadastro. Peça para um administrador conferir sua ficha de parceiro (email e função)."
+    };
+  }
+
+  return { ok: true, nome: parceiro.nome, primeiroAcesso: !parceiro.senha_hash };
+}
+
 // Login do portal do corretor — email + senha. A senha usa o mesmo campo
 // (parceiros.senha_hash) e o mesmo hash (PBKDF2, lib/auth.ts) do login
 // administrativo: é a MESMA senha nos dois acessos, quando o corretor tem

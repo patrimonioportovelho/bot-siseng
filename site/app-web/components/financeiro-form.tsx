@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { formatMoeda, formatValorEditavel, valorEditavelParaDecimal, hojeInputDate } from "@/lib/format";
+import { CampoLink } from "@/components/campo-link";
 
 type CategoriaOpcao = { id: string; nome: string; tipo: string | null };
 type ClienteOpcao = { id: string; nome: string };
@@ -639,10 +640,7 @@ export function FinanceiroForm({
             <label className={LABEL}>Descrição</label>
             <input className={CAMPO} name="descricao" placeholder="Ex.: repasse aluguel, conta de luz..." />
           </div>
-          <div>
-            <label className={LABEL}>Comprovante (link)</label>
-            <input className={CAMPO} name="comprovante_url" placeholder="Link do Drive, se tiver" />
-          </div>
+          <CampoLink label="Comprovante (link)" name="comprovante_url" placeholder="Link do Drive, se tiver" />
         </div>
       </div>
 

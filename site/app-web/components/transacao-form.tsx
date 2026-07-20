@@ -24,6 +24,7 @@ import {
   percentualParaDecimal,
   somarMeses
 } from "@/lib/format";
+import { CampoLink } from "@/components/campo-link";
 
 type ClienteOpcao = { id: string; nome: string; id_legado: string | null; parceiroId: string | null };
 type LojaOpcao = { id: string; nome: string };
@@ -428,10 +429,7 @@ export function TransacaoForm({
               ))}
             </select>
           </div>
-          <div>
-            <label className={LABEL}>Pasta (link)</label>
-            <input className={CAMPO} name="pasta_url" defaultValue={t?.pasta_url ?? ""} />
-          </div>
+          <CampoLink label="Pasta (link)" name="pasta_url" defaultValue={t?.pasta_url} />
         </div>
       </div>
 
@@ -1068,10 +1066,7 @@ export function TransacaoForm({
               Tem vistoria
             </label>
           </div>
-          <div>
-            <label className={LABEL}>Arquivo da vistoria (link)</label>
-            <input className={CAMPO} name="arquivo_vistoria_url" defaultValue={t?.arquivo_vistoria_url ?? ""} />
-          </div>
+          <CampoLink label="Arquivo da vistoria (link)" name="arquivo_vistoria_url" defaultValue={t?.arquivo_vistoria_url} />
         </div>
       </div>
 

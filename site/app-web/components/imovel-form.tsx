@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { TIPOS_IMOVEL, STATUS_IMOVEL, TIPOS_OFERTA } from "@/lib/imoveis/opcoes";
 import { formatValorEditavel, formatInscricao } from "@/lib/format";
+import { CampoLink } from "@/components/campo-link";
 
 type ClienteOpcao = { id: string; nome: string; id_legado: string | null; parceiro_id: string | null };
 type ParceiroOpcao = { id: string; nome: string };
@@ -167,10 +168,7 @@ export function ImovelForm({
             <label className={LABEL}>Matrícula</label>
             <input className={CAMPO} name="matricula" defaultValue={i?.matricula ?? ""} />
           </div>
-          <div>
-            <label className={LABEL}>Pasta (link)</label>
-            <input className={CAMPO} name="pasta_url" defaultValue={i?.pasta_url ?? ""} />
-          </div>
+          <CampoLink label="Pasta (link)" name="pasta_url" defaultValue={i?.pasta_url} />
         </div>
       </div>
 

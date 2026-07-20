@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { STATUS_ADM, AGUA_OPCOES, ENERGIA_OPCOES } from "@/lib/administracoes/opcoes";
 import { formatValorEditavel, formatPercentual, formatInscricao } from "@/lib/format";
+import { CampoLink } from "@/components/campo-link";
 
 type LojaOpcao = { id: string; nome: string };
 type ParceiroOpcao = { id: string; nome: string };
@@ -182,10 +183,7 @@ export function AdministracaoForm({
               ))}
             </select>
           </div>
-          <div>
-            <label className={LABEL}>Pasta (link)</label>
-            <input className={CAMPO} name="pasta_url" defaultValue={a?.pasta_url ?? ""} />
-          </div>
+          <CampoLink label="Pasta (link)" name="pasta_url" defaultValue={a?.pasta_url} />
         </div>
       </div>
 
@@ -412,10 +410,7 @@ export function AdministracaoForm({
               Tem vistoria
             </label>
           </div>
-          <div>
-            <label className={LABEL}>Arquivo da vistoria (link)</label>
-            <input className={CAMPO} name="arquivo_vistoria_url" defaultValue={a?.arquivo_vistoria_url ?? ""} />
-          </div>
+          <CampoLink label="Arquivo da vistoria (link)" name="arquivo_vistoria_url" defaultValue={a?.arquivo_vistoria_url} />
         </div>
       </div>
 

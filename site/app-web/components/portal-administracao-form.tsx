@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { TIPOS_IMOVEL } from "@/lib/imoveis/opcoes";
 import { ESTADOS_CIVIS, TIPOS_CONTA, TIPOS_PIX } from "@/lib/clientes/opcoes";
 import { AGUA_OPCOES, ENERGIA_OPCOES } from "@/lib/administracoes/opcoes";
+import { CampoLink } from "@/components/campo-link";
 import { gerarContratoAdministracaoAction } from "@/app/portal/administracao/actions";
 
 type Banco = { id: string; nome: string; codigo: string | null };
@@ -837,20 +838,18 @@ export function PortalAdministracaoForm({
               Tem vistoria
             </label>
           </div>
-          <div>
-            <label className={LABEL}>Arquivo da vistoria (link)</label>
-            <input className={CAMPO} value={arquivoVistoriaUrl} onChange={(e) => setArquivoVistoriaUrl(e.target.value)} />
-          </div>
+          <CampoLink
+            label="Arquivo da vistoria (link)"
+            value={arquivoVistoriaUrl}
+            onChange={setArquivoVistoriaUrl}
+          />
         </div>
       </div>
 
       <div className="bg-white border border-gray-200 rounded-xl p-4">
         <div className="text-sm font-bold text-gray-800 mb-3">8. Observação e pasta</div>
         <div className="grid md:grid-cols-2 gap-3">
-          <div>
-            <label className={LABEL}>Pasta (link)</label>
-            <input className={CAMPO} value={pastaUrl} onChange={(e) => setPastaUrl(e.target.value)} />
-          </div>
+          <CampoLink label="Pasta (link)" value={pastaUrl} onChange={setPastaUrl} />
         </div>
         <div className="mt-3">
           <label className={LABEL}>Observação</label>

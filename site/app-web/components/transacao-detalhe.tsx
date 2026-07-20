@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { TransacaoForm } from "@/components/transacao-form";
+import { PainelLateral } from "@/components/painel-lateral";
 import { formatMoeda, formatPercentual, formatDataCalendario, formatValorEditavel } from "@/lib/format";
 
 type ClienteOpcao = { id: string; nome: string; id_legado: string | null; parceiroId: string | null };
@@ -95,6 +96,31 @@ function LinkNovaAba({ href, children }: { href: string; children: React.ReactNo
   );
 }
 
+// Imóvel/Administração/Cliente ficam num botão que abre o painel lateral
+// (drawer) em vez de navegar pra outra aba — pedido do usuário: conferir e
+// editar rápido sem sair do detalhe da transação.
+function BotaoPainel({
+  href,
+  titulo,
+  onAbrir,
+  children
+}: {
+  href: string;
+  titulo: string;
+  onAbrir: (href: string, titulo: string) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onAbrir(href, titulo)}
+      className="text-primary font-semibold hover:underline text-left"
+    >
+      {children}
+    </button>
+  );
+}
+
 export function TransacaoDetalhe({
   transacao,
   lojaNome,
@@ -137,6 +163,12 @@ export function TransacaoDetalhe({
   action: (formData: FormData) => void;
 }) {
   const [editando, setEditando] = useState(false);
+  const [painel, setPainel] = useState<{ href: string; titulo: string } | null>(null);
+
+  function abrirPainel(href: string, titulo: string) {
+    setPainel({ href: `${href}${href.includes("?") ? "&" : "?"}embed=1`, titulo });
+  }
+
   const t = transacao;
   const eLocacao = t.tipo === "Locação";
 
@@ -207,9 +239,17 @@ export function TransacaoDetalhe({
             label={administracaoInfo ? "Administração (status Ativo)" : "Imóvel"}
             valor={
               administracaoInfo ? (
-                <LinkNovaAba href={`/administracoes/${administracaoInfo.id}`}>{administracaoInfo.label}</LinkNovaAba>
+                <BotaoPainel
+                  href={`/administracoes/${administracaoInfo.id}`}
+                  titulo={`Administração — ${administracaoInfo.label}`}
+                  onAbrir={abrirPainel}
+                >
+                  {administracaoInfo.label}
+                </BotaoPainel>
               ) : imovelInfo ? (
-                <LinkNovaAba href={`/imoveis/${imovelInfo.id}`}>{imovelInfo.label}</LinkNovaAba>
+                <BotaoPainel href={`/imoveis/${imovelInfo.id}`} titulo={`Imóvel — ${imovelInfo.label}`} onAbrir={abrirPainel}>
+                  {imovelInfo.label}
+                </BotaoPainel>
               ) : (
                 "—"
               )
@@ -222,7 +262,9 @@ export function TransacaoDetalhe({
                 <span className="flex flex-wrap gap-x-1">
                   {proprietarios.map((p, i) => (
                     <span key={p.id}>
-                      <LinkNovaAba href={`/clientes/${p.id}`}>{p.nome}</LinkNovaAba>
+                      <BotaoPainel href={`/clientes/${p.id}`} titulo={`Cliente — ${p.nome}`} onAbrir={abrirPainel}>
+                        {p.nome}
+                      </BotaoPainel>
                       {i < proprietarios.length - 1 ? "," : ""}
                     </span>
                   ))}
@@ -239,7 +281,9 @@ export function TransacaoDetalhe({
                 <span className="flex flex-wrap gap-x-1">
                   {interessados.map((c, i) => (
                     <span key={c.id}>
-                      <LinkNovaAba href={`/clientes/${c.id}`}>{c.nome}</LinkNovaAba>
+                      <BotaoPainel href={`/clientes/${c.id}`} titulo={`Cliente — ${c.nome}`} onAbrir={abrirPainel}>
+                        {c.nome}
+                      </BotaoPainel>
                       {i < interessados.length - 1 ? "," : ""}
                     </span>
                   ))}
@@ -367,6 +411,13 @@ export function TransacaoDetalhe({
         <div className="text-sm font-bold text-gray-800 mb-3">Observação</div>
         <p className="text-xs text-gray-800 whitespace-pre-wrap">{t.observacao || "—"}</p>
       </div>
+
+      <PainelLateral
+        aberto={painel !== null}
+        href={painel?.href ?? null}
+        titulo={painel?.titulo ?? ""}
+        onFechar={() => setPainel(null)}
+      />
     </div>
   );
 }

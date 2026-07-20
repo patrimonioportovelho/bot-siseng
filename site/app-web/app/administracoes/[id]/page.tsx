@@ -16,10 +16,11 @@ export default async function AdministracaoDetalhePage({
   searchParams
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ salvo?: string }>;
+  searchParams: Promise<{ salvo?: string; embed?: string }>;
 }) {
   const { id } = await params;
-  const { salvo } = await searchParams;
+  const { salvo, embed } = await searchParams;
+  const embutido = embed === "1";
   const session = await getAdminSession();
 
   const [administracao, lojas, clientes, imoveis, parceiros, transacoes] = await Promise.all([
@@ -86,12 +87,16 @@ export default async function AdministracaoDetalhePage({
 
   return (
     <div>
-      <Topbar />
+      {!embutido && <Topbar />}
 
       <div className="flex items-center justify-between mb-3">
-        <Link href="/administracoes" className="text-xs text-gray-500 hover:text-gray-800">
-          ← Voltar para Administrações
-        </Link>
+        {embutido ? (
+          <span />
+        ) : (
+          <Link href="/administracoes" className="text-xs text-gray-500 hover:text-gray-800">
+            ← Voltar para Administrações
+          </Link>
+        )}
         {session?.isAdm && !administracao.excluido && (
           <form action={apagarAdministracaoAction}>
             <input type="hidden" name="administracaoId" value={administracao.id} />
@@ -171,6 +176,7 @@ export default async function AdministracaoDetalhePage({
         imoveis={imoveisComProprietarios}
         parceiros={parceiros}
         action={atualizarAdministracaoAction}
+        embutido={embutido}
       />
     </div>
   );

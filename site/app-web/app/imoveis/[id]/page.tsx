@@ -15,10 +15,11 @@ export default async function ImovelDetalhePage({
   searchParams
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ salvo?: string }>;
+  searchParams: Promise<{ salvo?: string; embed?: string }>;
 }) {
   const { id } = await params;
-  const { salvo } = await searchParams;
+  const { salvo, embed } = await searchParams;
+  const embutido = embed === "1";
   const session = await getAdminSession();
 
   const [imovel, clientes, parceiros, estados, cidades, manutencoes, bairrosCadastrados] = await Promise.all([
@@ -71,12 +72,16 @@ export default async function ImovelDetalhePage({
 
   return (
     <div>
-      <Topbar />
+      {!embutido && <Topbar />}
 
       <div className="flex items-center justify-between mb-3">
-        <Link href="/imoveis" className="text-xs text-gray-500 hover:text-gray-800">
-          ← Voltar para Imóveis
-        </Link>
+        {embutido ? (
+          <span />
+        ) : (
+          <Link href="/imoveis" className="text-xs text-gray-500 hover:text-gray-800">
+            ← Voltar para Imóveis
+          </Link>
+        )}
         {session?.isAdm && !imovel.excluido && (
           <form action={apagarImovelAction}>
             <input type="hidden" name="imovelId" value={imovel.id} />
@@ -161,6 +166,7 @@ export default async function ImovelDetalhePage({
         cidades={cidades}
         bairrosCadastrados={bairrosCadastrados}
         action={atualizarImovelAction}
+        embutido={embutido}
       />
     </div>
   );

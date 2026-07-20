@@ -156,7 +156,10 @@ export async function atualizarAdministracaoAction(formData: FormData) {
 
   revalidatePath(`/administracoes/${id}`);
   revalidatePath("/administracoes");
-  redirect(`/administracoes/${id}?salvo=1`);
+  // Ver mesmo comentário em app/imoveis/actions.ts: preserva ?embed=1 no
+  // redirect quando salvo pelo painel lateral embutido num iframe.
+  const embutido = texto(formData, "_embed") === "1";
+  redirect(`/administracoes/${id}?salvo=1${embutido ? "&embed=1" : ""}`);
 }
 
 // "Apagar" aqui é sempre um soft-delete (excluido=true) — a administração

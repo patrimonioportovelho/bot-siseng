@@ -58,13 +58,15 @@ export function ClienteForm({
   lojas,
   bancos,
   parceiros,
-  action
+  action,
+  embutido
 }: {
   cliente: ClienteExistente | null;
   lojas: Loja[];
   bancos: Banco[];
   parceiros: ParceiroOpcao[];
   action: (formData: FormData) => void;
+  embutido?: boolean;
 }) {
   const c = cliente;
   const [tipoCliente, setTipoCliente] = useState(c?.tipo_cliente ?? "");
@@ -86,6 +88,7 @@ export function ClienteForm({
   return (
     <form action={action} className="flex flex-col gap-5">
       {c && <input type="hidden" name="clienteId" value={c.id} />}
+      {embutido && <input type="hidden" name="_embed" value="1" />}
 
       <div className="bg-white border border-gray-200 rounded-xl p-4">
         <div className="text-sm font-bold text-gray-800 mb-3">Identificação</div>

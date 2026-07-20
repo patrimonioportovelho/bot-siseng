@@ -1,18 +1,25 @@
 "use client";
 
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { Sidebar } from "@/components/sidebar";
 import { PortalSidebar } from "@/components/portal-sidebar";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  // ?embed=1 é usado pelo painel lateral (drawer) da transação — abre
+  // /imoveis/[id] ou /clientes/[id] num iframe dentro do próprio detalhe da
+  // transação, então não faz sentido repetir o menu lateral/Topbar lá
+  // dentro (pedido do usuário: conferir/editar sem sair da tela, sem abrir
+  // aba nova).
+  const embutido = searchParams?.get("embed") === "1";
   // /noticias/[id] é a página pública de cada notícia/edital (aberta a
   // partir do "Ler mais" em /login) — tem que ficar igual pra todo mundo,
   // logado ou não, já que serve de respaldo jurídico do que foi publicado.
   // /portal/login também fica sem menu (ainda não tem sessão pra montar o
   // menu lateral do corretor).
   const semMenu =
-    pathname === "/login" || pathname === "/portal/login" || pathname?.startsWith("/noticias");
+    embutido || pathname === "/login" || pathname === "/portal/login" || pathname?.startsWith("/noticias");
   const isPortal = pathname?.startsWith("/portal") && !semMenu;
 
   if (semMenu) {

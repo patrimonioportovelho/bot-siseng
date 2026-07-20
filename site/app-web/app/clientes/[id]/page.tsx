@@ -13,10 +13,11 @@ export default async function ClienteDetalhePage({
   searchParams
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ salvo?: string }>;
+  searchParams: Promise<{ salvo?: string; embed?: string }>;
 }) {
   const { id } = await params;
-  const { salvo } = await searchParams;
+  const { salvo, embed } = await searchParams;
+  const embutido = embed === "1";
   const session = await getAdminSession();
 
   const [cliente, lojas, bancos, parceiros] = await Promise.all([
@@ -30,12 +31,16 @@ export default async function ClienteDetalhePage({
 
   return (
     <div>
-      <Topbar />
+      {!embutido && <Topbar />}
 
       <div className="flex items-center justify-between mb-3">
-        <Link href="/clientes" className="text-xs text-gray-500 hover:text-gray-800">
-          ← Voltar para Clientes
-        </Link>
+        {embutido ? (
+          <span />
+        ) : (
+          <Link href="/clientes" className="text-xs text-gray-500 hover:text-gray-800">
+            ← Voltar para Clientes
+          </Link>
+        )}
         {session?.isAdm && cliente.status_cadastro !== "Arquivado" && (
           <form action={apagarClienteAction}>
             <input type="hidden" name="clienteId" value={cliente.id} />
@@ -62,7 +67,14 @@ export default async function ClienteDetalhePage({
       </div>
       <div className="text-xs text-gray-400 mb-4">Id cliente: {cliente.id_legado ?? cliente.id}</div>
 
-      <ClienteForm cliente={cliente} lojas={lojas} bancos={bancos} parceiros={parceiros} action={atualizarClienteAction} />
+      <ClienteForm
+        cliente={cliente}
+        lojas={lojas}
+        bancos={bancos}
+        parceiros={parceiros}
+        action={atualizarClienteAction}
+        embutido={embutido}
+      />
     </div>
   );
 }

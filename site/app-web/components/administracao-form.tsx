@@ -66,7 +66,8 @@ export function AdministracaoForm({
   clientes,
   imoveis,
   parceiros,
-  action
+  action,
+  embutido
 }: {
   administracao: AdministracaoExistente | null;
   lojas: LojaOpcao[];
@@ -74,6 +75,7 @@ export function AdministracaoForm({
   imoveis: ImovelOpcao[];
   parceiros: ParceiroOpcao[];
   action: (formData: FormData) => void;
+  embutido?: boolean;
 }) {
   const a = administracao;
 
@@ -138,6 +140,7 @@ export function AdministracaoForm({
   return (
     <form action={action} className="flex flex-col gap-5">
       {a && <input type="hidden" name="administracaoId" value={a.id} />}
+      {embutido && <input type="hidden" name="_embed" value="1" />}
       <input type="hidden" name="cliente_id" value={clienteId} />
       <input type="hidden" name="imovel_id" value={imovelId} />
 

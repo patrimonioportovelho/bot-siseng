@@ -50,7 +50,8 @@ export function ImovelForm({
   estados,
   cidades,
   bairrosCadastrados,
-  action
+  action,
+  embutido
 }: {
   imovel: ImovelExistente | null;
   clientes: ClienteOpcao[];
@@ -60,6 +61,7 @@ export function ImovelForm({
   cidades: CidadeOpcao[];
   bairrosCadastrados: BairroCadastrado[];
   action: (formData: FormData) => void;
+  embutido?: boolean;
 }) {
   const i = imovel;
 
@@ -115,6 +117,7 @@ export function ImovelForm({
   return (
     <form action={action} className="flex flex-col gap-5">
       {i && <input type="hidden" name="imovelId" value={i.id} />}
+      {embutido && <input type="hidden" name="_embed" value="1" />}
       {proprietarios.map((p) => (
         <input key={p.id} type="hidden" name="proprietario_id" value={p.id} />
       ))}

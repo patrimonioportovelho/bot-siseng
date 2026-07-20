@@ -161,7 +161,11 @@ export async function atualizarImovelAction(formData: FormData) {
 
   revalidatePath(`/imoveis/${id}`);
   revalidatePath("/imoveis");
-  redirect(`/imoveis/${id}?salvo=1`);
+  // Salvo pelo painel lateral (drawer) embutido num iframe — mantém o
+  // ?embed=1 no redirect pra não perder o menu/Topbar escondidos (ver
+  // components/app-shell.tsx) depois de salvar.
+  const embutido = texto(formData, "_embed") === "1";
+  redirect(`/imoveis/${id}?salvo=1${embutido ? "&embed=1" : ""}`);
 }
 
 // "Apagar" aqui é sempre um soft-delete (excluido=true) — o imóvel costuma

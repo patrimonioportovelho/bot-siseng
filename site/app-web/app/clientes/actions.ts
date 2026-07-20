@@ -131,7 +131,10 @@ export async function atualizarClienteAction(formData: FormData) {
 
   revalidatePath(`/clientes/${id}`);
   revalidatePath("/clientes");
-  redirect(`/clientes/${id}?salvo=1`);
+  // Ver mesmo comentário em app/imoveis/actions.ts: preserva ?embed=1 no
+  // redirect quando salvo pelo painel lateral embutido num iframe.
+  const embutido = texto(formData, "_embed") === "1";
+  redirect(`/clientes/${id}?salvo=1${embutido ? "&embed=1" : ""}`);
 }
 
 // "Apagar" aqui é sempre um soft-delete: reaproveita o valor "Arquivado" já

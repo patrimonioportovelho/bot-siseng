@@ -74,6 +74,7 @@ type TransacaoParaVisualizar = {
   arquivo_vistoria_url: string | null;
   observacao: string | null;
   pasta_url: string | null;
+  boleto_emitido: boolean;
 };
 
 // Rótulo em cima (cinza claro), valor embaixo — mesmo padrão já usado no
@@ -140,7 +141,8 @@ export function TransacaoDetalhe({
   imoveisComAdmAtivaIds,
   interessadosIniciais,
   condicoesIniciais,
-  action
+  action,
+  alternarBoletoEmitidoAction
 }: {
   transacao: TransacaoParaVisualizar;
   lojaNome: string;
@@ -161,6 +163,7 @@ export function TransacaoDetalhe({
   interessadosIniciais: ClienteOpcao[];
   condicoesIniciais: CondicaoPagamento[];
   action: (formData: FormData) => void;
+  alternarBoletoEmitidoAction: (formData: FormData) => void;
 }) {
   const [editando, setEditando] = useState(false);
   const [painel, setPainel] = useState<{ href: string; titulo: string } | null>(null);
@@ -211,15 +214,33 @@ export function TransacaoDetalhe({
   return (
     <div className="flex flex-col gap-5">
       <div className="bg-white border border-gray-200 rounded-xl p-4">
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
           <div className="text-sm font-bold text-gray-800">Identificação</div>
-          <button
-            type="button"
-            onClick={() => setEditando(true)}
-            className="text-xs bg-primary text-white rounded-lg px-3 py-1.5 font-semibold"
-          >
-            Editar
-          </button>
+          <div className="flex items-center gap-2">
+            {eLocacao && t.forma_pagamento === "Boleto" && (
+              <form action={alternarBoletoEmitidoAction}>
+                <input type="hidden" name="transacaoId" value={t.id} />
+                <button
+                  type="submit"
+                  className={`text-xs rounded-lg px-3 py-1.5 font-semibold border ${
+                    t.boleto_emitido
+                      ? "bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100"
+                      : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
+                  }`}
+                  title="Marca se o boleto deste mês já foi gerado e enviado"
+                >
+                  {t.boleto_emitido ? "● Boleto emitido" : "○ Marcar boleto emitido"}
+                </button>
+              </form>
+            )}
+            <button
+              type="button"
+              onClick={() => setEditando(true)}
+              className="text-xs bg-primary text-white rounded-lg px-3 py-1.5 font-semibold"
+            >
+              Editar
+            </button>
+          </div>
         </div>
         <div className="grid grid-cols-1 gap-2 md:grid-cols-3 md:gap-4">
           <Campo label="Tipo de transação" valor={t.tipo} />

@@ -389,6 +389,39 @@ export async function gerarBoletosAction(formData: FormData) {
   redirect(`/transacoes/${transacaoId}?boletos=1`);
 }
 
+// Toggle rápido (fora do modo Editar) pra marcar se o boleto do mês já foi
+// gerado/enviado — pedido do usuário pra acompanhar isso sem precisar abrir
+// o formulário inteiro. Só faz sentido pra Locação com forma_pagamento =
+// "Boleto" (o botão em si já só aparece nesse caso, ver transacao-detalhe.tsx).
+export async function alternarBoletoEmitidoAction(formData: FormData) {
+  await requireAdminSession();
+
+  const id = texto(formData, "transacaoId");
+  if (!id) throw new Error("Transação inválida.");
+
+  const antes = await prisma.transacoes.findUnique({ where: { id }, select: { boleto_emitido: true } });
+  if (!antes) throw new Error("Transação não encontrada.");
+
+  const boletoEmitido = !antes.boleto_emitido;
+
+  await prisma.transacoes
+    .update({ where: { id }, data: { boleto_emitido: boletoEmitido, updated_at: new Date() } })
+    .catch((erro) => registrarEJogarErro({ entidadeTipo: "transacoes", entidadeId: id, acao: "editar", erro }));
+
+  await logAlteracao({
+    entidadeTipo: "transacoes",
+    entidadeId: id,
+    acao: "editar",
+    dadosAntes: { boleto_emitido: antes.boleto_emitido },
+    dadosDepois: { boleto_emitido: boletoEmitido }
+  });
+
+  revalidatePath(`/transacoes/${id}`);
+  revalidatePath("/transacoes/locacao");
+  revalidatePath("/dashboard");
+  redirect(`/transacoes/${id}`);
+}
+
 // "Apagar" aqui é sempre um soft-delete (excluido=true) — a transação
 // costuma ter histórico real vinculado (pagamentos, movimentações,
 // documentos já gerados) e um DELETE de verdade quebraria essas

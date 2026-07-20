@@ -849,6 +849,10 @@ model transacoes {
   valor_administracao                                      Decimal?                 @db.Decimal(14, 2)
   iptu                                                     Decimal?                 @db.Decimal(14, 2)
   trsd                                                     Decimal?                 @db.Decimal(14, 2)
+  // Toggle rápido (fora do modo Editar) pra marcar se o boleto desse mês já
+  // foi gerado/enviado — só faz sentido quando forma_pagamento = "Boleto" e
+  // status = "Imóvel em Locação".
+  boleto_emitido                                           Boolean                  @default(false)
   encargos                                                 String[]
   forma_pagamento                                          String?
   finalidade_locacao                                       String?

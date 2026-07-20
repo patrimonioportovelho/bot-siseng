@@ -428,6 +428,7 @@ CREATE TABLE transacoes (
   valor_administracao          NUMERIC(14,2),
   iptu                         NUMERIC(14,2),
   trsd                         NUMERIC(14,2),   -- valor do TRSD quando fracionado/lançado nas mensalidades da locação (mesmo padrão do iptu acima)
+  boleto_emitido               BOOLEAN NOT NULL DEFAULT false,   -- toggle rápido: boleto do mês já gerado/enviado (só relevante quando forma_pagamento = 'Boleto')
   -- 'Encargos' é EnumList (multivalorado) no AppSheet: armazenado como array de texto
   encargos                     TEXT[] CHECK (encargos <@ ARRAY[
                                    'IPTU do ano vigente ao andamento do contrato','TRSD do ano vigente ao andamento do contrato',

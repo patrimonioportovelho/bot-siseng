@@ -7,7 +7,7 @@ import { TransacaoDetalhe } from "@/components/transacao-detalhe";
 import { GerarBoletosForm } from "@/components/gerar-boletos-form";
 import { MovimentacoesTransacaoLista } from "@/components/movimentacoes-transacao-lista";
 import { formatDataCalendario, formatMoeda } from "@/lib/format";
-import { atualizarTransacaoAction, apagarTransacaoAction, gerarBoletosAction } from "../actions";
+import { atualizarTransacaoAction, apagarTransacaoAction, gerarBoletosAction, alternarBoletoEmitidoAction } from "../actions";
 
 export const dynamic = "force-dynamic";
 
@@ -265,6 +265,7 @@ export default async function TransacaoDetalhePage({
         interessadosIniciais={interessadosComParceiro}
         condicoesIniciais={condicoesIniciais}
         action={atualizarTransacaoAction}
+        alternarBoletoEmitidoAction={alternarBoletoEmitidoAction}
       />
 
       {/* Fica logo acima do relatório de Movimentações — faz sentido gerar

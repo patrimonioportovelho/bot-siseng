@@ -175,6 +175,13 @@ export async function TransacoesLista({ tipo, q, novoHref }: { tipo: "Locação"
             {statusOrdenados.map((status) => {
               const doStatus = porStatus.get(status)!;
               const tone = statusTone(status === "Sem status" ? null : status);
+              // Bolinha de acompanhamento de boleto — pedido do usuário, só
+              // faz sentido pro status "Imóvel em Locação" (é o único que
+              // tem cobrança recorrente de verdade rodando mês a mês).
+              const ehImovelEmLocacao = somenteLocacao && status === "Imóvel em Locação";
+              const colunasStatus = ehImovelEmLocacao
+                ? "md:grid-cols-[0.6fr_20px_1fr_1fr_1fr_84px_84px_56px_190px_100px]"
+                : colunas;
               return (
                 <div key={status} className="mb-3 last:mb-0">
                   <div
@@ -182,8 +189,9 @@ export async function TransacoesLista({ tipo, q, novoHref }: { tipo: "Locação"
                   >
                     {status} ({doStatus.length})
                   </div>
-                  <div className={`hidden md:grid ${colunas} gap-3 px-3 py-1 text-[11px] text-gray-400 border-b border-gray-100`}>
+                  <div className={`hidden md:grid ${colunasStatus} gap-3 px-3 py-1 text-[11px] text-gray-400 border-b border-gray-100`}>
                     <span>Id</span>
+                    {ehImovelEmLocacao && <span />}
                     <span>{somenteLocacao ? "Imóvel" : "Inscrição"}</span>
                     <span>Cliente Proprietário</span>
                     <span>Cliente Interessado</span>
@@ -214,11 +222,23 @@ export async function TransacoesLista({ tipo, q, novoHref }: { tipo: "Locação"
                         <Link
                           key={t.id}
                           href={`/transacoes/${t.id}`}
-                          className={`grid grid-cols-1 gap-1 ${colunas} md:gap-3 md:items-center px-3 py-2.5 rounded-lg transition-colors ${corLinha}`}
+                          className={`grid grid-cols-1 gap-1 ${colunasStatus} md:gap-3 md:items-center px-3 py-2.5 rounded-lg transition-colors ${corLinha}`}
                         >
                           <span className={`text-xs truncate ${situacao === "vencido" ? "text-red-700" : "text-gray-500"}`}>
                             {t.id_legado ?? t.id}
                           </span>
+                          {ehImovelEmLocacao && (
+                            <span className="flex items-center md:justify-center">
+                              {t.forma_pagamento === "Boleto" && (
+                                <span
+                                  className={`inline-block w-2.5 h-2.5 rounded-full ${
+                                    t.boleto_emitido ? "bg-blue-500" : "bg-red-500"
+                                  }`}
+                                  title={t.boleto_emitido ? "Boleto emitido" : "Boleto pendente"}
+                                />
+                              )}
+                            </span>
+                          )}
                           <span className={`text-xs truncate ${situacao === "vencido" ? "text-red-700" : "text-gray-500"}`}>
                             {somenteLocacao ? t.imoveis?.endereco ?? "—" : formatInscricao(t.imoveis?.inscricao) || "—"}
                           </span>

@@ -24,7 +24,8 @@ export const maxDuration = 30;
 export default async function PortalCompraVendaNovoPage() {
   const session = await requirePortalSession();
 
-  const [corretor, lojas, corretores, parceirosTodos, imoveis, clientes, estados, cidades, bancos] = await Promise.all([
+  const [corretor, lojas, corretores, parceirosTodos, imoveis, clientes, estados, cidades, bancos, bairrosCadastrados] =
+    await Promise.all([
     prisma.parceiros.findUnique({
       where: { id: session.parceiroId },
       select: { id: true, nome: true }
@@ -52,7 +53,14 @@ export default async function PortalCompraVendaNovoPage() {
     // Dados bancários — mesmo cadastro completo do administrativo (ver
     // components/cliente-form.tsx), liberado aqui pro corretor já deixar o
     // cliente novo com a conta certinha desde o cadastro.
-    prisma.bancos.findMany({ orderBy: { nome: "asc" } })
+    prisma.bancos.findMany({ orderBy: { nome: "asc" } }),
+    // Sugestão de bairro por cidade (EnumList) — a mesma lista sincronizada
+    // usada no cadastro de imóvel do admin.
+    prisma.imoveis.findMany({
+      where: { excluido: false, bairro: { not: null }, cidade_id: { not: null } },
+      select: { cidade_id: true, bairro: true },
+      distinct: ["cidade_id", "bairro"]
+    })
   ]);
 
   if (!corretor) {
@@ -92,6 +100,7 @@ export default async function PortalCompraVendaNovoPage() {
           estados={estados.map((e) => ({ id: e.id, nome: e.nome }))}
           cidades={cidades.map((c) => ({ id: c.id, nome: c.nome, estado_id: c.estado_id }))}
           bancos={bancos.map((b) => ({ id: b.id, nome: b.nome, codigo: b.codigo }))}
+          bairrosCadastrados={bairrosCadastrados}
         />
       </div>
     </div>

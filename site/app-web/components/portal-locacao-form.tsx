@@ -64,6 +64,7 @@ function labelCliente(c: ClienteBuscaResultado): string {
 const RESULTADOS_MAXIMO = 200;
 
 type Banco = { id: string; nome: string; codigo: string | null };
+type BairroCadastrado = { cidade_id: string | null; bairro: string | null };
 
 // Uma pessoa do formulário (locatário ou proprietário do imóvel novo) — ou
 // já cadastrada (clienteId presente, campos travados) ou nova (digitada na
@@ -390,7 +391,8 @@ export function PortalLocacaoForm({
   imoveisComAdmAtivaIds,
   estados,
   cidades,
-  bancos
+  bancos,
+  bairrosCadastrados
 }: {
   corretorLogadoId: string;
   lojas: { id: string; nome: string }[];
@@ -403,6 +405,7 @@ export function PortalLocacaoForm({
   estados: { id: string; nome: string }[];
   cidades: { id: string; nome: string; estado_id: string }[];
   bancos: Banco[];
+  bairrosCadastrados: BairroCadastrado[];
 }) {
   const [lojaId, setLojaId] = useState("");
 
@@ -471,6 +474,19 @@ export function PortalLocacaoForm({
 
   const idsComAdmAtiva = useMemo(() => new Set(imoveisComAdmAtivaIds), [imoveisComAdmAtivaIds]);
   const cidadesDoEstadoNovo = useMemo(() => cidades.filter((c) => c.estado_id === estadoIdNovo), [cidades, estadoIdNovo]);
+
+  // Sugestão de bairro por cidade (estilo EnumList do AppSheet) — a mesma
+  // lista sincronizada usada em todos os cadastros de imóvel do sistema (ver
+  // components/imovel-form.tsx), pra manter o nome do bairro consistente
+  // entre o admin e o portal do corretor.
+  const bairrosDaCidadeNovo = useMemo(() => {
+    const set = new Set(
+      bairrosCadastrados
+        .filter((b) => b.cidade_id === cidadeIdNovo && b.bairro && b.bairro.trim())
+        .map((b) => b.bairro!.trim())
+    );
+    return [...set].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [bairrosCadastrados, cidadeIdNovo]);
 
   const administracoesFiltradas = useMemo(() => {
     const b = buscaAdministracao.trim().toLowerCase();
@@ -839,7 +855,17 @@ export function PortalLocacaoForm({
               </div>
               <div>
                 <label className={LABEL}>Bairro</label>
-                <input className={CAMPO} value={bairroNovo} onChange={(e) => setBairroNovo(e.target.value)} />
+                <input
+                  className={CAMPO}
+                  value={bairroNovo}
+                  onChange={(e) => setBairroNovo(e.target.value)}
+                  list="lista-bairros-locacao"
+                />
+                <datalist id="lista-bairros-locacao">
+                  {bairrosDaCidadeNovo.map((b) => (
+                    <option key={b} value={b} />
+                  ))}
+                </datalist>
               </div>
               <div>
                 <label className={LABEL}>Estado</label>

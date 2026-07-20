@@ -27,8 +27,19 @@ export const maxDuration = 30;
 export default async function PortalLocacaoNovoPage() {
   const session = await requirePortalSession();
 
-  const [corretor, lojas, corretores, parceirosTodos, imoveis, clientes, estados, cidades, bancos, admImoveisAtivos] =
-    await Promise.all([
+  const [
+    corretor,
+    lojas,
+    corretores,
+    parceirosTodos,
+    imoveis,
+    clientes,
+    estados,
+    cidades,
+    bancos,
+    admImoveisAtivos,
+    bairrosCadastrados
+  ] = await Promise.all([
       prisma.parceiros.findUnique({
         where: { id: session.parceiroId },
         select: { id: true, nome: true }
@@ -63,6 +74,13 @@ export default async function PortalLocacaoNovoPage() {
           imoveis: { select: { endereco: true, inscricao: true } },
           clientes: { select: { nome: true } }
         }
+      }),
+      // Sugestão de bairro por cidade (EnumList) — a mesma lista sincronizada
+      // usada no cadastro de imóvel do admin.
+      prisma.imoveis.findMany({
+        where: { excluido: false, bairro: { not: null }, cidade_id: { not: null } },
+        select: { cidade_id: true, bairro: true },
+        distinct: ["cidade_id", "bairro"]
       })
     ]);
 
@@ -117,6 +135,7 @@ export default async function PortalLocacaoNovoPage() {
           estados={estados.map((e) => ({ id: e.id, nome: e.nome }))}
           cidades={cidades.map((c) => ({ id: c.id, nome: c.nome, estado_id: c.estado_id }))}
           bancos={bancos.map((b) => ({ id: b.id, nome: b.nome, codigo: b.codigo }))}
+          bairrosCadastrados={bairrosCadastrados}
         />
       </div>
     </div>

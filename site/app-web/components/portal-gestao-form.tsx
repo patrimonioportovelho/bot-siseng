@@ -6,6 +6,7 @@ import { ESTADOS_CIVIS, TIPOS_CONTA, TIPOS_PIX } from "@/lib/clientes/opcoes";
 import { gerarContratoGestaoAction } from "@/app/portal/gestao/actions";
 
 type Banco = { id: string; nome: string; codigo: string | null };
+type BairroCadastrado = { cidade_id: string | null; bairro: string | null };
 
 type ClienteLinha = {
   // Presente só quando o corretor escolheu um cliente já cadastrado (em vez
@@ -95,13 +96,15 @@ export function PortalGestaoForm({
   estados,
   cidades,
   clientesDoCorretor,
-  bancos
+  bancos,
+  bairrosCadastrados
 }: {
   corretor: { id: string; nome: string; creci: string | null; cpf: string | null };
   estados: { id: string; nome: string }[];
   cidades: { id: string; nome: string; estado_id: string }[];
   clientesDoCorretor: ClienteDoCorretor[];
   bancos: Banco[];
+  bairrosCadastrados: BairroCadastrado[];
 }) {
   const [clientes, setClientes] = useState<ClienteLinha[]>([clienteVazio()]);
 
@@ -125,6 +128,19 @@ export function PortalGestaoForm({
   const [resultado, setResultado] = useState<{ ok: true; url: string } | { ok: false; erro: string } | null>(null);
 
   const cidadesDoEstado = useMemo(() => cidades.filter((c) => c.estado_id === estadoId), [cidades, estadoId]);
+
+  // Sugestão de bairro por cidade (estilo EnumList do AppSheet) — a mesma
+  // lista sincronizada usada em todos os cadastros de imóvel do sistema (ver
+  // components/imovel-form.tsx), pra manter o nome do bairro consistente
+  // entre o admin e o portal do corretor.
+  const bairrosDaCidade = useMemo(() => {
+    const set = new Set(
+      bairrosCadastrados
+        .filter((b) => b.cidade_id === cidadeId && b.bairro && b.bairro.trim())
+        .map((b) => b.bairro!.trim())
+    );
+    return [...set].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [bairrosCadastrados, cidadeId]);
 
   // Imóveis oferecidos pra reaproveitar vêm sempre do cliente PRINCIPAL (o
   // primeiro da lista, o que aparece no corpo do contrato) — é o dono
@@ -589,7 +605,13 @@ export function PortalGestaoForm({
               readOnly={Boolean(imovelId)}
               value={bairro}
               onChange={(e) => setBairro(e.target.value)}
+              list="lista-bairros-gestao"
             />
+            <datalist id="lista-bairros-gestao">
+              {bairrosDaCidade.map((b) => (
+                <option key={b} value={b} />
+              ))}
+            </datalist>
           </div>
           <div>
             <label className={LABEL}>Estado</label>

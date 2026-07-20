@@ -848,6 +848,7 @@ model transacoes {
   valor_cliente                                            Decimal?                 @db.Decimal(14, 2)
   valor_administracao                                      Decimal?                 @db.Decimal(14, 2)
   iptu                                                     Decimal?                 @db.Decimal(14, 2)
+  trsd                                                     Decimal?                 @db.Decimal(14, 2)
   encargos                                                 String[]
   forma_pagamento                                          String?
   finalidade_locacao                                       String?

@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { Topbar } from "@/components/topbar";
 import { prisma } from "@/lib/prisma";
 import { getAdminSession } from "@/lib/auth";
-import { TransacaoForm } from "@/components/transacao-form";
+import { TransacaoDetalhe } from "@/components/transacao-detalhe";
 import { GerarBoletosForm } from "@/components/gerar-boletos-form";
 import { MovimentacoesTransacaoLista } from "@/components/movimentacoes-transacao-lista";
 import { formatDataCalendario, formatMoeda } from "@/lib/format";
@@ -34,7 +34,11 @@ export default async function TransacaoDetalhePage({
         imoveis: { include: { imoveis_proprietarios: { include: { clientes: true }, orderBy: { ordem: "asc" } } } },
         transacoes_contrapartes: { include: { clientes: true }, orderBy: { ordem: "asc" } },
         condicoes_pagamento: { orderBy: { created_at: "asc" } },
-        adm_imoveis: { select: { id: true, id_legado: true, parceiro_id: true, imovel_id: true, status: true, clientes: { select: { nome: true } } } }
+        adm_imoveis: { select: { id: true, id_legado: true, parceiro_id: true, imovel_id: true, status: true, clientes: { select: { nome: true } } } },
+        lojas: { select: { nome: true } },
+        parceiros_transacoes_corretor_proprietario_idToparceiros: { select: { nome: true } },
+        parceiros_transacoes_corretor_contraparte_idToparceiros: { select: { nome: true } },
+        parceiros_transacoes_parceiro_externo_idToparceiros: { select: { nome: true } }
       }
     }),
     prisma.lojas.findMany({ orderBy: { nome: "asc" } }),
@@ -205,7 +209,7 @@ export default async function TransacaoDetalhePage({
       )}
       {boletos === "1" && (
         <div className="bg-green-50 border border-green-200 text-green-700 text-xs rounded-lg px-3 py-2 mb-4">
-          Boletos gerados com sucesso — veja os Recebimentos no Financeiro.
+          Movimentação gerada com sucesso — veja no Financeiro.
         </div>
       )}
 
@@ -225,8 +229,33 @@ export default async function TransacaoDetalhePage({
         {" · "}Valor: {formatMoeda(transacao.valor_transacao)}
       </div>
 
-      <TransacaoForm
+      <TransacaoDetalhe
         transacao={transacao}
+        lojaNome={transacao.lojas?.nome ?? ""}
+        imovelInfo={
+          transacao.imoveis
+            ? {
+                id: transacao.imoveis.id,
+                label: [transacao.imoveis.id_legado ?? transacao.imoveis.id, transacao.imoveis.endereco]
+                  .filter(Boolean)
+                  .join(" — ")
+              }
+            : null
+        }
+        administracaoInfo={
+          transacao.adm_imoveis
+            ? {
+                id: transacao.adm_imoveis.id,
+                label: `${transacao.adm_imoveis.id_legado ?? transacao.adm_imoveis.id} — ${transacao.adm_imoveis.clientes.nome}`
+              }
+            : null
+        }
+        proprietarios={proprietarios.map((c) => ({ id: c.id, nome: c.nome }))}
+        interessados={interessados.map((c) => ({ id: c.id, nome: c.nome }))}
+        corretorProprietario={transacao.parceiros_transacoes_corretor_proprietario_idToparceiros?.nome ?? null}
+        corretorContraparte={transacao.parceiros_transacoes_corretor_contraparte_idToparceiros?.nome ?? null}
+        parceiroExterno={transacao.parceiros_transacoes_parceiro_externo_idToparceiros?.nome ?? null}
+        condicoesPagamento={condicoesIniciais}
         lojas={lojas}
         clientes={clientesComParceiro}
         imoveis={imoveisComProprietarios}

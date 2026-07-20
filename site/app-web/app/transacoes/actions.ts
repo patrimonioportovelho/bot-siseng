@@ -106,6 +106,8 @@ function camposEditaveis(formData: FormData) {
     porc_corretor_contraparte: percentual(formData, "porc_corretor_contraparte") ?? 0,
     porc_imobiliaria: percentual(formData, "porc_imobiliaria") ?? 0,
     encargos: formData.getAll("encargos").map((v) => String(v)),
+    iptu: valorMonetario(formData, "iptu"),
+    trsd: valorMonetario(formData, "trsd"),
     forma_pagamento: texto(formData, "forma_pagamento"),
     finalidade_locacao: texto(formData, "finalidade_locacao"),
     chave: texto(formData, "chave"),

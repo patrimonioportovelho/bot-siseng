@@ -155,9 +155,9 @@ export function GerarBoletosForm({
   if (semAdministracao && mesesJaGerados > 0) {
     return (
       <div className="bg-white border border-gray-200 rounded-xl p-4">
-        <div className="text-sm font-bold text-gray-800 mb-1">Boletos</div>
+        <div className="text-sm font-bold text-gray-800 mb-1">Movimentação</div>
         <p className="text-xs text-gray-400">
-          Essa Locação sem administração já teve o Recebimento gerado — veja a lista de movimentações abaixo. Sem
+          Essa Locação sem administração já teve a movimentação gerada — veja a lista de movimentações abaixo. Sem
           administração só gera 1 (pra rodar o rateio uma vez).
         </p>
       </div>
@@ -168,7 +168,7 @@ export function GerarBoletosForm({
     <div className="bg-white border border-gray-200 rounded-xl p-4">
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
         <div className="text-sm font-bold text-gray-800">
-          Gerar boletos {mesesJaGerados > 0 && <span className="text-gray-400 font-normal">(continuando do mês {mesesJaGerados + 1})</span>}
+          Gerar movimentação {mesesJaGerados > 0 && <span className="text-gray-400 font-normal">(continuando do mês {mesesJaGerados + 1})</span>}
         </div>
         {comAdministracao && (
           <div className="flex items-center gap-2">
@@ -262,7 +262,7 @@ export function GerarBoletosForm({
       <div className="flex items-center justify-between mt-4">
         <span className="text-xs text-gray-500">
           Total da prévia: <span className="font-semibold text-gray-800">{formatMoeda(totalPrevia)}</span> em{" "}
-          {linhas.length} boleto(s)
+          {linhas.length} movimentação(ões)
         </span>
         <form
           action={action}
@@ -271,7 +271,7 @@ export function GerarBoletosForm({
               e.preventDefault();
               return;
             }
-            if (!window.confirm(`Gerar ${linhas.length} Recebimento(s) conforme a prévia acima?`)) {
+            if (!window.confirm(`Gerar ${linhas.length} movimentação(ões) conforme a prévia acima?`)) {
               e.preventDefault();
             }
           }}
@@ -279,7 +279,7 @@ export function GerarBoletosForm({
           <input type="hidden" name="transacao_id" value={transacao.id} />
           <input type="hidden" name="linhas" value={JSON.stringify(linhasParaEnviar)} />
           <button type="submit" className="text-xs bg-primary text-white rounded-lg px-5 py-2 font-semibold">
-            Confirmar e gerar
+            Confirmar e gerar movimentação
           </button>
         </form>
       </div>

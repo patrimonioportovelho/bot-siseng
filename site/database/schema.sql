@@ -427,6 +427,7 @@ CREATE TABLE transacoes (
   valor_cliente                NUMERIC(14,2),
   valor_administracao          NUMERIC(14,2),
   iptu                         NUMERIC(14,2),
+  trsd                         NUMERIC(14,2),   -- valor do TRSD quando fracionado/lançado nas mensalidades da locação (mesmo padrão do iptu acima)
   -- 'Encargos' é EnumList (multivalorado) no AppSheet: armazenado como array de texto
   encargos                     TEXT[] CHECK (encargos <@ ARRAY[
                                    'IPTU do ano vigente ao andamento do contrato','TRSD do ano vigente ao andamento do contrato',

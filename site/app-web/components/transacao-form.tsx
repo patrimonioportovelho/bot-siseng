@@ -76,6 +76,8 @@ type TransacaoExistente = {
   porc_corretor_contraparte: unknown;
   porc_imobiliaria: unknown;
   encargos: string[];
+  iptu: unknown;
+  trsd: unknown;
   forma_pagamento: string | null;
   finalidade_locacao: string | null;
   chave: string | null;
@@ -188,6 +190,8 @@ export function TransacaoForm({
   const [temParceria, setTemParceria] = useState(t?.tem_parceria ?? false);
   const [temVistoria, setTemVistoria] = useState(t?.tem_vistoria ?? false);
   const [encargos, setEncargos] = useState<string[]>(t?.encargos ?? []);
+  const [iptuTexto, setIptuTexto] = useState(formatValorEditavel(t?.iptu));
+  const [trsdTexto, setTrsdTexto] = useState(formatValorEditavel(t?.trsd));
 
   // Datas e valor — Data de vencimento é preenchida automaticamente
   // (assinatura + tempo de contrato em meses) mas continua editável: em
@@ -705,16 +709,42 @@ export function TransacaoForm({
               <label className={LABEL}>Encargos</label>
               <div className="flex flex-col gap-1 mt-1">
                 {ENCARGOS_OPCOES.map((op) => (
-                  <label key={op} className="flex items-center gap-2 text-xs text-gray-600">
-                    <input
-                      type="checkbox"
-                      name="encargos"
-                      value={op}
-                      checked={encargos.includes(op)}
-                      onChange={() => toggleEncargo(op)}
-                    />
-                    {op}
-                  </label>
+                  <div key={op}>
+                    <label className="flex items-center gap-2 text-xs text-gray-600">
+                      <input
+                        type="checkbox"
+                        name="encargos"
+                        value={op}
+                        checked={encargos.includes(op)}
+                        onChange={() => toggleEncargo(op)}
+                      />
+                      {op}
+                    </label>
+                    {op === "IPTU do ano vigente ao andamento do contrato" && encargos.includes(op) && (
+                      <div className="mt-1 ml-6">
+                        <label className={LABEL}>Valor do IPTU (R$) — pode ser fracionado nas mensalidades</label>
+                        <input
+                          className={CAMPO}
+                          name="iptu"
+                          placeholder="80,00"
+                          value={iptuTexto}
+                          onChange={(e) => setIptuTexto(e.target.value)}
+                        />
+                      </div>
+                    )}
+                    {op === "TRSD do ano vigente ao andamento do contrato" && encargos.includes(op) && (
+                      <div className="mt-1 ml-6">
+                        <label className={LABEL}>Valor do TRSD (R$) — pode ser fracionado nas mensalidades</label>
+                        <input
+                          className={CAMPO}
+                          name="trsd"
+                          placeholder="40,00"
+                          value={trsdTexto}
+                          onChange={(e) => setTrsdTexto(e.target.value)}
+                        />
+                      </div>
+                    )}
+                  </div>
                 ))}
               </div>
             </div>

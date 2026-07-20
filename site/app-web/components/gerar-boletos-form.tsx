@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { formatMoeda, formatValorEditavel, valorEditavelParaDecimal, hojeInputDate } from "@/lib/format";
+import { formatMoeda, formatValorEditavel, valorEditavelParaDecimal, hojeInputDate, somarMeses } from "@/lib/format";
 
 type CategoriaOpcao = { id: string; nome: string };
 
@@ -124,17 +124,46 @@ export function GerarBoletosForm({
     setLinhas((prev) => prev.filter((_, i) => i !== indice));
   }
 
+  // Linha extra manual — com opção de Recorrência pra quando a movimentação
+  // vier parcelada (ex.: um acordo de 12x). Ligando a Recorrência e
+  // informando a quantidade, divide o Valor total em N parcelas (mesma conta
+  // em centavos de criarMovimentacaoAction, resto na última) e lança uma
+  // linha por mês a partir do Vencimento informado — igual ao parcelamento
+  // do Financeiro.
+  const [novaLinha, setNovaLinha] = useState({
+    categoriaId: "",
+    descricao: "",
+    valorTexto: "",
+    vencimento: hojeInputDate(),
+    recorrente: false,
+    parcelasTexto: ""
+  });
+
   function adicionarLinhaExtra() {
-    setLinhas((prev) => [
-      ...prev,
-      {
-        categoriaId: categorias.find((c) => c.nome === CATEGORIA_MENSAL)?.id ?? "",
-        rotulo: "Extra",
-        valorTexto: "",
-        vencimento: hojeInputDate(),
-        descricao: ""
-      }
-    ]);
+    const valorTotal = valorEditavelParaDecimal(novaLinha.valorTexto) ?? 0;
+    const qtd = novaLinha.recorrente ? Math.max(1, Number(novaLinha.parcelasTexto) || 1) : 1;
+
+    const totalCentavos = Math.round(valorTotal * 100);
+    const baseCentavos = Math.floor(totalCentavos / qtd);
+    const restoCentavos = totalCentavos - baseCentavos * qtd;
+
+    const categoriaId = novaLinha.categoriaId || categorias.find((c) => c.nome === CATEGORIA_MENSAL)?.id || "";
+
+    const novasLinhas: Linha[] = Array.from({ length: qtd }, (_, indice) => {
+      const i = indice + 1;
+      const vencimentoParcela = i === 1 ? novaLinha.vencimento : somarMeses(novaLinha.vencimento, i - 1) || novaLinha.vencimento;
+      const valorParcela = (baseCentavos + (i === qtd ? restoCentavos : 0)) / 100;
+      return {
+        categoriaId,
+        rotulo: qtd > 1 ? `Extra — parcela ${i}/${qtd}` : "Extra",
+        valorTexto: formatValorEditavel(valorParcela),
+        vencimento: vencimentoParcela,
+        descricao: novaLinha.descricao
+      };
+    });
+
+    setLinhas((prev) => [...prev, ...novasLinhas]);
+    setNovaLinha({ categoriaId: "", descricao: "", valorTexto: "", vencimento: hojeInputDate(), recorrente: false, parcelasTexto: "" });
   }
 
   const linhasParaEnviar = useMemo(
@@ -255,9 +284,83 @@ export function GerarBoletosForm({
         ))}
       </div>
 
-      <button type="button" onClick={adicionarLinhaExtra} className="mt-2 text-[11px] text-primary underline">
-        + Adicionar linha
-      </button>
+      <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-[1fr_1fr_110px_130px_auto] md:items-end bg-gray-50/50 border border-dashed border-gray-200 rounded-lg p-3">
+        <div>
+          <label className={LABEL}>Categoria</label>
+          <select
+            className={CAMPO}
+            value={novaLinha.categoriaId}
+            onChange={(e) => setNovaLinha((a) => ({ ...a, categoriaId: e.target.value }))}
+          >
+            <option value="">—</option>
+            {categorias.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.nome}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className={LABEL}>Descrição</label>
+          <input
+            className={CAMPO}
+            value={novaLinha.descricao}
+            onChange={(e) => setNovaLinha((a) => ({ ...a, descricao: e.target.value }))}
+          />
+        </div>
+        <div>
+          <label className={LABEL}>{novaLinha.recorrente ? "Valor total da dívida" : "Valor"}</label>
+          <input
+            className={CAMPO}
+            placeholder="0,00"
+            value={novaLinha.valorTexto}
+            onChange={(e) => setNovaLinha((a) => ({ ...a, valorTexto: e.target.value }))}
+          />
+        </div>
+        <div>
+          <label className={LABEL}>{novaLinha.recorrente ? "Vencimento da 1ª parcela" : "Vencimento"}</label>
+          <input
+            type="date"
+            className={CAMPO}
+            value={novaLinha.vencimento}
+            onChange={(e) => setNovaLinha((a) => ({ ...a, vencimento: e.target.value }))}
+          />
+        </div>
+        <button
+          type="button"
+          onClick={adicionarLinhaExtra}
+          className="text-xs bg-white border border-gray-300 text-gray-700 rounded-lg px-3 py-1.5 font-semibold h-fit"
+        >
+          + Adicionar linha
+        </button>
+
+        <div className="md:col-span-5 flex items-center gap-2 flex-wrap">
+          <label className="flex items-center gap-2 text-xs text-gray-600">
+            <input
+              type="checkbox"
+              checked={novaLinha.recorrente}
+              onChange={(e) => setNovaLinha((a) => ({ ...a, recorrente: e.target.checked }))}
+            />
+            Recorrência (recebemos parcelado)
+          </label>
+          {novaLinha.recorrente && (
+            <>
+              <label className="text-xs text-gray-600">Quantas parcelas</label>
+              <input
+                type="number"
+                min={2}
+                className="text-xs border border-gray-300 rounded-lg px-2 py-1 w-20"
+                value={novaLinha.parcelasTexto}
+                onChange={(e) => setNovaLinha((a) => ({ ...a, parcelasTexto: e.target.value }))}
+              />
+              <span className="text-[11px] text-gray-400">
+                Divide o valor total em N parcelas iguais (resto na última) — uma por mês a partir do vencimento
+                acima.
+              </span>
+            </>
+          )}
+        </div>
+      </div>
 
       <div className="flex items-center justify-between mt-4">
         <span className="text-xs text-gray-500">

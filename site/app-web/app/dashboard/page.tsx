@@ -161,7 +161,11 @@ export default async function DashboardPage({
     // corrigida na ficha da transação.
     prisma.transacoes.findMany({
       where: { excluido: false, data_assinatura: { gte: inicio, lt: fimExclusivo } },
-      take: 15,
+      // Antes era 15 e o resto só aparecia clicando em "Ver todas" — agora a
+      // tabela rola dentro do card (mesmo padrão das listas da Saúde da
+      // operação), então dá pra trazer o período inteiro; o take alto é só
+      // um teto de segurança pra não estourar com um período gigante.
+      take: 200,
       orderBy: { data_assinatura: "desc" },
       include: {
         imoveis: true,
@@ -903,50 +907,70 @@ export default async function DashboardPage({
         <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
           <div className="text-sm font-bold text-gray-800">
             Transações do período ({transacoesDoPeriodo.length}
-            {transacoesDoPeriodo.length === 15 ? "+" : ""})
+            {transacoesDoPeriodo.length === 200 ? "+" : ""})
           </div>
-          {transacoesDoPeriodo.length === 15 && (
-            <Link
-              href={`/transacoes/periodo?${queryPeriodoAtual.toString()}`}
-              className="text-xs text-primary font-semibold hover:underline whitespace-nowrap"
-            >
-              Ver todas as transações →
-            </Link>
-          )}
+          <Link
+            href={`/transacoes/periodo?${queryPeriodoAtual.toString()}`}
+            className="text-xs text-primary font-semibold hover:underline whitespace-nowrap"
+          >
+            Ver todas as transações →
+          </Link>
         </div>
-        {/* overflow-x-auto + min-w no table: no celular a tabela rola de lado
-            em vez de espremer/cortar as colunas (era o que estava quebrando
-            o layout no print do celular). */}
-        <div className="overflow-x-auto">
+        {/* Mesmo padrão das listas da "Saúde da operação": rola dentro do
+            card (vertical) pra ver o período inteiro sem esticar a página, e
+            cada linha é clicável e leva pro detalhe da transação.
+            overflow-x-auto + min-w continuam pro celular (a tabela rola de
+            lado em vez de espremer as colunas). */}
+        <div className="overflow-x-auto overflow-y-auto max-h-96 border border-gray-100 rounded-lg">
           <table className="w-full text-xs min-w-[720px]">
-            <thead>
+            <thead className="sticky top-0 bg-white z-10">
               <tr className="text-left text-gray-500">
-                <th className="font-normal py-1.5 border-b border-gray-100">Imóvel</th>
+                <th className="font-normal py-1.5 px-2 border-b border-gray-100">Imóvel</th>
                 <th className="font-normal py-1.5 border-b border-gray-100">Proprietário</th>
                 <th className="font-normal py-1.5 border-b border-gray-100">Interessado</th>
                 <th className="font-normal py-1.5 border-b border-gray-100">Tipo</th>
                 <th className="font-normal py-1.5 border-b border-gray-100">Status</th>
                 <th className="font-normal py-1.5 border-b border-gray-100">Assinatura</th>
-                <th className="font-normal py-1.5 border-b border-gray-100 text-right">Valor</th>
+                <th className="font-normal py-1.5 px-2 border-b border-gray-100 text-right">Valor</th>
               </tr>
             </thead>
             <tbody>
               {transacoesDoPeriodo.map((t) => (
-                <tr key={t.id}>
-                  <td className="py-2 border-b border-gray-50 max-w-[200px] truncate">{t.imoveis?.endereco ?? "—"}</td>
-                  <td className="py-2 border-b border-gray-50">
-                    {t.clientes_transacoes_cliente_idToclientes?.nome ?? "—"}
+                <tr key={t.id} className="hover:bg-gray-50">
+                  <td className="border-b border-gray-50 max-w-[200px]">
+                    <Link href={`/transacoes/${t.id}`} className="block py-2 px-2 truncate">
+                      {t.imoveis?.endereco ?? "—"}
+                    </Link>
                   </td>
-                  <td className="py-2 border-b border-gray-50">
-                    {t.clientes_transacoes_cliente_contraparte_idToclientes?.nome ?? "—"}
+                  <td className="border-b border-gray-50">
+                    <Link href={`/transacoes/${t.id}`} className="block py-2">
+                      {t.clientes_transacoes_cliente_idToclientes?.nome ?? "—"}
+                    </Link>
                   </td>
-                  <td className="py-2 border-b border-gray-50">{t.tipo}</td>
-                  <td className="py-2 border-b border-gray-50">
-                    <StatusBadge status={t.status ?? "—"} tone={statusTone(t.status)} />
+                  <td className="border-b border-gray-50">
+                    <Link href={`/transacoes/${t.id}`} className="block py-2">
+                      {t.clientes_transacoes_cliente_contraparte_idToclientes?.nome ?? "—"}
+                    </Link>
                   </td>
-                  <td className="py-2 border-b border-gray-50 whitespace-nowrap">{formatDataCalendario(t.data_assinatura)}</td>
-                  <td className="py-2 border-b border-gray-50 text-right whitespace-nowrap">
-                    {formatMoeda(t.valor_transacao)}
+                  <td className="border-b border-gray-50">
+                    <Link href={`/transacoes/${t.id}`} className="block py-2">
+                      {t.tipo}
+                    </Link>
+                  </td>
+                  <td className="border-b border-gray-50">
+                    <Link href={`/transacoes/${t.id}`} className="block py-2">
+                      <StatusBadge status={t.status ?? "—"} tone={statusTone(t.status)} />
+                    </Link>
+                  </td>
+                  <td className="border-b border-gray-50 whitespace-nowrap">
+                    <Link href={`/transacoes/${t.id}`} className="block py-2">
+                      {formatDataCalendario(t.data_assinatura)}
+                    </Link>
+                  </td>
+                  <td className="border-b border-gray-50 text-right whitespace-nowrap">
+                    <Link href={`/transacoes/${t.id}`} className="block py-2 px-2">
+                      {formatMoeda(t.valor_transacao)}
+                    </Link>
                   </td>
                 </tr>
               ))}

@@ -129,16 +129,20 @@ async function sincronizarInteressados(transacaoId: string, formData: FormData) 
     .map((v) => String(v).trim())
     .filter((v) => v.length > 0);
 
-  await prisma.$transaction([
-    prisma.transacoes_contrapartes.deleteMany({ where: { transacao_id: transacaoId } }),
-    ...(ids.length > 0
-      ? [
-          prisma.transacoes_contrapartes.createMany({
-            data: ids.map((clienteId, ordem) => ({ transacao_id: transacaoId, cliente_id: clienteId, ordem }))
-          })
-        ]
-      : [])
-  ]);
+  await prisma
+    .$transaction([
+      prisma.transacoes_contrapartes.deleteMany({ where: { transacao_id: transacaoId } }),
+      ...(ids.length > 0
+        ? [
+            prisma.transacoes_contrapartes.createMany({
+              data: ids.map((clienteId, ordem) => ({ transacao_id: transacaoId, cliente_id: clienteId, ordem }))
+            })
+          ]
+        : [])
+    ])
+    .catch((erro) =>
+      registrarEJogarErro({ entidadeTipo: "transacoes_contrapartes", entidadeId: transacaoId, acao: "sincronizar", erro })
+    );
 }
 
 // Condições de pagamento (o "negócio": entrada, saldo financiado, parcelado,
@@ -176,16 +180,20 @@ async function sincronizarCondicoesPagamento(transacaoId: string, formData: Form
     })
     .filter((c): c is typeof c & { valor: number } => c.valor !== null);
 
-  await prisma.$transaction([
-    prisma.condicoes_pagamento.deleteMany({ where: { transacao_id: transacaoId } }),
-    ...(linhas.length > 0
-      ? [
-          prisma.condicoes_pagamento.createMany({
-            data: linhas.map((c) => ({ transacao_id: transacaoId, ...c }))
-          })
-        ]
-      : [])
-  ]);
+  await prisma
+    .$transaction([
+      prisma.condicoes_pagamento.deleteMany({ where: { transacao_id: transacaoId } }),
+      ...(linhas.length > 0
+        ? [
+            prisma.condicoes_pagamento.createMany({
+              data: linhas.map((c) => ({ transacao_id: transacaoId, ...c }))
+            })
+          ]
+        : [])
+    ])
+    .catch((erro) =>
+      registrarEJogarErro({ entidadeTipo: "condicoes_pagamento", entidadeId: transacaoId, acao: "sincronizar", erro })
+    );
 }
 
 // Mesmo padrão adotado em app/clientes/actions.ts: as actions dos
@@ -326,10 +334,12 @@ export async function atualizarStatusTransacaoAction(formData: FormData) {
   const antes = await prisma.transacoes.findUnique({ where: { id } });
   if (!antes) throw new Error("Transação não encontrada.");
 
-  const depois = await prisma.transacoes.update({
-    where: { id },
-    data: { status, updated_at: new Date() }
-  });
+  const depois = await prisma.transacoes
+    .update({
+      where: { id },
+      data: { status, updated_at: new Date() }
+    })
+    .catch((erro) => registrarEJogarErro({ entidadeTipo: "transacoes", entidadeId: id, acao: "atualizar_status", erro }));
 
   await logAlteracao({
     entidadeTipo: "transacoes",
@@ -380,7 +390,8 @@ export async function gerarBoletosAction(formData: FormData) {
     throw new Error("Nenhuma linha válida pra gerar (confira categoria, valor e vencimento de cada uma).");
   }
 
-  const criados = await prisma.$transaction(
+  const criados = await prisma
+    .$transaction(
     linhasValidas.map((l) =>
       prisma.movimentacoes.create({
         data: {
@@ -397,7 +408,8 @@ export async function gerarBoletosAction(formData: FormData) {
         }
       })
     )
-  );
+    )
+    .catch((erro) => registrarEJogarErro({ entidadeTipo: "movimentacoes", entidadeId: transacaoId, acao: "gerar_movimentacao", erro }));
 
   await logAlteracao({
     entidadeTipo: "movimentacoes",
@@ -457,10 +469,12 @@ export async function apagarTransacaoAction(formData: FormData) {
   const antes = await prisma.transacoes.findUnique({ where: { id } });
   if (!antes) throw new Error("Transação não encontrada.");
 
-  await prisma.transacoes.update({
-    where: { id },
-    data: { excluido: true, updated_at: new Date() }
-  });
+  await prisma.transacoes
+    .update({
+      where: { id },
+      data: { excluido: true, updated_at: new Date() }
+    })
+    .catch((erro) => registrarEJogarErro({ entidadeTipo: "transacoes", entidadeId: id, acao: "excluir", erro }));
 
   await logAlteracao({
     entidadeTipo: "transacoes",

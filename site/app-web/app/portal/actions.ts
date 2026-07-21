@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
+import { registrarEJogarErro } from "@/lib/erros";
 import {
   loginPortal,
   logoutPortal,
@@ -78,11 +79,15 @@ export async function toggleChecklistAction(itemId: string) {
   });
 
   if (existente) {
-    await prisma.checklist_conclusoes.delete({ where: { id: existente.id } });
+    await prisma.checklist_conclusoes
+      .delete({ where: { id: existente.id } })
+      .catch((erro) => registrarEJogarErro({ entidadeTipo: "checklist_conclusoes", entidadeId: existente.id, acao: "desmarcar", erro }));
   } else {
-    await prisma.checklist_conclusoes.create({
-      data: { item_id: itemId, parceiro_id: session.parceiroId }
-    });
+    await prisma.checklist_conclusoes
+      .create({
+        data: { item_id: itemId, parceiro_id: session.parceiroId }
+      })
+      .catch((erro) => registrarEJogarErro({ entidadeTipo: "checklist_conclusoes", entidadeId: itemId, acao: "marcar", erro }));
   }
 
   revalidatePath("/portal");

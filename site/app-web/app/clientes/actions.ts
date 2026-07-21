@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAdminSession, requireAdm, logAlteracao } from "@/lib/auth";
 import { valorEditavelParaDecimal } from "@/lib/format";
 import { registrarEJogarErro } from "@/lib/erros";
+import { buscarClienteDuplicado } from "@/lib/clientes/duplicidade";
 
 function texto(formData: FormData, campo: string): string | null {
   const v = formData.get(campo);
@@ -82,7 +83,10 @@ function camposEditaveis(formData: FormData) {
 // inline, com os campos intactos. O registro no logs_erro continua igual:
 // registrarEJogarErro grava ANTES de lançar, e aqui o catch só transforma o
 // throw em retorno — nenhum erro deixa de ficar registrado.
-export type ResultadoFormulario = { erro: string } | undefined;
+// `duplicado: true` acompanha o erro quando o bloqueio foi a checagem de
+// cliente repetido — o formulário usa isso pra mostrar a opção "criar mesmo
+// assim" (só faz sentido nesse caso).
+export type ResultadoFormulario = { erro: string; duplicado?: boolean } | undefined;
 
 function mensagemDe(erro: unknown): string {
   return erro instanceof Error ? erro.message : String(erro);
@@ -95,6 +99,26 @@ export async function criarClienteAction(_prev: unknown, formData: FormData): Pr
   const tipoCliente = texto(formData, "tipo_cliente");
   if (!nome || !tipoCliente) {
     return { erro: "Nome e tipo de cliente são obrigatórios." };
+  }
+
+  // Mesma checagem de duplicidade que o portal do corretor já faz — o admin
+  // era o único caminho que criava cliente sem conferir nada (e a auditoria
+  // achou 19 CPFs e 27 nomes duplicados na base). Diferente do portal, aqui
+  // o admin PODE decidir criar mesmo assim (homônimo de verdade): marcando o
+  // checkbox "criar mesmo assim" que o formulário mostra junto do aviso.
+  const criarMesmoAssim = formData.get("criar_mesmo_assim") === "on";
+  if (!criarMesmoAssim) {
+    const duplicado = await buscarClienteDuplicado({
+      nome,
+      cpfCnpj: texto(formData, "cpf") ?? texto(formData, "cnpj")
+    });
+    if (duplicado) {
+      const dono = duplicado.parceiroNome ? ` (parceiro responsável: ${duplicado.parceiroNome})` : "";
+      return {
+        erro: `Já existe um cliente chamado "${duplicado.nome}"${dono} — confira se não é a mesma pessoa antes de cadastrar de novo.`,
+        duplicado: true
+      };
+    }
   }
 
   let novoId: string;

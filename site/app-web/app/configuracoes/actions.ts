@@ -9,6 +9,7 @@ import {
   criarUploadAssinadoImagemPublicacao,
   publicUrlImagemPublicacao
 } from "@/lib/supabase-admin";
+import { registrarEJogarErro } from "@/lib/erros";
 
 // Libera (ou troca) o acesso de alguém direto, sem passar pela fila de
 // solicitação — útil pro cadastro inicial de cada parceiro e também pra você
@@ -24,10 +25,12 @@ export async function definirSenhaParceiroAction(formData: FormData) {
 
   const senhaHash = await hashSenha(senha);
 
-  await prisma.parceiros.update({
-    where: { id: parceiroId },
-    data: { senha_hash: senhaHash }
-  });
+  await prisma.parceiros
+    .update({
+      where: { id: parceiroId },
+      data: { senha_hash: senhaHash }
+    })
+    .catch((erro) => registrarEJogarErro({ entidadeTipo: "parceiros", entidadeId: parceiroId, acao: "definir_senha_manual", erro }));
 
   await logAlteracao({
     entidadeTipo: "parceiros",
@@ -104,9 +107,11 @@ export async function criarPublicacaoAction(formData: FormData) {
   const imagemCaminho = String(formData.get("imagem_caminho") ?? "").trim();
   const imagem_url = imagemCaminho ? publicUrlImagemPublicacao(imagemCaminho) : null;
 
-  const criada = await prisma.publicacoes_site.create({
-    data: { ...dados, imagem_url, autor_parceiro_id: admin.parceiroId }
-  });
+  const criada = await prisma.publicacoes_site
+    .create({
+      data: { ...dados, imagem_url, autor_parceiro_id: admin.parceiroId }
+    })
+    .catch((erro) => registrarEJogarErro({ entidadeTipo: "publicacoes_site", acao: "criar", erro }));
 
   await logAlteracao({
     entidadeTipo: "publicacoes_site",
@@ -150,10 +155,12 @@ export async function atualizarPublicacaoAction(formData: FormData) {
     imagem_url = null;
   }
 
-  await prisma.publicacoes_site.update({
-    where: { id },
-    data: { ...dados, imagem_url, updated_at: new Date() }
-  });
+  await prisma.publicacoes_site
+    .update({
+      where: { id },
+      data: { ...dados, imagem_url, updated_at: new Date() }
+    })
+    .catch((erro) => registrarEJogarErro({ entidadeTipo: "publicacoes_site", entidadeId: id, acao: "editar", erro }));
 
   await logAlteracao({
     entidadeTipo: "publicacoes_site",
@@ -178,10 +185,12 @@ export async function alternarAtivoPublicacaoAction(formData: FormData) {
   const atual = await prisma.publicacoes_site.findUnique({ where: { id } });
   if (!atual) return;
 
-  await prisma.publicacoes_site.update({
-    where: { id },
-    data: { ativo: !atual.ativo, updated_at: new Date() }
-  });
+  await prisma.publicacoes_site
+    .update({
+      where: { id },
+      data: { ativo: !atual.ativo, updated_at: new Date() }
+    })
+    .catch((erro) => registrarEJogarErro({ entidadeTipo: "publicacoes_site", entidadeId: id, acao: "alternar_ativo", erro }));
 
   await logAlteracao({
     entidadeTipo: "publicacoes_site",
@@ -207,7 +216,9 @@ export async function excluirPublicacaoAction(formData: FormData) {
   const antes = await prisma.publicacoes_site.findUnique({ where: { id } });
   if (!antes) return;
 
-  await prisma.publicacoes_site.delete({ where: { id } });
+  await prisma.publicacoes_site
+    .delete({ where: { id } })
+    .catch((erro) => registrarEJogarErro({ entidadeTipo: "publicacoes_site", entidadeId: id, acao: "excluir", erro }));
   await apagarImagemPublicacao(antes.imagem_url);
 
   await logAlteracao({
@@ -231,14 +242,16 @@ export async function atualizarStatusSacAction(formData: FormData) {
   const status = String(formData.get("status") ?? "");
   if (!id || !status) return;
 
-  await prisma.mensagens_sac.update({
-    where: { id },
-    data: {
-      status,
-      resolvido_em: status === "Resolvido" ? new Date() : null,
-      resolvido_por_parceiro_id: status === "Resolvido" ? admin.parceiroId : null
-    }
-  });
+  await prisma.mensagens_sac
+    .update({
+      where: { id },
+      data: {
+        status,
+        resolvido_em: status === "Resolvido" ? new Date() : null,
+        resolvido_por_parceiro_id: status === "Resolvido" ? admin.parceiroId : null
+      }
+    })
+    .catch((erro) => registrarEJogarErro({ entidadeTipo: "mensagens_sac", entidadeId: id, acao: "atualizar_status", erro }));
 
   await logAlteracao({
     entidadeTipo: "mensagens_sac",

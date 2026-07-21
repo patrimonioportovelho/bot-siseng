@@ -90,7 +90,9 @@ export async function moverColunaAction(id: string, novaColuna: string) {
   const antes = await prisma.gestoes.findUnique({ where: { id } });
   if (!antes) throw new Error("Gestão não encontrada.");
 
-  await prisma.gestoes.update({ where: { id }, data: { coluna: novaColuna, updated_at: new Date() } });
+  await prisma.gestoes
+    .update({ where: { id }, data: { coluna: novaColuna, updated_at: new Date() } })
+    .catch((erro) => registrarEJogarErro({ entidadeTipo: "gestoes", entidadeId: id, acao: "mover_coluna", erro }));
 
   await logAlteracao({
     entidadeTipo: "gestoes",
@@ -112,7 +114,9 @@ export async function apagarGestaoAction(formData: FormData) {
   const id = texto(formData, "gestaoId");
   if (!id) throw new Error("Gestão inválida.");
 
-  await prisma.gestoes.update({ where: { id }, data: { excluido: true, updated_at: new Date() } });
+  await prisma.gestoes
+    .update({ where: { id }, data: { excluido: true, updated_at: new Date() } })
+    .catch((erro) => registrarEJogarErro({ entidadeTipo: "gestoes", entidadeId: id, acao: "apagar", erro }));
 
   await logAlteracao({ entidadeTipo: "gestoes", entidadeId: id, acao: "apagar" });
 
@@ -134,9 +138,11 @@ export async function adicionarChecklistItemAction(formData: FormData) {
     orderBy: { ordem: "desc" }
   });
 
-  await prisma.gestao_checklist_itens.create({
-    data: { gestao_id: gestaoId, label, ordem: (ultimo?.ordem ?? -1) + 1 }
-  });
+  await prisma.gestao_checklist_itens
+    .create({
+      data: { gestao_id: gestaoId, label, ordem: (ultimo?.ordem ?? -1) + 1 }
+    })
+    .catch((erro) => registrarEJogarErro({ entidadeTipo: "gestao_checklist_itens", entidadeId: gestaoId, acao: "criar", erro }));
 
   revalidatePath(`/gestoes/${gestaoId}`);
 }
@@ -147,7 +153,9 @@ export async function marcarChecklistItemAction(id: string, gestaoId: string) {
   const item = await prisma.gestao_checklist_itens.findUnique({ where: { id } });
   if (!item) throw new Error("Item não encontrado.");
 
-  await prisma.gestao_checklist_itens.update({ where: { id }, data: { done: !item.done } });
+  await prisma.gestao_checklist_itens
+    .update({ where: { id }, data: { done: !item.done } })
+    .catch((erro) => registrarEJogarErro({ entidadeTipo: "gestao_checklist_itens", entidadeId: id, acao: "marcar", erro }));
 
   revalidatePath(`/gestoes/${gestaoId}`);
 }
@@ -155,7 +163,9 @@ export async function marcarChecklistItemAction(id: string, gestaoId: string) {
 export async function removerChecklistItemAction(id: string, gestaoId: string) {
   await requireAdminSession();
 
-  await prisma.gestao_checklist_itens.delete({ where: { id } });
+  await prisma.gestao_checklist_itens
+    .delete({ where: { id } })
+    .catch((erro) => registrarEJogarErro({ entidadeTipo: "gestao_checklist_itens", entidadeId: id, acao: "remover", erro }));
 
   revalidatePath(`/gestoes/${gestaoId}`);
 }
@@ -174,15 +184,17 @@ export async function criarAtividadeAction(formData: FormData) {
     throw new Error("Tipo, título e data são obrigatórios pra agendar a atividade.");
   }
 
-  await prisma.gestao_atividades.create({
-    data: {
-      gestao_id: gestaoId,
-      tipo,
-      titulo,
-      data: dataAtividade,
-      notas: texto(formData, "notas")
-    }
-  });
+  await prisma.gestao_atividades
+    .create({
+      data: {
+        gestao_id: gestaoId,
+        tipo,
+        titulo,
+        data: dataAtividade,
+        notas: texto(formData, "notas")
+      }
+    })
+    .catch((erro) => registrarEJogarErro({ entidadeTipo: "gestao_atividades", entidadeId: gestaoId, acao: "criar", erro }));
 
   revalidatePath(`/gestoes/${gestaoId}`);
   revalidatePath("/manutencao/calendario");
@@ -195,7 +207,9 @@ export async function marcarAtividadeFeitaAction(id: string, gestaoId: string) {
   const atividade = await prisma.gestao_atividades.findUnique({ where: { id } });
   if (!atividade) throw new Error("Atividade não encontrada.");
 
-  await prisma.gestao_atividades.update({ where: { id }, data: { feito: !atividade.feito } });
+  await prisma.gestao_atividades
+    .update({ where: { id }, data: { feito: !atividade.feito } })
+    .catch((erro) => registrarEJogarErro({ entidadeTipo: "gestao_atividades", entidadeId: id, acao: "marcar_feita", erro }));
 
   revalidatePath(`/gestoes/${gestaoId}`);
   revalidatePath("/manutencao/calendario");
@@ -205,7 +219,9 @@ export async function marcarAtividadeFeitaAction(id: string, gestaoId: string) {
 export async function removerAtividadeAction(id: string, gestaoId: string) {
   await requireAdminSession();
 
-  await prisma.gestao_atividades.delete({ where: { id } });
+  await prisma.gestao_atividades
+    .delete({ where: { id } })
+    .catch((erro) => registrarEJogarErro({ entidadeTipo: "gestao_atividades", entidadeId: id, acao: "remover", erro }));
 
   revalidatePath(`/gestoes/${gestaoId}`);
   revalidatePath("/manutencao/calendario");
@@ -221,7 +237,9 @@ export async function adicionarNotaAction(formData: FormData) {
   const textoNota = texto(formData, "texto");
   if (!gestaoId || !textoNota) throw new Error("Escreva o texto da nota.");
 
-  await prisma.gestao_notas.create({ data: { gestao_id: gestaoId, texto: textoNota } });
+  await prisma.gestao_notas
+    .create({ data: { gestao_id: gestaoId, texto: textoNota } })
+    .catch((erro) => registrarEJogarErro({ entidadeTipo: "gestao_notas", entidadeId: gestaoId, acao: "criar", erro }));
 
   revalidatePath(`/gestoes/${gestaoId}`);
 }

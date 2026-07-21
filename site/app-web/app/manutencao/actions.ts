@@ -123,7 +123,9 @@ export async function moverColunaAction(id: string, novaColuna: string) {
   const antes = await prisma.manutencoes.findUnique({ where: { id } });
   if (!antes) throw new Error("Manutenção não encontrada.");
 
-  await prisma.manutencoes.update({ where: { id }, data: { coluna: novaColuna, updated_at: new Date() } });
+  await prisma.manutencoes
+    .update({ where: { id }, data: { coluna: novaColuna, updated_at: new Date() } })
+    .catch((erro) => registrarEJogarErro({ entidadeTipo: "manutencoes", entidadeId: id, acao: "mover_coluna", erro }));
 
   await logAlteracao({
     entidadeTipo: "manutencoes",
@@ -146,7 +148,9 @@ export async function apagarManutencaoAction(formData: FormData) {
   const id = texto(formData, "manutencaoId");
   if (!id) throw new Error("Manutenção inválida.");
 
-  await prisma.manutencoes.update({ where: { id }, data: { excluido: true, updated_at: new Date() } });
+  await prisma.manutencoes
+    .update({ where: { id }, data: { excluido: true, updated_at: new Date() } })
+    .catch((erro) => registrarEJogarErro({ entidadeTipo: "manutencoes", entidadeId: id, acao: "apagar", erro }));
 
   await logAlteracao({ entidadeTipo: "manutencoes", entidadeId: id, acao: "apagar" });
 
@@ -168,9 +172,11 @@ export async function adicionarChecklistItemAction(formData: FormData) {
     orderBy: { ordem: "desc" }
   });
 
-  await prisma.manutencao_checklist_itens.create({
-    data: { manutencao_id: manutencaoId, label, ordem: (ultimo?.ordem ?? -1) + 1 }
-  });
+  await prisma.manutencao_checklist_itens
+    .create({
+      data: { manutencao_id: manutencaoId, label, ordem: (ultimo?.ordem ?? -1) + 1 }
+    })
+    .catch((erro) => registrarEJogarErro({ entidadeTipo: "manutencao_checklist_itens", entidadeId: manutencaoId, acao: "criar", erro }));
 
   revalidatePath(`/manutencao/${manutencaoId}`);
 }
@@ -181,7 +187,9 @@ export async function marcarChecklistItemAction(id: string, manutencaoId: string
   const item = await prisma.manutencao_checklist_itens.findUnique({ where: { id } });
   if (!item) throw new Error("Item não encontrado.");
 
-  await prisma.manutencao_checklist_itens.update({ where: { id }, data: { done: !item.done } });
+  await prisma.manutencao_checklist_itens
+    .update({ where: { id }, data: { done: !item.done } })
+    .catch((erro) => registrarEJogarErro({ entidadeTipo: "manutencao_checklist_itens", entidadeId: id, acao: "marcar", erro }));
 
   revalidatePath(`/manutencao/${manutencaoId}`);
 }
@@ -189,7 +197,9 @@ export async function marcarChecklistItemAction(id: string, manutencaoId: string
 export async function removerChecklistItemAction(id: string, manutencaoId: string) {
   await requireAdminSession();
 
-  await prisma.manutencao_checklist_itens.delete({ where: { id } });
+  await prisma.manutencao_checklist_itens
+    .delete({ where: { id } })
+    .catch((erro) => registrarEJogarErro({ entidadeTipo: "manutencao_checklist_itens", entidadeId: id, acao: "remover", erro }));
 
   revalidatePath(`/manutencao/${manutencaoId}`);
 }
@@ -208,15 +218,17 @@ export async function criarAtividadeAction(formData: FormData) {
     throw new Error("Tipo, título e data são obrigatórios pra agendar a atividade.");
   }
 
-  await prisma.manutencao_atividades.create({
-    data: {
-      manutencao_id: manutencaoId,
-      tipo,
-      titulo,
-      data: dataAtividade,
-      notas: texto(formData, "notas")
-    }
-  });
+  await prisma.manutencao_atividades
+    .create({
+      data: {
+        manutencao_id: manutencaoId,
+        tipo,
+        titulo,
+        data: dataAtividade,
+        notas: texto(formData, "notas")
+      }
+    })
+    .catch((erro) => registrarEJogarErro({ entidadeTipo: "manutencao_atividades", entidadeId: manutencaoId, acao: "criar", erro }));
 
   revalidatePath(`/manutencao/${manutencaoId}`);
   revalidatePath("/manutencao/calendario");
@@ -229,7 +241,9 @@ export async function marcarAtividadeFeitaAction(id: string, manutencaoId: strin
   const atividade = await prisma.manutencao_atividades.findUnique({ where: { id } });
   if (!atividade) throw new Error("Atividade não encontrada.");
 
-  await prisma.manutencao_atividades.update({ where: { id }, data: { feito: !atividade.feito } });
+  await prisma.manutencao_atividades
+    .update({ where: { id }, data: { feito: !atividade.feito } })
+    .catch((erro) => registrarEJogarErro({ entidadeTipo: "manutencao_atividades", entidadeId: id, acao: "marcar_feita", erro }));
 
   revalidatePath(`/manutencao/${manutencaoId}`);
   revalidatePath("/manutencao/calendario");
@@ -239,7 +253,9 @@ export async function marcarAtividadeFeitaAction(id: string, manutencaoId: strin
 export async function removerAtividadeAction(id: string, manutencaoId: string) {
   await requireAdminSession();
 
-  await prisma.manutencao_atividades.delete({ where: { id } });
+  await prisma.manutencao_atividades
+    .delete({ where: { id } })
+    .catch((erro) => registrarEJogarErro({ entidadeTipo: "manutencao_atividades", entidadeId: id, acao: "remover", erro }));
 
   revalidatePath(`/manutencao/${manutencaoId}`);
   revalidatePath("/manutencao/calendario");
@@ -255,7 +271,9 @@ export async function adicionarNotaAction(formData: FormData) {
   const textoNota = texto(formData, "texto");
   if (!manutencaoId || !textoNota) throw new Error("Escreva o texto da nota.");
 
-  await prisma.manutencao_notas.create({ data: { manutencao_id: manutencaoId, texto: textoNota } });
+  await prisma.manutencao_notas
+    .create({ data: { manutencao_id: manutencaoId, texto: textoNota } })
+    .catch((erro) => registrarEJogarErro({ entidadeTipo: "manutencao_notas", entidadeId: manutencaoId, acao: "criar", erro }));
 
   revalidatePath(`/manutencao/${manutencaoId}`);
 }

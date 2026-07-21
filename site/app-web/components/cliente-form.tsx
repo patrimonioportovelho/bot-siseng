@@ -67,8 +67,10 @@ export function ClienteForm({
   parceiros: ParceiroOpcao[];
   // Retorna { erro } em vez de lançar exceção — assim o erro aparece inline
   // aqui embaixo e o que foi digitado continua intacto (antes, qualquer erro
-  // derrubava a página inteira e apagava o formulário).
-  action: (prevState: unknown, formData: FormData) => Promise<{ erro: string } | undefined | void>;
+  // derrubava a página inteira e apagava o formulário). `duplicado: true`
+  // acompanha o erro de cliente repetido e libera o checkbox "criar mesmo
+  // assim" abaixo.
+  action: (prevState: unknown, formData: FormData) => Promise<{ erro: string; duplicado?: boolean } | undefined | void>;
   embutido?: boolean;
 }) {
   const c = cliente;
@@ -356,6 +358,12 @@ export function ClienteForm({
       {resultado?.erro && (
         <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg px-3 py-2">
           {resultado.erro} — o que você digitou continua aí em cima, é só corrigir e salvar de novo.
+          {resultado.duplicado && (
+            <label className="flex items-center gap-2 mt-2 text-red-800 font-medium cursor-pointer">
+              <input type="checkbox" name="criar_mesmo_assim" />
+              Já conferi, não é a mesma pessoa — criar mesmo assim
+            </label>
+          )}
         </div>
       )}
 

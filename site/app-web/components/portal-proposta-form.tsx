@@ -35,6 +35,7 @@ type ClienteDoCorretor = {
   cpfCnpj: string;
   endereco: string;
   estadoCivil: string;
+  profissao: string;
 };
 
 type CondicaoPagamento = {
@@ -130,7 +131,7 @@ export function PortalPropostaForm({
       cpfCnpj: encontrado.cpfCnpj,
       endereco: encontrado.endereco,
       estadoCivil: encontrado.estadoCivil,
-      profissao: "",
+      profissao: encontrado.profissao,
       bancoId: "",
       codigoBanco: "",
       agencia: "",

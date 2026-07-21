@@ -791,6 +791,7 @@ async function montarDadosProposta(propostaId: string): Promise<Record<string, u
     CpfCnpj: docTexto(cliente),
     EnderecoCompleto: enderecoClienteCompleto(cliente),
     EstadoCivil: cliente.estado_civil ?? "",
+    Profissao: cliente.profissao ?? cliente.cat_profissao ?? "",
     Descricao: p.descricao ?? "",
     Rua: p.rua ?? "",
     Numero: p.numero ?? "",

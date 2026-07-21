@@ -29,7 +29,16 @@ export default async function PortalPropostaNovoPage() {
     prisma.clientes.findMany({
       where: { parceiro_id: session.parceiroId },
       orderBy: { nome: "asc" },
-      select: { id: true, nome: true, cpf: true, cnpj: true, endereco: true, estado_civil: true }
+      select: {
+        id: true,
+        nome: true,
+        cpf: true,
+        cnpj: true,
+        endereco: true,
+        estado_civil: true,
+        profissao: true,
+        cat_profissao: true
+      }
     }),
     // Dados bancários — mesmo cadastro completo do administrativo (ver
     // components/cliente-form.tsx), liberado aqui pro corretor já deixar o
@@ -72,7 +81,8 @@ export default async function PortalPropostaNovoPage() {
             nome: c.nome,
             cpfCnpj: c.cpf ? formatCpf(c.cpf) : c.cnpj ? formatCnpj(c.cnpj) : "",
             endereco: c.endereco ?? "",
-            estadoCivil: c.estado_civil ?? ""
+            estadoCivil: c.estado_civil ?? "",
+            profissao: c.profissao ?? c.cat_profissao ?? ""
           }))}
           bancos={bancos.map((b) => ({ id: b.id, nome: b.nome, codigo: b.codigo }))}
         />

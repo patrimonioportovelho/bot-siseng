@@ -240,6 +240,7 @@ export const CAMPOS_DOCUMENTO: Record<TipoDocumento, CampoDocumento[]> = {
     { campo: "CpfCnpj", descricao: "CPF ou CNPJ do cliente" },
     { campo: "EnderecoCompleto", descricao: "Endereço completo do cliente" },
     { campo: "EstadoCivil", descricao: "Estado civil do cliente" },
+    { campo: "Profissao", descricao: "Profissão do cliente (comprador/interessado)" },
     { campo: "Descricao", descricao: "Descrição livre do imóvel (não cadastrado no sistema)" },
     { campo: "Rua", descricao: "Rua do imóvel (texto livre, não persistido)" },
     { campo: "Numero", descricao: "Número do imóvel (texto livre, não persistido)" },

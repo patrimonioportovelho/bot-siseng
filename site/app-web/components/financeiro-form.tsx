@@ -1,13 +1,27 @@
 "use client";
 
 import { useActionState, useMemo, useState } from "react";
-import { formatMoeda, formatValorEditavel, valorEditavelParaDecimal, hojeInputDate } from "@/lib/format";
+import { formatMoeda, formatPercentual, formatValorEditavel, valorEditavelParaDecimal, hojeInputDate } from "@/lib/format";
 import { CampoLink } from "@/components/campo-link";
 
 type CategoriaOpcao = { id: string; nome: string; tipo: string | null };
 type ClienteOpcao = { id: string; nome: string };
 type ParceiroOpcao = { id: string; nome: string };
 type ParticipanteExtraOpcao = { id: string; nome: string; papel: string | null; porcentagem: unknown };
+
+// Condição de pagamento marcada como "honorário devido aqui" (mesmo conceito
+// de components/rateio-form.tsx) — usada pra saber qual fatia do honorário
+// total este Recebimento específico está cobrindo, em vez de sempre sugerir
+// o honorário inteiro (o que ficaria errado num negócio com o honorário
+// fatiado em mais de uma condição, ex.: Entrada + Parcelado).
+type CondicaoComComissaoOpcao = {
+  id: string;
+  tipo: string | null;
+  porc_comissao: unknown;
+  desconto_comissao: unknown;
+  data_pagamento: string | null;
+  jaGerado: boolean;
+};
 
 type TransacaoOpcao = {
   id: string;
@@ -29,7 +43,10 @@ type TransacaoOpcao = {
   corretorProprietarioNome: string | null;
   corretorContraparteId: string | null;
   corretorContraparteNome: string | null;
+  parceiroExternoId: string | null;
+  parceiroExternoNome: string | null;
   extras: ParticipanteExtraOpcao[];
+  condicoesComComissao: CondicaoComComissaoOpcao[];
 };
 
 const CAMPO = "text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full outline-none focus:border-primary bg-white";
@@ -214,6 +231,25 @@ export function FinanceiroForm({
     return clientes.filter((c) => c.nome.toLowerCase().includes(t)).slice(0, 30);
   }, [buscaClienteProprietario, clientes]);
 
+  // Qual condição de pagamento (fatia do honorário) este Recebimento de
+  // Compra e venda está cobrindo — mesmo conceito do RateioForm. Só afeta o
+  // valor SUGERIDO aqui (o campo continua editável); quando o admin de fato
+  // gerar o rateio depois, na tela desta movimentação, escolhe de novo lá.
+  const [condicaoRecebimentoId, setCondicaoRecebimentoId] = useState("");
+
+  function honorarioCompraVenda(t: TransacaoOpcao, condicaoId: string): number {
+    let honorario = Number(t.valor_transacao) * Number(t.porc_honorario ?? 0);
+    const condicao = t.condicoesComComissao.find((c) => c.id === condicaoId);
+    if (condicao) honorario *= Number(condicao.porc_comissao ?? 0) || 0;
+    if (t.tem_parceria) honorario *= 1 - Number(t.porc_parceria ?? 0);
+    return honorario;
+  }
+
+  function escolherCondicaoRecebimento(condicaoId: string) {
+    setCondicaoRecebimentoId(condicaoId);
+    if (transacaoSelecionada) setValor(formatValorEditavel(honorarioCompraVenda(transacaoSelecionada, condicaoId)));
+  }
+
   function mudarTipo(novoTipo: "Despesa" | "Recebimento") {
     setTipo(novoTipo);
     setCategoriaId("");
@@ -221,6 +257,7 @@ export function FinanceiroForm({
     setBuscaTransacao("");
     setParteRepasse("");
     setDescontoRepasseTexto("");
+    setCondicaoRecebimentoId("");
   }
 
   function mudarCategoria(novaCategoriaId: string) {
@@ -229,6 +266,7 @@ export function FinanceiroForm({
     setBuscaTransacao("");
     setParteRepasse("");
     setDescontoRepasseTexto("");
+    setCondicaoRecebimentoId("");
   }
 
   function selecionarTransacao(t: TransacaoOpcao) {
@@ -237,6 +275,7 @@ export function FinanceiroForm({
     setListaTransacaoAberta(false);
     setParteRepasse("");
     setDescontoRepasseTexto("");
+    setCondicaoRecebimentoId("");
 
     // Pré-preenche os dois clientes a partir do contrato — tudo continua
     // editável depois, é só um ponto de partida.
@@ -258,11 +297,24 @@ export function FinanceiroForm({
     // é isso que efetivamente entra na conta, o resto nunca passa por aqui.
     // Se tem parceria externa, a parte do parceiro já cai direto na conta
     // dele (não passa pela nossa movimentação) — então desconta ela também,
-    // ficando só com o que a gente de fato recebe.
+    // ficando só com o que a gente de fato recebe. Quando o honorário está
+    // fatiado em mais de uma condição (Entrada + Parcelado etc.), a sugestão
+    // é só a fatia — se tiver mais de uma pendente, deixa em branco até o
+    // admin escolher qual (seletor abaixo), pra não sugerir o honorário
+    // inteiro de novo.
     if (t.tipo === "Compra e Venda" && t.valor_transacao) {
-      let honorario = Number(t.valor_transacao) * Number(t.porc_honorario ?? 0);
-      if (t.tem_parceria) honorario *= 1 - Number(t.porc_parceria ?? 0);
-      setValor(formatValorEditavel(honorario));
+      const pendentes = t.condicoesComComissao.filter((c) => !c.jaGerado);
+      if (pendentes.length === 1) {
+        setCondicaoRecebimentoId(pendentes[0].id);
+        setValor(formatValorEditavel(honorarioCompraVenda(t, pendentes[0].id)));
+      } else if (pendentes.length > 1) {
+        setValor("");
+      } else {
+        setValor(formatValorEditavel(honorarioCompraVenda(t, "")));
+      }
+      // Parceiro externo (parceria da imobiliária) fica registrado aqui só
+      // como referência — o valor dele já saiu da conta acima, não duplica.
+      if (t.tem_parceria && t.parceiroExternoId) setParceiroId(t.parceiroExternoId);
     } else if (t.tipo === "Locação" && categoriaSelecionada?.nome === CATEGORIA_LOCACAO_CAUCAO) {
       // Cauções recebemos o valor de garantia combinado no contrato, não o
       // valor do aluguel.
@@ -395,6 +447,34 @@ export function FinanceiroForm({
                   contraparte: {transacaoSelecionada.corretorContraparteNome ?? "—"}. O repasse de comissão pra eles é
                   gerado depois, na tela desta movimentação (rateio de honorários).
                 </p>
+              )}
+
+            {!ehCategoriaRepasse &&
+              transacaoSelecionada &&
+              transacaoSelecionada.tipo === "Compra e Venda" &&
+              transacaoSelecionada.condicoesComComissao.filter((c) => !c.jaGerado).length > 0 && (
+                <div className="mt-2">
+                  <label className={LABEL}>Qual condição de pagamento é este recebimento?</label>
+                  <select
+                    className={CAMPO}
+                    value={condicaoRecebimentoId}
+                    onChange={(e) => escolherCondicaoRecebimento(e.target.value)}
+                  >
+                    <option value="">Selecione a condição...</option>
+                    {transacaoSelecionada.condicoesComComissao
+                      .filter((c) => !c.jaGerado)
+                      .map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.tipo ?? "Condição"} — {formatPercentual(c.porc_comissao)}% do honorário
+                          {c.data_pagamento ? ` · previsto ${c.data_pagamento}` : ""}
+                        </option>
+                      ))}
+                  </select>
+                  <p className="text-[11px] text-gray-400 mt-1">
+                    O honorário deste negócio está fatiado em mais de uma condição — escolha qual fatia este
+                    recebimento cobre pra sugerir o valor certo (continua editável).
+                  </p>
+                </div>
               )}
 
             {ehCategoriaRepasse && cascataRepasse && transacaoSelecionadaParaCascata && (

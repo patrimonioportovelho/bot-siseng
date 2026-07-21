@@ -44,16 +44,39 @@ export default async function NovaMovimentacaoPage() {
         clientes_transacoes_cliente_contraparte_idToclientes: { select: { id: true, nome: true } },
         parceiros_transacoes_corretor_proprietario_idToparceiros: { select: { id: true, nome: true } },
         parceiros_transacoes_corretor_contraparte_idToparceiros: { select: { id: true, nome: true } },
+        parceiros_transacoes_parceiro_externo_idToparceiros: { select: { id: true, nome: true } },
         // Participantes extra do rateio (ex.: coordenador de vendas) — ver
         // components/rateio-form.tsx, mesmo conceito, pra oferecer o mesmo
         // botão de sugestão aqui no lançamento manual.
         transacoes_comissao_extra: {
           include: { parceiros: { select: { id: true, nome: true } } },
           orderBy: { created_at: "asc" }
+        },
+        // Condições marcadas como "honorário devido aqui" — mesmo conceito
+        // usado no RateioForm (ver app/financeiro/[id]/page.tsx): quando o
+        // negócio tem o honorário fatiado em mais de uma condição, o valor
+        // sugerido do Recebimento precisa refletir só a fatia desta vez, não
+        // o honorário inteiro de novo.
+        condicoes_pagamento: {
+          where: { gera_comissao: true },
+          orderBy: { created_at: "asc" },
+          select: { id: true, tipo: true, porc_comissao: true, desconto_comissao: true, data_pagamento: true }
         }
       }
     })
   ]);
+
+  const condicaoIds = transacoesParaRecebimento.flatMap((t) => t.condicoes_pagamento.map((c) => c.id));
+  const condicoesJaGeradasIds = new Set(
+    condicaoIds.length > 0
+      ? (
+          await prisma.pagamentos.findMany({
+            where: { condicao_pagamento_id: { in: condicaoIds } },
+            select: { condicao_pagamento_id: true }
+          })
+        ).map((p) => p.condicao_pagamento_id)
+      : []
+  );
 
   const transacoesOpcoes = transacoesParaRecebimento.map((t) => ({
     id: t.id,
@@ -75,11 +98,21 @@ export default async function NovaMovimentacaoPage() {
     corretorProprietarioNome: t.parceiros_transacoes_corretor_proprietario_idToparceiros?.nome ?? null,
     corretorContraparteId: t.parceiros_transacoes_corretor_contraparte_idToparceiros?.id ?? null,
     corretorContraparteNome: t.parceiros_transacoes_corretor_contraparte_idToparceiros?.nome ?? null,
+    parceiroExternoId: t.parceiros_transacoes_parceiro_externo_idToparceiros?.id ?? null,
+    parceiroExternoNome: t.parceiros_transacoes_parceiro_externo_idToparceiros?.nome ?? null,
     extras: t.transacoes_comissao_extra.map((e) => ({
       id: e.parceiros.id,
       nome: e.parceiros.nome,
       papel: e.papel,
       porcentagem: e.porcentagem
+    })),
+    condicoesComComissao: t.condicoes_pagamento.map((c) => ({
+      id: c.id,
+      tipo: c.tipo,
+      porc_comissao: c.porc_comissao,
+      desconto_comissao: c.desconto_comissao,
+      data_pagamento: c.data_pagamento ? c.data_pagamento.toISOString().slice(0, 10) : null,
+      jaGerado: condicoesJaGeradasIds.has(c.id)
     }))
   }));
 

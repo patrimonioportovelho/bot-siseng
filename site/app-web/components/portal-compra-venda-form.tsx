@@ -706,18 +706,24 @@ export function PortalCompraVendaForm({
     }
   }
 
+  // Ao escolher um imóvel já cadastrado, o(s) vendedor(es) vem pré-preenchido
+  // com o(s) proprietário(s) já vinculado(s) a ele (imoveis_proprietarios) —
+  // o corretor pode editar essa lista (remover, adicionar cônjuge, ou
+  // completar quando o imóvel não tinha proprietário nenhum cadastrado ainda).
+  // Antes disso o cadastro travava com "imóvel sem proprietário" sem dar
+  // nenhum jeito de corrigir ali mesmo.
   function selecionarImovel(i: ImovelBuscaResultado) {
     setImovelId(i.id);
     setBuscaImovel(labelImovel(i));
     setListaImovelAberta(false);
     if (i.parceiroId) setCorretorProprietarioId(i.parceiroId);
+    setVendedores(i.proprietarios.map((p) => ({ ...pessoaVazia(), clienteId: p.id, nome: p.nome })));
   }
 
   function ativarImovelNovo() {
     setImovelId("");
     setBuscaImovel("");
     setImovelNovo(true);
-    if (vendedores.length === 0) setVendedores([pessoaVazia()]);
   }
 
   function cancelarImovelNovo() {
@@ -731,7 +737,6 @@ export function PortalCompraVendaForm({
     setCidadeIdNovo("");
     setMatriculaNovo("");
     setInscricaoNovo("");
-    setVendedores([]);
   }
 
   function adicionarCondicao() {
@@ -806,8 +811,8 @@ export function PortalCompraVendaForm({
       formData.set("imovel_id", imovelNovo ? "" : imovelId);
       formData.set("compra_sem_gestao", compraSemGestao ? "on" : "");
       formData.set("compradoresJson", JSON.stringify(compradores));
+      formData.set("vendedoresJson", JSON.stringify(vendedores));
       if (imovelNovo) {
-        formData.set("vendedoresJson", JSON.stringify(vendedores));
         formData.set("tipo_imovel", tipoImovelNovo);
         formData.set("rua", ruaNovo);
         formData.set("n_predial", nPredialNovo);
@@ -865,7 +870,8 @@ export function PortalCompraVendaForm({
 
   const podeGerar =
     lojaId.length > 0 &&
-    (imovelNovo ? tipoImovelNovo.length > 0 && ruaNovo.trim().length > 0 && vendedores.length > 0 : imovelId.length > 0) &&
+    (imovelNovo ? tipoImovelNovo.length > 0 && ruaNovo.trim().length > 0 : imovelId.length > 0) &&
+    vendedores.length > 0 &&
     compradores.length > 0 &&
     valorTransacaoTexto.trim().length > 0;
 
@@ -1058,21 +1064,27 @@ export function PortalCompraVendaForm({
                 <input className={CAMPO} value={inscricaoNovo} onChange={(e) => setInscricaoNovo(e.target.value)} />
               </div>
             </div>
-
-            <BlocoPessoas
-              titulo="Vendedor(es) — proprietário(s) do imóvel"
-              ajuda="Pode ter mais de um (ex.: casal, herdeiros). Se já tem cadastro, busque em vez de digitar de novo."
-              pessoas={vendedores}
-              setPessoas={setVendedores}
-              clientesDisponiveis={clientes}
-              busca={buscaVendedor}
-              setBusca={setBuscaVendedor}
-              listaAberta={listaVendedorAberta}
-              setListaAberta={setListaVendedorAberta}
-              bancos={bancos}
-            />
           </>
         )}
+
+        <div className="mt-4 pt-4 border-t border-gray-100">
+          <BlocoPessoas
+            titulo="Vendedor(es) — proprietário(s) do imóvel"
+            ajuda={
+              imovelNovo
+                ? "Pode ter mais de um (ex.: casal, herdeiros). Se já tem cadastro, busque em vez de digitar de novo."
+                : "Vem preenchido com o(s) proprietário(s) já cadastrado(s) nesse imóvel. Se estiver errado, faltando alguém (ex.: cônjuge) ou o imóvel não tiver nenhum proprietário ainda, edite aqui — busque um cliente já cadastrado ou cadastre um novo."
+            }
+            pessoas={vendedores}
+            setPessoas={setVendedores}
+            clientesDisponiveis={clientes}
+            busca={buscaVendedor}
+            setBusca={setBuscaVendedor}
+            listaAberta={listaVendedorAberta}
+            setListaAberta={setListaVendedorAberta}
+            bancos={bancos}
+          />
+        </div>
       </div>
 
       <div className="bg-white border border-gray-200 rounded-xl p-4">

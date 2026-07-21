@@ -307,9 +307,21 @@ export async function gerarCompraVendaAction(
       return { ok: false, erro: "Adicione ao menos um cliente comprador." };
     }
 
-    // Só pede vendedor(es) + dados do imóvel quando o imóvel é novo — se já
-    // existe, o(s) proprietário(s) cadastrado(s) nele é que valem.
-    let vendedoresForm: ClienteDigitado[] = [];
+    // Vendedor(es) é sempre pedido do formulário agora, imóvel novo ou já
+    // existente — antes, pra imóvel já cadastrado, o vendedor vinha só do
+    // primeiro imoveis_proprietarios registrado nele, e se o imóvel não
+    // tivesse proprietário nenhum (import antigo, cadastro incompleto etc.)
+    // o cadastro travava sem nenhum jeito de corrigir ali mesmo — o corretor
+    // via um erro genérico e perdia tudo que tinha digitado. Agora o
+    // formulário sempre manda vendedoresJson (pré-preenchido com o(s)
+    // proprietário(s) já cadastrado(s), editável), e esse valor é usado tanto
+    // pra achar o vendedor principal quanto pra sincronizar
+    // imoveis_proprietarios (ver mais abaixo).
+    const vendedoresForm = parseClientes(formData, "vendedoresJson");
+    if (vendedoresForm.length === 0) {
+      return { ok: false, erro: "Adicione ao menos um vendedor (proprietário) do imóvel." };
+    }
+
     let tipoImovelNovo: string | null = null;
     let ruaNovo: string | null = null;
     let nPredialNovo: string | null = null;
@@ -321,10 +333,6 @@ export async function gerarCompraVendaAction(
     let inscricaoNovo: string | null = null;
 
     if (!imovelIdExistente) {
-      vendedoresForm = parseClientes(formData, "vendedoresJson");
-      if (vendedoresForm.length === 0) {
-        return { ok: false, erro: "Cadastre ao menos um vendedor (proprietário) do imóvel novo." };
-      }
       tipoImovelNovo = texto(formData, "tipo_imovel");
       ruaNovo = texto(formData, "rua");
       if (!tipoImovelNovo || !ruaNovo) {
@@ -391,26 +399,27 @@ export async function gerarCompraVendaAction(
     const compradoresResultado = remontar(compradoresForm, compradoresCriados);
     const compradorIds = compradoresResultado.map((c) => c.id);
 
-    const primeiroProprietario: { id: string } | null = imovelIdExistente
-      ? await prisma.imoveis_proprietarios
-          .findFirst({ where: { imovel_id: imovelIdExistente }, orderBy: { ordem: "asc" }, select: { cliente_id: true } })
-          .then((r) => (r ? { id: r.cliente_id } : null))
-      : null;
+    const vendedoresResultado = remontar(vendedoresForm, vendedoresCriados);
+    const vendedorPrincipalId = vendedoresResultado[0].id;
 
     let imovelId: string;
-    let vendedorPrincipalId: string;
 
     if (imovelIdExistente) {
-      if (!primeiroProprietario) {
-        return {
-          ok: false,
-          erro: "O imóvel selecionado não tem proprietário cadastrado — não dá pra gerar a transação."
-        };
-      }
       imovelId = imovelIdExistente;
-      vendedorPrincipalId = primeiroProprietario.id;
+      // Sincroniza imoveis_proprietarios com o(s) vendedor(es) informado(s)
+      // agora — cobre tanto o caso normal (lista igual à que já existia,
+      // recriada sem efeito prático) quanto o caso que travava antes: imóvel
+      // já cadastrado mas sem nenhum proprietário vinculado. Mesmo padrão de
+      // deleteMany+createMany usado em avaliacoes_clientes (co-titulares).
+      await prisma.$transaction([
+        prisma.imoveis_proprietarios.deleteMany({ where: { imovel_id: imovelId } }),
+        prisma.imoveis_proprietarios.createMany({
+          data: vendedoresResultado.map((c, ordem) => ({ imovel_id: imovelId, cliente_id: c.id, ordem }))
+        })
+      ]).catch((erro) =>
+        registrarEJogarErro({ entidadeTipo: "imoveis_proprietarios", acao: "sincronizar_via_portal_compra_venda", erro })
+      );
     } else {
-      const vendedoresResultado = remontar(vendedoresForm, vendedoresCriados);
       const [cidade, estado] = await Promise.all([
         cidadeIdNovo ? prisma.cidades.findUnique({ where: { id: cidadeIdNovo } }) : Promise.resolve(null),
         estadoIdNovo ? prisma.estados.findUnique({ where: { id: estadoIdNovo } }) : Promise.resolve(null)
@@ -447,7 +456,6 @@ export async function gerarCompraVendaAction(
         .catch((erro) => registrarEJogarErro({ entidadeTipo: "imoveis", acao: "criar_via_portal_compra_venda", erro }));
 
       imovelId = novoImovel.id;
-      vendedorPrincipalId = vendedoresResultado[0].id;
     }
 
     // Vínculo com a Gestão — reconfere no servidor (não confia só no que

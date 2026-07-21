@@ -97,7 +97,7 @@ export function RateioForm({
   // honorário total inteiro nesse único rateio.
   const [condicaoId, setCondicaoId] = useState(condicoesDisponiveis.length === 1 ? condicoesDisponiveis[0].id : "");
   const condicaoSelecionada = condicoesDisponiveis.find((c) => c.id === condicaoId) ?? null;
-  const porcFatia = condicaoSelecionada ? (Number(condicaoSelecionada.porc_comissao ?? 0) || 0) / 100 : 1;
+  const porcFatia = condicaoSelecionada ? (Number(condicaoSelecionada.porc_comissao ?? 0) || 0) : 1;
   const descontoCondicaoRS = condicaoSelecionada ? Number(condicaoSelecionada.desconto_comissao ?? 0) || 0 : 0;
 
   // Mesma conta em cascata de components/transacao-form.tsx: honorário
@@ -143,7 +143,7 @@ export function RateioForm({
       });
     }
     for (const extra of transacao.extras) {
-      const fracExtra = (Number(extra.porcentagem ?? 0) || 0) / 100;
+      const fracExtra = (Number(extra.porcentagem ?? 0) || 0);
       const valorExtra = restante * fracExtra;
       if (valorExtra > 0) {
         linhas.push({

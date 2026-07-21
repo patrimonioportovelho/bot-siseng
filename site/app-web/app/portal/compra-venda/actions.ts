@@ -250,10 +250,11 @@ async function sincronizarCondicoesPagamento(transacaoId: string, formData: Form
       const dataPagamento = dataTxt ? new Date(dataTxt) : null;
       // Comissionamento vinculado a este pagamento — o corretor pode marcar
       // aqui quando o honorário é devido (mesmo campo que o admin usa em
-      // app/transacoes/actions.ts). Desconto fica só a cargo do admin.
+      // app/transacoes/actions.ts). Desconto fica só a cargo do admin. O
+      // formulário manda porc_comissao como texto digitado ("50" = 50%) —
+      // percentualParaDecimal converte pra fração (0.5) igual porc_honorario.
       const geraComissao = c.gera_comissao === true || c.gera_comissao === "true";
-      const porcComissaoNum = Number(c.porc_comissao);
-      const porcComissao = geraComissao && Number.isFinite(porcComissaoNum) ? porcComissaoNum : null;
+      const porcComissao = geraComissao ? percentualParaDecimal(String(c.porc_comissao ?? "").trim()) : null;
       return {
         tipo: String(c.tipo ?? "").trim() || null,
         valor,

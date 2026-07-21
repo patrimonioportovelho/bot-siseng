@@ -139,7 +139,7 @@ export async function DashboardSaude() {
     .filter((c) => !jaGeradasIds.has(c.id))
     .map((c) => {
       const valorHonorarioTotal = Number(c.transacoes.valor_transacao) * Number(c.transacoes.porc_honorario ?? 0);
-      const fracao = Number(c.porc_comissao ?? 0) / 100;
+      const fracao = Number(c.porc_comissao ?? 0);
       const valorPrevisto = Math.max(0, valorHonorarioTotal * fracao - Number(c.desconto_comissao ?? 0));
       return {
         transacaoId: c.transacoes.id,

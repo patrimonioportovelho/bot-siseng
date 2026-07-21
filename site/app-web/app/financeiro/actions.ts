@@ -375,7 +375,7 @@ export async function gerarRateioAction(formData: FormData) {
   // só a fatia dela (porc_comissao) entra no rateio, não o honorário
   // inteiro — sem isso, cada Recebimento de um negócio parcelado pagaria o
   // honorário total de novo.
-  const fracaoCondicao = condicaoPagamento ? Number(condicaoPagamento.porc_comissao ?? 0) / 100 : 1;
+  const fracaoCondicao = condicaoPagamento ? Number(condicaoPagamento.porc_comissao ?? 0) : 1;
   const valorHonorarioTotal = Number(transacao.valor_transacao) * Number(transacao.porc_honorario ?? 0) * fracaoCondicao;
   const vencimento = new Date(vencimentoTexto + "T00:00:00");
 

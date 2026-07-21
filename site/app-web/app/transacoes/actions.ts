@@ -37,11 +37,6 @@ function booleano(formData: FormData, campo: string): boolean {
   return formData.get(campo) === "on" || formData.get(campo) === "true";
 }
 
-function numeroOuNull(v: unknown): number | null {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
-}
-
 function data(formData: FormData, campo: string): Date | null {
   const t = texto(formData, campo);
   if (t === null) return null;
@@ -174,10 +169,11 @@ async function sincronizarCondicoesPagamento(transacaoId: string, formData: Form
       const dataTxt = String(c.data_pagamento ?? "").trim();
       const dataPagamento = dataTxt ? new Date(dataTxt) : null;
       // Comissionamento vinculado a este pagamento — ver comentário no
-      // schema.prisma (condicoes_pagamento.gera_comissao). porc_comissao
-      // vem do formulário já como fração (0-1), igual porc_honorario etc.
+      // schema.prisma (condicoes_pagamento.gera_comissao). O formulário manda
+      // porc_comissao como texto digitado ("50" = 50%) — percentualParaDecimal
+      // converte pra fração (0.5), igual porc_honorario/porc_corretor_* etc.
       const geraComissao = c.gera_comissao === true || c.gera_comissao === "true";
-      const porcComissao = geraComissao ? numeroOuNull(c.porc_comissao) : null;
+      const porcComissao = geraComissao ? percentualParaDecimal(String(c.porc_comissao ?? "").trim()) : null;
       const descontoComissaoTxt = String(c.desconto_comissao ?? "").trim();
       const descontoComissao = geraComissao && descontoComissaoTxt ? valorEditavelParaDecimal(descontoComissaoTxt) : null;
       return {
@@ -233,7 +229,9 @@ async function sincronizarComissaoExtra(transacaoId: string, formData: FormData)
     .map((c) => ({
       parceiro_id: String(c.parceiro_id ?? "").trim(),
       papel: String(c.papel ?? "").trim() || null,
-      porcentagem: numeroOuNull(c.porcentagem) ?? 0,
+      // Mesmo texto-digitado-vira-fração de porc_comissao acima — o
+      // formulário manda "5" (= 5%), grava 0.05.
+      porcentagem: percentualParaDecimal(String(c.porcentagem ?? "").trim()) ?? 0,
       observacao: String(c.observacao ?? "").trim() || null
     }))
     .filter((c) => c.parceiro_id.length > 0);

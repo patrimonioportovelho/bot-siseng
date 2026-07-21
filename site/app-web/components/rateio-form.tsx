@@ -166,6 +166,10 @@ export function RateioForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [condicaoId, valorCorretorProprietario, valorCorretorContraparte, restante]);
 
+  const [vencimento, setVencimento] = useState(
+    vencimentoSugerido ? inputDate(new Date(vencimentoSugerido)) : hojeInputDate()
+  );
+
   const [linhas, setLinhas] = useState<Linha[]>(linhasBase);
   // Troca de condição/fatia recalcula a base (o desconto por linha, quando
   // já tinha sido preenchido, é zerado de propósito — a fatia mudou, o
@@ -231,11 +235,6 @@ export function RateioForm({
       <input type="hidden" name="transacao_id" value={transacao.id} />
       <input type="hidden" name="recebimento_id" value={recebimentoId} />
       <input type="hidden" name="condicao_pagamento_id" value={condicaoId} />
-      <input
-        type="hidden"
-        name="vencimento"
-        value={vencimentoSugerido ? inputDate(new Date(vencimentoSugerido)) : hojeInputDate()}
-      />
       <input type="hidden" name="linhas" value={JSON.stringify(linhasParaEnviar)} />
 
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
@@ -243,6 +242,18 @@ export function RateioForm({
         <div className="text-xs text-gray-500">
           Honorário desta fatia: <span className="font-semibold text-gray-700">{formatMoeda(honorarioTotal)}</span>
         </div>
+      </div>
+
+      <div className="mb-3 max-w-xs">
+        <label className="text-xs text-gray-600 block mb-1">Vencimento das despesas geradas</label>
+        <input
+          type="date"
+          name="vencimento"
+          className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full outline-none focus:border-primary bg-white"
+          value={vencimento}
+          onChange={(e) => setVencimento(e.target.value)}
+          required
+        />
       </div>
 
       {condicoesDisponiveis.length > 0 && (

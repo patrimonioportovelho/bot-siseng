@@ -244,18 +244,25 @@ export async function DashboardSaude() {
             &quot;Imóvel em Locação&quot; sem nenhuma movimentação futura em aberto no Financeiro — o próximo aluguel
             ainda não tem cobrança gerada (a inadimplência real pode ser maior que a registrada).
           </p>
-          <div className="flex flex-col gap-1 max-h-40 overflow-auto">
-            {locacoesSemCobranca.slice(0, 10).map((t) => (
+          <div className="border border-gray-100 rounded-lg divide-y divide-gray-100 max-h-52 overflow-y-auto">
+            {locacoesSemCobranca.slice(0, 12).map((t) => (
               <Link
                 key={t.id}
                 href={`/transacoes/${t.id}`}
-                className="text-[11px] text-gray-700 hover:bg-gray-50 rounded px-1.5 py-1 truncate"
+                className="flex items-center gap-2 px-2 py-1.5 hover:bg-amber-50/60 bg-white"
               >
-                {t.id_legado ?? t.id} — {t.imoveis?.endereco ?? "imóvel sem endereço"}
+                <span className="shrink-0 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 whitespace-nowrap">
+                  {t.id_legado ?? "sem código"}
+                </span>
+                <span className="text-[11px] leading-snug text-gray-700 truncate">
+                  {t.imoveis?.endereco ?? "imóvel sem endereço"}
+                </span>
               </Link>
             ))}
-            {locacoesSemCobranca.length > 10 && (
-              <div className="text-[11px] text-gray-400 px-1.5">+ {locacoesSemCobranca.length - 10} outras</div>
+            {locacoesSemCobranca.length > 12 && (
+              <div className="text-[11px] text-gray-400 px-2 py-1.5 bg-white">
+                + {locacoesSemCobranca.length - 12} outras — abra a lista de Locações pra ver todas
+              </div>
             )}
           </div>
         </div>
@@ -277,17 +284,30 @@ export async function DashboardSaude() {
               </div>
             </div>
           </div>
-          <div className="flex flex-col gap-1 max-h-32 overflow-auto">
+          <div className="border border-gray-100 rounded-lg divide-y divide-gray-100 max-h-40 overflow-y-auto">
             {cvsForaDoValor.slice(0, 4).map((t) => (
-              <Link key={t.id} href={`/transacoes/${t.id}`} className="text-[11px] text-gray-700 hover:bg-gray-50 rounded px-1.5 py-1">
-                {t.id_legado ?? t.id} — soma das condições não bate com {formatMoeda(t.valor_transacao)}
+              <Link key={t.id} href={`/transacoes/${t.id}`} className="flex items-center gap-2 px-2 py-1.5 hover:bg-amber-50/60 bg-white">
+                <span className="shrink-0 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 whitespace-nowrap">
+                  {t.id_legado ?? "sem código"}
+                </span>
+                <span className="text-[11px] leading-snug text-gray-700 truncate">
+                  condições não fecham {formatMoeda(t.valor_transacao)}
+                </span>
               </Link>
             ))}
             {comissaoNaoFecha.slice(0, 4).map((t) => (
-              <Link key={t.id} href={`/transacoes/${t.id}`} className="text-[11px] text-gray-700 hover:bg-gray-50 rounded px-1.5 py-1">
-                {t.id_legado ?? t.id} ({t.tipo}) — divisão de comissão incompleta
+              <Link key={t.id} href={`/transacoes/${t.id}`} className="flex items-center gap-2 px-2 py-1.5 hover:bg-amber-50/60 bg-white">
+                <span className="shrink-0 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 whitespace-nowrap">
+                  {t.id_legado ?? "sem código"}
+                </span>
+                <span className="text-[11px] leading-snug text-gray-700 truncate">{t.tipo} — divisão de comissão incompleta</span>
               </Link>
             ))}
+            {cvsForaDoValor.length + comissaoNaoFecha.length > 8 && (
+              <div className="text-[11px] text-gray-400 px-2 py-1.5 bg-white">
+                + {cvsForaDoValor.length + comissaoNaoFecha.length - 8} outras
+              </div>
+            )}
           </div>
         </div>
 

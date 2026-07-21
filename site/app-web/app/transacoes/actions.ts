@@ -188,7 +188,19 @@ async function sincronizarCondicoesPagamento(transacaoId: string, formData: Form
   ]);
 }
 
-export async function criarTransacaoAction(formData: FormData) {
+// Mesmo padrão adotado em app/clientes/actions.ts: as actions dos
+// formulários grandes retornam { erro } em vez de lançar exceção — o erro
+// aparece inline no formulário e o que foi digitado continua intacto (antes,
+// qualquer erro derrubava a página pro error boundary e apagava tudo). O
+// registro no logs_erro não muda: registrarEJogarErro grava antes de lançar
+// e o catch aqui só transforma o throw em retorno.
+export type ResultadoFormulario = { erro: string } | undefined;
+
+function mensagemDe(erro: unknown): string {
+  return erro instanceof Error ? erro.message : String(erro);
+}
+
+export async function criarTransacaoAction(_prev: unknown, formData: FormData): Promise<ResultadoFormulario> {
   await requireAdminSession();
 
   const tipo = texto(formData, "tipo");
@@ -200,88 +212,98 @@ export async function criarTransacaoAction(formData: FormData) {
     .filter((v) => v.length > 0);
 
   if (!tipo || !lojaId || !imovelId) {
-    throw new Error("Tipo, Loja e Imóvel são obrigatórios.");
+    return { erro: "Tipo, Loja e Imóvel são obrigatórios." };
   }
   if (interessadosIds.length === 0) {
-    throw new Error("Adicione ao menos um Cliente Interessado.");
+    return { erro: "Adicione ao menos um Cliente Interessado." };
   }
 
-  const clienteId = await proprietarioDoImovel(imovelId);
-  const idLegado = await gerarProximoId(tipo);
+  let novoId: string;
+  try {
+    const clienteId = await proprietarioDoImovel(imovelId);
+    const idLegado = await gerarProximoId(tipo);
 
-  const novo = await prisma.transacoes
-    .create({
-      data: {
-        ...camposEditaveis(formData),
-        tipo,
-        loja_id: lojaId,
-        imovel_id: imovelId,
-        cliente_id: clienteId,
-        cliente_contraparte_id: interessadosIds[0],
-        id_legado: idLegado
-      }
-    })
-    .catch((erro) => registrarEJogarErro({ entidadeTipo: "transacoes", acao: "criar", erro }));
+    const novo = await prisma.transacoes
+      .create({
+        data: {
+          ...camposEditaveis(formData),
+          tipo,
+          loja_id: lojaId,
+          imovel_id: imovelId,
+          cliente_id: clienteId,
+          cliente_contraparte_id: interessadosIds[0],
+          id_legado: idLegado
+        }
+      })
+      .catch((erro) => registrarEJogarErro({ entidadeTipo: "transacoes", acao: "criar", erro }));
 
-  await sincronizarInteressados(novo.id, formData);
-  await sincronizarCondicoesPagamento(novo.id, formData);
+    await sincronizarInteressados(novo.id, formData);
+    await sincronizarCondicoesPagamento(novo.id, formData);
 
-  await logAlteracao({
-    entidadeTipo: "transacoes",
-    entidadeId: novo.id,
-    acao: "criar",
-    dadosDepois: { id_legado: novo.id_legado, tipo: novo.tipo, status: novo.status }
-  });
+    await logAlteracao({
+      entidadeTipo: "transacoes",
+      entidadeId: novo.id,
+      acao: "criar",
+      dadosDepois: { id_legado: novo.id_legado, tipo: novo.tipo, status: novo.status }
+    });
+    novoId = novo.id;
+  } catch (erro) {
+    return { erro: mensagemDe(erro) };
+  }
 
   revalidatePath("/transacoes/locacao");
   revalidatePath("/transacoes/venda");
-  redirect(`/transacoes/${novo.id}?salvo=1`);
+  redirect(`/transacoes/${novoId}?salvo=1`);
 }
 
-export async function atualizarTransacaoAction(formData: FormData) {
+export async function atualizarTransacaoAction(_prev: unknown, formData: FormData): Promise<ResultadoFormulario> {
   await requireAdminSession();
 
   const id = texto(formData, "transacaoId");
-  if (!id) throw new Error("Transação inválida.");
+  if (!id) return { erro: "Transação inválida." };
 
   const imovelId = texto(formData, "imovel_id");
-  if (!imovelId) throw new Error("Imóvel é obrigatório.");
+  if (!imovelId) return { erro: "Imóvel é obrigatório." };
 
   const interessadosIds = formData
     .getAll("interessado_id")
     .map((v) => String(v).trim())
     .filter((v) => v.length > 0);
   if (interessadosIds.length === 0) {
-    throw new Error("Adicione ao menos um Cliente Interessado.");
+    return { erro: "Adicione ao menos um Cliente Interessado." };
   }
 
   const antes = await prisma.transacoes.findUnique({ where: { id } });
-  if (!antes) throw new Error("Transação não encontrada.");
+  if (!antes) return { erro: "Transação não encontrada." };
 
-  const clienteId = await proprietarioDoImovel(imovelId);
+  try {
+    const clienteId = await proprietarioDoImovel(imovelId);
 
-  const depois = await prisma.transacoes
-    .update({
-      where: { id },
-      data: {
-        ...camposEditaveis(formData),
-        imovel_id: imovelId,
-        cliente_id: clienteId,
-        cliente_contraparte_id: interessadosIds[0]
-      }
-    })
-    .catch((erro) => registrarEJogarErro({ entidadeTipo: "transacoes", entidadeId: id, acao: "editar", erro }));
+    const depois = await prisma.transacoes
+      .update({
+        where: { id },
+        data: {
+          ...camposEditaveis(formData),
+          imovel_id: imovelId,
+          cliente_id: clienteId,
+          cliente_contraparte_id: interessadosIds[0]
+        }
+      })
+      .catch((erro) => registrarEJogarErro({ entidadeTipo: "transacoes", entidadeId: id, acao: "editar", erro }));
 
-  await sincronizarInteressados(id, formData);
-  await sincronizarCondicoesPagamento(id, formData);
+    await sincronizarInteressados(id, formData);
+    await sincronizarCondicoesPagamento(id, formData);
 
-  await logAlteracao({
-    entidadeTipo: "transacoes",
-    entidadeId: id,
-    acao: "editar",
-    dadosAntes: antes,
-    dadosDepois: depois
-  });
+    await logAlteracao({
+      entidadeTipo: "transacoes",
+      entidadeId: id,
+      acao: "editar",
+      dadosAntes: antes,
+      dadosDepois: depois
+    });
+  } catch (erro) {
+    return { erro: mensagemDe(erro) };
+  }
 
   revalidatePath(`/transacoes/${id}`);
   revalidatePath("/transacoes/locacao");

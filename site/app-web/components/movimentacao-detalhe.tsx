@@ -59,7 +59,7 @@ export function MovimentacaoDetalhe({
   categorias: CategoriaOpcao[];
   clientes: ClienteOpcao[];
   parceiros: ParceiroOpcao[];
-  action: (formData: FormData) => void;
+  action: (prevState: unknown, formData: FormData) => Promise<{ erro: string } | undefined | void>;
   excluirAction: (formData: FormData) => void;
   marcarPagoAction: (formData: FormData) => void;
   pendenteRecebido?: boolean;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useActionState, useMemo, useState } from "react";
 import { formatValorEditavel, hojeInputDate } from "@/lib/format";
 import { CampoLink } from "@/components/campo-link";
 
@@ -47,8 +47,11 @@ export function FinanceiroEditarForm({
   categorias: CategoriaOpcao[];
   clientes: ClienteOpcao[];
   parceiros: ParceiroOpcao[];
-  action: (formData: FormData) => void;
+  // Retorna { erro } em vez de lançar — erro aparece inline sem apagar o
+  // formulário (ver app/financeiro/actions.ts).
+  action: (prevState: unknown, formData: FormData) => Promise<{ erro: string } | undefined | void>;
 }) {
+  const [resultado, formAction] = useActionState(action, undefined);
   const m = movimentacao;
   const rotuloPago = m.tipo === "Despesa" ? "pago" : "recebido";
 
@@ -100,7 +103,7 @@ export function FinanceiroEditarForm({
   }
 
   return (
-    <form action={action} className="flex flex-col gap-5">
+    <form action={formAction} className="flex flex-col gap-5">
       <input type="hidden" name="movimentacaoId" value={m.id} />
       <input type="hidden" name="cliente_interessado_id" value={clienteInteressadoId} />
       <input type="hidden" name="cliente_proprietario_id" value={clienteProprietarioId} />
@@ -262,6 +265,12 @@ export function FinanceiroEditarForm({
           </div>
         </div>
       </div>
+
+      {resultado?.erro && (
+        <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg px-3 py-2">
+          {resultado.erro} — o que você preencheu continua aí em cima, é só corrigir e salvar de novo.
+        </div>
+      )}
 
       <div className="flex justify-end">
         <button type="submit" className="text-xs bg-primary text-white rounded-lg px-5 py-2 font-semibold">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useActionState, useState } from "react";
 import {
   ESTADOS_CIVIS,
   TIPOS_CONTA,
@@ -65,10 +65,14 @@ export function ClienteForm({
   lojas: Loja[];
   bancos: Banco[];
   parceiros: ParceiroOpcao[];
-  action: (formData: FormData) => void;
+  // Retorna { erro } em vez de lançar exceção — assim o erro aparece inline
+  // aqui embaixo e o que foi digitado continua intacto (antes, qualquer erro
+  // derrubava a página inteira e apagava o formulário).
+  action: (prevState: unknown, formData: FormData) => Promise<{ erro: string } | undefined | void>;
   embutido?: boolean;
 }) {
   const c = cliente;
+  const [resultado, formAction] = useActionState(action, undefined);
   const [tipoCliente, setTipoCliente] = useState(c?.tipo_cliente ?? "");
   const mostrarCpf = tipoCliente !== "Pessoa Jurídica";
   const mostrarCnpj = tipoCliente !== "Pessoa Física";
@@ -86,7 +90,7 @@ export function ClienteForm({
   }
 
   return (
-    <form action={action} className="flex flex-col gap-5">
+    <form action={formAction} className="flex flex-col gap-5">
       {c && <input type="hidden" name="clienteId" value={c.id} />}
       {embutido && <input type="hidden" name="_embed" value="1" />}
 
@@ -348,6 +352,12 @@ export function ClienteForm({
           </div>
         </div>
       </div>
+
+      {resultado?.erro && (
+        <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg px-3 py-2">
+          {resultado.erro} — o que você digitou continua aí em cima, é só corrigir e salvar de novo.
+        </div>
+      )}
 
       <div className="flex justify-end">
         <button type="submit" className="bg-primary text-white rounded-lg px-5 py-2 text-sm font-semibold hover:opacity-90">

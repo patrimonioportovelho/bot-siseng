@@ -162,7 +162,7 @@ export function TransacaoDetalhe({
   imoveisComAdmAtivaIds: string[];
   interessadosIniciais: ClienteOpcao[];
   condicoesIniciais: CondicaoPagamento[];
-  action: (formData: FormData) => void;
+  action: (prevState: unknown, formData: FormData) => Promise<{ erro: string } | undefined | void>;
   alternarBoletoEmitidoAction: (formData: FormData) => void;
 }) {
   const [editando, setEditando] = useState(false);

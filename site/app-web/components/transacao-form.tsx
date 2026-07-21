@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import {
   TIPOS_TRANSACAO,
   GARANTIA_OPCOES,
@@ -144,9 +144,12 @@ export function TransacaoForm({
   interessadosIniciais: ClienteOpcao[];
   condicoesIniciais: CondicaoPagamento[];
   tipoInicial?: string;
-  action: (formData: FormData) => void;
+  // Retorna { erro } em vez de lançar — o erro aparece inline aqui embaixo e
+  // o que foi digitado continua intacto (ver app/transacoes/actions.ts).
+  action: (prevState: unknown, formData: FormData) => Promise<{ erro: string } | undefined | void>;
 }) {
   const t = transacao;
+  const [resultado, formAction] = useActionState(action, undefined);
 
   const [tipo, setTipo] = useState(t?.tipo ?? tipoInicial ?? "Locação");
   const eLocacao = tipo === "Locação";
@@ -370,7 +373,7 @@ export function TransacaoForm({
   }
 
   return (
-    <form action={action} className="flex flex-col gap-5">
+    <form action={formAction} className="flex flex-col gap-5">
       {t && <input type="hidden" name="transacaoId" value={t.id} />}
       <input type="hidden" name="imovel_id" value={imovelId} />
       <input type="hidden" name="adm_imovel_id" value={admImovelId} />
@@ -1074,6 +1077,12 @@ export function TransacaoForm({
         <div className="text-sm font-bold text-gray-800 mb-3">Observação</div>
         <textarea className={CAMPO + " min-h-24"} name="observacao" defaultValue={t?.observacao ?? ""} />
       </div>
+
+      {resultado?.erro && (
+        <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg px-3 py-2">
+          {resultado.erro} — o que você preencheu continua aí em cima, é só corrigir e salvar de novo.
+        </div>
+      )}
 
       <div className="flex justify-end">
         <button type="submit" className="bg-primary text-white rounded-lg px-5 py-2 text-sm font-semibold hover:opacity-90">

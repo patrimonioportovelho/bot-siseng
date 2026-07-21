@@ -46,7 +46,16 @@ function data(formData: FormData, campo: string): Date | null {
 // 07/09 ... até a 12ª); Recorrente gera N linhas também mensais, mas
 // repetindo o mesmo Valor em cada uma (sem dividir) — pra cobrança fixa que
 // se repete por vários meses.
-export async function criarMovimentacaoAction(formData: FormData) {
+// Mesmo padrão de app/clientes/actions.ts: retorna { erro } em vez de
+// lançar, pro erro aparecer inline no formulário sem apagar o que foi
+// digitado. registrarEJogarErro continua gravando tudo no logs_erro antes.
+export type ResultadoFormulario = { erro: string } | undefined;
+
+function mensagemDe(erro: unknown): string {
+  return erro instanceof Error ? erro.message : String(erro);
+}
+
+export async function criarMovimentacaoAction(_prev: unknown, formData: FormData): Promise<ResultadoFormulario> {
   await requireAdminSession();
 
   const tipo = texto(formData, "tipo");
@@ -55,7 +64,7 @@ export async function criarMovimentacaoAction(formData: FormData) {
   const formaPagamento = texto(formData, "forma_pagamento") ?? "À vista";
 
   if (!tipo || !categoriaId || !vencimentoBase) {
-    throw new Error("Tipo, categoria e vencimento são obrigatórios.");
+    return { erro: "Tipo, categoria e vencimento são obrigatórios." };
   }
 
   const base = {
@@ -72,11 +81,12 @@ export async function criarMovimentacaoAction(formData: FormData) {
 
   const idsCriados: string[] = [];
 
+  try {
   if (formaPagamento === "Parcelado") {
     const parcelas = inteiro(formData, "parcelas");
     const valorTotal = valorMonetario(formData, "valor");
     if (!parcelas || parcelas < 1 || !valorTotal) {
-      throw new Error("Informe o valor total da dívida e a quantidade de parcelas.");
+      return { erro: "Informe o valor total da dívida e a quantidade de parcelas." };
     }
 
     const idParcelamento = randomUUID();
@@ -122,7 +132,7 @@ export async function criarMovimentacaoAction(formData: FormData) {
     const repeticoes = inteiro(formData, "parcelas");
     const valorUnico = valorMonetario(formData, "valor");
     if (!repeticoes || repeticoes < 1 || !valorUnico) {
-      throw new Error("Informe o valor e a quantidade de meses.");
+      return { erro: "Informe o valor e a quantidade de meses." };
     }
 
     const idParcelamento = randomUUID();
@@ -148,7 +158,7 @@ export async function criarMovimentacaoAction(formData: FormData) {
     }
   } else {
     const valor = valorMonetario(formData, "valor");
-    if (!valor) throw new Error("Informe o valor.");
+    if (!valor) return { erro: "Informe o valor." };
     const pago = booleano(formData, "pago");
     const dataPagamento = pago ? data(formData, "data_pagamento") : null;
 
@@ -172,6 +182,9 @@ export async function criarMovimentacaoAction(formData: FormData) {
     acao: "criar",
     dadosDepois: { tipo, categoria_id: categoriaId, quantidade: idsCriados.length }
   });
+  } catch (erro) {
+    return { erro: mensagemDe(erro) };
+  }
 
   revalidatePath("/financeiro");
   redirect(`/financeiro?tipo=${tipo === "Recebimento" ? "recebimento" : "despesa"}&salvo=1`);
@@ -194,26 +207,30 @@ function camposEditaveis(formData: FormData) {
   };
 }
 
-export async function atualizarMovimentacaoAction(formData: FormData) {
+export async function atualizarMovimentacaoAction(_prev: unknown, formData: FormData): Promise<ResultadoFormulario> {
   await requireAdminSession();
 
   const id = texto(formData, "movimentacaoId");
-  if (!id) throw new Error("Movimentação inválida.");
+  if (!id) return { erro: "Movimentação inválida." };
 
   const antes = await prisma.movimentacoes.findUnique({ where: { id } });
-  if (!antes) throw new Error("Movimentação não encontrada.");
+  if (!antes) return { erro: "Movimentação não encontrada." };
 
-  const depois = await prisma.movimentacoes
-    .update({ where: { id }, data: camposEditaveis(formData) })
-    .catch((erro) => registrarEJogarErro({ entidadeTipo: "movimentacoes", entidadeId: id, acao: "editar", erro }));
+  try {
+    const depois = await prisma.movimentacoes
+      .update({ where: { id }, data: camposEditaveis(formData) })
+      .catch((erro) => registrarEJogarErro({ entidadeTipo: "movimentacoes", entidadeId: id, acao: "editar", erro }));
 
-  await logAlteracao({
-    entidadeTipo: "movimentacoes",
-    entidadeId: id,
-    acao: "editar",
-    dadosAntes: antes,
-    dadosDepois: depois
-  });
+    await logAlteracao({
+      entidadeTipo: "movimentacoes",
+      entidadeId: id,
+      acao: "editar",
+      dadosAntes: antes,
+      dadosDepois: depois
+    });
+  } catch (erro) {
+    return { erro: mensagemDe(erro) };
+  }
 
   revalidatePath(`/financeiro/${id}`);
   revalidatePath("/financeiro");

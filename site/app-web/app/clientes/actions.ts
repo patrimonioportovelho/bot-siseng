@@ -75,59 +75,82 @@ function camposEditaveis(formData: FormData) {
   };
 }
 
-export async function criarClienteAction(formData: FormData) {
+// Resultado padrão das actions de formulário grande do admin: em vez de
+// `throw new Error(...)` (que derruba a página inteira pro error boundary e
+// APAGA tudo que estava digitado — era a raiz do "toda vez perdemos
+// cadastro"), a action devolve { erro } e o formulário mostra a mensagem
+// inline, com os campos intactos. O registro no logs_erro continua igual:
+// registrarEJogarErro grava ANTES de lançar, e aqui o catch só transforma o
+// throw em retorno — nenhum erro deixa de ficar registrado.
+export type ResultadoFormulario = { erro: string } | undefined;
+
+function mensagemDe(erro: unknown): string {
+  return erro instanceof Error ? erro.message : String(erro);
+}
+
+export async function criarClienteAction(_prev: unknown, formData: FormData): Promise<ResultadoFormulario> {
   await requireAdminSession();
 
   const nome = texto(formData, "nome");
   const tipoCliente = texto(formData, "tipo_cliente");
   if (!nome || !tipoCliente) {
-    throw new Error("Nome e tipo de cliente são obrigatórios.");
+    return { erro: "Nome e tipo de cliente são obrigatórios." };
   }
 
-  const novo = await prisma.clientes
-    .create({
-      data: {
-        nome,
-        ...camposEditaveis(formData),
-        tipo_cliente: tipoCliente
-      }
-    })
-    .catch((erro) => registrarEJogarErro({ entidadeTipo: "clientes", acao: "criar", erro }));
+  let novoId: string;
+  try {
+    const novo = await prisma.clientes
+      .create({
+        data: {
+          nome,
+          ...camposEditaveis(formData),
+          tipo_cliente: tipoCliente
+        }
+      })
+      .catch((erro) => registrarEJogarErro({ entidadeTipo: "clientes", acao: "criar", erro }));
 
-  await logAlteracao({
-    entidadeTipo: "clientes",
-    entidadeId: novo.id,
-    acao: "criar",
-    dadosDepois: { nome: novo.nome, tipo_cliente: novo.tipo_cliente }
-  });
+    await logAlteracao({
+      entidadeTipo: "clientes",
+      entidadeId: novo.id,
+      acao: "criar",
+      dadosDepois: { nome: novo.nome, tipo_cliente: novo.tipo_cliente }
+    });
+    novoId = novo.id;
+  } catch (erro) {
+    return { erro: mensagemDe(erro) };
+  }
 
   revalidatePath("/clientes");
-  redirect(`/clientes/${novo.id}?salvo=1`);
+  redirect(`/clientes/${novoId}?salvo=1`);
 }
 
-export async function atualizarClienteAction(formData: FormData) {
+export async function atualizarClienteAction(_prev: unknown, formData: FormData): Promise<ResultadoFormulario> {
   await requireAdminSession();
 
   const id = texto(formData, "clienteId");
-  if (!id) throw new Error("Cliente inválido.");
+  if (!id) return { erro: "Cliente inválido." };
 
   const antes = await prisma.clientes.findUnique({ where: { id } });
-  if (!antes) throw new Error("Cliente não encontrado.");
+  if (!antes) return { erro: "Cliente não encontrado." };
 
-  const depois = await prisma.clientes
-    .update({
-      where: { id },
-      data: camposEditaveis(formData)
-    })
-    .catch((erro) => registrarEJogarErro({ entidadeTipo: "clientes", entidadeId: id, acao: "editar", erro }));
+  try {
+    const depois = await prisma.clientes
+      .update({
+        where: { id },
+        data: camposEditaveis(formData)
+      })
+      .catch((erro) => registrarEJogarErro({ entidadeTipo: "clientes", entidadeId: id, acao: "editar", erro }));
 
-  await logAlteracao({
-    entidadeTipo: "clientes",
-    entidadeId: id,
-    acao: "editar",
-    dadosAntes: antes,
-    dadosDepois: depois
-  });
+    await logAlteracao({
+      entidadeTipo: "clientes",
+      entidadeId: id,
+      acao: "editar",
+      dadosAntes: antes,
+      dadosDepois: depois
+    });
+  } catch (erro) {
+    return { erro: mensagemDe(erro) };
+  }
 
   revalidatePath(`/clientes/${id}`);
   revalidatePath("/clientes");

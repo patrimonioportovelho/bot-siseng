@@ -37,6 +37,11 @@ function booleano(formData: FormData, campo: string): boolean {
   return formData.get(campo) === "on" || formData.get(campo) === "true";
 }
 
+function numeroOuNull(v: unknown): number | null {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
 function data(formData: FormData, campo: string): Date | null {
   const t = texto(formData, campo);
   if (t === null) return null;
@@ -168,6 +173,13 @@ async function sincronizarCondicoesPagamento(transacaoId: string, formData: Form
       const parcelasNum = parcelasTxt ? Number(parcelasTxt) : NaN;
       const dataTxt = String(c.data_pagamento ?? "").trim();
       const dataPagamento = dataTxt ? new Date(dataTxt) : null;
+      // Comissionamento vinculado a este pagamento — ver comentário no
+      // schema.prisma (condicoes_pagamento.gera_comissao). porc_comissao
+      // vem do formulário já como fração (0-1), igual porc_honorario etc.
+      const geraComissao = c.gera_comissao === true || c.gera_comissao === "true";
+      const porcComissao = geraComissao ? numeroOuNull(c.porc_comissao) : null;
+      const descontoComissaoTxt = String(c.desconto_comissao ?? "").trim();
+      const descontoComissao = geraComissao && descontoComissaoTxt ? valorEditavelParaDecimal(descontoComissaoTxt) : null;
       return {
         tipo: String(c.tipo ?? "").trim() || null,
         valor,
@@ -175,7 +187,10 @@ async function sincronizarCondicoesPagamento(transacaoId: string, formData: Form
         parcelas: Number.isFinite(parcelasNum) ? Math.trunc(parcelasNum) : null,
         momento: String(c.momento ?? "").trim() || null,
         data_pagamento: dataPagamento && !Number.isNaN(dataPagamento.getTime()) ? dataPagamento : null,
-        descricao: String(c.descricao ?? "").trim() || null
+        descricao: String(c.descricao ?? "").trim() || null,
+        gera_comissao: geraComissao,
+        porc_comissao: porcComissao,
+        desconto_comissao: descontoComissao
       };
     })
     .filter((c): c is typeof c & { valor: number } => c.valor !== null);
@@ -193,6 +208,49 @@ async function sincronizarCondicoesPagamento(transacaoId: string, formData: Form
     ])
     .catch((erro) =>
       registrarEJogarErro({ entidadeTipo: "condicoes_pagamento", entidadeId: transacaoId, acao: "sincronizar", erro })
+    );
+}
+
+// Participantes extra no rateio do honorário (ex.: coordenador de vendas),
+// além dos dois corretores fixos já cadastrados em transacoes — só existe
+// no formulário do admin (TransacaoForm), nunca no portal do corretor,
+// então não precisa de checagem extra de permissão além do
+// requireAdminSession já feito em criar/atualizarTransacaoAction. Mesmo
+// padrão apaga-tudo-e-recria dos Interessados/Condições de pagamento.
+async function sincronizarComissaoExtra(transacaoId: string, formData: FormData) {
+  const bruto = texto(formData, "comissao_extra_json");
+  let lista: Array<Record<string, unknown>> = [];
+  if (bruto) {
+    try {
+      const parsed = JSON.parse(bruto);
+      if (Array.isArray(parsed)) lista = parsed;
+    } catch {
+      lista = [];
+    }
+  }
+
+  const linhas = lista
+    .map((c) => ({
+      parceiro_id: String(c.parceiro_id ?? "").trim(),
+      papel: String(c.papel ?? "").trim() || null,
+      porcentagem: numeroOuNull(c.porcentagem) ?? 0,
+      observacao: String(c.observacao ?? "").trim() || null
+    }))
+    .filter((c) => c.parceiro_id.length > 0);
+
+  await prisma
+    .$transaction([
+      prisma.transacoes_comissao_extra.deleteMany({ where: { transacao_id: transacaoId } }),
+      ...(linhas.length > 0
+        ? [
+            prisma.transacoes_comissao_extra.createMany({
+              data: linhas.map((c) => ({ transacao_id: transacaoId, ...c }))
+            })
+          ]
+        : [])
+    ])
+    .catch((erro) =>
+      registrarEJogarErro({ entidadeTipo: "transacoes_comissao_extra", entidadeId: transacaoId, acao: "sincronizar", erro })
     );
 }
 
@@ -247,6 +305,7 @@ export async function criarTransacaoAction(_prev: unknown, formData: FormData): 
 
     await sincronizarInteressados(novo.id, formData);
     await sincronizarCondicoesPagamento(novo.id, formData);
+    await sincronizarComissaoExtra(novo.id, formData);
 
     await logAlteracao({
       entidadeTipo: "transacoes",
@@ -301,6 +360,7 @@ export async function atualizarTransacaoAction(_prev: unknown, formData: FormDat
 
     await sincronizarInteressados(id, formData);
     await sincronizarCondicoesPagamento(id, formData);
+    await sincronizarComissaoExtra(id, formData);
 
     await logAlteracao({
       entidadeTipo: "transacoes",

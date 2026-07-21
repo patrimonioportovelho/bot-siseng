@@ -43,7 +43,8 @@ export async function DashboardSaude() {
     totalPF,
     pfSemCpf,
     pfSemTelefone,
-    duplicadosRaw
+    duplicadosRaw,
+    condicoesComComissao
   ] = await Promise.all([
     prisma.movimentacoes.findMany({
       where: { pago: false, vencimento: { lt: hoje } },
@@ -99,8 +100,85 @@ export async function DashboardSaude() {
       select
         (select count(*) from (select cpf from clientes where cpf is not null group by cpf having count(*) > 1) a) as cpf_dup,
         (select count(*) from (select lower(nome) from clientes group by lower(nome) having count(*) > 1) b) as nome_dup
-    `
+    `,
+    // Previsão de honorários — condições de pagamento marcadas como
+    // "honorário devido aqui" (ver comissionamento na transação), pra saber
+    // quando o dinheiro é esperado, mês a mês. Pedido do usuário: "termos no
+    // dashboard as previsões conforme período".
+    prisma.condicoes_pagamento.findMany({
+      where: { gera_comissao: true, transacoes: { excluido: false } },
+      select: {
+        id: true,
+        tipo: true,
+        porc_comissao: true,
+        desconto_comissao: true,
+        data_pagamento: true,
+        transacoes: { select: { id: true, id_legado: true, valor_transacao: true, porc_honorario: true, tipo: true } }
+      },
+      orderBy: { data_pagamento: "asc" }
+    })
   ]);
+
+  // Fatias cujo rateio já foi gerado no Financeiro (pagamentos vinculados a
+  // essa condicao_pagamento_id) — não entram na previsão, já viraram
+  // movimentação de verdade.
+  const idsCondicoesComissao = condicoesComComissao.map((c) => c.id);
+  const jaGeradasIds =
+    idsCondicoesComissao.length > 0
+      ? new Set(
+          (
+            await prisma.pagamentos.findMany({
+              where: { condicao_pagamento_id: { in: idsCondicoesComissao } },
+              select: { condicao_pagamento_id: true }
+            })
+          ).map((p) => p.condicao_pagamento_id)
+        )
+      : new Set<string | null>();
+
+  const previsoesHonorario = condicoesComComissao
+    .filter((c) => !jaGeradasIds.has(c.id))
+    .map((c) => {
+      const valorHonorarioTotal = Number(c.transacoes.valor_transacao) * Number(c.transacoes.porc_honorario ?? 0);
+      const fracao = Number(c.porc_comissao ?? 0) / 100;
+      const valorPrevisto = Math.max(0, valorHonorarioTotal * fracao - Number(c.desconto_comissao ?? 0));
+      return {
+        transacaoId: c.transacoes.id,
+        idLegado: c.transacoes.id_legado,
+        tipo: c.tipo,
+        tipoTransacao: c.transacoes.tipo,
+        dataPagamento: c.data_pagamento,
+        valorPrevisto
+      };
+    })
+    .filter((p) => p.valorPrevisto > 0);
+
+  // Agrupado por mês (ano-mês da data prevista); sem data cai num grupo
+  // "sem data prevista" no fim.
+  const gruposPorMes = new Map<string, { total: number; itens: typeof previsoesHonorario }>();
+  for (const p of previsoesHonorario) {
+    const chave = p.dataPagamento
+      ? `${p.dataPagamento.getFullYear()}-${String(p.dataPagamento.getMonth() + 1).padStart(2, "0")}`
+      : "sem-data";
+    const grupo = gruposPorMes.get(chave) ?? { total: 0, itens: [] };
+    grupo.total += p.valorPrevisto;
+    grupo.itens.push(p);
+    gruposPorMes.set(chave, grupo);
+  }
+  const NOMES_MES = [
+    "janeiro", "fevereiro", "março", "abril", "maio", "junho",
+    "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"
+  ];
+  function labelGrupoMes(chave: string): string {
+    if (chave === "sem-data") return "Sem data prevista";
+    const [ano, mes] = chave.split("-");
+    return `${NOMES_MES[Number(mes) - 1]} de ${ano}`;
+  }
+  const gruposOrdenados = [...gruposPorMes.entries()].sort(([a], [b]) => {
+    if (a === "sem-data") return 1;
+    if (b === "sem-data") return -1;
+    return a.localeCompare(b);
+  });
+  const totalPrevisto = previsoesHonorario.reduce((acc, p) => acc + p.valorPrevisto, 0);
 
   // ---- Inadimplência (recebimentos e despesas vencidos, com aging) ----
   const diaMs = 24 * 60 * 60 * 1000;
@@ -359,6 +437,53 @@ export async function DashboardSaude() {
               </div>
             </div>
           </div>
+        </div>
+
+        {/* Previsão de honorários por período */}
+        <div className="border border-gray-200 rounded-xl p-3 md:col-span-2">
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-xs font-bold text-gray-800">Previsão de honorários a receber</div>
+            <span className="text-[11px] text-gray-500">
+              Total pendente: <span className="font-semibold text-gray-700">{formatMoeda(totalPrevisto)}</span>
+            </span>
+          </div>
+          <p className="text-[11px] text-gray-400 mb-2">
+            Fatias de honorário marcadas em cada Compra e Venda (aba de comissionamento) conforme os pagamentos
+            lançados, agrupadas por mês — some da lista assim que o rateio é gerado no Financeiro.
+          </p>
+          {gruposOrdenados.length === 0 ? (
+            <p className="text-[11px] text-gray-400">
+              Nenhuma condição de pagamento está marcada como &quot;honorário pago aqui&quot; ainda.
+            </p>
+          ) : (
+            <div className="flex flex-col gap-2 max-h-72 overflow-y-auto">
+              {gruposOrdenados.map(([chave, grupo]) => (
+                <div key={chave} className="border border-gray-100 rounded-lg overflow-hidden">
+                  <div className="flex items-center justify-between bg-gray-50 px-3 py-1.5">
+                    <span className="text-[11px] font-semibold text-gray-700 capitalize">{labelGrupoMes(chave)}</span>
+                    <span className="text-[11px] font-semibold text-gray-700">{formatMoeda(grupo.total)}</span>
+                  </div>
+                  <div className="divide-y divide-gray-100">
+                    {grupo.itens.map((p, i) => (
+                      <Link
+                        key={i}
+                        href={`/transacoes/${p.transacaoId}`}
+                        className="flex items-center gap-2 px-3 py-1.5 hover:bg-gray-50 bg-white"
+                      >
+                        <span className="shrink-0 text-[10px] font-bold text-primary bg-primary/10 rounded px-1.5 py-0.5 whitespace-nowrap">
+                          {p.idLegado ?? "sem código"}
+                        </span>
+                        <span className="text-[11px] leading-snug text-gray-700 truncate flex-1">
+                          {p.tipoTransacao} · {p.tipo ?? "condição"}
+                        </span>
+                        <span className="text-[11px] font-semibold text-gray-800 shrink-0">{formatMoeda(p.valorPrevisto)}</span>
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>

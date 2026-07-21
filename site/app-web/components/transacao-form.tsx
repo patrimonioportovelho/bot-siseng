@@ -96,6 +96,20 @@ export type CondicaoPagamento = {
   momento: string;
   data_pagamento: string;
   descricao: string;
+  // Comissionamento vinculado a este pagamento — marca quando o honorário
+  // (ou parte dele) é devido. porc_comissao é a fatia do honorário TOTAL
+  // (não do valor desta condição); desconto_comissao é um abatimento em R$
+  // só nessa fatia (ver schema.prisma / condicoes_pagamento).
+  gera_comissao: boolean;
+  porc_comissao: string;
+  desconto_comissao: string;
+};
+
+export type ComissaoExtra = {
+  parceiro_id: string;
+  papel: string;
+  porcentagem: string;
+  observacao: string;
 };
 
 function inputDate(d: Date | null) {
@@ -131,6 +145,7 @@ export function TransacaoForm({
   imoveisComAdmAtivaIds,
   interessadosIniciais,
   condicoesIniciais,
+  extrasIniciais,
   tipoInicial,
   action
 }: {
@@ -143,6 +158,7 @@ export function TransacaoForm({
   imoveisComAdmAtivaIds: string[];
   interessadosIniciais: ClienteOpcao[];
   condicoesIniciais: CondicaoPagamento[];
+  extrasIniciais: ComissaoExtra[];
   tipoInicial?: string;
   // Retorna { erro } em vez de lançar — o erro aparece inline aqui embaixo e
   // o que foi digitado continua intacto (ver app/transacoes/actions.ts).
@@ -249,17 +265,79 @@ export function TransacaoForm({
     parcelas: "",
     momento: "",
     data_pagamento: "",
-    descricao: ""
+    descricao: "",
+    gera_comissao: false,
+    porc_comissao: "",
+    desconto_comissao: ""
   });
 
   function adicionarCondicao() {
     if (!novaCondicao.valor.trim()) return;
     setCondicoes((atual) => [...atual, novaCondicao]);
-    setNovaCondicao({ tipo: TIPO_CONDICAO_OPCOES[0], valor: "", forma_pagamento: "", parcelas: "", momento: "", data_pagamento: "", descricao: "" });
+    setNovaCondicao({
+      tipo: TIPO_CONDICAO_OPCOES[0],
+      valor: "",
+      forma_pagamento: "",
+      parcelas: "",
+      momento: "",
+      data_pagamento: "",
+      descricao: "",
+      gera_comissao: false,
+      porc_comissao: "",
+      desconto_comissao: ""
+    });
   }
 
   function removerCondicao(indice: number) {
     setCondicoes((atual) => atual.filter((_, i) => i !== indice));
+  }
+
+  // Marca/desmarca uma condição já lançada como "honorário pago aqui" —
+  // mesma lógica de sugestão de % igual usada no portal do corretor
+  // (components/portal-compra-venda-form.tsx).
+  function alternarComissaoCondicao(indice: number) {
+    setCondicoes((atual) => {
+      const marcadasAntes = atual.filter((c) => c.gera_comissao).length;
+      const vaiMarcar = !atual[indice].gera_comissao;
+      const marcadasDepois = vaiMarcar ? marcadasAntes + 1 : Math.max(0, marcadasAntes - 1);
+      const sugestao = marcadasDepois > 0 ? (100 / marcadasDepois).toFixed(2) : "";
+      return atual.map((c, i) => {
+        if (i === indice) {
+          return { ...c, gera_comissao: vaiMarcar, porc_comissao: vaiMarcar ? sugestao : "", desconto_comissao: vaiMarcar ? c.desconto_comissao : "" };
+        }
+        if (c.gera_comissao && vaiMarcar) return { ...c, porc_comissao: sugestao };
+        return c;
+      });
+    });
+  }
+
+  function definirPorcComissaoCondicao(indice: number, valor: string) {
+    setCondicoes((atual) => atual.map((c, i) => (i === indice ? { ...c, porc_comissao: valor } : c)));
+  }
+
+  function definirDescontoComissaoCondicao(indice: number, valor: string) {
+    setCondicoes((atual) => atual.map((c, i) => (i === indice ? { ...c, desconto_comissao: valor } : c)));
+  }
+
+  const somaPorcComissaoCondicoes = useMemo(
+    () => condicoes.reduce((acc, c) => acc + (c.gera_comissao ? Number(c.porc_comissao.replace(",", ".")) || 0 : 0), 0),
+    [condicoes]
+  );
+
+  // Participantes extra no rateio do honorário (ex.: coordenador de
+  // vendas), além dos dois corretores fixos acima — só o admin adiciona
+  // (este formulário TransacaoForm é só do admin, nunca do portal).
+  const [extras, setExtras] = useState<ComissaoExtra[]>(extrasIniciais);
+  const [novaExtra, setNovaExtra] = useState<ComissaoExtra>({ parceiro_id: "", papel: "", porcentagem: "", observacao: "" });
+
+  function adicionarExtra() {
+    if (!novaExtra.parceiro_id || !novaExtra.porcentagem.trim()) return;
+    setExtras((atual) => [...atual, novaExtra]);
+    setNovaExtra({ parceiro_id: "", papel: "", porcentagem: "", observacao: "" });
+  }
+
+  function removerExtra(indice: number) {
+    setExtras((atual) => atual.filter((_, i) => i !== indice));
   }
 
   // Comissionamento — honorário total e rateio calculados ao vivo a partir
@@ -300,7 +378,12 @@ export function TransacaoForm({
   // % imobiliária não é mais digitado — é sempre o que sobra do "restante"
   // depois de pagar os dois corretores, pra não precisar de conta manual
   // (e pra nunca ficar com uma % de imobiliária que não bate com o resto).
-  const somaFracCorretores = fracCorretorProprietario + fracCorretorContraparte;
+  // Participantes extra (ex.: coordenador de vendas) também saem do mesmo
+  // "restante" — a % da imobiliária desconta a soma deles automaticamente,
+  // igual já fazia só com os dois corretores fixos (sem precisar o admin
+  // reajustar nada na mão).
+  const fracExtras = extras.reduce((acc, e) => acc + (percentualParaDecimal(e.porcentagem) ?? 0), 0);
+  const somaFracCorretores = fracCorretorProprietario + fracCorretorContraparte + fracExtras;
   const corretoresPassaramDe100 = somaFracCorretores > 1;
   const fracImobiliaria = Math.max(0, 1 - somaFracCorretores);
   const porcImobiliariaTexto = formatPercentual(fracImobiliaria);
@@ -381,6 +464,7 @@ export function TransacaoForm({
         <input key={c.id} type="hidden" name="interessado_id" value={c.id} />
       ))}
       {!eLocacao && <input type="hidden" name="condicoes_pagamento_json" value={JSON.stringify(condicoes)} />}
+      <input type="hidden" name="comissao_extra_json" value={JSON.stringify(extras)} />
 
       <div className="bg-white border border-gray-200 rounded-xl p-4">
         <div className="flex items-center justify-between mb-3">
@@ -823,6 +907,65 @@ export function TransacaoForm({
             </div>
           )}
 
+          {condicoes.length > 0 && (
+            <div className="mb-4 pt-1">
+              <div className="text-xs font-semibold text-gray-700 mb-1">Quando o honorário é pago</div>
+              <p className="text-[11px] text-gray-400 mb-2">
+                Marca em qual(is) condição(ões) acima o honorário é devido e qual % do honorário TOTAL corresponde a
+                cada uma (pode ser em mais de uma). Desconto é opcional, só nessa fatia.
+              </p>
+              <div className="flex flex-col gap-1.5">
+                {condicoes.map((c, i) => (
+                  <div
+                    key={i}
+                    className={`flex flex-wrap items-center gap-2 text-xs border rounded-lg px-3 py-2 ${
+                      c.gera_comissao ? "border-primary/40 bg-primary/5" : "border-gray-200 bg-gray-50"
+                    }`}
+                  >
+                    <input type="checkbox" checked={c.gera_comissao} onChange={() => alternarComissaoCondicao(i)} className="shrink-0" />
+                    <span className="text-gray-700 flex-1 min-w-[140px] truncate">
+                      <span className="font-semibold text-gray-800">{c.tipo}</span> — {formatValorEditavel(c.valor) || c.valor}
+                      {c.momento && <span className="text-gray-500"> · {c.momento}</span>}
+                    </span>
+                    {c.gera_comissao && (
+                      <>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <input
+                            className="text-xs border border-gray-300 rounded-lg px-2 py-1 w-16 text-right"
+                            value={c.porc_comissao}
+                            onChange={(e) => definirPorcComissaoCondicao(i, e.target.value)}
+                          />
+                          <span className="text-gray-500">%</span>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <span className="text-gray-400">desconto</span>
+                          <input
+                            className="text-xs border border-gray-300 rounded-lg px-2 py-1 w-20"
+                            placeholder="0,00"
+                            value={c.desconto_comissao}
+                            onChange={(e) => definirDescontoComissaoCondicao(i, e.target.value)}
+                          />
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+              {condicoes.some((c) => c.gera_comissao) && (
+                <p
+                  className={`text-[11px] mt-2 rounded-lg px-2 py-1.5 border ${
+                    Math.abs(somaPorcComissaoCondicoes - 100) < 0.01
+                      ? "bg-green-50 border-green-200 text-green-700"
+                      : "bg-amber-50 border-amber-200 text-amber-700"
+                  }`}
+                >
+                  Soma marcada: {somaPorcComissaoCondicoes.toFixed(2)}% do honorário
+                  {Math.abs(somaPorcComissaoCondicoes - 100) >= 0.01 && " — confira, o ideal é fechar 100%."}
+                </p>
+              )}
+            </div>
+          )}
+
           <div className="grid md:grid-cols-3 gap-3 items-end bg-gray-50/50 border border-dashed border-gray-200 rounded-lg p-3">
             <div>
               <label className={LABEL}>Tipo</label>
@@ -1047,10 +1190,83 @@ export function TransacaoForm({
           </p>
           {corretoresPassaramDe100 && (
             <p className="md:col-span-3 text-[11px] text-red-700 bg-red-50 border border-red-200 rounded-lg px-2 py-1.5">
-              % corretor do proprietário + % corretor da contraparte somam mais que 100% — a imobiliária ficaria
-              negativa, então foi travada em 0%. Ajuste as duas porcentagens acima.
+              % corretor do proprietário + % corretor da contraparte + participantes extra somam mais que 100% — a
+              imobiliária ficaria negativa, então foi travada em 0%. Ajuste as porcentagens acima.
             </p>
           )}
+        </div>
+
+        <div className="mt-4 pt-3 border-t border-gray-100">
+          <div className="text-xs font-semibold text-gray-700 mb-1">Participante extra do rateio</div>
+          <p className="text-[11px] text-gray-400 mb-2">
+            Alguém além dos dois corretores acima que também recebe uma fatia do honorário (ex.: coordenador de
+            vendas) — o % dela sai do mesmo total e desconta automaticamente o % da imobiliária.
+          </p>
+
+          {extras.length > 0 && (
+            <div className="flex flex-col gap-1.5 mb-3">
+              {extras.map((e, i) => {
+                const nomeParceiro = parceiros.find((p) => p.id === e.parceiro_id)?.nome ?? "—";
+                const fracE = percentualParaDecimal(e.porcentagem) ?? 0;
+                return (
+                  <div
+                    key={i}
+                    className="flex items-center justify-between text-xs bg-gray-50 border border-gray-200 rounded-lg px-3 py-2"
+                  >
+                    <span className="text-gray-700">
+                      <span className="font-semibold text-gray-800">{nomeParceiro}</span>
+                      {e.papel && <span className="text-gray-500"> — {e.papel}</span>}
+                      <span className="text-gray-500"> · {e.porcentagem}% — {formatMoeda(restanteRateioRS * fracE)}</span>
+                    </span>
+                    <button type="button" onClick={() => removerExtra(i)} className="text-gray-400 hover:text-red-600 ml-2 shrink-0">
+                      remover
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          <div className="grid md:grid-cols-4 gap-3 items-end bg-gray-50/50 border border-dashed border-gray-200 rounded-lg p-3">
+            <div>
+              <label className={LABEL}>Parceiro</label>
+              <select
+                className={CAMPO}
+                value={novaExtra.parceiro_id}
+                onChange={(e) => setNovaExtra((a) => ({ ...a, parceiro_id: e.target.value }))}
+              >
+                <option value="">—</option>
+                {parceiros.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.nome}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className={LABEL}>Papel (opcional)</label>
+              <input
+                className={CAMPO}
+                placeholder="Coordenação de vendas"
+                value={novaExtra.papel}
+                onChange={(e) => setNovaExtra((a) => ({ ...a, papel: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className={LABEL}>% do honorário</label>
+              <input
+                className={CAMPO}
+                placeholder="10"
+                value={novaExtra.porcentagem}
+                onChange={(e) => setNovaExtra((a) => ({ ...a, porcentagem: e.target.value }))}
+              />
+            </div>
+            <div>
+              <button type="button" onClick={adicionarExtra} className="text-xs bg-white border border-gray-300 text-gray-700 rounded-lg px-3 py-1.5 font-semibold">
+                + Adicionar participante
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 

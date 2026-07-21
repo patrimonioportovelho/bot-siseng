@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { TransacaoForm } from "@/components/transacao-form";
+import { TransacaoForm, type ComissaoExtra } from "@/components/transacao-form";
 import { PainelLateral } from "@/components/painel-lateral";
-import { formatMoeda, formatPercentual, formatDataCalendario, formatValorEditavel } from "@/lib/format";
+import { formatMoeda, formatPercentual, formatDataCalendario, formatValorEditavel, valorEditavelParaDecimal } from "@/lib/format";
 
 type ClienteOpcao = { id: string; nome: string; id_legado: string | null; parceiroId: string | null };
 type LojaOpcao = { id: string; nome: string };
@@ -34,6 +34,9 @@ type CondicaoPagamento = {
   momento: string;
   data_pagamento: string;
   descricao: string;
+  gera_comissao: boolean;
+  porc_comissao: string;
+  desconto_comissao: string;
 };
 
 type PessoaLink = { id: string; nome: string };
@@ -133,6 +136,7 @@ export function TransacaoDetalhe({
   corretorContraparte,
   parceiroExterno,
   condicoesPagamento,
+  comissaoExtra,
   lojas,
   clientes,
   imoveis,
@@ -141,6 +145,7 @@ export function TransacaoDetalhe({
   imoveisComAdmAtivaIds,
   interessadosIniciais,
   condicoesIniciais,
+  extrasIniciais,
   action,
   alternarBoletoEmitidoAction
 }: {
@@ -154,6 +159,7 @@ export function TransacaoDetalhe({
   corretorContraparte: string | null;
   parceiroExterno: string | null;
   condicoesPagamento: CondicaoPagamento[];
+  comissaoExtra: { nome: string; papel: string | null; porcentagem: unknown }[];
   lojas: LojaOpcao[];
   clientes: ClienteOpcao[];
   imoveis: ImovelOpcao[];
@@ -162,6 +168,7 @@ export function TransacaoDetalhe({
   imoveisComAdmAtivaIds: string[];
   interessadosIniciais: ClienteOpcao[];
   condicoesIniciais: CondicaoPagamento[];
+  extrasIniciais: ComissaoExtra[];
   action: (prevState: unknown, formData: FormData) => Promise<{ erro: string } | undefined | void>;
   alternarBoletoEmitidoAction: (formData: FormData) => void;
 }) {
@@ -198,6 +205,7 @@ export function TransacaoDetalhe({
           imoveisComAdmAtivaIds={imoveisComAdmAtivaIds}
           interessadosIniciais={interessadosIniciais}
           condicoesIniciais={condicoesIniciais}
+          extrasIniciais={extrasIniciais}
           action={action}
         />
       </div>
@@ -414,7 +422,41 @@ export function TransacaoDetalhe({
             label="% imobiliária"
             valor={`${formatPercentual(t.porc_imobiliaria)}% — ${formatMoeda(valorImobiliariaRS)}`}
           />
+          {comissaoExtra.map((e, i) => (
+            <Campo
+              key={i}
+              label={e.papel || "Participante extra"}
+              valor={`${e.nome} — ${formatPercentual(e.porcentagem)}% — ${formatMoeda(restanteRateioRS * (Number(e.porcentagem ?? 0) || 0))}`}
+            />
+          ))}
         </div>
+
+        {condicoesPagamento.some((c) => c.gera_comissao) && (
+          <div className="mt-4 pt-3 border-t border-gray-100">
+            <div className="text-xs font-semibold text-gray-700 mb-2">Previsão de pagamento dos honorários</div>
+            <div className="flex flex-col gap-1.5">
+              {condicoesPagamento
+                .filter((c) => c.gera_comissao)
+                .map((c, i) => {
+                  const fracao = (Number(c.porc_comissao.replace(",", ".")) || 0) / 100;
+                  const descontoRS = valorEditavelParaDecimal(c.desconto_comissao) ?? 0;
+                  const valorFatiaRS = honorarioTotalRS * fracao - descontoRS;
+                  return (
+                    <div key={i} className="flex flex-wrap items-center justify-between gap-2 text-xs bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+                      <span className="text-gray-700">
+                        <span className="font-semibold text-gray-800">{c.tipo}</span> — {c.porc_comissao}% do honorário
+                        {descontoRS > 0 && <span className="text-gray-500"> · desconto {formatMoeda(descontoRS)}</span>}
+                      </span>
+                      <span className="flex items-center gap-2 shrink-0">
+                        <span className="font-semibold text-gray-800">{formatMoeda(Math.max(0, valorFatiaRS))}</span>
+                        {c.data_pagamento && <span className="text-gray-500">previsto {c.data_pagamento}</span>}
+                      </span>
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="bg-white border border-gray-200 rounded-xl p-4">

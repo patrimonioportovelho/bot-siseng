@@ -111,6 +111,7 @@ export default async function NovaTransacaoPage({
         imoveisComAdmAtivaIds={imoveisComAdmAtivaIds}
         interessadosIniciais={[]}
         condicoesIniciais={[]}
+        extrasIniciais={[]}
         tipoInicial={tipoInicial}
         action={criarTransacaoAction}
       />

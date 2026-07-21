@@ -21,10 +21,25 @@ type CondicaoPagamento = {
   momento: string;
   data_pagamento: string;
   descricao: string;
+  // Comissionamento vinculado a este pagamento — marca quando o honorário
+  // (ou parte dele) é devido. porc_comissao é a fatia do honorário TOTAL
+  // representada por esta condição (não do valor dela).
+  gera_comissao: boolean;
+  porc_comissao: string;
 };
 
 function condicaoVazia(): CondicaoPagamento {
-  return { tipo: TIPO_CONDICAO_OPCOES[0], valor: "", forma_pagamento: "", parcelas: "", momento: "", data_pagamento: "", descricao: "" };
+  return {
+    tipo: TIPO_CONDICAO_OPCOES[0],
+    valor: "",
+    forma_pagamento: "",
+    parcelas: "",
+    momento: "",
+    data_pagamento: "",
+    descricao: "",
+    gera_comissao: false,
+    porc_comissao: ""
+  };
 }
 
 function hojeISO(): string {
@@ -749,6 +764,32 @@ export function PortalCompraVendaForm({
     setCondicoes((atual) => atual.filter((_, i) => i !== indice));
   }
 
+  // Marca/desmarca uma condição já lançada como "honorário pago aqui" — ao
+  // marcar, sugere um % igual entre as condições já marcadas (editável
+  // depois); ao desmarcar, some 1) marcada e some com nada.
+  function alternarComissaoCondicao(indice: number) {
+    setCondicoes((atual) => {
+      const marcadasAntes = atual.filter((c) => c.gera_comissao).length;
+      const vaiMarcar = !atual[indice].gera_comissao;
+      const marcadasDepois = vaiMarcar ? marcadasAntes + 1 : Math.max(0, marcadasAntes - 1);
+      const sugestao = marcadasDepois > 0 ? (100 / marcadasDepois).toFixed(2) : "";
+      return atual.map((c, i) => {
+        if (i === indice) return { ...c, gera_comissao: vaiMarcar, porc_comissao: vaiMarcar ? sugestao : "" };
+        if (c.gera_comissao && vaiMarcar) return { ...c, porc_comissao: sugestao };
+        return c;
+      });
+    });
+  }
+
+  function definirPorcComissaoCondicao(indice: number, valor: string) {
+    setCondicoes((atual) => atual.map((c, i) => (i === indice ? { ...c, porc_comissao: valor } : c)));
+  }
+
+  const somaPorcComissaoCondicoes = useMemo(
+    () => condicoes.reduce((acc, c) => acc + (c.gera_comissao ? Number(c.porc_comissao.replace(",", ".")) || 0 : 0), 0),
+    [condicoes]
+  );
+
   function adicionarDocumentos(lista: FileList | null) {
     if (!lista || lista.length === 0) return;
     setErroAnexo("");
@@ -1338,6 +1379,59 @@ export function PortalCompraVendaForm({
             </div>
           )}
         </div>
+
+        {condicoes.length > 0 && (
+          <div className="mt-4 pt-3 border-t border-gray-100">
+            <div className="text-xs font-semibold text-gray-700 mb-1">Quando o honorário é pago</div>
+            <p className="text-[11px] text-gray-400 mb-2">
+              Marca em qual(is) condição(ões) de pagamento lançada(s) acima o honorário é devido, e qual % do
+              honorário total corresponde a cada uma (pode ser em mais de uma, ex.: parte na entrada e parte depois).
+            </p>
+            <div className="flex flex-col gap-1.5">
+              {condicoes.map((c, i) => (
+                <div
+                  key={i}
+                  className={`flex items-center gap-2 text-xs border rounded-lg px-3 py-2 ${
+                    c.gera_comissao ? "border-primary/40 bg-primary/5" : "border-gray-200 bg-gray-50"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={c.gera_comissao}
+                    onChange={() => alternarComissaoCondicao(i)}
+                    className="shrink-0"
+                  />
+                  <span className="text-gray-700 flex-1 truncate">
+                    <span className="font-semibold text-gray-800">{c.tipo}</span> — R$ {c.valor}
+                    {c.momento && <span className="text-gray-500"> · {c.momento}</span>}
+                  </span>
+                  {c.gera_comissao && (
+                    <div className="flex items-center gap-1 shrink-0">
+                      <input
+                        className="text-xs border border-gray-300 rounded-lg px-2 py-1 w-16 text-right"
+                        value={c.porc_comissao}
+                        onChange={(e) => definirPorcComissaoCondicao(i, e.target.value)}
+                      />
+                      <span className="text-gray-500">%</span>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+            {condicoes.some((c) => c.gera_comissao) && (
+              <p
+                className={`text-[11px] mt-2 rounded-lg px-2 py-1.5 border ${
+                  Math.abs(somaPorcComissaoCondicoes - 100) < 0.01
+                    ? "bg-green-50 border-green-200 text-green-700"
+                    : "bg-amber-50 border-amber-200 text-amber-700"
+                }`}
+              >
+                Soma marcada: {somaPorcComissaoCondicoes.toFixed(2)}% do honorário
+                {Math.abs(somaPorcComissaoCondicoes - 100) >= 0.01 && " — confira, o ideal é fechar 100%."}
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="bg-white border border-gray-200 rounded-xl p-4">

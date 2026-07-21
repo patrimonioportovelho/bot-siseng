@@ -89,10 +89,34 @@ export default async function MovimentacaoPage({
           clientes_transacoes_cliente_contraparte_idToclientes: { select: { nome: true } },
           parceiros_transacoes_parceiro_externo_idToparceiros: { select: { id: true, nome: true } },
           parceiros_transacoes_corretor_proprietario_idToparceiros: { select: { id: true, nome: true } },
-          parceiros_transacoes_corretor_contraparte_idToparceiros: { select: { id: true, nome: true } }
+          parceiros_transacoes_corretor_contraparte_idToparceiros: { select: { id: true, nome: true } },
+          transacoes_comissao_extra: {
+            include: { parceiros: { select: { id: true, nome: true } } },
+            orderBy: { created_at: "asc" }
+          },
+          condicoes_pagamento: {
+            where: { gera_comissao: true },
+            orderBy: { created_at: "asc" },
+            select: { id: true, tipo: true, porc_comissao: true, desconto_comissao: true, data_pagamento: true }
+          }
         }
       })
     : null;
+
+  // Quais dessas condições já tiveram o rateio gerado (em qualquer
+  // Recebimento, não só este) — pra não oferecer de novo no seletor do
+  // RateioForm.
+  const condicoesJaGeradasIds =
+    transacaoVinculada && transacaoVinculada.condicoes_pagamento.length > 0
+      ? new Set(
+          (
+            await prisma.pagamentos.findMany({
+              where: { condicao_pagamento_id: { in: transacaoVinculada.condicoes_pagamento.map((c) => c.id) } },
+              select: { condicao_pagamento_id: true }
+            })
+          ).map((p) => p.condicao_pagamento_id)
+        )
+      : new Set<string | null>();
 
   // Recebimento que efetivamente gerou esta despesa de repasse — via
   // pagamento_id -> pagamentos.recebimento_id (não mais um "chute" pelo
@@ -316,7 +340,21 @@ export default async function MovimentacaoPage({
               porc_corretor_contraparte: transacaoVinculada.porc_corretor_contraparte,
               parceiro_externo: transacaoVinculada.parceiros_transacoes_parceiro_externo_idToparceiros,
               corretor_proprietario: transacaoVinculada.parceiros_transacoes_corretor_proprietario_idToparceiros,
-              corretor_contraparte: transacaoVinculada.parceiros_transacoes_corretor_contraparte_idToparceiros
+              corretor_contraparte: transacaoVinculada.parceiros_transacoes_corretor_contraparte_idToparceiros,
+              extras: transacaoVinculada.transacoes_comissao_extra.map((e) => ({
+                id: e.parceiros.id,
+                nome: e.parceiros.nome,
+                papel: e.papel,
+                porcentagem: e.porcentagem
+              })),
+              condicoesComComissao: transacaoVinculada.condicoes_pagamento.map((c) => ({
+                id: c.id,
+                tipo: c.tipo,
+                porc_comissao: c.porc_comissao,
+                desconto_comissao: c.desconto_comissao,
+                data_pagamento: c.data_pagamento ? c.data_pagamento.toISOString().slice(0, 10) : null,
+                jaGerado: condicoesJaGeradasIds.has(c.id)
+              }))
             }}
             recebimentoId={movimentacao.id}
             vencimentoSugerido={movimentacao.data_pagamento ?? movimentacao.vencimento}

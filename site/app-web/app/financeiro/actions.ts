@@ -330,6 +330,10 @@ export async function gerarRateioAction(formData: FormData) {
   const recebimentoId = texto(formData, "recebimento_id");
   const vencimentoTexto = texto(formData, "vencimento");
   const linhasTexto = texto(formData, "linhas");
+  // Qual condição de pagamento (fatia do honorário) este Recebimento
+  // específico está pagando — vazio/ausente cai no comportamento antigo
+  // (honorário total inteiro, transações sem nenhuma condição marcada).
+  const condicaoPagamentoId = texto(formData, "condicao_pagamento_id");
 
   if (!transacaoId || !recebimentoId || !vencimentoTexto || !linhasTexto) {
     throw new Error("Dados incompletos para gerar o rateio.");
@@ -353,17 +357,26 @@ export async function gerarRateioAction(formData: FormData) {
     throw new Error("O rateio desse recebimento já foi gerado.");
   }
 
-  const [categoria, transacao] = await Promise.all([
+  const [categoria, transacao, condicaoPagamento] = await Promise.all([
     prisma.categorias_financeiras.findFirst({ where: { nome: CATEGORIA_REPASSE_HONORARIO, tipo: "Despesa" } }),
-    prisma.transacoes.findUnique({ where: { id: transacaoId } })
+    prisma.transacoes.findUnique({ where: { id: transacaoId } }),
+    condicaoPagamentoId ? prisma.condicoes_pagamento.findUnique({ where: { id: condicaoPagamentoId } }) : Promise.resolve(null)
   ]);
   if (!categoria) throw new Error(`Categoria "${CATEGORIA_REPASSE_HONORARIO}" não encontrada.`);
   if (!transacao) throw new Error("Transação não encontrada.");
+  if (condicaoPagamentoId && (!condicaoPagamento || condicaoPagamento.transacao_id !== transacaoId || !condicaoPagamento.gera_comissao)) {
+    throw new Error("Condição de pagamento inválida para esta transação.");
+  }
 
-  // Valor do honorário é fixo por transação (valor_transacao x porc_honorario)
-  // — recalculado aqui a partir do banco, não confiando no valor mandado
-  // pelo formulário, igual já é feito nas outras Server Actions do sistema.
-  const valorHonorarioTotal = Number(transacao.valor_transacao) * Number(transacao.porc_honorario ?? 0);
+  // Valor do honorário é recalculado aqui a partir do banco, não confiando
+  // no valor mandado pelo formulário — igual já é feito nas outras Server
+  // Actions do sistema. Quando o Recebimento está vinculado a uma condição
+  // marcada como "honorário pago aqui" (ver condicoes_pagamento.gera_comissao),
+  // só a fatia dela (porc_comissao) entra no rateio, não o honorário
+  // inteiro — sem isso, cada Recebimento de um negócio parcelado pagaria o
+  // honorário total de novo.
+  const fracaoCondicao = condicaoPagamento ? Number(condicaoPagamento.porc_comissao ?? 0) / 100 : 1;
+  const valorHonorarioTotal = Number(transacao.valor_transacao) * Number(transacao.porc_honorario ?? 0) * fracaoCondicao;
   const vencimento = new Date(vencimentoTexto + "T00:00:00");
 
   const idsCriados: string[] = [];
@@ -377,6 +390,7 @@ export async function gerarRateioAction(formData: FormData) {
           status: "Pendente",
           transacao_id: transacaoId,
           recebimento_id: recebimentoId,
+          condicao_pagamento_id: condicaoPagamentoId || null,
           cliente_id: transacao.cliente_id,
           tipo: transacao.tipo,
           parceiro_id: linha.parceiro_id,

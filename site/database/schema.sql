@@ -508,10 +508,34 @@ CREATE TABLE condicoes_pagamento (
                         'assinatura do contrato de compra e venda','conforme parcelas','assinatura do contrato de financiamento'
                     )),
   data_pagamento    DATE,
+  -- Comissionamento vinculado a este pagamento específico: marca se o
+  -- honorário (ou parte dele) é devido quando este pagamento acontece.
+  -- porc_comissao é a fatia do honorário TOTAL da transação (não do valor
+  -- desta condição); desconto_comissao é um abatimento em R$ só nessa
+  -- fatia. A previsão de quando isso será pago usa a própria data_pagamento.
+  gera_comissao     BOOLEAN NOT NULL DEFAULT false,
+  porc_comissao     NUMERIC(6,4),
+  desconto_comissao NUMERIC(14,2),
   created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX idx_condicoes_pg_transacao ON condicoes_pagamento(transacao_id);
 COMMENT ON TABLE condicoes_pagamento IS 'A soma de valor para uma transacao_id deve fechar com transacoes.valor_transacao (validar na aplicação).';
+
+-- Participante extra no rateio do honorário de uma transação, além dos
+-- dois corretores fixos (corretor_proprietario_id/corretor_contraparte_id
+-- já existentes em transacoes). Ex.: coordenador de vendas que também
+-- recebe uma fatia. Só o administrativo cadastra/remove.
+CREATE TABLE transacoes_comissao_extra (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  transacao_id UUID NOT NULL REFERENCES transacoes(id) ON DELETE CASCADE,
+  parceiro_id  UUID NOT NULL REFERENCES parceiros(id),
+  papel        TEXT,
+  porcentagem  NUMERIC(6,4) NOT NULL DEFAULT 0,
+  observacao   TEXT,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_comissao_extra_transacao ON transacoes_comissao_extra(transacao_id);
+CREATE INDEX idx_comissao_extra_parceiro ON transacoes_comissao_extra(parceiro_id);
 
 CREATE TABLE chaves (
   id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -595,10 +619,14 @@ CREATE TABLE pagamentos (
   valor_report       NUMERIC(14,2),
   data_report        DATE,
   arquivo_url        TEXT,
+  -- Qual condição de pagamento (fatia do honorário) este rateio realizou —
+  -- pra dashboard/previsão saber que essa fatia já foi lançada.
+  condicao_pagamento_id UUID REFERENCES condicoes_pagamento(id) ON DELETE SET NULL,
   created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at         TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX idx_pagamentos_transacao ON pagamentos(transacao_id);
+CREATE INDEX idx_pagamentos_condicao_pagamento ON pagamentos(condicao_pagamento_id);
 CREATE INDEX idx_pagamentos_parceiro ON pagamentos(parceiro_id);
 CREATE TRIGGER trg_pagamentos_updated_at BEFORE UPDATE ON pagamentos
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();

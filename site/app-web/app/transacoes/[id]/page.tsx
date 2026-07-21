@@ -6,7 +6,7 @@ import { getAdminSession } from "@/lib/auth";
 import { TransacaoDetalhe } from "@/components/transacao-detalhe";
 import { GerarBoletosForm } from "@/components/gerar-boletos-form";
 import { MovimentacoesTransacaoLista } from "@/components/movimentacoes-transacao-lista";
-import { formatDataCalendario, formatMoeda } from "@/lib/format";
+import { formatDataCalendario, formatMoeda, formatPercentual, formatValorEditavel } from "@/lib/format";
 import { atualizarTransacaoAction, apagarTransacaoAction, gerarBoletosAction, alternarBoletoEmitidoAction } from "../actions";
 
 export const dynamic = "force-dynamic";
@@ -34,6 +34,7 @@ export default async function TransacaoDetalhePage({
         imoveis: { include: { imoveis_proprietarios: { include: { clientes: true }, orderBy: { ordem: "asc" } } } },
         transacoes_contrapartes: { include: { clientes: true }, orderBy: { ordem: "asc" } },
         condicoes_pagamento: { orderBy: { created_at: "asc" } },
+        transacoes_comissao_extra: { include: { parceiros: { select: { nome: true } } }, orderBy: { created_at: "asc" } },
         adm_imoveis: { select: { id: true, id_legado: true, parceiro_id: true, imovel_id: true, status: true, clientes: { select: { nome: true } } } },
         lojas: { select: { nome: true } },
         parceiros_transacoes_corretor_proprietario_idToparceiros: { select: { nome: true } },
@@ -176,7 +177,25 @@ export default async function TransacaoDetalhePage({
     parcelas: c.parcelas != null ? String(c.parcelas) : "",
     momento: c.momento ?? "",
     data_pagamento: dataInput(c.data_pagamento),
-    descricao: c.descricao ?? ""
+    descricao: c.descricao ?? "",
+    gera_comissao: c.gera_comissao,
+    porc_comissao: c.porc_comissao != null ? formatPercentual(c.porc_comissao) : "",
+    desconto_comissao: c.desconto_comissao != null ? formatValorEditavel(c.desconto_comissao) : ""
+  }));
+
+  const extrasIniciais = transacao.transacoes_comissao_extra.map((e) => ({
+    parceiro_id: e.parceiro_id,
+    papel: e.papel ?? "",
+    porcentagem: formatPercentual(e.porcentagem),
+    observacao: e.observacao ?? ""
+  }));
+
+  // Mesma lista, mas já com o nome do parceiro pronto — usada só na
+  // visualização (modo não-editando) do Comissionamento.
+  const comissaoExtraDisplay = transacao.transacoes_comissao_extra.map((e) => ({
+    nome: e.parceiros.nome,
+    papel: e.papel,
+    porcentagem: e.porcentagem
   }));
 
   const voltarHref = transacao.tipo === "Locação" ? "/transacoes/locacao" : "/transacoes/venda";
@@ -256,6 +275,7 @@ export default async function TransacaoDetalhePage({
         corretorContraparte={transacao.parceiros_transacoes_corretor_contraparte_idToparceiros?.nome ?? null}
         parceiroExterno={transacao.parceiros_transacoes_parceiro_externo_idToparceiros?.nome ?? null}
         condicoesPagamento={condicoesIniciais}
+        comissaoExtra={comissaoExtraDisplay}
         lojas={lojas}
         clientes={clientesComParceiro}
         imoveis={imoveisComProprietarios}
@@ -264,6 +284,7 @@ export default async function TransacaoDetalhePage({
         imoveisComAdmAtivaIds={imoveisComAdmAtivaIds}
         interessadosIniciais={interessadosComParceiro}
         condicoesIniciais={condicoesIniciais}
+        extrasIniciais={extrasIniciais}
         action={atualizarTransacaoAction}
         alternarBoletoEmitidoAction={alternarBoletoEmitidoAction}
       />

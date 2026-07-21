@@ -248,6 +248,12 @@ async function sincronizarCondicoesPagamento(transacaoId: string, formData: Form
       const parcelasNum = parcelasTxt ? Number(parcelasTxt) : NaN;
       const dataTxt = String(c.data_pagamento ?? "").trim();
       const dataPagamento = dataTxt ? new Date(dataTxt) : null;
+      // Comissionamento vinculado a este pagamento — o corretor pode marcar
+      // aqui quando o honorário é devido (mesmo campo que o admin usa em
+      // app/transacoes/actions.ts). Desconto fica só a cargo do admin.
+      const geraComissao = c.gera_comissao === true || c.gera_comissao === "true";
+      const porcComissaoNum = Number(c.porc_comissao);
+      const porcComissao = geraComissao && Number.isFinite(porcComissaoNum) ? porcComissaoNum : null;
       return {
         tipo: String(c.tipo ?? "").trim() || null,
         valor,
@@ -255,7 +261,9 @@ async function sincronizarCondicoesPagamento(transacaoId: string, formData: Form
         parcelas: Number.isFinite(parcelasNum) ? Math.trunc(parcelasNum) : null,
         momento: String(c.momento ?? "").trim() || null,
         data_pagamento: dataPagamento && !Number.isNaN(dataPagamento.getTime()) ? dataPagamento : null,
-        descricao: String(c.descricao ?? "").trim() || null
+        descricao: String(c.descricao ?? "").trim() || null,
+        gera_comissao: geraComissao,
+        porc_comissao: porcComissao
       };
     })
     .filter((c): c is typeof c & { valor: number } => c.valor !== null);

@@ -276,19 +276,32 @@ model clientes {
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model condicoes_pagamento {
-  id              String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  id_legado       String?    @unique
-  transacao_id    String     @db.Uuid
-  tipo            String?
-  valor           Decimal    @db.Decimal(14, 2)
-  descricao       String?
-  descricao_ia    String?
-  forma_pagamento String?
-  parcelas        Int?       @db.SmallInt
-  momento         String?
-  data_pagamento  DateTime?  @db.Date
-  created_at      DateTime   @default(now()) @db.Timestamptz(6)
-  transacoes      transacoes @relation(fields: [transacao_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  id                 String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id_legado          String?      @unique
+  transacao_id       String       @db.Uuid
+  tipo               String?
+  valor              Decimal      @db.Decimal(14, 2)
+  descricao          String?
+  descricao_ia       String?
+  forma_pagamento    String?
+  parcelas           Int?         @db.SmallInt
+  momento            String?
+  data_pagamento     DateTime?    @db.Date
+  // Comissionamento vinculado a este pagamento específico: marca se o
+  // honorário (ou parte dele) é devido quando este pagamento acontece —
+  // pedido do usuário pra não pagar o honorário inteiro em cada Recebimento
+  // gerado, quando o negócio tem mais de uma condição (ex.: Entrada +
+  // Parcelado + Entradas futuras). porc_comissao é a fatia do honorário
+  // TOTAL da transação (não do valor desta condição) representada por essa
+  // condição; desconto_comissao é um abatimento em R$ aplicado só nessa
+  // fatia. A previsão de quando isso será pago usa a própria data_pagamento
+  // acima (não duplica campo).
+  gera_comissao      Boolean      @default(false)
+  porc_comissao      Decimal?     @db.Decimal(6, 4)
+  desconto_comissao  Decimal?     @db.Decimal(14, 2)
+  created_at         DateTime     @default(now()) @db.Timestamptz(6)
+  transacoes         transacoes   @relation(fields: [transacao_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  pagamentos         pagamentos[]
 
   @@index([transacao_id], map: "idx_condicoes_pg_transacao")
 }
@@ -644,6 +657,11 @@ model pagamentos {
   // rateio dos meses seguintes pra sempre. Nullable pra não quebrar os
   // registros antigos (serão preenchidos via backfill).
   recebimento_id   String?         @db.Uuid
+  // Qual condição de pagamento (fatia do honorário) este rateio realizou —
+  // pra dashboard/previsão saber que essa fatia já foi lançada e não contar
+  // de novo como "prevista". Nullable: rateios antigos e os que não vieram
+  // de uma condição específica (honorário total, sem parcelamento) ficam null.
+  condicao_pagamento_id String?    @db.Uuid
   created_at       DateTime        @default(now()) @db.Timestamptz(6)
   updated_at       DateTime        @default(now()) @db.Timestamptz(6)
   movimentacoes             movimentacoes[]
@@ -651,10 +669,12 @@ model pagamentos {
   clientes         clientes?       @relation(fields: [cliente_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   parceiros        parceiros       @relation(fields: [parceiro_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   transacoes       transacoes      @relation(fields: [transacao_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  condicoes_pagamento condicoes_pagamento? @relation(fields: [condicao_pagamento_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
 
   @@index([parceiro_id], map: "idx_pagamentos_parceiro")
   @@index([transacao_id], map: "idx_pagamentos_transacao")
   @@index([recebimento_id], map: "idx_pagamentos_recebimento")
+  @@index([condicao_pagamento_id], map: "idx_pagamentos_condicao_pagamento")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -726,6 +746,7 @@ model parceiros {
   transacoes_transacoes_corretor_contraparte_idToparceiros                    transacoes[]              @relation("transacoes_corretor_contraparte_idToparceiros")
   transacoes_transacoes_corretor_proprietario_idToparceiros                   transacoes[]              @relation("transacoes_corretor_proprietario_idToparceiros")
   transacoes_transacoes_parceiro_externo_idToparceiros                        transacoes[]              @relation("transacoes_parceiro_externo_idToparceiros")
+  transacoes_comissao_extra                                                   transacoes_comissao_extra[]
   usuarios                                                                    usuarios[]
 
   @@index([loja_id], map: "idx_parceiros_loja")
@@ -916,6 +937,10 @@ model transacoes {
   pagamentos                                               pagamentos[]
   recibos_locacao                                          recibos_locacao[]
   transacoes_contrapartes                                  transacoes_contrapartes[]
+  // Participantes extra no rateio do honorário (ex.: coordenador de vendas)
+  // além dos dois corretores fixos (proprietário/contraparte) — só o admin
+  // adiciona, pedido do usuário.
+  transacoes_comissao_extra                                transacoes_comissao_extra[]
   adm_imoveis                                              adm_imoveis?             @relation(fields: [adm_imovel_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   clientes_transacoes_cliente_contraparte_idToclientes     clientes                 @relation("transacoes_cliente_contraparte_idToclientes", fields: [cliente_contraparte_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   clientes_transacoes_cliente_idToclientes                 clientes                 @relation("transacoes_cliente_idToclientes", fields: [cliente_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -934,6 +959,28 @@ model transacoes {
   @@index([imovel_id], map: "idx_transacoes_imovel")
   @@index([loja_id], map: "idx_transacoes_loja")
   @@index([gestao_id], map: "idx_transacoes_gestao")
+}
+
+/// Participante extra no rateio do honorário de uma transação, além dos
+/// dois corretores fixos (corretor_proprietario_id/corretor_contraparte_id
+/// já existentes em transacoes). Ex.: coordenador de vendas que também
+/// recebe uma fatia. Só o administrativo cadastra/remove — pedido explícito
+/// do usuário ("só adm adiciona ele"). porcentagem é sobre o honorário total
+/// (mesma base usada pelos dois corretores fixos); o % da imobiliária no
+/// rateio já desconta automaticamente a soma destes extras.
+model transacoes_comissao_extra {
+  id           String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  transacao_id String     @db.Uuid
+  parceiro_id  String     @db.Uuid
+  papel        String?
+  porcentagem  Decimal    @default(0) @db.Decimal(6, 4)
+  observacao   String?
+  created_at   DateTime   @default(now()) @db.Timestamptz(6)
+  transacoes   transacoes @relation(fields: [transacao_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  parceiros    parceiros  @relation(fields: [parceiro_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([transacao_id], map: "idx_comissao_extra_transacao")
+  @@index([parceiro_id], map: "idx_comissao_extra_parceiro")
 }
 
 /// Clientes interessados (compradores/locatários) vinculados a uma

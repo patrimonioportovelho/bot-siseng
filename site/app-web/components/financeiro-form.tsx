@@ -7,6 +7,8 @@ import { CampoLink } from "@/components/campo-link";
 type CategoriaOpcao = { id: string; nome: string; tipo: string | null };
 type ClienteOpcao = { id: string; nome: string };
 type ParceiroOpcao = { id: string; nome: string };
+type ParticipanteExtraOpcao = { id: string; nome: string; papel: string | null; porcentagem: unknown };
+
 type TransacaoOpcao = {
   id: string;
   id_legado: string | null;
@@ -27,6 +29,7 @@ type TransacaoOpcao = {
   corretorProprietarioNome: string | null;
   corretorContraparteId: string | null;
   corretorContraparteNome: string | null;
+  extras: ParticipanteExtraOpcao[];
 };
 
 const CAMPO = "text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full outline-none focus:border-primary bg-white";
@@ -120,8 +123,13 @@ export function FinanceiroForm({
 
   // Cascata de honorário — mesma conta de components/rateio-form.tsx —
   // usada só quando a categoria é de repasse (Despesa), pra sugerir o valor
-  // e o parceiro certo conforme a parte escolhida abaixo.
-  const [parteRepasse, setParteRepasse] = useState<"proprietario" | "contraparte" | "combinado" | "">("");
+  // e o parceiro certo conforme a parte escolhida abaixo. "proprietario" e
+  // "contraparte" são os dois corretores fixos da transação; "combinado" é
+  // as duas partes somadas quando é o mesmo corretor; "extra_<id>" é um
+  // participante extra do rateio (ex.: coordenador de vendas — ver
+  // transacoes_comissao_extra), que entra como mais um botão de sugestão
+  // igual aos dois corretores.
+  const [parteRepasse, setParteRepasse] = useState<string>("");
   const [descontoRepasseTexto, setDescontoRepasseTexto] = useState("");
   const [parceiroId, setParceiroId] = useState("");
 
@@ -142,21 +150,36 @@ export function FinanceiroForm({
       t.corretorProprietarioId && t.corretorContraparteId && t.corretorProprietarioId === t.corretorContraparteId
     );
     const valorCombinado = valorProprietario + valorContraparte;
-    return { honorarioTotal, valorParceria, restante, valorProprietario, valorContraparte, mesmoCorretor, valorCombinado };
+    const extras = t.extras.map((e) => ({
+      chave: `extra_${e.id}`,
+      id: e.id,
+      nome: e.nome,
+      papel: e.papel,
+      valor: restante * (Number(e.porcentagem ?? 0) || 0)
+    }));
+    return { honorarioTotal, valorParceria, restante, valorProprietario, valorContraparte, mesmoCorretor, valorCombinado, extras };
   }, [ehCategoriaRepasse, transacaoSelecionadaParaCascata]);
 
-  function escolherParteRepasse(parte: "proprietario" | "contraparte" | "combinado") {
+  function valorDaParte(parte: string): number {
+    if (!cascataRepasse) return 0;
+    if (parte === "proprietario") return cascataRepasse.valorProprietario;
+    if (parte === "contraparte") return cascataRepasse.valorContraparte;
+    if (parte === "combinado") return cascataRepasse.valorCombinado;
+    const extra = cascataRepasse.extras.find((e) => e.chave === parte);
+    return extra?.valor ?? 0;
+  }
+
+  function escolherParteRepasse(parte: string) {
     setParteRepasse(parte);
     setDescontoRepasseTexto("");
     if (!transacaoSelecionadaParaCascata || !cascataRepasse) return;
-    const base =
-      parte === "proprietario"
-        ? cascataRepasse.valorProprietario
-        : parte === "contraparte"
-          ? cascataRepasse.valorContraparte
-          : cascataRepasse.valorCombinado;
+    const base = valorDaParte(parte);
     const corretorId =
-      parte === "contraparte" ? transacaoSelecionadaParaCascata.corretorContraparteId : transacaoSelecionadaParaCascata.corretorProprietarioId;
+      parte === "contraparte"
+        ? transacaoSelecionadaParaCascata.corretorContraparteId
+        : parte === "proprietario" || parte === "combinado"
+          ? transacaoSelecionadaParaCascata.corretorProprietarioId
+          : (cascataRepasse.extras.find((e) => e.chave === parte)?.id ?? null);
     if (corretorId) setParceiroId(corretorId);
     setValor(formatValorEditavel(base));
   }
@@ -164,12 +187,7 @@ export function FinanceiroForm({
   function aplicarDescontoRepasse(texto: string) {
     setDescontoRepasseTexto(texto);
     if (!cascataRepasse || !parteRepasse) return;
-    const base =
-      parteRepasse === "proprietario"
-        ? cascataRepasse.valorProprietario
-        : parteRepasse === "contraparte"
-          ? cascataRepasse.valorContraparte
-          : cascataRepasse.valorCombinado;
+    const base = valorDaParte(parteRepasse);
     const desconto = valorEditavelParaDecimal(texto) ?? 0;
     setValor(formatValorEditavel(Math.max(0, base - desconto)));
   }
@@ -428,6 +446,19 @@ export function FinanceiroForm({
                     <span className="font-semibold">{formatMoeda(cascataRepasse.valorContraparte)}</span>
                     {cascataRepasse.mesmoCorretor && <span className="text-gray-400"> (só a outra metade dele)</span>}
                   </button>
+                  {cascataRepasse.extras.map((extra) => (
+                    <button
+                      key={extra.chave}
+                      type="button"
+                      onClick={() => escolherParteRepasse(extra.chave)}
+                      className={`text-left text-xs px-3 py-2 rounded-lg border ${
+                        parteRepasse === extra.chave ? "border-primary bg-primary/5" : "border-gray-200 hover:bg-white"
+                      }`}
+                    >
+                      {extra.papel || "Participante extra"} — {extra.nome} —{" "}
+                      <span className="font-semibold">{formatMoeda(extra.valor)}</span>
+                    </button>
+                  ))}
                 </div>
                 {parteRepasse && (
                   <div className="mt-2 max-w-xs">

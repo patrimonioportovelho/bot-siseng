@@ -43,7 +43,14 @@ export default async function NovaMovimentacaoPage() {
         clientes_transacoes_cliente_idToclientes: { select: { id: true, nome: true } },
         clientes_transacoes_cliente_contraparte_idToclientes: { select: { id: true, nome: true } },
         parceiros_transacoes_corretor_proprietario_idToparceiros: { select: { id: true, nome: true } },
-        parceiros_transacoes_corretor_contraparte_idToparceiros: { select: { id: true, nome: true } }
+        parceiros_transacoes_corretor_contraparte_idToparceiros: { select: { id: true, nome: true } },
+        // Participantes extra do rateio (ex.: coordenador de vendas) — ver
+        // components/rateio-form.tsx, mesmo conceito, pra oferecer o mesmo
+        // botão de sugestão aqui no lançamento manual.
+        transacoes_comissao_extra: {
+          include: { parceiros: { select: { id: true, nome: true } } },
+          orderBy: { created_at: "asc" }
+        }
       }
     })
   ]);
@@ -67,7 +74,13 @@ export default async function NovaMovimentacaoPage() {
     corretorProprietarioId: t.parceiros_transacoes_corretor_proprietario_idToparceiros?.id ?? null,
     corretorProprietarioNome: t.parceiros_transacoes_corretor_proprietario_idToparceiros?.nome ?? null,
     corretorContraparteId: t.parceiros_transacoes_corretor_contraparte_idToparceiros?.id ?? null,
-    corretorContraparteNome: t.parceiros_transacoes_corretor_contraparte_idToparceiros?.nome ?? null
+    corretorContraparteNome: t.parceiros_transacoes_corretor_contraparte_idToparceiros?.nome ?? null,
+    extras: t.transacoes_comissao_extra.map((e) => ({
+      id: e.parceiros.id,
+      nome: e.parceiros.nome,
+      papel: e.papel,
+      porcentagem: e.porcentagem
+    }))
   }));
 
   return (

@@ -5,6 +5,7 @@ import { StatusBadge } from "@/components/status-badge";
 import { GraficoBarras } from "@/components/grafico-barras";
 import { GraficoFluxoCaixa } from "@/components/grafico-fluxo-caixa";
 import { GraficoPizza } from "@/components/grafico-pizza";
+import { DashboardSaude } from "@/components/dashboard-saude";
 import { prisma } from "@/lib/prisma";
 import {
   formatMoeda,
@@ -1159,6 +1160,8 @@ export default async function DashboardPage({
           </div>
         </div>
       </div>
+
+      <DashboardSaude />
 
       <div className="bg-white border border-gray-200 rounded-xl p-4 mt-5">
         <div className="flex items-center justify-between mb-1 flex-wrap gap-2">

@@ -77,7 +77,9 @@ function Ficha({
   cotitulares,
   bancoNome,
   parceiroNome,
-  onEditar
+  onEditar,
+  actionApagar,
+  podeApagar
 }: {
   avaliacao: AvaliacaoExistente;
   clienteNome: string | null;
@@ -85,17 +87,32 @@ function Ficha({
   bancoNome: string | null;
   parceiroNome: string | null;
   onEditar: () => void;
+  actionApagar?: (formData: FormData) => void;
+  podeApagar?: boolean;
 }) {
   const a = avaliacao;
 
   const BotaoEditar = (
-    <button
-      type="button"
-      onClick={onEditar}
-      className="text-xs border border-gray-300 text-gray-700 rounded-lg px-3 py-1.5 hover:bg-gray-50 font-semibold"
-    >
-      Editar
-    </button>
+    <div className="flex items-center gap-2">
+      <button
+        type="button"
+        onClick={onEditar}
+        className="text-xs border border-gray-300 text-gray-700 rounded-lg px-3 py-1.5 hover:bg-gray-50 font-semibold"
+      >
+        Editar
+      </button>
+      {podeApagar && actionApagar && (
+        <form action={actionApagar}>
+          <input type="hidden" name="avaliacaoId" value={a.id} />
+          <button
+            type="submit"
+            className="text-xs border border-red-200 text-red-600 rounded-lg px-3 py-1.5 hover:bg-red-50 font-semibold"
+          >
+            Excluir
+          </button>
+        </form>
+      )}
+    </div>
   );
 
   return (
@@ -159,7 +176,9 @@ export function AvaliacaoForm({
   cotitularesIniciais,
   bancos,
   parceiros,
-  action
+  action,
+  actionApagar,
+  podeApagar
 }: {
   avaliacao: AvaliacaoExistente | null;
   clientes: Cliente[];
@@ -167,6 +186,8 @@ export function AvaliacaoForm({
   bancos: Banco[];
   parceiros: Parceiro[];
   action: (formData: FormData) => void;
+  actionApagar?: (formData: FormData) => void;
+  podeApagar?: boolean;
 }) {
   const a = avaliacao;
   // Cadastro novo já nasce em edição; cadastro existente abre em modo
@@ -259,6 +280,8 @@ export function AvaliacaoForm({
         bancoNome={bancoAtual?.nome ?? null}
         parceiroNome={parceiroAtual?.nome ?? null}
         onEditar={() => setModoEdicao(true)}
+        actionApagar={actionApagar}
+        podeApagar={podeApagar}
       />
     );
   }

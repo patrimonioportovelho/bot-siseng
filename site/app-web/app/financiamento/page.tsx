@@ -125,21 +125,31 @@ export default async function FinanciamentoPage({
     if (!porGrupo.has(g)) porGrupo.set(g, []);
     porGrupo.get(g)!.push(a);
   }
-  // Dentro dos dois grupos de "Aprovado", quem está mais perto de vencer (ou
-  // já venceu e ainda não foi atualizado) sobe pro topo — pedido explícito do
-  // usuário. Os demais grupos mantêm a ordem que já vieram da query (mais
-  // recente primeiro).
-  for (const g of [GRUPO_APROVADO_COM_ANDAMENTO, "Aprovado"]) {
-    const itens = porGrupo.get(g);
-    if (!itens) continue;
-    itens.sort((x, y) => {
-      const dx = diasParaVencimento(x.data_validade);
-      const dy = diasParaVencimento(y.data_validade);
-      if (dx === null && dy === null) return 0;
-      if (dx === null) return 1;
-      if (dy === null) return -1;
-      return dx - dy;
-    });
+  function nomeDe(a: (typeof avaliacoes)[number]): string {
+    return a.clientes?.nome ?? "";
+  }
+
+  // Dentro de cada grupo de Status, ordena por nome do cliente (A-Z) — mantém
+  // a separação por Status/processo, só troca a ordem de "mais recente
+  // primeiro" por ordem alfabética, pedido do usuário pra achar um cliente
+  // mais fácil numa lista longa. Nos dois grupos de "Aprovado" continua
+  // valendo primeiro quem está mais perto de vencer (ou já venceu) — pedido
+  // explícito anterior do usuário pra não perder o alerta de vencimento —,
+  // e só entre empates (mesmos dias ou ambos sem validade) desempata por
+  // nome.
+  for (const [g, itens] of porGrupo) {
+    if (g === GRUPO_APROVADO_COM_ANDAMENTO || g === "Aprovado") {
+      itens.sort((x, y) => {
+        const dx = diasParaVencimento(x.data_validade);
+        const dy = diasParaVencimento(y.data_validade);
+        if (dx === null && dy !== null) return 1;
+        if (dy === null && dx !== null) return -1;
+        if (dx !== null && dy !== null && dx !== dy) return dx - dy;
+        return nomeDe(x).localeCompare(nomeDe(y), "pt-BR");
+      });
+    } else {
+      itens.sort((x, y) => nomeDe(x).localeCompare(nomeDe(y), "pt-BR"));
+    }
   }
   const gruposOrdenados = [...porGrupo.keys()].sort((x, y) => {
     const ix = ORDEM_GRUPOS.indexOf(x);

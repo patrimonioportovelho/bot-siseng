@@ -98,17 +98,6 @@ export default async function AvaliacaoDetalhePage({
         <Link href="/financiamento" className="text-xs text-gray-500 hover:text-gray-800">
           ← Voltar para Financiamento
         </Link>
-        {session?.isAdm && !avaliacao.excluido && (
-          <form action={apagarAvaliacaoAction}>
-            <input type="hidden" name="avaliacaoId" value={avaliacao.id} />
-            <button
-              type="submit"
-              className="text-xs border border-red-200 text-red-600 rounded-lg px-3 py-1.5 hover:bg-red-50"
-            >
-              Apagar cadastro
-            </button>
-          </form>
-        )}
       </div>
 
       {salvo === "1" && (
@@ -139,6 +128,8 @@ export default async function AvaliacaoDetalhePage({
         bancos={bancos}
         parceiros={parceiros}
         action={atualizarAvaliacaoAction}
+        actionApagar={apagarAvaliacaoAction}
+        podeApagar={!!session?.isAdm}
       />
 
       {/* Andamento só faz sentido depois que o crédito foi Aprovado — é

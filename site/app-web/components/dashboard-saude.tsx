@@ -262,7 +262,7 @@ export async function DashboardSaude() {
       <div className="grid md:grid-cols-2 gap-4">
         {/* Inadimplência */}
         <div className="border border-red-100 rounded-xl p-3">
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center justify-between mb-2 flex-wrap gap-1.5">
             <div className="text-xs font-bold text-red-700">Inadimplência (vencido e não pago)</div>
             <Link href="/financeiro?situacao=vencidas" className="text-[11px] text-primary font-semibold hover:underline">
               Ver no Financeiro →
@@ -308,7 +308,7 @@ export async function DashboardSaude() {
 
         {/* Locações sem cobrança */}
         <div className="border border-amber-100 rounded-xl p-3">
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center justify-between mb-2 flex-wrap gap-1.5">
             <div className="text-xs font-bold text-amber-700">Locações ativas sem a próxima cobrança lançada</div>
             <Link href="/transacoes/locacao" className="text-[11px] text-primary font-semibold hover:underline">
               Ver Locações →
@@ -391,7 +391,7 @@ export async function DashboardSaude() {
 
         {/* Funil do Financiamento + qualidade da base */}
         <div className="border border-gray-200 rounded-xl p-3">
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center justify-between mb-2 flex-wrap gap-1.5">
             <div className="text-xs font-bold text-gray-800">Funil do Financiamento (carteira atual)</div>
             <Link href="/financiamento" className="text-[11px] text-primary font-semibold hover:underline">
               Ver Financiamento →
@@ -400,14 +400,14 @@ export async function DashboardSaude() {
           <div className="flex flex-col gap-1 mb-3">
             {funil.map((f) => (
               <div key={f.etapa} className="flex items-center gap-2">
-                <div className="text-[11px] text-gray-600 w-36 shrink-0 truncate">{f.etapa}</div>
+                <div className="text-[11px] text-gray-600 w-20 sm:w-36 shrink-0 truncate">{f.etapa}</div>
                 <div className="flex-1 bg-gray-100 rounded h-3 overflow-hidden">
                   <div
                     className="bg-primary/70 h-3 rounded"
                     style={{ width: `${Math.max(3, Math.round((f.qtd / maiorEtapaFunil) * 100))}%` }}
                   />
                 </div>
-                <div className="text-[11px] font-semibold text-gray-800 w-8 text-right">{f.qtd}</div>
+                <div className="text-[11px] font-semibold text-gray-800 w-8 text-right shrink-0">{f.qtd}</div>
               </div>
             ))}
           </div>
@@ -441,7 +441,7 @@ export async function DashboardSaude() {
 
         {/* Previsão de honorários por período */}
         <div className="border border-gray-200 rounded-xl p-3 md:col-span-2">
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center justify-between mb-2 flex-wrap gap-1.5">
             <div className="text-xs font-bold text-gray-800">Previsão de honorários a receber</div>
             <span className="text-[11px] text-gray-500">
               Total pendente: <span className="font-semibold text-gray-700">{formatMoeda(totalPrevisto)}</span>

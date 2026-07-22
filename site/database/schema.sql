@@ -622,6 +622,10 @@ CREATE TABLE pagamentos (
   -- Qual condição de pagamento (fatia do honorário) este rateio realizou —
   -- pra dashboard/previsão saber que essa fatia já foi lançada.
   condicao_pagamento_id UUID REFERENCES condicoes_pagamento(id) ON DELETE SET NULL,
+  -- Vendedor pagou a comissão direto na conta do corretor (dinheiro não
+  -- passou pela imobiliária) — registrado pro histórico, mas não gera
+  -- despesa em movimentacoes.
+  pago_direto        BOOLEAN NOT NULL DEFAULT false,
   created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at         TIMESTAMPTZ NOT NULL DEFAULT now()
 );

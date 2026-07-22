@@ -662,6 +662,13 @@ model pagamentos {
   // de novo como "prevista". Nullable: rateios antigos e os que não vieram
   // de uma condição específica (honorário total, sem parcelamento) ficam null.
   condicao_pagamento_id String?    @db.Uuid
+  // Vendedor pagou a comissão direto na conta do corretor (o dinheiro nem
+  // passou pela imobiliária) — fica registrado aqui pro histórico do
+  // corretor e pra sair da previsão do Dashboard, mas NÃO gera despesa em
+  // movimentacoes (não existe saída de caixa nossa pra lançar). Pedido do
+  // usuário: "às vezes só cai o líquido e o vendedor já paga na conta dos
+  // corretores rateados, nesses casos nem lançamos a despesa".
+  pago_direto      Boolean         @default(false)
   created_at       DateTime        @default(now()) @db.Timestamptz(6)
   updated_at       DateTime        @default(now()) @db.Timestamptz(6)
   movimentacoes             movimentacoes[]

@@ -64,6 +64,12 @@ type Linha = {
   // junto no observacao final, sem se misturar com o motivo do desconto
   // que o admin pode preencher depois (ver aplicarDesconto).
   notaFixa: string;
+  // Vendedor pagou a comissão direto na conta do corretor — o dinheiro nem
+  // passou pela imobiliária (comum quando só cai o líquido no recebimento).
+  // Marcado assim, a linha continua registrada (histórico do corretor,
+  // sai da previsão do dashboard) mas NÃO gera despesa em movimentacoes —
+  // não existe saída de caixa nossa pra lançar.
+  pagoDireto: boolean;
 };
 
 function inputDate(d: Date): string {
@@ -126,7 +132,8 @@ export function RateioForm({
         valorBase: valorCorretorProprietario,
         desconto: 0,
         observacao: "",
-        notaFixa: ""
+        notaFixa: "",
+        pagoDireto: false
       });
     }
     if (transacao.corretor_contraparte && valorCorretorContraparte > 0) {
@@ -139,7 +146,8 @@ export function RateioForm({
         valorBase: valorCorretorContraparte,
         desconto: 0,
         observacao: "",
-        notaFixa: ""
+        notaFixa: "",
+        pagoDireto: false
       });
     }
     for (const extra of transacao.extras) {
@@ -158,7 +166,8 @@ export function RateioForm({
           valorBase: valorExtra,
           desconto: 0,
           observacao: "",
-          notaFixa: extra.papel && extra.papel !== "Coordenação de vendas" ? extra.papel : ""
+          notaFixa: extra.papel && extra.papel !== "Coordenação de vendas" ? extra.papel : "",
+          pagoDireto: false
         });
       }
     }
@@ -205,6 +214,10 @@ export function RateioForm({
     setLinhas((prev) => prev.map((l, i) => (i === indice ? { ...l, desconto: 0, observacao: "" } : l)));
   }
 
+  function alternarPagoDireto(indice: number) {
+    setLinhas((prev) => prev.map((l, i) => (i === indice ? { ...l, pagoDireto: !l.pagoDireto } : l)));
+  }
+
   const linhasParaEnviar = useMemo(
     () =>
       linhas.map((l) => ({
@@ -214,10 +227,13 @@ export function RateioForm({
         porcentagem: l.porcentagem,
         valor_final: Math.max(0, l.valorBase - l.desconto),
         desconto: l.desconto,
-        observacao: [l.notaFixa, l.observacao].filter(Boolean).join(" — ") || null
+        observacao: [l.notaFixa, l.observacao].filter(Boolean).join(" — ") || null,
+        pago_direto: l.pagoDireto
       })),
     [linhas]
   );
+
+  const algumaDespesaSeraGerada = linhas.some((l) => !l.pagoDireto);
 
   if (linhasBase.length === 0) {
     return (
@@ -302,6 +318,23 @@ export function RateioForm({
                 <span className="text-xs font-semibold text-gray-800 whitespace-nowrap">{formatMoeda(valorFinal)}</span>
               </div>
 
+              <label className="mt-2 flex items-center gap-1.5 text-[11px] text-gray-600">
+                <input
+                  type="checkbox"
+                  checked={linha.pagoDireto}
+                  onChange={() => alternarPagoDireto(indice)}
+                  className="rounded"
+                />
+                Vendedor pagou direto na conta do corretor (não gera despesa aqui)
+              </label>
+
+              {linha.pagoDireto && (
+                <p className="mt-1 text-[11px] text-primary bg-primary/5 border border-primary/20 rounded-lg px-2 py-1.5">
+                  Fica registrado no histórico do corretor e sai da previsão do dashboard, mas nenhuma despesa vai ser
+                  criada no Financeiro — o dinheiro nunca passou pela nossa conta.
+                </p>
+              )}
+
               {linha.desconto > 0 && (
                 <div className="mt-2 flex items-center justify-between gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5">
                   <span className="text-[11px] text-amber-800">
@@ -363,9 +396,15 @@ export function RateioForm({
         })}
       </div>
 
-      <div className="flex justify-end mt-4">
+      <div className="flex items-center justify-end gap-3 mt-4 flex-wrap">
+        {!algumaDespesaSeraGerada && (
+          <p className="text-[11px] text-gray-400">
+            Todas as linhas estão marcadas como pagas direto — nenhuma despesa vai ser criada, só o registro do
+            rateio.
+          </p>
+        )}
         <button type="submit" className="text-xs bg-primary text-white rounded-lg px-5 py-2 font-semibold">
-          Gerar rateio (lançar despesas)
+          {algumaDespesaSeraGerada ? "Gerar rateio (lançar despesas)" : "Registrar rateio"}
         </button>
       </div>
     </form>

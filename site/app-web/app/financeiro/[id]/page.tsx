@@ -384,9 +384,12 @@ export default async function MovimentacaoPage({
                       {formatMoeda(p.valor_parceiro)}
                     </span>
                     <span
-                      className={`text-xs font-medium whitespace-nowrap ${despesa?.pago ? "text-green-700" : "text-gray-500"}`}
+                      className={`text-xs font-medium whitespace-nowrap ${
+                        p.pago_direto ? "text-primary" : despesa?.pago ? "text-green-700" : "text-gray-500"
+                      }`}
+                      title={p.pago_direto ? "Vendedor pagou direto na conta do corretor — não gerou despesa aqui" : undefined}
                     >
-                      {despesa?.pago ? "Pago" : "Pendente"}
+                      {p.pago_direto ? "Pago direto" : despesa?.pago ? "Pago" : "Pendente"}
                     </span>
                   </Link>
                 );

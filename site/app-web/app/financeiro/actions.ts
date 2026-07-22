@@ -313,6 +313,11 @@ type LinhaRateio = {
   valor_final: number;
   desconto: number;
   observacao: string | null;
+  // Vendedor pagou a comissão direto na conta do corretor (dinheiro nem
+  // passou pela imobiliária) — a linha ainda vira registro em `pagamentos`
+  // (histórico do corretor, sai da previsão do dashboard), mas NÃO gera
+  // despesa em movimentacoes (não existe saída de caixa nossa pra lançar).
+  pago_direto?: boolean;
 };
 
 // Gera o rateio de uma transação (Locação ou Compra e Venda) a partir das
@@ -379,11 +384,14 @@ export async function gerarRateioAction(formData: FormData) {
   const valorHonorarioTotal = Number(transacao.valor_transacao) * Number(transacao.porc_honorario ?? 0) * fracaoCondicao;
   const vencimento = new Date(vencimentoTexto + "T00:00:00");
 
-  const idsCriados: string[] = [];
+  let pagamentosCriados = 0;
+  let despesasCriadas = 0;
 
   await prisma.$transaction(async (tx) => {
     for (const linha of linhas) {
       if (!linha.parceiro_id || !(linha.valor_final > 0)) continue;
+
+      const pagoDireto = linha.pago_direto === true;
 
       const pagamento = await tx.pagamentos.create({
         data: {
@@ -399,11 +407,18 @@ export async function gerarRateioAction(formData: FormData) {
           desconto: linha.desconto > 0 ? linha.desconto : null,
           observacao: linha.observacao,
           valor_honorario: valorHonorarioTotal,
-          valor_parceiro: linha.valor_final
+          valor_parceiro: linha.valor_final,
+          pago_direto: pagoDireto
         }
       });
+      pagamentosCriados += 1;
 
-      const movimentacao = await tx.movimentacoes.create({
+      // Pago direto: o vendedor já acertou com o corretor sem passar pela
+      // nossa conta — não existe despesa nossa pra lançar, só o registro
+      // acima (histórico + sai da previsão do dashboard).
+      if (pagoDireto) continue;
+
+      await tx.movimentacoes.create({
         data: {
           tipo: "Despesa",
           categoria_id: categoria.id,
@@ -417,12 +432,11 @@ export async function gerarRateioAction(formData: FormData) {
           gerado_automaticamente: true
         }
       });
-
-      idsCriados.push(movimentacao.id);
+      despesasCriadas += 1;
     }
   });
 
-  if (idsCriados.length === 0) {
+  if (pagamentosCriados === 0) {
     throw new Error("Nenhuma linha válida para gerar o rateio (confira parceiro e valor de cada uma).");
   }
 
@@ -430,7 +444,7 @@ export async function gerarRateioAction(formData: FormData) {
     entidadeTipo: "pagamentos",
     entidadeId: transacaoId,
     acao: "criar",
-    dadosDepois: { transacao_id: transacaoId, quantidade: idsCriados.length }
+    dadosDepois: { transacao_id: transacaoId, quantidade: pagamentosCriados, despesas: despesasCriadas }
   });
 
   revalidatePath(`/financeiro/${recebimentoId}`);

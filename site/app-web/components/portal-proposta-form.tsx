@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ESTADOS_CIVIS, TIPOS_CONTA, TIPOS_PIX } from "@/lib/clientes/opcoes";
 import { TIPO_CONDICAO_OPCOES, FORMA_PAGAMENTO_CONDICAO_OPCOES, MOMENTO_CONDICAO_OPCOES } from "@/lib/transacoes/opcoes";
 import { gerarPropostaAction } from "@/app/portal/proposta/actions";
@@ -72,6 +72,29 @@ function hojeISO(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+// Rascunho salvo no navegador (localStorage) — mesmo padrão dos demais
+// formulários do portal.
+const RASCUNHO_KEY = "sis_rascunho_proposta";
+
+type RascunhoProposta = {
+  salvoEm: number;
+  cliente: ClienteLinha;
+  descricao: string;
+  rua: string;
+  numero: string;
+  complemento: string;
+  bairro: string;
+  cidade: string;
+  estado: string;
+  valorProposta: string;
+  dataFechamento: string;
+  condicoes: CondicaoPagamento[];
+};
+
+function formatarDataHoraRascunho(ms: number): string {
+  return new Date(ms).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
+
 const CAMPO = "text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full outline-none focus:border-primary bg-white";
 const CAMPO_TRAVADO = "text-xs border border-gray-200 rounded-lg px-3 py-1.5 w-full bg-gray-100 text-gray-500";
 const LABEL = "text-xs text-gray-600 block mb-1";
@@ -103,6 +126,83 @@ export function PortalPropostaForm({
 
   const [enviando, setEnviando] = useState(false);
   const [resultado, setResultado] = useState<{ ok: true; url: string } | { ok: false; erro: string } | null>(null);
+
+  const [rascunhoEncontrado, setRascunhoEncontrado] = useState<RascunhoProposta | null>(null);
+  const [rascunhoSalvoAgora, setRascunhoSalvoAgora] = useState(false);
+
+  useEffect(() => {
+    try {
+      const bruto = window.localStorage.getItem(RASCUNHO_KEY);
+      if (bruto) setRascunhoEncontrado(JSON.parse(bruto));
+    } catch {
+      // rascunho corrompido — ignora
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function montarRascunho(): RascunhoProposta {
+    return {
+      salvoEm: Date.now(),
+      cliente,
+      descricao,
+      rua,
+      numero,
+      complemento,
+      bairro,
+      cidade,
+      estado,
+      valorProposta,
+      dataFechamento,
+      condicoes
+    };
+  }
+
+  useEffect(() => {
+    const temAlgumDado = cliente.nome.trim().length > 0 || rua.trim().length > 0;
+    if (!temAlgumDado) return;
+    try {
+      window.localStorage.setItem(RASCUNHO_KEY, JSON.stringify(montarRascunho()));
+    } catch {
+      // localStorage indisponível — segue sem rascunho
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cliente, descricao, rua, numero, complemento, bairro, cidade, estado, valorProposta, dataFechamento, condicoes]);
+
+  function restaurarRascunho() {
+    if (!rascunhoEncontrado) return;
+    const r = rascunhoEncontrado;
+    setCliente(r.cliente);
+    setDescricao(r.descricao);
+    setRua(r.rua);
+    setNumero(r.numero);
+    setComplemento(r.complemento);
+    setBairro(r.bairro);
+    setCidade(r.cidade);
+    setEstado(r.estado);
+    setValorProposta(r.valorProposta);
+    setDataFechamento(r.dataFechamento);
+    setCondicoes(r.condicoes);
+    setRascunhoEncontrado(null);
+  }
+
+  function descartarRascunho() {
+    try {
+      window.localStorage.removeItem(RASCUNHO_KEY);
+    } catch {
+      // ignora
+    }
+    setRascunhoEncontrado(null);
+  }
+
+  function salvarRascunhoManual() {
+    try {
+      window.localStorage.setItem(RASCUNHO_KEY, JSON.stringify(montarRascunho()));
+      setRascunhoSalvoAgora(true);
+      setTimeout(() => setRascunhoSalvoAgora(false), 2500);
+    } catch {
+      // ignora
+    }
+  }
 
   function atualizarCliente(campo: keyof ClienteLinha, valor: string) {
     setCliente((atual) => ({ ...atual, [campo]: valor }));
@@ -171,6 +271,13 @@ export function PortalPropostaForm({
 
       const r = await gerarPropostaAction(formData);
       setResultado(r);
+      if (r.ok) {
+        try {
+          window.localStorage.removeItem(RASCUNHO_KEY);
+        } catch {
+          // ignora
+        }
+      }
     } catch (erro) {
       // Sem isso, qualquer erro que escape do try acima desaparecia sem
       // avisar nada na tela.
@@ -188,6 +295,27 @@ export function PortalPropostaForm({
 
   return (
     <div className="flex flex-col gap-5">
+      {rascunhoEncontrado && (
+        <div className="flex items-center justify-between gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex-wrap">
+          <span className="text-xs text-amber-800">
+            Você tem um rascunho salvo neste navegador em{" "}
+            <strong>{formatarDataHoraRascunho(rascunhoEncontrado.salvoEm)}</strong>.
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={restaurarRascunho}
+              className="text-xs font-semibold text-amber-700 hover:opacity-80"
+            >
+              Continuar rascunho
+            </button>
+            <button type="button" onClick={descartarRascunho} className="text-xs text-gray-400 hover:text-red-600">
+              descartar
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="bg-white border border-gray-200 rounded-xl p-4">
         <div className="text-sm font-bold text-gray-800 mb-1">1. Cliente (comprador/interessado)</div>
         <p className="text-[11px] text-gray-400 mb-3">
@@ -545,7 +673,7 @@ export function PortalPropostaForm({
         </p>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 flex-wrap">
         <button
           type="button"
           disabled={!podeGerar || enviando}
@@ -554,6 +682,14 @@ export function PortalPropostaForm({
         >
           {enviando ? "Gerando..." : "Gerar proposta"}
         </button>
+        <button
+          type="button"
+          onClick={salvarRascunhoManual}
+          className="text-xs text-gray-500 border border-gray-300 rounded-lg px-3 py-2 hover:bg-gray-50"
+        >
+          Salvar rascunho
+        </button>
+        {rascunhoSalvoAgora && <span className="text-xs text-green-700">Rascunho salvo.</span>}
         {resultado?.ok && (
           <a
             href={resultado.url}

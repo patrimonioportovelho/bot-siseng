@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   GARANTIA_OPCOES,
   FORMA_PAGAMENTO_OPCOES,
@@ -59,6 +59,55 @@ function labelAdministracao(a: AdministracaoOpcao): string {
 
 function labelCliente(c: ClienteBuscaResultado): string {
   return c.cpfCnpj ? `${c.nome} — ${c.cpfCnpj}` : c.nome;
+}
+
+// Rascunho salvo no navegador (localStorage) — mesmo mecanismo de
+// components/portal-compra-venda-form.tsx. Documentos (File) não entram no
+// rascunho, só os dados digitados.
+const RASCUNHO_KEY = "sis_rascunho_locacao";
+
+type RascunhoLocacao = {
+  salvoEm: number;
+  lojaId: string;
+  viaAdministracao: boolean;
+  admImovelId: string;
+  buscaAdministracao: string;
+  imovelId: string;
+  buscaImovel: string;
+  imovelNovo: boolean;
+  tipoImovelNovo: string;
+  ruaNovo: string;
+  nPredialNovo: string;
+  complementoNovo: string;
+  bairroNovo: string;
+  estadoIdNovo: string;
+  cidadeIdNovo: string;
+  matriculaNovo: string;
+  inscricaoNovo: string;
+  proprietarios: PessoaLinha[];
+  locatarios: PessoaLinha[];
+  dataAssinatura: string;
+  valorTransacaoTexto: string;
+  diaVencimento: string;
+  prazoContratoMesesTexto: string;
+  dataVencimento: string;
+  vencimentoEditadoManual: boolean;
+  finalidadeLocacao: string;
+  garantia: string;
+  valorCaucaoTexto: string;
+  pgCaucao: string;
+  formaPagamento: string;
+  encargos: string[];
+  porcHonorarioTexto: string;
+  temParceria: boolean;
+  parceiroExternoId: string;
+  porcParceriaTexto: string;
+  corretorProprietarioId: string;
+  corretorContraparteId: string;
+};
+
+function formatarDataHoraRascunho(ms: number): string {
+  return new Date(ms).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
 const RESULTADOS_MAXIMO = 200;
@@ -472,6 +521,178 @@ export function PortalLocacaoForm({
     | null
   >(null);
 
+  const [rascunhoEncontrado, setRascunhoEncontrado] = useState<RascunhoLocacao | null>(null);
+  const [rascunhoSalvoAgora, setRascunhoSalvoAgora] = useState(false);
+
+  // Ao montar, só AVISA que existe rascunho — não aplica sozinho (evita
+  // sobrescrever o que o corretor já tiver preenchido nesta mesma visita).
+  useEffect(() => {
+    try {
+      const bruto = window.localStorage.getItem(RASCUNHO_KEY);
+      if (bruto) setRascunhoEncontrado(JSON.parse(bruto));
+    } catch {
+      // rascunho corrompido ou localStorage indisponível — ignora
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function montarRascunho(): RascunhoLocacao {
+    return {
+      salvoEm: Date.now(),
+      lojaId,
+      viaAdministracao,
+      admImovelId,
+      buscaAdministracao,
+      imovelId,
+      buscaImovel,
+      imovelNovo,
+      tipoImovelNovo,
+      ruaNovo,
+      nPredialNovo,
+      complementoNovo,
+      bairroNovo,
+      estadoIdNovo,
+      cidadeIdNovo,
+      matriculaNovo,
+      inscricaoNovo,
+      proprietarios,
+      locatarios,
+      dataAssinatura,
+      valorTransacaoTexto,
+      diaVencimento,
+      prazoContratoMesesTexto,
+      dataVencimento,
+      vencimentoEditadoManual,
+      finalidadeLocacao,
+      garantia,
+      valorCaucaoTexto,
+      pgCaucao,
+      formaPagamento,
+      encargos,
+      porcHonorarioTexto,
+      temParceria,
+      parceiroExternoId,
+      porcParceriaTexto,
+      corretorProprietarioId,
+      corretorContraparteId
+    };
+  }
+
+  // Salva sozinho a cada mudança relevante — o botão "Salvar rascunho"
+  // abaixo só dá a confirmação visual, o auto-save já cobre o esquecimento.
+  useEffect(() => {
+    const temAlgumDado =
+      valorTransacaoTexto.trim().length > 0 ||
+      locatarios.length > 0 ||
+      proprietarios.length > 0 ||
+      buscaImovel.trim().length > 0 ||
+      buscaAdministracao.trim().length > 0;
+    if (!temAlgumDado) return;
+    try {
+      window.localStorage.setItem(RASCUNHO_KEY, JSON.stringify(montarRascunho()));
+    } catch {
+      // localStorage cheio ou indisponível — não trava o formulário por isso
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    lojaId,
+    viaAdministracao,
+    admImovelId,
+    buscaAdministracao,
+    imovelId,
+    buscaImovel,
+    imovelNovo,
+    tipoImovelNovo,
+    ruaNovo,
+    nPredialNovo,
+    complementoNovo,
+    bairroNovo,
+    estadoIdNovo,
+    cidadeIdNovo,
+    matriculaNovo,
+    inscricaoNovo,
+    proprietarios,
+    locatarios,
+    dataAssinatura,
+    valorTransacaoTexto,
+    diaVencimento,
+    prazoContratoMesesTexto,
+    dataVencimento,
+    finalidadeLocacao,
+    garantia,
+    valorCaucaoTexto,
+    pgCaucao,
+    formaPagamento,
+    encargos,
+    porcHonorarioTexto,
+    temParceria,
+    parceiroExternoId,
+    porcParceriaTexto,
+    corretorProprietarioId,
+    corretorContraparteId
+  ]);
+
+  function restaurarRascunho() {
+    const r = rascunhoEncontrado;
+    if (!r) return;
+    setLojaId(r.lojaId);
+    setViaAdministracao(r.viaAdministracao);
+    setAdmImovelId(r.admImovelId);
+    setBuscaAdministracao(r.buscaAdministracao);
+    setImovelId(r.imovelId);
+    setBuscaImovel(r.buscaImovel);
+    setImovelNovo(r.imovelNovo);
+    setTipoImovelNovo(r.tipoImovelNovo);
+    setRuaNovo(r.ruaNovo);
+    setNPredialNovo(r.nPredialNovo);
+    setComplementoNovo(r.complementoNovo);
+    setBairroNovo(r.bairroNovo);
+    setEstadoIdNovo(r.estadoIdNovo);
+    setCidadeIdNovo(r.cidadeIdNovo);
+    setMatriculaNovo(r.matriculaNovo);
+    setInscricaoNovo(r.inscricaoNovo);
+    setProprietarios(r.proprietarios);
+    setLocatarios(r.locatarios);
+    setDataAssinatura(r.dataAssinatura);
+    setValorTransacaoTexto(r.valorTransacaoTexto);
+    setDiaVencimento(r.diaVencimento);
+    setPrazoContratoMesesTexto(r.prazoContratoMesesTexto);
+    setDataVencimento(r.dataVencimento);
+    setVencimentoEditadoManual(r.vencimentoEditadoManual);
+    setFinalidadeLocacao(r.finalidadeLocacao);
+    setGarantia(r.garantia);
+    setValorCaucaoTexto(r.valorCaucaoTexto);
+    setPgCaucao(r.pgCaucao);
+    setFormaPagamento(r.formaPagamento);
+    setEncargos(r.encargos);
+    setPorcHonorarioTexto(r.porcHonorarioTexto);
+    setTemParceria(r.temParceria);
+    setParceiroExternoId(r.parceiroExternoId);
+    setPorcParceriaTexto(r.porcParceriaTexto);
+    setCorretorProprietarioId(r.corretorProprietarioId);
+    setCorretorContraparteId(r.corretorContraparteId);
+    setRascunhoEncontrado(null);
+  }
+
+  function descartarRascunho() {
+    try {
+      window.localStorage.removeItem(RASCUNHO_KEY);
+    } catch {
+      // ignora
+    }
+    setRascunhoEncontrado(null);
+  }
+
+  function salvarRascunhoManual() {
+    try {
+      window.localStorage.setItem(RASCUNHO_KEY, JSON.stringify(montarRascunho()));
+      setRascunhoSalvoAgora(true);
+      setTimeout(() => setRascunhoSalvoAgora(false), 2500);
+    } catch {
+      // ignora
+    }
+  }
+
   const idsComAdmAtiva = useMemo(() => new Set(imoveisComAdmAtivaIds), [imoveisComAdmAtivaIds]);
   const cidadesDoEstadoNovo = useMemo(() => cidades.filter((c) => c.estado_id === estadoIdNovo), [cidades, estadoIdNovo]);
 
@@ -668,6 +889,14 @@ export function PortalLocacaoForm({
 
       const r = await gerarLocacaoAction(formData);
       setResultado(r);
+      if (r.ok) {
+        // Cadastrou com sucesso — o rascunho não serve mais pra nada.
+        try {
+          window.localStorage.removeItem(RASCUNHO_KEY);
+        } catch {
+          // ignora
+        }
+      }
     } catch (erro) {
       const mensagem = erro instanceof Error ? erro.message : String(erro);
       setResultado({
@@ -692,6 +921,28 @@ export function PortalLocacaoForm({
 
   return (
     <div className="flex flex-col gap-5">
+      {rascunhoEncontrado && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center justify-between gap-4 flex-wrap">
+          <div className="text-xs text-amber-800">
+            Encontramos um rascunho salvo neste navegador em{" "}
+            <strong>{formatarDataHoraRascunho(rascunhoEncontrado.salvoEm)}</strong>. Quer continuar de onde parou?
+            {" "}(anexos de documento não ficam salvos — se tinha algum, precisa adicionar de novo).
+          </div>
+          <div className="flex gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={restaurarRascunho}
+              className="text-xs bg-amber-600 text-white rounded-lg px-3 py-1.5 font-semibold hover:opacity-90"
+            >
+              Restaurar rascunho
+            </button>
+            <button type="button" onClick={descartarRascunho} className="text-xs text-amber-700 hover:text-amber-900">
+              descartar
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="bg-white border border-gray-200 rounded-xl p-4">
         <div className="text-sm font-bold text-gray-800 mb-3">1. Identificação</div>
         <div className="grid md:grid-cols-2 gap-3">
@@ -1150,6 +1401,14 @@ export function PortalLocacaoForm({
         >
           {enviando ? etapaEnvio || "Cadastrando..." : "Cadastrar transação"}
         </button>
+        <button
+          type="button"
+          onClick={salvarRascunhoManual}
+          className="bg-white border border-gray-300 text-gray-700 rounded-lg px-4 py-2 text-sm font-semibold hover:bg-gray-50"
+        >
+          Salvar rascunho
+        </button>
+        {rascunhoSalvoAgora && <span className="text-xs text-green-700 font-semibold">Rascunho salvo neste navegador.</span>}
         {resultado?.ok && (
           <span className="text-xs text-green-700 font-semibold">
             Cadastrado com sucesso{resultado.idLegado ? ` — ${resultado.idLegado}` : ""}. O administrativo vai dar

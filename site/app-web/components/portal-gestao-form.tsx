@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { TIPOS_IMOVEL } from "@/lib/imoveis/opcoes";
 import { ESTADOS_CIVIS, TIPOS_CONTA, TIPOS_PIX } from "@/lib/clientes/opcoes";
 import { gerarContratoGestaoAction } from "@/app/portal/gestao/actions";
@@ -87,6 +87,34 @@ function hojeISO(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+// Rascunho salvo no navegador (localStorage) — mesmo padrão dos demais
+// formulários do portal (Compra e Venda/Locação/Administração/Avaliação de
+// CPF): só avisa que existe ao carregar, nunca aplica sozinho.
+const RASCUNHO_KEY = "sis_rascunho_gestao";
+
+type RascunhoGestao = {
+  salvoEm: number;
+  clientes: ClienteLinha[];
+  imovelId: string;
+  tipoImovel: string;
+  rua: string;
+  nPredial: string;
+  complemento: string;
+  bairro: string;
+  estadoId: string;
+  cidadeId: string;
+  valorVenda: string;
+  matricula: string;
+  inscricaoMunicipal: string;
+  prazoDias: string;
+  porcHonorario: string;
+  dataFechamento: string;
+};
+
+function formatarDataHoraRascunho(ms: number): string {
+  return new Date(ms).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
+
 const CAMPO = "text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full outline-none focus:border-primary bg-white";
 const CAMPO_TRAVADO = "text-xs border border-gray-200 rounded-lg px-3 py-1.5 w-full bg-gray-100 text-gray-500";
 const LABEL = "text-xs text-gray-600 block mb-1";
@@ -126,6 +154,107 @@ export function PortalGestaoForm({
 
   const [enviando, setEnviando] = useState(false);
   const [resultado, setResultado] = useState<{ ok: true; url: string } | { ok: false; erro: string } | null>(null);
+
+  const [rascunhoEncontrado, setRascunhoEncontrado] = useState<RascunhoGestao | null>(null);
+  const [rascunhoSalvoAgora, setRascunhoSalvoAgora] = useState(false);
+
+  useEffect(() => {
+    try {
+      const bruto = window.localStorage.getItem(RASCUNHO_KEY);
+      if (bruto) setRascunhoEncontrado(JSON.parse(bruto));
+    } catch {
+      // rascunho corrompido — ignora
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function montarRascunho(): RascunhoGestao {
+    return {
+      salvoEm: Date.now(),
+      clientes,
+      imovelId,
+      tipoImovel,
+      rua,
+      nPredial,
+      complemento,
+      bairro,
+      estadoId,
+      cidadeId,
+      valorVenda,
+      matricula,
+      inscricaoMunicipal,
+      prazoDias,
+      porcHonorario,
+      dataFechamento
+    };
+  }
+
+  useEffect(() => {
+    const temAlgumDado = clientes.some((c) => c.nome.trim().length > 0) || rua.trim().length > 0;
+    if (!temAlgumDado) return;
+    try {
+      window.localStorage.setItem(RASCUNHO_KEY, JSON.stringify(montarRascunho()));
+    } catch {
+      // localStorage indisponível — segue sem rascunho
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    clientes,
+    imovelId,
+    tipoImovel,
+    rua,
+    nPredial,
+    complemento,
+    bairro,
+    estadoId,
+    cidadeId,
+    valorVenda,
+    matricula,
+    inscricaoMunicipal,
+    prazoDias,
+    porcHonorario,
+    dataFechamento
+  ]);
+
+  function restaurarRascunho() {
+    if (!rascunhoEncontrado) return;
+    const r = rascunhoEncontrado;
+    setClientes(r.clientes.length > 0 ? r.clientes : [clienteVazio()]);
+    setImovelId(r.imovelId);
+    setTipoImovel(r.tipoImovel);
+    setRua(r.rua);
+    setNPredial(r.nPredial);
+    setComplemento(r.complemento);
+    setBairro(r.bairro);
+    setEstadoId(r.estadoId);
+    setCidadeId(r.cidadeId);
+    setValorVenda(r.valorVenda);
+    setMatricula(r.matricula);
+    setInscricaoMunicipal(r.inscricaoMunicipal);
+    setPrazoDias(r.prazoDias);
+    setPorcHonorario(r.porcHonorario);
+    setDataFechamento(r.dataFechamento);
+    setRascunhoEncontrado(null);
+  }
+
+  function descartarRascunho() {
+    try {
+      window.localStorage.removeItem(RASCUNHO_KEY);
+    } catch {
+      // ignora
+    }
+    setRascunhoEncontrado(null);
+  }
+
+  function salvarRascunhoManual() {
+    try {
+      window.localStorage.setItem(RASCUNHO_KEY, JSON.stringify(montarRascunho()));
+      setRascunhoSalvoAgora(true);
+      setTimeout(() => setRascunhoSalvoAgora(false), 2500);
+    } catch {
+      // ignora
+    }
+  }
 
   const cidadesDoEstado = useMemo(() => cidades.filter((c) => c.estado_id === estadoId), [cidades, estadoId]);
 
@@ -277,6 +406,13 @@ export function PortalGestaoForm({
 
       const r = await gerarContratoGestaoAction(formData);
       setResultado(r);
+      if (r.ok) {
+        try {
+          window.localStorage.removeItem(RASCUNHO_KEY);
+        } catch {
+          // ignora
+        }
+      }
     } catch (erro) {
       // Sem isso, qualquer erro que escape do try acima desaparecia sem
       // avisar nada na tela.
@@ -295,6 +431,27 @@ export function PortalGestaoForm({
 
   return (
     <div className="flex flex-col gap-5">
+      {rascunhoEncontrado && (
+        <div className="flex items-center justify-between gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex-wrap">
+          <span className="text-xs text-amber-800">
+            Você tem um rascunho salvo neste navegador em{" "}
+            <strong>{formatarDataHoraRascunho(rascunhoEncontrado.salvoEm)}</strong>.
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={restaurarRascunho}
+              className="text-xs font-semibold text-amber-700 hover:opacity-80"
+            >
+              Continuar rascunho
+            </button>
+            <button type="button" onClick={descartarRascunho} className="text-xs text-gray-400 hover:text-red-600">
+              descartar
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="bg-white border border-gray-200 rounded-xl p-4">
         <div className="text-sm font-bold text-gray-800 mb-1">1. Cliente(s)</div>
         <p className="text-[11px] text-gray-400 mb-3">
@@ -729,7 +886,7 @@ export function PortalGestaoForm({
         </p>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 flex-wrap">
         <button
           type="button"
           disabled={!podeGerar || enviando}
@@ -738,6 +895,14 @@ export function PortalGestaoForm({
         >
           {enviando ? "Gerando..." : "Gerar contrato"}
         </button>
+        <button
+          type="button"
+          onClick={salvarRascunhoManual}
+          className="text-xs text-gray-500 border border-gray-300 rounded-lg px-3 py-2 hover:bg-gray-50"
+        >
+          Salvar rascunho
+        </button>
+        {rascunhoSalvoAgora && <span className="text-xs text-green-700">Rascunho salvo.</span>}
         {resultado?.ok && (
           <a
             href={resultado.url}

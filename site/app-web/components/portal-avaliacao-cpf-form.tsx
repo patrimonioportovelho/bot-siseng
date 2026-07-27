@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ESTADOS_CIVIS, TIPOS_CONTA, TIPOS_PIX, TIPOS_CLIENTE, SEXO_OPCOES, CAT_PROFISSAO_OPCOES } from "@/lib/clientes/opcoes";
 import type { ClienteBuscaResultado } from "@/lib/transacoes/buscas";
 import { criarAvaliacaoCpfAction, prepararUploadDocumentoAvaliacaoAction } from "@/app/portal/avaliacao-cpf/actions";
@@ -78,6 +78,22 @@ function labelCliente(c: ClienteBuscaResultado): string {
   return c.cpfCnpj ? `${c.nome} — ${c.cpfCnpj}` : c.nome;
 }
 
+// Rascunho salvo no navegador (localStorage) — mesmo mecanismo de
+// components/portal-compra-venda-form.tsx (pedido do usuário depois de
+// perder cadastros por erro no envio). Documentos (File) não entram no
+// rascunho, só os dados do cliente.
+const RASCUNHO_KEY = "sis_rascunho_avaliacao_cpf";
+
+type RascunhoAvaliacaoCpf = {
+  salvoEm: number;
+  cliente: ClienteAvaliacao;
+  busca: string;
+};
+
+function formatarDataHoraRascunho(ms: number): string {
+  return new Date(ms).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
+
 const RESULTADOS_MAXIMO = 200;
 
 const TAMANHO_MAXIMO_TOTAL = 15 * 1024 * 1024;
@@ -114,6 +130,65 @@ export function PortalAvaliacaoCpfForm({
   const [resultado, setResultado] = useState<
     { ok: true; avaliacaoId: string; emailEnviado: boolean; emailErro?: string } | { ok: false; erro: string } | null
   >(null);
+
+  const [rascunhoEncontrado, setRascunhoEncontrado] = useState<RascunhoAvaliacaoCpf | null>(null);
+  const [rascunhoSalvoAgora, setRascunhoSalvoAgora] = useState(false);
+
+  // Ao montar, só AVISA que existe rascunho — não aplica sozinho (evita
+  // sobrescrever o que o corretor já tiver preenchido nesta mesma visita).
+  useEffect(() => {
+    try {
+      const bruto = window.localStorage.getItem(RASCUNHO_KEY);
+      if (bruto) setRascunhoEncontrado(JSON.parse(bruto));
+    } catch {
+      // rascunho corrompido ou localStorage indisponível — ignora
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function montarRascunho(): RascunhoAvaliacaoCpf {
+    return { salvoEm: Date.now(), cliente, busca };
+  }
+
+  // Salva sozinho a cada mudança relevante — o botão "Salvar rascunho"
+  // abaixo só dá a confirmação visual, o auto-save já cobre o esquecimento.
+  useEffect(() => {
+    const temAlgumDado = cliente.nome.trim().length > 0 || cliente.cpf.trim().length > 0 || cliente.cnpj.trim().length > 0;
+    if (!temAlgumDado) return;
+    try {
+      window.localStorage.setItem(RASCUNHO_KEY, JSON.stringify(montarRascunho()));
+    } catch {
+      // localStorage cheio ou indisponível — não trava o formulário por isso
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cliente]);
+
+  function restaurarRascunho() {
+    const r = rascunhoEncontrado;
+    if (!r) return;
+    setCliente(r.cliente);
+    setBusca(r.busca);
+    setRascunhoEncontrado(null);
+  }
+
+  function descartarRascunho() {
+    try {
+      window.localStorage.removeItem(RASCUNHO_KEY);
+    } catch {
+      // ignora
+    }
+    setRascunhoEncontrado(null);
+  }
+
+  function salvarRascunhoManual() {
+    try {
+      window.localStorage.setItem(RASCUNHO_KEY, JSON.stringify(montarRascunho()));
+      setRascunhoSalvoAgora(true);
+      setTimeout(() => setRascunhoSalvoAgora(false), 2500);
+    } catch {
+      // ignora
+    }
+  }
 
   const mostrarCpf = cliente.tipoCliente !== "Pessoa Jurídica";
   const mostrarCnpj = cliente.tipoCliente !== "Pessoa Física";
@@ -200,6 +275,12 @@ export function PortalAvaliacaoCpfForm({
         setCliente(clienteVazio());
         setBusca("");
         setDocumentos([]);
+        // Cadastrou com sucesso — o rascunho não serve mais pra nada.
+        try {
+          window.localStorage.removeItem(RASCUNHO_KEY);
+        } catch {
+          // ignora
+        }
       }
     } catch (erro) {
       const mensagem = erro instanceof Error ? erro.message : String(erro);
@@ -215,6 +296,28 @@ export function PortalAvaliacaoCpfForm({
 
   return (
     <div className="flex flex-col gap-4">
+      {rascunhoEncontrado && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center justify-between gap-4 flex-wrap">
+          <div className="text-xs text-amber-800">
+            Encontramos um rascunho salvo neste navegador em{" "}
+            <strong>{formatarDataHoraRascunho(rascunhoEncontrado.salvoEm)}</strong>. Quer continuar de onde parou?
+            {" "}(documentos anexados não ficam salvos — se tinha algum, precisa adicionar de novo).
+          </div>
+          <div className="flex gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={restaurarRascunho}
+              className="text-xs bg-amber-600 text-white rounded-lg px-3 py-1.5 font-semibold hover:opacity-90"
+            >
+              Restaurar rascunho
+            </button>
+            <button type="button" onClick={descartarRascunho} className="text-xs text-amber-700 hover:text-amber-900">
+              descartar
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="bg-white border border-gray-200 rounded-xl p-4">
         <div className="text-sm font-bold text-gray-800 mb-1">Cliente</div>
         <p className="text-[11px] text-gray-400 mb-3">
@@ -491,6 +594,14 @@ export function PortalAvaliacaoCpfForm({
         >
           {enviando ? etapaEnvio || "Cadastrando..." : "Cadastrar avaliação"}
         </button>
+        <button
+          type="button"
+          onClick={salvarRascunhoManual}
+          className="bg-white border border-gray-300 text-gray-700 rounded-lg px-4 py-2 text-sm font-semibold hover:bg-gray-50"
+        >
+          Salvar rascunho
+        </button>
+        {rascunhoSalvoAgora && <span className="text-xs text-green-700 font-semibold">Rascunho salvo neste navegador.</span>}
         {resultado?.ok && (
           <span className="text-xs text-green-700 font-semibold">
             Cadastrado com sucesso. O administrativo vai definir a finalidade e dar sequência no Financiamento.

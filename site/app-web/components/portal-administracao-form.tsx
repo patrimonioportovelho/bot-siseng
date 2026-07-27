@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { TIPOS_IMOVEL } from "@/lib/imoveis/opcoes";
 import { ESTADOS_CIVIS, TIPOS_CONTA, TIPOS_PIX } from "@/lib/clientes/opcoes";
 import { AGUA_OPCOES, ENERGIA_OPCOES } from "@/lib/administracoes/opcoes";
@@ -89,6 +89,53 @@ function hojeISO(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+// Rascunho salvo no navegador (localStorage) — mesmo padrão já usado em
+// Compra e Venda/Locação/Avaliação de CPF: nunca aplica sozinho ao carregar
+// a tela (só avisa que existe), fica disponível pro corretor continuar de
+// onde parou mesmo se ele sair e voltar depois, inclusive vindo de outra
+// página (ver components/portal-rascunho-aviso.tsx). Documentos (File) nunca
+// entram aqui — não dá pra serializar.
+const RASCUNHO_KEY = "sis_rascunho_administracao";
+
+type RascunhoAdministracao = {
+  salvoEm: number;
+  lojaId: string;
+  clientes: ClienteLinha[];
+  imovelId: string;
+  tipoImovel: string;
+  rua: string;
+  nPredial: string;
+  complemento: string;
+  bairro: string;
+  estadoId: string;
+  cidadeId: string;
+  matricula: string;
+  inscricao: string;
+  dataEntrada: string;
+  dataAssinatura: string;
+  prazoMeses: string;
+  valorTransacao: string;
+  porcHonorario: string;
+  txAdministracao: string;
+  valorCliente: string;
+  valorAdministracao: string;
+  iptu: string;
+  temCondominio: boolean;
+  condominio: string;
+  agua: string;
+  ucCaerd: string;
+  energia: string;
+  ucEnergisa: string;
+  temVistoria: boolean;
+  arquivoVistoriaUrl: string;
+  observacao: string;
+  pastaUrl: string;
+};
+
+function formatarDataHoraRascunho(ms: number): string {
+  return new Date(ms).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
+
 const CAMPO = "text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full outline-none focus:border-primary bg-white";
 const CAMPO_TRAVADO = "text-xs border border-gray-200 rounded-lg px-3 py-1.5 w-full bg-gray-100 text-gray-500";
 const LABEL = "text-xs text-gray-600 block mb-1";
@@ -151,6 +198,159 @@ export function PortalAdministracaoForm({
   const [resultado, setResultado] = useState<{ ok: true; idLegado: string | null } | { ok: false; erro: string } | null>(
     null
   );
+
+  const [rascunhoEncontrado, setRascunhoEncontrado] = useState<RascunhoAdministracao | null>(null);
+  const [rascunhoSalvoAgora, setRascunhoSalvoAgora] = useState(false);
+
+  // Só detecta e oferece o rascunho ao carregar — nunca aplica sozinho, pra
+  // não sobrescrever o que o corretor já digitou nesta mesma visita.
+  useEffect(() => {
+    try {
+      const bruto = window.localStorage.getItem(RASCUNHO_KEY);
+      if (bruto) setRascunhoEncontrado(JSON.parse(bruto));
+    } catch {
+      // rascunho corrompido — ignora
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function montarRascunho(): RascunhoAdministracao {
+    return {
+      salvoEm: Date.now(),
+      lojaId,
+      clientes,
+      imovelId,
+      tipoImovel,
+      rua,
+      nPredial,
+      complemento,
+      bairro,
+      estadoId,
+      cidadeId,
+      matricula,
+      inscricao,
+      dataEntrada,
+      dataAssinatura,
+      prazoMeses,
+      valorTransacao,
+      porcHonorario,
+      txAdministracao,
+      valorCliente,
+      valorAdministracao,
+      iptu,
+      temCondominio,
+      condominio,
+      agua,
+      ucCaerd,
+      energia,
+      ucEnergisa,
+      temVistoria,
+      arquivoVistoriaUrl,
+      observacao,
+      pastaUrl
+    };
+  }
+
+  // Auto-save contínuo, só depois que o corretor realmente começou a
+  // preencher algo (evita gravar um rascunho vazio a cada visita à tela).
+  useEffect(() => {
+    const temAlgumDado = clientes.some((c) => c.nome.trim().length > 0) || rua.trim().length > 0;
+    if (!temAlgumDado) return;
+    try {
+      window.localStorage.setItem(RASCUNHO_KEY, JSON.stringify(montarRascunho()));
+    } catch {
+      // localStorage indisponível — segue sem rascunho
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    lojaId,
+    clientes,
+    imovelId,
+    tipoImovel,
+    rua,
+    nPredial,
+    complemento,
+    bairro,
+    estadoId,
+    cidadeId,
+    matricula,
+    inscricao,
+    dataEntrada,
+    dataAssinatura,
+    prazoMeses,
+    valorTransacao,
+    porcHonorario,
+    txAdministracao,
+    valorCliente,
+    valorAdministracao,
+    iptu,
+    temCondominio,
+    condominio,
+    agua,
+    ucCaerd,
+    energia,
+    ucEnergisa,
+    temVistoria,
+    arquivoVistoriaUrl,
+    observacao,
+    pastaUrl
+  ]);
+
+  function restaurarRascunho() {
+    if (!rascunhoEncontrado) return;
+    const r = rascunhoEncontrado;
+    setLojaId(r.lojaId);
+    setClientes(r.clientes.length > 0 ? r.clientes : [clienteVazio()]);
+    setImovelId(r.imovelId);
+    setTipoImovel(r.tipoImovel);
+    setRua(r.rua);
+    setNPredial(r.nPredial);
+    setComplemento(r.complemento);
+    setBairro(r.bairro);
+    setEstadoId(r.estadoId);
+    setCidadeId(r.cidadeId);
+    setMatricula(r.matricula);
+    setInscricao(r.inscricao);
+    setDataEntrada(r.dataEntrada);
+    setDataAssinatura(r.dataAssinatura);
+    setPrazoMeses(r.prazoMeses);
+    setValorTransacao(r.valorTransacao);
+    setPorcHonorario(r.porcHonorario);
+    setTxAdministracao(r.txAdministracao);
+    setValorCliente(r.valorCliente);
+    setValorAdministracao(r.valorAdministracao);
+    setIptu(r.iptu);
+    setTemCondominio(r.temCondominio);
+    setCondominio(r.condominio);
+    setAgua(r.agua);
+    setUcCaerd(r.ucCaerd);
+    setEnergia(r.energia);
+    setUcEnergisa(r.ucEnergisa);
+    setTemVistoria(r.temVistoria);
+    setArquivoVistoriaUrl(r.arquivoVistoriaUrl);
+    setObservacao(r.observacao);
+    setPastaUrl(r.pastaUrl);
+    setRascunhoEncontrado(null);
+  }
+
+  function descartarRascunho() {
+    try {
+      window.localStorage.removeItem(RASCUNHO_KEY);
+    } catch {
+      // ignora
+    }
+    setRascunhoEncontrado(null);
+  }
+
+  function salvarRascunhoManual() {
+    try {
+      window.localStorage.setItem(RASCUNHO_KEY, JSON.stringify(montarRascunho()));
+      setRascunhoSalvoAgora(true);
+      setTimeout(() => setRascunhoSalvoAgora(false), 2500);
+    } catch {
+      // ignora
+    }
+  }
 
   const cidadesDoEstado = useMemo(() => cidades.filter((c) => c.estado_id === estadoId), [cidades, estadoId]);
 
@@ -316,6 +516,13 @@ export function PortalAdministracaoForm({
 
       const r = await gerarContratoAdministracaoAction(formData);
       setResultado(r);
+      if (r.ok) {
+        try {
+          window.localStorage.removeItem(RASCUNHO_KEY);
+        } catch {
+          // ignora
+        }
+      }
     } catch (erro) {
       // Sem isso, qualquer erro que escape do try acima desaparecia sem
       // avisar nada na tela.
@@ -334,6 +541,27 @@ export function PortalAdministracaoForm({
 
   return (
     <div className="flex flex-col gap-5">
+      {rascunhoEncontrado && (
+        <div className="flex items-center justify-between gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex-wrap">
+          <span className="text-xs text-amber-800">
+            Você tem um rascunho salvo neste navegador em{" "}
+            <strong>{formatarDataHoraRascunho(rascunhoEncontrado.salvoEm)}</strong>.
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={restaurarRascunho}
+              className="text-xs font-semibold text-amber-700 hover:opacity-80"
+            >
+              Continuar rascunho
+            </button>
+            <button type="button" onClick={descartarRascunho} className="text-xs text-gray-400 hover:text-red-600">
+              descartar
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="bg-white border border-gray-200 rounded-xl p-4">
         <div className="text-sm font-bold text-gray-800 mb-3">1. Loja</div>
         <select className={CAMPO} value={lojaId} onChange={(e) => setLojaId(e.target.value)}>
@@ -901,7 +1129,7 @@ export function PortalAdministracaoForm({
         </p>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 flex-wrap">
         <button
           type="button"
           disabled={!podeCadastrar || enviando}
@@ -910,6 +1138,14 @@ export function PortalAdministracaoForm({
         >
           {enviando ? "Cadastrando..." : "Cadastrar administração"}
         </button>
+        <button
+          type="button"
+          onClick={salvarRascunhoManual}
+          className="text-xs text-gray-500 border border-gray-300 rounded-lg px-3 py-2 hover:bg-gray-50"
+        >
+          Salvar rascunho
+        </button>
+        {rascunhoSalvoAgora && <span className="text-xs text-green-700">Rascunho salvo.</span>}
         {resultado?.ok && (
           <span className="text-xs text-green-700 font-semibold">
             Administração {resultado.idLegado} cadastrada com sucesso. O administrativo vai dar sequência.

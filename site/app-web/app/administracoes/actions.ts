@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAdminSession, requireAdm, logAlteracao } from "@/lib/auth";
 import { valorEditavelParaDecimal, percentualParaDecimal } from "@/lib/format";
 import { registrarEJogarErro } from "@/lib/erros";
+import { sincronizarProprietariosExtra } from "@/lib/imoveis/proprietarios-extra";
 
 function texto(formData: FormData, campo: string): string | null {
   const v = formData.get(campo);
@@ -104,6 +105,8 @@ export async function criarAdministracaoAction(formData: FormData) {
     throw new Error("Loja, cliente (proprietário) e imóvel são obrigatórios.");
   }
 
+  await sincronizarProprietariosExtra(imovelId, formData);
+
   const idLegado = await gerarProximoId();
 
   const novo = await prisma.adm_imoveis
@@ -138,6 +141,9 @@ export async function atualizarAdministracaoAction(formData: FormData) {
 
   const antes = await prisma.adm_imoveis.findUnique({ where: { id } });
   if (!antes) throw new Error("Administração não encontrada.");
+
+  const imovelIdForm = texto(formData, "imovel_id") ?? antes.imovel_id;
+  await sincronizarProprietariosExtra(imovelIdForm, formData);
 
   const depois = await prisma.adm_imoveis
     .update({

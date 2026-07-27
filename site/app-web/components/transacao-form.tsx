@@ -25,6 +25,7 @@ import {
   somarMeses
 } from "@/lib/format";
 import { CampoLink } from "@/components/campo-link";
+import { AdicionarProprietarioImovel } from "@/components/adicionar-proprietario-imovel";
 
 type ClienteOpcao = { id: string; nome: string; id_legado: string | null; parceiroId: string | null };
 type LojaOpcao = { id: string; nome: string };
@@ -602,16 +603,19 @@ export function TransacaoForm({
 
             {imovelId && (
               <div className="mt-2 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
-                <div className="text-[11px] text-blue-700 font-semibold mb-0.5">Cliente Proprietário (conferência)</div>
-                {proprietariosDoImovel.length > 0 ? (
-                  <div className="text-xs text-gray-700">
-                    {proprietariosDoImovel.map((p) => p.nome).join(", ")}
-                  </div>
-                ) : (
-                  <div className="text-xs text-gray-500">
-                    Este imóvel não tem proprietário cadastrado — cadastre em Imóveis antes de gerar contrato.
+                <div className="text-[11px] text-blue-700 font-semibold mb-1.5">Cliente Proprietário</div>
+                {proprietariosDoImovel.length === 0 && (
+                  <div className="text-xs text-gray-500 mb-1.5">
+                    Este imóvel não tem proprietário cadastrado ainda — adicione ao menos um abaixo.
                   </div>
                 )}
+                {/* Só adiciona — se o corretor esqueceu alguém (cônjuge, herdeiro
+                    etc.), o admin completa aqui sem sair da tela. Pra remover um
+                    proprietário existente, é preciso ir em Imóveis. */}
+                <AdicionarProprietarioImovel
+                  proprietariosAtuais={proprietariosDoImovel}
+                  clientesDisponiveis={clientes}
+                />
               </div>
             )}
           </div>

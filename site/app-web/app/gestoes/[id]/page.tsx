@@ -41,7 +41,7 @@ export default async function GestaoDetalhePage({
           imoveis_proprietarios: { orderBy: { ordem: "asc" }, include: { clientes: { select: { id: true, nome: true } } } }
         }
       },
-      clientes: { select: { nome: true } },
+      clientes: { select: { id: true, nome: true } },
       parceiros: { select: { nome: true } },
       checklist_itens: { orderBy: { ordem: "asc" } },
       atividades: { orderBy: { data: "asc" } },
@@ -50,7 +50,7 @@ export default async function GestaoDetalhePage({
   });
   if (!gestao) notFound();
 
-  const [parceiros, ultimoDocumento] = await Promise.all([
+  const [parceiros, ultimoDocumento, clientes] = await Promise.all([
     prisma.parceiros.findMany({
       where: { funcao: "Corretor", status_funcao: "Ativo" },
       orderBy: { nome: "asc" },
@@ -59,12 +59,22 @@ export default async function GestaoDetalhePage({
     prisma.documentos_gerados.findFirst({
       where: { entidade_tipo: "gestao", entidade_id: gestao.id, tipo_documento: "contrato_gestao", status: "Sucesso" },
       orderBy: { gerado_em: "desc" }
+    }),
+    // Pra oferecer "+ Adicionar proprietário" direto na ficha da Gestão (ver
+    // components/adicionar-proprietario-imovel.tsx) — mesma lista de
+    // clientes já usada em Transações/Administração pra essa mesma busca.
+    prisma.clientes.findMany({
+      where: { OR: [{ status_cadastro: null }, { status_cadastro: { not: "Arquivado" } }] },
+      orderBy: { nome: "asc" },
+      select: { id: true, nome: true, id_legado: true, parceiro_id: true }
     })
   ]);
 
   const outrosProprietarios = gestao.imoveis.imoveis_proprietarios
     .map((v) => v.clientes)
     .filter((c) => c.nome !== gestao.clientes.nome);
+
+  const todosProprietarios = [{ id: gestao.clientes.id, nome: gestao.clientes.nome }, ...outrosProprietarios];
 
   return (
     <div>
@@ -121,7 +131,13 @@ export default async function GestaoDetalhePage({
       </div>
 
       <div className="flex flex-col gap-5">
-        <GestaoEditarForm gestao={gestao} parceiros={parceiros} action={atualizarGestaoAction} />
+        <GestaoEditarForm
+          gestao={gestao}
+          parceiros={parceiros}
+          clientes={clientes}
+          proprietariosAtuais={todosProprietarios}
+          action={atualizarGestaoAction}
+        />
 
         <GestaoChecklist
           gestaoId={gestao.id}

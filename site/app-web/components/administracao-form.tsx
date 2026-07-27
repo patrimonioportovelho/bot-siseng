@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { STATUS_ADM, AGUA_OPCOES, ENERGIA_OPCOES } from "@/lib/administracoes/opcoes";
 import { formatValorEditavel, formatPercentual, formatInscricao } from "@/lib/format";
 import { CampoLink } from "@/components/campo-link";
+import { AdicionarProprietarioImovel } from "@/components/adicionar-proprietario-imovel";
 
 type LojaOpcao = { id: string; nome: string };
 type ParceiroOpcao = { id: string; nome: string };
@@ -106,6 +107,13 @@ export function AdministracaoForm({
     if (!clienteId) return imoveis;
     return imoveis.filter((i) => i.proprietarios.some((p) => p.id === clienteId));
   }, [clienteId, imoveis]);
+
+  // Proprietários já cadastrados no imóvel escolhido — usado pra mostrar
+  // conferência e oferecer "+ Adicionar proprietário" (co-titular que o
+  // corretor esqueceu de incluir).
+  const proprietariosDoImovel = useMemo(() => {
+    return imoveis.find((i) => i.id === imovelId)?.proprietarios ?? [];
+  }, [imoveis, imovelId]);
 
   const imoveisFiltrados = useMemo(() => {
     const t = buscaImovel.trim().toLowerCase();
@@ -261,6 +269,16 @@ export function AdministracaoForm({
             )}
           </div>
         </div>
+
+        {imovelId && (
+          <div className="mt-3 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
+            <div className="text-[11px] text-blue-700 font-semibold mb-1.5">Proprietário(s) do imóvel</div>
+            {/* Só adiciona — se o corretor esqueceu um co-titular (cônjuge,
+                herdeiro etc.), o admin completa aqui sem sair da tela. Pra
+                remover um proprietário existente, é preciso ir em Imóveis. */}
+            <AdicionarProprietarioImovel proprietariosAtuais={proprietariosDoImovel} clientesDisponiveis={clientes} />
+          </div>
+        )}
       </div>
 
       <div className="bg-white border border-gray-200 rounded-xl p-4">

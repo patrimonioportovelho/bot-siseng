@@ -3,8 +3,10 @@
 import { useState } from "react";
 import { formatValorEditavel, formatPercentual } from "@/lib/format";
 import { COLUNAS_KANBAN, CHAVE_POSSE, CHAVE_POSSE_LABEL } from "@/lib/gestoes/opcoes";
+import { AdicionarProprietarioImovel } from "@/components/adicionar-proprietario-imovel";
 
 type ParceiroOpcao = { id: string; nome: string };
+type ClienteOpcao = { id: string; nome: string; id_legado: string | null; parceiro_id: string | null };
 
 type GestaoExistente = {
   id: string;
@@ -34,10 +36,14 @@ const LABEL = "text-xs text-gray-600 block mb-1";
 export function GestaoEditarForm({
   gestao,
   parceiros,
+  clientes,
+  proprietariosAtuais,
   action
 }: {
   gestao: GestaoExistente;
   parceiros: ParceiroOpcao[];
+  clientes: ClienteOpcao[];
+  proprietariosAtuais: { id: string; nome: string }[];
   action: (formData: FormData) => void;
 }) {
   const g = gestao;
@@ -87,6 +93,14 @@ export function GestaoEditarForm({
             <label className={LABEL}>Data de assinatura</label>
             <input type="date" className={CAMPO} name="data_assinatura" defaultValue={inputDate(g.data_assinatura)} />
           </div>
+        </div>
+
+        <div className="mt-3 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
+          <div className="text-[11px] text-blue-700 font-semibold mb-1.5">Proprietário(s) do imóvel</div>
+          {/* Só adiciona — se o corretor esqueceu um co-titular (cônjuge,
+              herdeiro etc.), o admin completa aqui sem sair da tela. Pra
+              remover um proprietário existente, é preciso ir em Imóveis. */}
+          <AdicionarProprietarioImovel proprietariosAtuais={proprietariosAtuais} clientesDisponiveis={clientes} />
         </div>
       </div>
 

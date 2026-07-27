@@ -5,12 +5,23 @@ import { prisma } from "@/lib/prisma";
 import { requirePortalSession } from "@/lib/portal-auth";
 import { PortalHeader } from "@/components/portal-header";
 import { PublicacaoCard } from "@/components/site/publicacao-card";
+import { GraficoBarras } from "@/components/grafico-barras";
 import { formatMoeda, situacaoVencimento, hojePortoVelho, STATUS_TRANSACAO_EM_ABERTO } from "@/lib/format";
 import { STATUS_AVALIACAO_ATIVOS, STATUS_AVALIACAO_ENCERRADOS } from "@/lib/financiamento/opcoes";
 import { calcularAlcancado, avaliarMeta } from "@/lib/metas/calculo";
 import { PortalMetasPainel } from "@/components/portal-metas-painel";
 
 const IMOBVIEW_URL = "https://www.imobview.pro/login";
+
+// Só as duas últimas notícias por aqui — pedido do usuário: uma pilha longa
+// de banners ficava "estranha" no painel. Quem quiser ver mais, tem o mural
+// completo do site público (mesma tabela, sem esse limite).
+const NOTICIAS_LIMITE = 2;
+
+// Janela do gráfico "Novos negócios, mês a mês" — 6 meses (mês atual +
+// 5 anteriores), mesmo horizonte curto usado em telas de resumo do sistema.
+const MESES_GRAFICO = 6;
+const MESES_ABREV = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
 
 // Dias de antecedência pro alerta de vencimento das Avaliações aprovadas —
 // mesma janela usada em /financiamento (lib/financiamento, DIAS_ALERTA_VALIDADE).
@@ -36,19 +47,23 @@ function Kpi({
     ambar: "bg-amber-50 border-amber-100 text-amber-700",
     vermelho: "bg-red-50 border-red-100 text-red-700"
   };
-  const classe = tone ? cores[tone] : "bg-white border-gray-200 text-gray-900";
+  const classe = tone ? cores[tone] : "bg-gray-50 border-gray-100 text-gray-900";
   return (
-    <div className={`rounded-xl border p-3 ${classe}`}>
-      <div className={`text-xs ${tone ? "" : "text-gray-500"}`}>{label}</div>
-      <div className="text-lg font-bold mt-1">{value}</div>
-      {sub && <div className="text-[11px] opacity-70 mt-0.5">{sub}</div>}
+    <div className={`rounded-lg border p-2.5 ${classe}`}>
+      <div className={`text-[11px] ${tone ? "" : "text-gray-500"}`}>{label}</div>
+      <div className="text-base font-bold mt-0.5">{value}</div>
+      {sub && <div className="text-[10px] opacity-70 mt-0.5">{sub}</div>}
     </div>
   );
 }
 
+// Cada grupo agora é um card branco compacto (em vez de só um rótulo solto
+// em cima de um grid no fundo cinza) — dois cards por linha em telas md+,
+// pra ocupar bem menos altura (pedido do usuário: "esse formato está
+// ocupando muito espaço e muito solto").
 function Secao({ titulo, children }: { titulo: string; children: ReactNode }) {
   return (
-    <div className="mb-6">
+    <div className="bg-white border border-gray-200 rounded-xl p-4">
       <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{titulo}</div>
       {children}
     </div>
@@ -77,6 +92,10 @@ export default async function PortalPage() {
 
   const hoje = hojePortoVelho();
 
+  // Início da janela do gráfico: primeiro dia do mês, MESES_GRAFICO-1 meses
+  // atrás (inclui o mês atual inteiro).
+  const inicioGrafico = new Date(hoje.getFullYear(), hoje.getMonth() - (MESES_GRAFICO - 1), 1);
+
   const [
     metasAtivas,
     noticias,
@@ -95,7 +114,9 @@ export default async function PortalPage() {
     avaliacoesPorStatus,
     avaliacoesAprovadas,
     honorariosRecebidos,
-    honorariosPendentes
+    honorariosPendentes,
+    transacoesGrafico,
+    administracoesGrafico
   ] = await Promise.all([
     // Metas ativas AGORA (o período já começou e ainda não terminou) que
     // valem pra este corretor: individuais dele (parceiro_id = pid) ou
@@ -112,7 +133,7 @@ export default async function PortalPage() {
     prisma.publicacoes_site.findMany({
       where: { ativo: true, portal_corretor: true, tipo: { not: "Checklist" } },
       orderBy: { publicado_em: "desc" },
-      take: 20
+      take: NOTICIAS_LIMITE
     }),
     // Checklists da imobiliária — mesma tabela publicacoes_site, reaproveitando
     // o formato de publicação (abre em /noticias/[id], dá pra copiar a
@@ -172,6 +193,23 @@ export default async function PortalPage() {
       where: { parceiro_id: pid, status: { not: "Pago" } },
       _sum: { valor_parceiro: true },
       _count: true
+    }),
+    // Gráfico "Novos negócios, mês a mês" — mesma lógica do dashboard admin
+    // (Compra e Venda + Locação + Administração), só que filtrado pra este
+    // corretor: crédito pra qualquer lado da transação (proprietário e/ou
+    // contraparte), pela Data de assinatura.
+    prisma.transacoes.findMany({
+      where: {
+        excluido: false,
+        tipo: { in: ["Compra e Venda", "Locação"] },
+        data_assinatura: { gte: inicioGrafico },
+        OR: [{ corretor_proprietario_id: pid }, { corretor_contraparte_id: pid }]
+      },
+      select: { tipo: true, data_assinatura: true }
+    }),
+    prisma.adm_imoveis.findMany({
+      where: { parceiro_id: pid, excluido: false, data_assinatura: { gte: inicioGrafico } },
+      select: { data_assinatura: true }
     })
   ]);
 
@@ -200,6 +238,40 @@ export default async function PortalPage() {
     return sit === "alerta" || sit === "vencido";
   }).length;
 
+  // Gráfico "Novos negócios, mês a mês" — agrupa por mês (pela Data de
+  // assinatura) dentro da janela de MESES_GRAFICO, sempre preenchendo todo
+  // mês do intervalo (mesmo os sem nenhum negócio) pra a linha do tempo não
+  // ficar com buracos.
+  const porMesNegociosCorretor = new Map<string, { vendas: number; locacoes: number; administracoes: number }>();
+  for (let i = 0; i < MESES_GRAFICO; i++) {
+    const d = new Date(inicioGrafico.getFullYear(), inicioGrafico.getMonth() + i, 1);
+    porMesNegociosCorretor.set(`${d.getFullYear()}-${d.getMonth()}`, { vendas: 0, locacoes: 0, administracoes: 0 });
+  }
+  function chaveMesGrafico(data: Date) {
+    return `${data.getFullYear()}-${data.getMonth()}`;
+  }
+  for (const t of transacoesGrafico) {
+    if (!t.data_assinatura) continue;
+    const linha = porMesNegociosCorretor.get(chaveMesGrafico(new Date(t.data_assinatura)));
+    if (!linha) continue;
+    if (t.tipo === "Compra e Venda") linha.vendas += 1;
+    else if (t.tipo === "Locação") linha.locacoes += 1;
+  }
+  for (const a of administracoesGrafico) {
+    if (!a.data_assinatura) continue;
+    const linha = porMesNegociosCorretor.get(chaveMesGrafico(new Date(a.data_assinatura)));
+    if (linha) linha.administracoes += 1;
+  }
+  const dadosGraficoNegociosCorretor = [...porMesNegociosCorretor.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([chave, v]) => {
+      const [ano, mes] = chave.split("-").map(Number);
+      return { label: `${MESES_ABREV[mes]}/${String(ano).slice(2)}`, ...v };
+    });
+  const temNegocioNoGrafico = dadosGraficoNegociosCorretor.some(
+    (d) => d.vendas > 0 || d.locacoes > 0 || d.administracoes > 0
+  );
+
   // Progresso de cada meta ativa é apurado na hora (não fica guardado em
   // lugar nenhum) — sempre reflete o cadastro real mais recente. Ver
   // lib/metas/calculo.ts pra como cada tipo é contado e como a mensagem
@@ -221,83 +293,119 @@ export default async function PortalPage() {
 
         <PortalMetasPainel metas={metasComProgresso} />
 
-        <Secao titulo="Sua carteira">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <Kpi label="Clientes" value={String(clientesQtd)} />
-            <Kpi label="Imóveis captados" value={String(imoveisQtd)} />
-            <Kpi
-              label="Contratos de gestão"
-              value={String(gestoesQtd)}
-              sub={gestoesEmCaptacaoQtd > 0 ? `${gestoesEmCaptacaoQtd} em captação` : undefined}
-            />
-            <Kpi label="Propostas enviadas" value={String(propostasQtd)} />
-          </div>
-        </Secao>
-
-        <Secao titulo="Negócios">
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            <Kpi
-              tone="azul"
-              label="Compra e venda"
-              value={`${vendaAbertas} em andamento`}
-              sub={`${vendaTotal} no total`}
-            />
-            <Kpi tone="azul" label="Locação" value={`${locacaoAbertas} em andamento`} sub={`${locacaoTotal} no total`} />
-            <Kpi
-              tone="roxo"
-              label="Administrações"
-              value={`${administracoesAtivas} ativas`}
-              sub={`${administracoesTotal} no total`}
-            />
-          </div>
-        </Secao>
-
-        <Secao titulo="Avaliações de crédito (Financiamento)">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <Kpi tone="ambar" label="Consulta de CPF" value={String(consultaCpfQtd)} sub="aguardando triagem" />
-            <Kpi tone="azul" label="Em andamento" value={String(emAndamentoQtd)} />
-            <Kpi
-              tone="roxo"
-              label="Aprovadas"
-              value={String(aprovadoQtd)}
-              sub={aprovadasVencendoQtd > 0 ? `${aprovadasVencendoQtd} vencendo em 30d` : undefined}
-            />
-            <Kpi tone="verde" label="Concluídas" value={String(concluidoQtd)} />
-          </div>
-          {avaliacoesTotalQtd === 0 && (
-            <p className="text-[11px] text-gray-400 mt-2">Nenhuma avaliação de crédito cadastrada ainda.</p>
-          )}
-          {encerradoQtd > 0 && (
+        <div className="bg-white border border-gray-200 rounded-xl p-4 mt-4 mb-4">
+          <div className="text-sm font-bold text-gray-800 mb-1">Evolução dos seus negócios</div>
+          <p className="text-[11px] text-gray-400 mb-3">
+            Compra e Venda + Locação + Administração, mês a mês (pela Data de assinatura).
+          </p>
+          <GraficoBarras
+            dados={dadosGraficoNegociosCorretor}
+            series={[
+              { chave: "vendas", cor: "#04075c", nome: "Compra e Venda" },
+              { chave: "locacoes", cor: "#3C7A57", nome: "Locação" },
+              { chave: "administracoes", cor: "#c97a1a", nome: "Administração" }
+            ]}
+            formatarValor={(v) => String(v)}
+            mensagemVazia="Sem negócios registrados nesse período."
+          />
+          {!temNegocioNoGrafico && (
             <p className="text-[11px] text-gray-400 mt-2">
-              + {encerradoQtd} encerrada{encerradoQtd > 1 ? "s" : ""} (reprovada, cancelada ou vencida).
+              Nenhum negócio assinado nos últimos {MESES_GRAFICO} meses ainda.
             </p>
           )}
-        </Secao>
+        </div>
 
-        <Secao titulo="Honorários">
-          <div className="grid grid-cols-2 gap-3">
-            <Kpi
-              tone="verde"
-              label="Recebido"
-              value={formatMoeda(honorariosRecebidos._sum.valor_parceiro ?? 0)}
-              sub={`${honorariosRecebidos._count} repasse(s)`}
-            />
-            <Kpi
-              tone="ambar"
-              label="A receber"
-              value={formatMoeda(honorariosPendentes._sum.valor_parceiro ?? 0)}
-              sub={`${honorariosPendentes._count} pendente(s)`}
-            />
-          </div>
-        </Secao>
+        <div className="grid md:grid-cols-2 gap-4 mb-4">
+          <Secao titulo="Sua carteira">
+            <div className="grid grid-cols-2 gap-2">
+              <Kpi label="Clientes" value={String(clientesQtd)} />
+              <Kpi label="Imóveis captados" value={String(imoveisQtd)} />
+              <Kpi
+                label="Contratos de gestão"
+                value={String(gestoesQtd)}
+                sub={gestoesEmCaptacaoQtd > 0 ? `${gestoesEmCaptacaoQtd} em captação` : undefined}
+              />
+              <Kpi label="Propostas enviadas" value={String(propostasQtd)} />
+            </div>
+          </Secao>
+
+          <Secao titulo="Negócios">
+            <div className="grid grid-cols-3 gap-2">
+              <Kpi
+                tone="azul"
+                label="Compra e venda"
+                value={`${vendaAbertas} em andamento`}
+                sub={`${vendaTotal} no total`}
+              />
+              <Kpi
+                tone="azul"
+                label="Locação"
+                value={`${locacaoAbertas} em andamento`}
+                sub={`${locacaoTotal} no total`}
+              />
+              <Kpi
+                tone="roxo"
+                label="Administrações"
+                value={`${administracoesAtivas} ativas`}
+                sub={`${administracoesTotal} no total`}
+              />
+            </div>
+          </Secao>
+        </div>
+
+        <div className="grid md:grid-cols-2 gap-4 mb-4">
+          <Secao titulo="Avaliações de crédito (Financiamento)">
+            <div className="grid grid-cols-2 gap-2">
+              <Kpi tone="ambar" label="Consulta de CPF" value={String(consultaCpfQtd)} sub="aguardando triagem" />
+              <Kpi tone="azul" label="Em andamento" value={String(emAndamentoQtd)} />
+              <Kpi
+                tone="roxo"
+                label="Aprovadas"
+                value={String(aprovadoQtd)}
+                sub={aprovadasVencendoQtd > 0 ? `${aprovadasVencendoQtd} vencendo em 30d` : undefined}
+              />
+              <Kpi tone="verde" label="Concluídas" value={String(concluidoQtd)} />
+            </div>
+            {avaliacoesTotalQtd === 0 && (
+              <p className="text-[11px] text-gray-400 mt-2">Nenhuma avaliação de crédito cadastrada ainda.</p>
+            )}
+            {encerradoQtd > 0 && (
+              <p className="text-[11px] text-gray-400 mt-2">
+                + {encerradoQtd} encerrada{encerradoQtd > 1 ? "s" : ""} (reprovada, cancelada ou vencida).
+              </p>
+            )}
+          </Secao>
+
+          <Secao titulo="Honorários">
+            <div className="grid grid-cols-2 gap-2">
+              <Kpi
+                tone="verde"
+                label="Recebido"
+                value={formatMoeda(honorariosRecebidos._sum.valor_parceiro ?? 0)}
+                sub={`${honorariosRecebidos._count} repasse(s)`}
+              />
+              <Kpi
+                tone="ambar"
+                label="A receber"
+                value={formatMoeda(honorariosPendentes._sum.valor_parceiro ?? 0)}
+                sub={`${honorariosPendentes._count} pendente(s)`}
+              />
+            </div>
+          </Secao>
+        </div>
 
         <div className="grid md:grid-cols-2 gap-4">
           <div className="bg-white border border-gray-200 rounded-xl p-4">
-            <div className="text-sm font-bold text-gray-800 mb-3">Notícias</div>
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <div className="text-sm font-bold text-gray-800">Notícias</div>
+              <Link href="/login#noticias" className="text-[11px] text-primary font-semibold hover:underline">
+                Ver mural completo →
+              </Link>
+            </div>
             {noticias.length === 0 && (
               <p className="text-xs text-gray-400">Nenhuma notícia publicada ainda.</p>
             )}
-            <div className="flex flex-col gap-3 max-h-[32rem] overflow-auto">
+            <div className="flex flex-col gap-3">
               {noticias.map((n) => (
                 <PublicacaoCard key={n.id} publicacao={n} baseUrl={baseUrl} />
               ))}

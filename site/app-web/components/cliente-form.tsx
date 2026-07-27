@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import {
   ESTADOS_CIVIS,
+  ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL,
   TIPOS_CONTA,
   TIPOS_PIX,
   TIPOS_CLIENTE,
@@ -27,6 +28,7 @@ type ClienteExistente = {
   telefone: string | null;
   email: string | null;
   estado_civil: string | null;
+  uniao_estavel: boolean | null;
   renda_bruta: unknown;
   data_nascimento: Date | null;
   cat_profissao: string | null;
@@ -76,6 +78,14 @@ export function ClienteForm({
   const c = cliente;
   const [resultado, formAction] = useActionState(action, undefined);
   const [tipoCliente, setTipoCliente] = useState(c?.tipo_cliente ?? "");
+  const [estadoCivil, setEstadoCivil] = useState(c?.estado_civil ?? "");
+  // Só pergunta união estável quando o estado civil formal é Solteiro,
+  // Divorciado ou Separado Judicialmente — ver comentário em
+  // lib/clientes/opcoes.ts e qualificacaoTexto em lib/documentos/gerar.ts.
+  const [uniaoEstavel, setUniaoEstavel] = useState(
+    c?.uniao_estavel === true ? "true" : c?.uniao_estavel === false ? "false" : ""
+  );
+  const pedeUniaoEstavel = ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL.includes(estadoCivil);
   const mostrarCpf = tipoCliente !== "Pessoa Jurídica";
   const mostrarCnpj = tipoCliente !== "Pessoa Física";
 
@@ -169,7 +179,12 @@ export function ClienteForm({
           </div>
           <div>
             <label className={LABEL}>Estado civil</label>
-            <select className={CAMPO + " capitalize"} name="estado_civil" defaultValue={c?.estado_civil ?? ""}>
+            <select
+              className={CAMPO + " capitalize"}
+              name="estado_civil"
+              value={estadoCivil}
+              onChange={(e) => setEstadoCivil(e.target.value)}
+            >
               <option value="">—</option>
               {ESTADOS_CIVIS.map((e) => (
                 <option key={e} value={e} className="capitalize">
@@ -178,6 +193,24 @@ export function ClienteForm({
               ))}
             </select>
           </div>
+          {pedeUniaoEstavel && (
+            <div>
+              <label className={LABEL}>Convive em união estável?</label>
+              <select
+                className={CAMPO}
+                name="uniao_estavel"
+                value={uniaoEstavel}
+                onChange={(e) => setUniaoEstavel(e.target.value)}
+              >
+                <option value="">Não perguntado ainda</option>
+                <option value="false">Não</option>
+                <option value="true">Sim</option>
+              </select>
+              <p className="text-[11px] text-gray-400 mt-1">
+                Precisa constar na qualificação de contratos, mesmo sem mudar o estado civil formal.
+              </p>
+            </div>
+          )}
           <div>
             <label className={LABEL}>Data de nascimento</label>
             <input

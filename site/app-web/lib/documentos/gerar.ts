@@ -7,6 +7,7 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import type { TipoDocumento } from "./campos";
 import { valorPorExtenso, dataPorExtenso, dataPorExtensoComZero, formatarCpf } from "./extenso";
 import { formatTelefone, formatInscricao, formatCnpj } from "@/lib/format";
+import { ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL } from "@/lib/clientes/opcoes";
 
 // Nome do arquivo .docx (com o timbrado já formatado) que corresponde a cada
 // tipo de documento. Os arquivos ficam em site/app-web/templates/ — ver
@@ -265,6 +266,10 @@ type ClienteComEndereco = {
   profissao: string | null;
   cat_profissao: string | null;
   estado_civil: string | null;
+  // Só respondido (não-NULL) quando estado_civil pede a pergunta — ver
+  // ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL (lib/clientes/opcoes.ts) e o comentário
+  // em qualificacaoTexto abaixo.
+  uniao_estavel?: boolean | null;
   cpf: string | null;
   cnpj: string | null;
   rg: string | null;
@@ -310,7 +315,18 @@ function enderecoQualificacaoTexto(c: ClienteComEndereco): string {
 // proprietário) quanto unido com "e" quando há mais de um (herdeiros etc.).
 function qualificacaoTexto(c: ClienteComEndereco): string {
   const nacionalidade = nacionalidadeTexto(c);
-  const estadoCivil = (c.estado_civil ?? "").toLowerCase();
+  // Solteiro/Divorciado/Separado Judicialmente podem estar em união estável
+  // sem isso aparecer no estado civil formal — quando o cadastro respondeu
+  // essa pergunta (uniao_estavel não-NULL), a qualificação declara
+  // expressamente: "solteiro e declara não conviver em união estável" ou
+  // "solteiro e declara conviver em união estável" (mesma frase trocando
+  // "solteiro" pelo estado civil real).
+  const pedeUniaoEstavel =
+    c.estado_civil != null && ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL.includes(c.estado_civil);
+  const estadoCivil =
+    pedeUniaoEstavel && c.uniao_estavel != null
+      ? `${(c.estado_civil ?? "").toLowerCase()} e declara ${c.uniao_estavel ? "" : "não "}conviver em união estável`
+      : (c.estado_civil ?? "").toLowerCase();
   const profissao = c.profissao ?? c.cat_profissao ?? "";
 
   const rgTexto = c.rg ? `RG nº ${c.rg}${c.expedicao ? `/${c.expedicao}` : ""}` : "";

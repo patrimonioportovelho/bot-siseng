@@ -38,6 +38,7 @@ type ClienteDigitado = {
   cpfCnpj: string;
   endereco: string;
   estadoCivil: string;
+  uniaoEstavel: string;
   profissao: string;
   bancoId: string;
   codigoBanco: string;
@@ -47,6 +48,14 @@ type ClienteDigitado = {
   tipoPix: string;
   pix: string;
 };
+
+// "" (não perguntado) vira NULL, "true"/"false" viram booleano de verdade —
+// usado no campo uniao_estavel (só existe quando estado_civil pede).
+function booleanoTri(v: string): boolean | null {
+  if (v === "true") return true;
+  if (v === "false") return false;
+  return null;
+}
 
 function parseCliente(formData: FormData): ClienteDigitado | null {
   const bruto = texto(formData, "clienteJson");
@@ -59,6 +68,7 @@ function parseCliente(formData: FormData): ClienteDigitado | null {
       cpfCnpj: String(c?.cpfCnpj ?? "").trim(),
       endereco: String(c?.endereco ?? "").trim(),
       estadoCivil: String(c?.estadoCivil ?? "").trim(),
+      uniaoEstavel: String(c?.uniaoEstavel ?? "").trim(),
       profissao: String(c?.profissao ?? "").trim(),
       bancoId: String(c?.bancoId ?? "").trim(),
       codigoBanco: String(c?.codigoBanco ?? "").trim(),
@@ -194,6 +204,7 @@ export async function gerarPropostaAction(
             cnpj: ehCnpj ? doc : null,
             endereco: clienteForm.endereco || null,
             estado_civil: clienteForm.estadoCivil || null,
+            uniao_estavel: booleanoTri(clienteForm.uniaoEstavel),
             profissao: clienteForm.profissao || null,
             banco_id: clienteForm.bancoId || null,
             codigo_banco: clienteForm.codigoBanco || null,

@@ -31,6 +31,10 @@ export const ESTADOS_CIVIS = [
   "em uma união estável"
 ];
 
+// Mesma régua de lib/clientes/opcoes.ts (ver comentário lá), só que no
+// vocabulário de Parceiros.
+export const ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL = ["divorciado (a)", "separado judicialmente (a)", "solteiro (a)"];
+
 export const TIPOS_CONTA = ["Conta corrente", "Conta poupança"];
 
 export const TIPOS_PIX = ["CNPJ / CPF", "E-mail", "Telefone", "Chave aleatória"];

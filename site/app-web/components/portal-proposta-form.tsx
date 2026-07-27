@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ESTADOS_CIVIS, TIPOS_CONTA, TIPOS_PIX } from "@/lib/clientes/opcoes";
+import { ESTADOS_CIVIS, ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL, TIPOS_CONTA, TIPOS_PIX } from "@/lib/clientes/opcoes";
 import { TIPO_CONDICAO_OPCOES, FORMA_PAGAMENTO_CONDICAO_OPCOES, MOMENTO_CONDICAO_OPCOES } from "@/lib/transacoes/opcoes";
 import { gerarPropostaAction } from "@/app/portal/proposta/actions";
 
@@ -16,6 +16,9 @@ type ClienteLinha = {
   cpfCnpj: string;
   endereco: string;
   estadoCivil: string;
+  // "" (não perguntado), "true" ou "false" — só perguntado/mostrado quando
+  // estadoCivil é um dos que pedem (ver ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL).
+  uniaoEstavel: string;
   profissao: string;
   // Dados bancários — mesmo cadastro completo do administrativo (ver
   // components/cliente-form.tsx), liberado aqui pro corretor já deixar o
@@ -53,6 +56,7 @@ function clienteVazio(): ClienteLinha {
     cpfCnpj: "",
     endereco: "",
     estadoCivil: "",
+    uniaoEstavel: "",
     profissao: "",
     bancoId: "",
     codigoBanco: "",
@@ -231,6 +235,7 @@ export function PortalPropostaForm({
       cpfCnpj: encontrado.cpfCnpj,
       endereco: encontrado.endereco,
       estadoCivil: encontrado.estadoCivil,
+      uniaoEstavel: "",
       profissao: encontrado.profissao,
       bancoId: "",
       codigoBanco: "",
@@ -375,7 +380,10 @@ export function PortalPropostaForm({
               className={cliente.clienteId ? CAMPO_TRAVADO : CAMPO}
               disabled={Boolean(cliente.clienteId)}
               value={cliente.estadoCivil}
-              onChange={(e) => atualizarCliente("estadoCivil", e.target.value)}
+              onChange={(e) => {
+                atualizarCliente("estadoCivil", e.target.value);
+                if (!ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL.includes(e.target.value)) atualizarCliente("uniaoEstavel", "");
+              }}
             >
               <option value="">—</option>
               {ESTADOS_CIVIS.map((op) => (
@@ -385,6 +393,20 @@ export function PortalPropostaForm({
               ))}
             </select>
           </div>
+          {!cliente.clienteId && ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL.includes(cliente.estadoCivil) && (
+            <div>
+              <label className={LABEL}>Convive em união estável?</label>
+              <select
+                className={CAMPO}
+                value={cliente.uniaoEstavel}
+                onChange={(e) => atualizarCliente("uniaoEstavel", e.target.value)}
+              >
+                <option value="">Não perguntado ainda</option>
+                <option value="false">Não</option>
+                <option value="true">Sim</option>
+              </select>
+            </div>
+          )}
           <div>
             <label className={LABEL}>Profissão</label>
             <input

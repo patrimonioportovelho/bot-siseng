@@ -41,6 +41,7 @@ type ClienteDigitado = {
   endereco: string;
   nacionalidade: string;
   estadoCivil: string;
+  uniaoEstavel: string;
   profissao: string;
   email: string;
   telefone: string;
@@ -52,6 +53,14 @@ type ClienteDigitado = {
   tipoPix: string;
   pix: string;
 };
+
+// "" (não perguntado) vira NULL, "true"/"false" viram booleano de verdade —
+// usado no campo uniao_estavel (só existe quando estado_civil pede).
+function booleanoTri(v: string): boolean | null {
+  if (v === "true") return true;
+  if (v === "false") return false;
+  return null;
+}
 
 function parseClientes(formData: FormData): ClienteDigitado[] {
   const bruto = texto(formData, "clientesJson");
@@ -68,6 +77,7 @@ function parseClientes(formData: FormData): ClienteDigitado[] {
         endereco: String(c?.endereco ?? "").trim(),
         nacionalidade: String(c?.nacionalidade ?? "").trim(),
         estadoCivil: String(c?.estadoCivil ?? "").trim(),
+        uniaoEstavel: String(c?.uniaoEstavel ?? "").trim(),
         profissao: String(c?.profissao ?? "").trim(),
         email: String(c?.email ?? "").trim(),
         telefone: String(c?.telefone ?? "").trim(),
@@ -192,6 +202,7 @@ export async function gerarContratoGestaoAction(
               endereco: c.endereco || null,
               nacionalidade: c.nacionalidade || null,
               estado_civil: c.estadoCivil || null,
+              uniao_estavel: booleanoTri(c.uniaoEstavel),
               profissao: c.profissao || null,
               email: c.email || null,
               telefone: digitos(c.telefone),

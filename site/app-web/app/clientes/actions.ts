@@ -45,6 +45,15 @@ function data(formData: FormData, campo: string): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+// "" (não perguntado) vira NULL, "true"/"false" viram booleano de verdade —
+// usado no campo uniao_estavel (só existe quando estado_civil pede).
+function booleanoTri(formData: FormData, campo: string): boolean | null {
+  const v = formData.get(campo);
+  if (v === "true") return true;
+  if (v === "false") return false;
+  return null;
+}
+
 function camposEditaveis(formData: FormData) {
   return {
     tipo_cliente: texto(formData, "tipo_cliente") ?? undefined,
@@ -56,6 +65,7 @@ function camposEditaveis(formData: FormData) {
     telefone: telefoneDigitos(formData, "telefone"),
     email: texto(formData, "email"),
     estado_civil: texto(formData, "estado_civil"),
+    uniao_estavel: booleanoTri(formData, "uniao_estavel"),
     renda_bruta: rendaBruta(formData, "renda_bruta"),
     data_nascimento: data(formData, "data_nascimento"),
     cat_profissao: texto(formData, "cat_profissao"),

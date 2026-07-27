@@ -97,6 +97,7 @@ CREATE TABLE parceiros (
   expedicao_estado        TEXT,
   estado_civil            TEXT CHECK (estado_civil IN
                               ('solteiro (a)','em uma união estável','casado (a)','divorciado (a)','separado judicialmente (a)','viúvo (a)')),
+  uniao_estavel           BOOLEAN,   -- só perguntado quando estado_civil é solteiro/divorciado/separado judicialmente; ver comentário em prisma/schema.prisma
   creci                   TEXT,
   endereco                TEXT,
   data_entrada            DATE,   -- CORRIGIDO: ~70% dos parceiros reais na planilha não têm essa data preenchida
@@ -174,6 +175,7 @@ CREATE TABLE clientes (
   email            TEXT,
   estado_civil     TEXT CHECK (estado_civil IN
                        ('Solteiro','Casado','União Estável','Divorciado','Separado Judicialmente','Viúvo')),
+  uniao_estavel    BOOLEAN,   -- só perguntado quando estado_civil é Solteiro/Divorciado/Separado Judicialmente; ver comentário em prisma/schema.prisma
   conjuge_id       UUID REFERENCES clientes(id),   -- autorrelacionamento
   renda_bruta      NUMERIC(12,2),
   data_nascimento  DATE,

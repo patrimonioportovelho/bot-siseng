@@ -116,6 +116,7 @@ type ClienteAvaliacaoDigitado = {
   telefone: string;
   email: string;
   estadoCivil: string;
+  uniaoEstavel: string;
   dataNascimento: string;
   catProfissao: string;
   tipoServidor: string;
@@ -131,6 +132,14 @@ type ClienteAvaliacaoDigitado = {
   tipoPix: string;
   pix: string;
 };
+
+// "" (não perguntado) vira NULL, "true"/"false" viram booleano de verdade —
+// usado no campo uniao_estavel (só existe quando estado_civil pede).
+function booleanoTri(v: string): boolean | null {
+  if (v === "true") return true;
+  if (v === "false") return false;
+  return null;
+}
 
 function parseCliente(formData: FormData): ClienteAvaliacaoDigitado | null {
   const bruto = texto(formData, "clienteJson");
@@ -149,6 +158,7 @@ function parseCliente(formData: FormData): ClienteAvaliacaoDigitado | null {
       telefone: String(c?.telefone ?? "").trim(),
       email: String(c?.email ?? "").trim(),
       estadoCivil: String(c?.estadoCivil ?? "").trim(),
+      uniaoEstavel: String(c?.uniaoEstavel ?? "").trim(),
       dataNascimento: String(c?.dataNascimento ?? "").trim(),
       catProfissao: String(c?.catProfissao ?? "").trim(),
       tipoServidor: String(c?.tipoServidor ?? "").trim(),
@@ -184,6 +194,7 @@ async function criarClienteCompleto(c: ClienteAvaliacaoDigitado, parceiroId: str
       telefone: digitos(c.telefone),
       email: c.email || null,
       estado_civil: c.estadoCivil || null,
+      uniao_estavel: booleanoTri(c.uniaoEstavel),
       data_nascimento: dataNasc && !Number.isNaN(dataNasc.getTime()) ? dataNasc : null,
       cat_profissao: c.catProfissao || null,
       tipo_servidor: c.tipoServidor || null,

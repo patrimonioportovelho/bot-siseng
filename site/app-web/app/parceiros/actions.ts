@@ -53,6 +53,15 @@ function data(formData: FormData, campo: string): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+// "" (não perguntado) vira NULL, "true"/"false" viram booleano de verdade —
+// usado no campo uniao_estavel (só existe quando estado_civil pede).
+function booleanoTri(formData: FormData, campo: string): boolean | null {
+  const v = formData.get(campo);
+  if (v === "true") return true;
+  if (v === "false") return false;
+  return null;
+}
+
 // Campos que qualquer parceiro autenticado pode editar em um cadastro já
 // existente. Nome fica de fora de propósito: é a âncora de identidade usada
 // no login (nome + CPF) e só muda via aprovação de acesso em Configurações
@@ -72,6 +81,7 @@ function camposEditaveis(formData: FormData) {
     identidade: texto(formData, "identidade"),
     expedicao_estado: texto(formData, "expedicao_estado"),
     estado_civil: texto(formData, "estado_civil"),
+    uniao_estavel: booleanoTri(formData, "uniao_estavel"),
     creci: texto(formData, "creci"),
     endereco: texto(formData, "endereco"),
     data_entrada: data(formData, "data_entrada"),

@@ -1,7 +1,14 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { TODAS_FUNCOES, STATUS_FUNCAO, ESTADOS_CIVIS, TIPOS_CONTA, TIPOS_PIX } from "@/lib/parceiros/opcoes";
+import {
+  TODAS_FUNCOES,
+  STATUS_FUNCAO,
+  ESTADOS_CIVIS,
+  ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL,
+  TIPOS_CONTA,
+  TIPOS_PIX
+} from "@/lib/parceiros/opcoes";
 import { formatCpf, formatTelefone, formatPercentual, formatMoeda, formatDataCalendario } from "@/lib/format";
 
 const FUNCOES_COM_COMISSIONAMENTO = ["Corretor", "Corretor Estagiário"];
@@ -23,6 +30,7 @@ type ParceiroExistente = {
   identidade: string | null;
   expedicao_estado: string | null;
   estado_civil: string | null;
+  uniao_estavel: boolean | null;
   creci: string | null;
   endereco: string | null;
   data_entrada: Date | null;
@@ -83,6 +91,7 @@ function Ficha({ parceiro, onEditar }: { parceiro: ParceiroExistente; onEditar: 
   const p = parceiro;
   const mostrarComissionamento = FUNCOES_COM_COMISSIONAMENTO.includes(p.funcao);
   const mostrarDataSaida = p.status_funcao === "Inativo" && p.data_saida;
+  const pedeUniaoEstavel = p.estado_civil ? ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL.includes(p.estado_civil) : false;
 
   const BotaoEditar = (
     <button
@@ -104,6 +113,12 @@ function Ficha({ parceiro, onEditar }: { parceiro: ParceiroExistente; onEditar: 
           <Linha label="Status" valor={p.status_funcao} />
           <Linha label="CRECI" valor={p.creci} />
           <Linha label="Estado civil" valor={p.estado_civil} />
+          {pedeUniaoEstavel && (
+            <Linha
+              label="União estável"
+              valor={p.uniao_estavel === true ? "Sim" : p.uniao_estavel === false ? "Não" : "Não perguntado ainda"}
+            />
+          )}
           <Linha label="Data de nascimento" valor={formatDataCalendario(p.data_nascimento)} />
           <Linha label="Identidade (RG)" valor={p.identidade} />
           <Linha label="Estado de expedição" valor={p.expedicao_estado} />
@@ -180,6 +195,11 @@ export function ParceiroForm({
   // sem campo nenhum editável até isso acontecer).
   const [modoEdicao, setModoEdicao] = useState(!p);
   const [statusFuncao, setStatusFuncao] = useState(p?.status_funcao ?? "Ativo");
+  const [estadoCivil, setEstadoCivil] = useState(p?.estado_civil ?? "");
+  const [uniaoEstavel, setUniaoEstavel] = useState(
+    p?.uniao_estavel === true ? "true" : p?.uniao_estavel === false ? "false" : ""
+  );
+  const pedeUniaoEstavel = ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL.includes(estadoCivil);
 
   if (p && !modoEdicao) {
     return <Ficha parceiro={p} onEditar={() => setModoEdicao(true)} />;
@@ -264,7 +284,15 @@ export function ParceiroForm({
           </div>
           <div>
             <label className={LABEL}>Estado civil</label>
-            <select className={CAMPO + " capitalize"} name="estado_civil" defaultValue={p?.estado_civil ?? ""}>
+            <select
+              className={CAMPO + " capitalize"}
+              name="estado_civil"
+              value={estadoCivil}
+              onChange={(e) => {
+                setEstadoCivil(e.target.value);
+                if (!ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL.includes(e.target.value)) setUniaoEstavel("");
+              }}
+            >
               <option value="">—</option>
               {ESTADOS_CIVIS.map((e) => (
                 <option key={e} value={e} className="capitalize">
@@ -273,6 +301,26 @@ export function ParceiroForm({
               ))}
             </select>
           </div>
+          {pedeUniaoEstavel && (
+            <div>
+              <label className={LABEL}>Convive em união estável?</label>
+              <select
+                className={CAMPO}
+                name="uniao_estavel"
+                value={uniaoEstavel}
+                onChange={(e) => setUniaoEstavel(e.target.value)}
+              >
+                <option value="">Não perguntado ainda</option>
+                <option value="false">Não</option>
+                <option value="true">Sim</option>
+              </select>
+              <p className="text-[11px] text-gray-400 mt-1">
+                Necessário para a qualificação correta em contratos (ex.: &quot;{estadoCivil.toLowerCase()} e declara
+                {uniaoEstavel === "true" ? " " : " não "}
+                conviver em união estável&quot;).
+              </p>
+            </div>
+          )}
           <div>
             <label className={LABEL}>Data de nascimento</label>
             <input

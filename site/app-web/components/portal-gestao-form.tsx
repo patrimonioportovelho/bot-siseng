@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { TIPOS_IMOVEL } from "@/lib/imoveis/opcoes";
-import { ESTADOS_CIVIS, TIPOS_CONTA, TIPOS_PIX } from "@/lib/clientes/opcoes";
+import { ESTADOS_CIVIS, ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL, TIPOS_CONTA, TIPOS_PIX } from "@/lib/clientes/opcoes";
 import { gerarContratoGestaoAction } from "@/app/portal/gestao/actions";
 
 type Banco = { id: string; nome: string; codigo: string | null };
@@ -19,6 +19,9 @@ type ClienteLinha = {
   endereco: string;
   nacionalidade: string;
   estadoCivil: string;
+  // "" (não perguntado), "true" ou "false" — só perguntado/mostrado quando
+  // estadoCivil é um dos que pedem (ver ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL).
+  uniaoEstavel: string;
   profissao: string;
   email: string;
   telefone: string;
@@ -70,6 +73,7 @@ function clienteVazio(): ClienteLinha {
     endereco: "",
     nacionalidade: "Brasileira",
     estadoCivil: "",
+    uniaoEstavel: "",
     profissao: "",
     email: "",
     telefone: "",
@@ -314,6 +318,7 @@ export function PortalGestaoForm({
               endereco: encontrado.endereco,
               nacionalidade: encontrado.nacionalidade,
               estadoCivil: encontrado.estadoCivil,
+              uniaoEstavel: "",
               profissao: "",
               email: encontrado.email,
               telefone: encontrado.telefone,
@@ -548,7 +553,10 @@ export function PortalGestaoForm({
                     className={c.clienteId ? CAMPO_TRAVADO : CAMPO}
                     disabled={Boolean(c.clienteId)}
                     value={c.estadoCivil}
-                    onChange={(e) => atualizarCliente(index, "estadoCivil", e.target.value)}
+                    onChange={(e) => {
+                      atualizarCliente(index, "estadoCivil", e.target.value);
+                      if (!ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL.includes(e.target.value)) atualizarCliente(index, "uniaoEstavel", "");
+                    }}
                   >
                     <option value="">—</option>
                     {ESTADOS_CIVIS.map((op) => (
@@ -558,6 +566,20 @@ export function PortalGestaoForm({
                     ))}
                   </select>
                 </div>
+                {!c.clienteId && ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL.includes(c.estadoCivil) && (
+                  <div>
+                    <label className={LABEL}>Convive em união estável?</label>
+                    <select
+                      className={CAMPO}
+                      value={c.uniaoEstavel}
+                      onChange={(e) => atualizarCliente(index, "uniaoEstavel", e.target.value)}
+                    >
+                      <option value="">Não perguntado ainda</option>
+                      <option value="false">Não</option>
+                      <option value="true">Sim</option>
+                    </select>
+                  </div>
+                )}
                 <div>
                   <label className={LABEL}>Profissão</label>
                   <input

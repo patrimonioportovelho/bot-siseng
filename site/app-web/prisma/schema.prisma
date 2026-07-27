@@ -221,6 +221,14 @@ model clientes {
   telefone                                               String?
   email                                                  String?
   estado_civil                                           String?
+  // Só é perguntado (e só faz sentido) quando estado_civil é Solteiro,
+  // Divorciado ou Separado Judicialmente — juridicamente essas pessoas podem
+  // conviver em união estável sem isso aparecer no estado civil formal, e a
+  // qualificação de documentos (lib/documentos/gerar.ts, qualificacaoTexto)
+  // precisa declarar isso ("solteiro e declara não conviver em união
+  // estável" / "...declara conviver em união estável"). NULL = pergunta
+  // nunca foi respondida (cadastros antigos, ou estado civil que não pede).
+  uniao_estavel                                          Boolean?
   conjuge_id                                             String?       @db.Uuid
   renda_bruta                                            Decimal?      @db.Decimal(12, 2)
   data_nascimento                                        DateTime?     @db.Date
@@ -706,6 +714,8 @@ model parceiros {
   identidade                                                                  String?
   expedicao_estado                                                            String?
   estado_civil                                                                String?
+  // Mesmo campo/mesma regra de clientes.uniao_estavel — ver comentário lá.
+  uniao_estavel                                                               Boolean?
   creci                                                                       String?
   endereco                                                                    String?
   data_entrada                                                                DateTime?                 @db.Date

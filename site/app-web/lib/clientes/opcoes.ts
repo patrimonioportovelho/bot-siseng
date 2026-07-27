@@ -26,6 +26,13 @@ export const ESTADOS_CIVIS = [
   "Viúvo"
 ];
 
+// Juridicamente, quem está nesses três estados civis pode conviver em união
+// estável sem isso aparecer no estado civil formal (diferente de quem já
+// marca "União Estável" direto) — por isso só nesses casos o cadastro
+// pergunta "convive em união estável?" e a qualificação do contrato precisa
+// declarar a resposta (ver qualificacaoTexto em lib/documentos/gerar.ts).
+export const ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL = ["Divorciado", "Separado Judicialmente", "Solteiro"];
+
 export const TIPOS_CLIENTE = ["Pessoa Física", "Pessoa Jurídica"];
 
 // Valores exatos aceitos pelo check constraint clientes_sexo_check no banco

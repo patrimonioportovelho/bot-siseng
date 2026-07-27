@@ -8,7 +8,7 @@ import {
   MOMENTO_CONDICAO_OPCOES
 } from "@/lib/transacoes/opcoes";
 import { TIPOS_IMOVEL } from "@/lib/imoveis/opcoes";
-import { ESTADOS_CIVIS, TIPOS_CONTA, TIPOS_PIX } from "@/lib/clientes/opcoes";
+import { ESTADOS_CIVIS, ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL, TIPOS_CONTA, TIPOS_PIX } from "@/lib/clientes/opcoes";
 import type { ImovelBuscaResultado, ClienteBuscaResultado } from "@/lib/transacoes/buscas";
 import { gerarCompraVendaAction, prepararUploadDocumentoAction } from "@/app/portal/compra-venda/actions";
 import { supabaseBrowser, BUCKET_DOCUMENTOS_PORTAL } from "@/lib/supabase-browser";
@@ -98,6 +98,9 @@ type PessoaLinha = {
   endereco: string;
   nacionalidade: string;
   estadoCivil: string;
+  // "" (não perguntado), "true" ou "false" — só perguntado/mostrado quando
+  // estadoCivil é um dos que pedem (ver ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL).
+  uniaoEstavel: string;
   profissao: string;
   email: string;
   telefone: string;
@@ -121,6 +124,7 @@ function pessoaVazia(): PessoaLinha {
     endereco: "",
     nacionalidade: "Brasileira",
     estadoCivil: "",
+    uniaoEstavel: "",
     profissao: "",
     email: "",
     telefone: "",
@@ -143,6 +147,7 @@ function pessoaDeClienteExistente(c: ClienteBuscaResultado): PessoaLinha {
     endereco: "",
     nacionalidade: "",
     estadoCivil: "",
+    uniaoEstavel: "",
     profissao: "",
     email: c.email ?? "",
     telefone: c.telefone ?? "",
@@ -321,7 +326,10 @@ function BlocoPessoas({
                     <select
                       className={CAMPO}
                       value={p.estadoCivil}
-                      onChange={(e) => atualizar(index, "estadoCivil", e.target.value)}
+                      onChange={(e) => {
+                        atualizar(index, "estadoCivil", e.target.value);
+                        if (!ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL.includes(e.target.value)) atualizar(index, "uniaoEstavel", "");
+                      }}
                     >
                       <option value="">—</option>
                       {ESTADOS_CIVIS.map((op) => (
@@ -331,6 +339,20 @@ function BlocoPessoas({
                       ))}
                     </select>
                   </div>
+                  {ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL.includes(p.estadoCivil) && (
+                    <div>
+                      <label className={LABEL}>Convive em união estável?</label>
+                      <select
+                        className={CAMPO}
+                        value={p.uniaoEstavel}
+                        onChange={(e) => atualizar(index, "uniaoEstavel", e.target.value)}
+                      >
+                        <option value="">Não perguntado ainda</option>
+                        <option value="false">Não</option>
+                        <option value="true">Sim</option>
+                      </select>
+                    </div>
+                  )}
                   <div>
                     <label className={LABEL}>Profissão</label>
                     <input className={CAMPO} value={p.profissao} onChange={(e) => atualizar(index, "profissao", e.target.value)} />

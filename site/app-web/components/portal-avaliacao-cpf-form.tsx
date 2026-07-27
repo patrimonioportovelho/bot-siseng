@@ -1,7 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ESTADOS_CIVIS, TIPOS_CONTA, TIPOS_PIX, TIPOS_CLIENTE, SEXO_OPCOES, CAT_PROFISSAO_OPCOES } from "@/lib/clientes/opcoes";
+import {
+  ESTADOS_CIVIS,
+  ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL,
+  TIPOS_CONTA,
+  TIPOS_PIX,
+  TIPOS_CLIENTE,
+  SEXO_OPCOES,
+  CAT_PROFISSAO_OPCOES
+} from "@/lib/clientes/opcoes";
 import type { ClienteBuscaResultado } from "@/lib/transacoes/buscas";
 import { criarAvaliacaoCpfAction, prepararUploadDocumentoAvaliacaoAction } from "@/app/portal/avaliacao-cpf/actions";
 import { supabaseBrowser, BUCKET_DOCUMENTOS_PORTAL } from "@/lib/supabase-browser";
@@ -25,6 +33,9 @@ type ClienteAvaliacao = {
   telefone: string;
   email: string;
   estadoCivil: string;
+  // "" (não perguntado), "true" ou "false" — só perguntado/mostrado quando
+  // estadoCivil é um dos que pedem (ver ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL).
+  uniaoEstavel: string;
   dataNascimento: string;
   catProfissao: string;
   tipoServidor: string;
@@ -53,6 +64,7 @@ function clienteVazio(): ClienteAvaliacao {
     telefone: "",
     email: "",
     estadoCivil: "",
+    uniaoEstavel: "",
     dataNascimento: "",
     catProfissao: "",
     tipoServidor: "",
@@ -419,7 +431,14 @@ export function PortalAvaliacaoCpfForm({
                 </div>
                 <div>
                   <label className={LABEL}>Estado civil</label>
-                  <select className={CAMPO} value={cliente.estadoCivil} onChange={(e) => atualizar("estadoCivil", e.target.value)}>
+                  <select
+                    className={CAMPO}
+                    value={cliente.estadoCivil}
+                    onChange={(e) => {
+                      atualizar("estadoCivil", e.target.value);
+                      if (!ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL.includes(e.target.value)) atualizar("uniaoEstavel", "");
+                    }}
+                  >
                     <option value="">—</option>
                     {ESTADOS_CIVIS.map((e2) => (
                       <option key={e2} value={e2}>
@@ -428,6 +447,16 @@ export function PortalAvaliacaoCpfForm({
                     ))}
                   </select>
                 </div>
+                {ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL.includes(cliente.estadoCivil) && (
+                  <div>
+                    <label className={LABEL}>Convive em união estável?</label>
+                    <select className={CAMPO} value={cliente.uniaoEstavel} onChange={(e) => atualizar("uniaoEstavel", e.target.value)}>
+                      <option value="">Não perguntado ainda</option>
+                      <option value="false">Não</option>
+                      <option value="true">Sim</option>
+                    </select>
+                  </div>
+                )}
                 <div>
                   <label className={LABEL}>Data de nascimento</label>
                   <input type="date" className={CAMPO} value={cliente.dataNascimento} onChange={(e) => atualizar("dataNascimento", e.target.value)} />

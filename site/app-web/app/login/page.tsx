@@ -47,7 +47,10 @@ export default async function LoginPage({
     // link direto mandado pelo corretor) — nunca aparece no mural público.
     where: { ativo: true, tipo: { not: "Checklist" } },
     orderBy: { publicado_em: "desc" },
-    take: 20
+    // Mural público mostra só as 9 mais recentes (3 linhas de 3 no grid
+    // lg:grid-cols-3 abaixo) — pedido do usuário pra não virar uma lista
+    // infinita na home pública.
+    take: 9
   });
 
   // Link absoluto (com domínio) pra dar pra compartilhar notícia/edital ou o

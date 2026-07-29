@@ -67,7 +67,11 @@ export async function trocarSenhaPortalAction(formData: FormData) {
 
 export async function logoutPortalAction() {
   await logoutPortal();
-  redirect("/portal/login");
+  // Ao sair do portal, volta pro site (app/login/page.tsx é a página
+  // pública com o institucional + os dois painéis de login, não uma tela de
+  // login "pelada") — não pra /portal/login, que é só usado quando a sessão
+  // expira/é inválida no meio da navegação dentro do portal.
+  redirect("/login");
 }
 
 export async function toggleChecklistAction(itemId: string) {

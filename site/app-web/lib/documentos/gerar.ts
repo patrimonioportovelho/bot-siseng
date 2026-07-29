@@ -256,8 +256,19 @@ function docTexto(c: { cpf: string | null; cnpj: string | null }): string {
 }
 
 type ClienteComEndereco = {
+  id?: string;
   nome: string;
   sexo: string | null;
+  // Pessoa Física (padrão) ou Pessoa Jurídica — usado por qualificacaoTexto
+  // pra decidir entre o parágrafo de qualificação de pessoa física
+  // (nacionalidade/estado civil/profissão/RG/CPF) e o de pessoa jurídica
+  // (razão social/CNPJ/sede). Cadastros antigos sem o campo caem pro mesmo
+  // palpite por CNPJ presente que o resto do sistema já usa.
+  tipo_cliente?: string | null;
+  // Vínculo de cônjuge (ver comentário completo em prisma/schema.prisma,
+  // campo clientes.conjuge_id) — usado por qualificacoesComConjuge pra
+  // juntar duas partes cônjuges num parágrafo único de qualificação.
+  conjuge_id?: string | null;
   // Adicionado pro contrato de gestão (Elaboração de Contrato de Gestão,
   // portal do corretor) — clientes antigos ficam NULL, e a qualificação
   // continua inferindo brasileiro/brasileira pelo campo "sexo" nesse caso
@@ -279,6 +290,13 @@ type ClienteComEndereco = {
   endereco: string | null;
   cidades: { nome: string } | null;
   estados: { nome: string } | null;
+  // Só preenchido quando o cliente é Pessoa Jurídica e tem ao menos um sócio
+  // cadastrado (ver components/socio-form.tsx e clientes_socios) — o sócio
+  // de ordem 0 é o representante legal, citado na qualificação ("...neste
+  // ato representada por seu sócio-administrador...") e é quem assina pela
+  // PJ no bloco de assinaturas. Buscado à parte (buscarSociosRepresentantes)
+  // e anexado manualmente ao objeto antes de chamar qualificacaoTexto.
+  socio_representante?: ClienteComEndereco | null;
 };
 
 function enderecoClienteCompleto(c: ClienteComEndereco): string {
@@ -307,13 +325,53 @@ function enderecoQualificacaoTexto(c: ClienteComEndereco): string {
   return [c.endereco, localidade].filter((p): p is string => Boolean(p)).join(", ");
 }
 
+// Pessoa Jurídica ou Pessoa Física — mesmo critério usado no resto do
+// sistema (tipo_cliente explícito quando presente, senão infere pelo CNPJ
+// cadastrado, pra cadastros antigos sem o campo).
+function ehPessoaJuridica(c: { tipo_cliente?: string | null; cnpj: string | null }): boolean {
+  return c.tipo_cliente === "Pessoa Jurídica" || (!c.tipo_cliente && Boolean(c.cnpj));
+}
+
 // Parágrafo de qualificação completo de uma parte (vendedor/comprador,
 // locador/locatário): "Nome, nacionalidade, estado civil, profissão,
 // portador(a) da carteira de identidade RG nº ... e inscrito(a) sob CPF nº
 // ..., portador(a) do telefone para contato ... e e-mail eletrônico: ...,
 // residente e domiciliado(a) a ...". Usado tanto sozinho (um só
 // proprietário) quanto unido com "e" quando há mais de um (herdeiros etc.).
-function qualificacaoTexto(c: ClienteComEndereco): string {
+//
+// Pessoa Jurídica usa um parágrafo bem diferente (razão social/CNPJ/sede,
+// sem nacionalidade/estado civil/profissão/RG) e, quando o sócio
+// representante legal foi buscado e anexado (socio_representante — ver
+// buscarSociosRepresentantes), cita esse sócio como representante ("...neste
+// ato representada por seu sócio-administrador [qualificação completa do
+// sócio, pessoa física]").
+//
+// omitirEndereco existe só pra qualificacaoConjuntaTexto reaproveitar este
+// parágrafo sem repetir "residente e domiciliado(a) a ..." quando os dois
+// cônjuges moram no mesmo endereço.
+function qualificacaoTexto(c: ClienteComEndereco, opcoes?: { omitirEndereco?: boolean }): string {
+  const endereco = opcoes?.omitirEndereco ? "" : enderecoQualificacaoTexto(c);
+
+  if (ehPessoaJuridica(c)) {
+    const cnpjTexto = c.cnpj ? `inscrita no CNPJ sob nº ${formatCnpj(c.cnpj)}` : "";
+    const telefoneTexto = c.telefone ? `telefone para contato ${formatTelefone(c.telefone)}` : "";
+    const emailTexto = c.email ? `e-mail eletrônico: ${c.email}` : "";
+    const contato = telefoneTexto && emailTexto ? `${telefoneTexto} e ${emailTexto}` : telefoneTexto || emailTexto;
+    const representante = c.socio_representante
+      ? `neste ato representada por seu sócio-administrador ${qualificacaoTexto(c.socio_representante)}`
+      : "";
+
+    const partes = [
+      c.nome,
+      "pessoa jurídica de direito privado",
+      cnpjTexto || null,
+      endereco ? `com sede em ${endereco}` : null,
+      contato || null,
+      representante || null
+    ].filter((p): p is string => Boolean(p));
+    return partes.join(", ");
+  }
+
   const nacionalidade = nacionalidadeTexto(c);
   // Solteiro/Divorciado/Separado Judicialmente podem estar em união estável
   // sem isso aparecer no estado civil formal — quando o cadastro respondeu
@@ -344,8 +402,6 @@ function qualificacaoTexto(c: ClienteComEndereco): string {
   const emailTexto = c.email ? `e-mail eletrônico: ${c.email}` : "";
   const contato = telefoneTexto && emailTexto ? `${telefoneTexto} e ${emailTexto}` : telefoneTexto || emailTexto;
 
-  const endereco = enderecoQualificacaoTexto(c);
-
   const partes = [
     c.nome,
     nacionalidade,
@@ -356,6 +412,83 @@ function qualificacaoTexto(c: ClienteComEndereco): string {
     endereco ? `residente e domiciliado(a) a ${endereco}` : null
   ].filter((p): p is string => Boolean(p));
   return partes.join(", ");
+}
+
+// Junta dois cônjuges (conjuge_id apontando um pro outro — ver comentário em
+// prisma/schema.prisma) num parágrafo único de qualificação, em vez de dois
+// parágrafos independentes juntados por "e" como listaComE faria com
+// qualquer outro par de partes sem vínculo. Quando os dois moram no mesmo
+// endereço, a frase de residência aparece só uma vez no final ("ambos
+// residentes e domiciliados..."); quando os endereços são diferentes (raro,
+// mas possível), cada um mantém o próprio endereço.
+function qualificacaoConjuntaTexto(a: ClienteComEndereco, b: ClienteComEndereco): string {
+  const generoB = b.sexo === "Mulher" ? "sua cônjuge" : "seu cônjuge";
+  const enderecoA = enderecoQualificacaoTexto(a);
+  const enderecoB = enderecoQualificacaoTexto(b);
+  const mesmoEndereco = Boolean(enderecoA) && enderecoA === enderecoB;
+
+  const qualA = qualificacaoTexto(a);
+  const qualBCompleta = qualificacaoTexto(b, { omitirEndereco: mesmoEndereco });
+  const qualBSemNome = qualBCompleta.startsWith(`${b.nome}, `) ? qualBCompleta.slice(b.nome.length + 2) : qualBCompleta;
+
+  const fechamento = mesmoEndereco ? ", ambos residentes e domiciliados no mesmo endereço acima" : "";
+
+  return `${qualA}, ${generoB} ${b.nome}, ${qualBSemNome}${fechamento}`;
+}
+
+// Monta a lista de parágrafos de qualificação de um grupo de partes
+// (proprietários, interessados etc.), juntando em um parágrafo só quem tem
+// vínculo de cônjuge declarado entre si (conjuge_id) — o resultado ainda
+// precisa passar por listaComE pra virar o texto final com "e" antes do
+// último item. Cada cliente só entra numa junção (o primeiro encontrado
+// "consome" o par); os demais seguem cada um com seu próprio parágrafo.
+function qualificacoesComConjuge(clientes: ClienteComEndereco[]): string[] {
+  const usados = new Set<string>();
+  const resultado: string[] = [];
+  for (const c of clientes) {
+    if (!c.id || usados.has(c.id)) continue;
+    const parceiro = c.conjuge_id ? clientes.find((x) => x.id === c.conjuge_id) : undefined;
+    if (parceiro?.id && !usados.has(parceiro.id)) {
+      resultado.push(qualificacaoConjuntaTexto(c, parceiro));
+      usados.add(c.id);
+      usados.add(parceiro.id);
+    } else {
+      resultado.push(qualificacaoTexto(c));
+      usados.add(c.id);
+    }
+  }
+  return resultado;
+}
+
+// Busca, pra cada cliente Pessoa Jurídica da lista, o sócio de ordem 0
+// (representante legal — ver clientes_socios) e devolve pronto pra ser
+// anexado ao objeto do cliente antes de chamar qualificacaoTexto/
+// qualificacoesComConjuge. Clientes sem nenhum sócio cadastrado (ou Pessoa
+// Física, que nunca aparece aqui como pj_cliente_id) simplesmente não
+// aparecem no Map devolvido.
+async function buscarSociosRepresentantes(clienteIds: string[]): Promise<Map<string, ClienteComEndereco>> {
+  const idsValidos = clienteIds.filter((id): id is string => Boolean(id));
+  if (idsValidos.length === 0) return new Map();
+
+  const vinculos = await prisma.clientes_socios.findMany({
+    where: { pj_cliente_id: { in: idsValidos }, ordem: 0 },
+    include: { socio: { include: { cidades: true, estados: true } } }
+  });
+
+  const mapa = new Map<string, ClienteComEndereco>();
+  for (const v of vinculos) {
+    mapa.set(v.pj_cliente_id, v.socio);
+  }
+  return mapa;
+}
+
+// Anexa socio_representante (quando existir) a cada cliente PJ da lista —
+// usado logo depois de buscar proprietários/interessados/contratante, antes
+// de chamar qualificacaoTexto/qualificacoesComConjuge.
+async function comSociosRepresentantes<T extends ClienteComEndereco>(clientes: T[]): Promise<T[]> {
+  const mapa = await buscarSociosRepresentantes(clientes.map((c) => c.id ?? ""));
+  if (mapa.size === 0) return clientes;
+  return clientes.map((c) => (c.id && mapa.has(c.id) ? { ...c, socio_representante: mapa.get(c.id) } : c));
 }
 
 // Nem todo cliente tem banco_id vinculado à tabela bancos (parte da base
@@ -383,6 +516,19 @@ async function resolverBanco(cliente: {
 // true já está configurado no Docxtemplater, então "\n" vira quebra real).
 function blocoAssinatura(nome: string, documento: string, papel: string): string {
   return `___________________________\n${nome}\n${documento}\n${papel}`;
+}
+
+// Mesmo bloco de assinatura, mas decide sozinho o texto do documento a
+// partir do cliente: Pessoa Física assina normal (nome + CPF); Pessoa
+// Jurídica assina "p.p." (por procuração/representação) o sócio-
+// administrador (ordem 0 em clientes_socios — ver socio_representante em
+// ClienteComEndereco), que é quem tem poder de assinar pela empresa.
+function blocoAssinaturaCliente(c: ClienteComEndereco, papel: string): string {
+  if (ehPessoaJuridica(c) && c.socio_representante) {
+    const s = c.socio_representante;
+    return blocoAssinatura(c.nome, `${docTexto(c)}\np.p. ${s.nome} - ${docTexto(s)}`, papel);
+  }
+  return blocoAssinatura(c.nome, docTexto(c), papel);
 }
 
 // Uma linha de condição de pagamento por extenso: antes só entravam Tipo,
@@ -511,16 +657,22 @@ async function montarDadosTransacao(
   });
   if (!t) throw new Error(`Transação "${transacaoId}" não encontrada.`);
 
-  const proprietarios = t.imoveis?.imoveis_proprietarios.map((v) => v.clientes) ?? [];
-  const interessados = t.transacoes_contrapartes.map((v) => v.clientes);
-  if (proprietarios.length === 0) {
+  const proprietariosBrutos = t.imoveis?.imoveis_proprietarios.map((v) => v.clientes) ?? [];
+  const interessadosBrutos = t.transacoes_contrapartes.map((v) => v.clientes);
+  if (proprietariosBrutos.length === 0) {
     throw new Error(
       "O imóvel desta transação não tem nenhum proprietário cadastrado — adicione ao menos um em Imóveis antes de gerar o contrato."
     );
   }
-  if (interessados.length === 0) {
+  if (interessadosBrutos.length === 0) {
     throw new Error("Esta transação não tem nenhum Cliente Interessado cadastrado — adicione ao menos um.");
   }
+
+  // Sócio-administrador (representante legal) de cada Pessoa Jurídica
+  // envolvida — buscado à parte e anexado antes de montar a qualificação
+  // (ver comentário completo em qualificacaoTexto/buscarSociosRepresentantes).
+  const proprietarios = await comSociosRepresentantes(proprietariosBrutos);
+  const interessados = await comSociosRepresentantes(interessadosBrutos);
 
   const hoje = new Date();
   const idTransacao = t.id_legado ?? t.id;
@@ -528,8 +680,8 @@ async function montarDadosTransacao(
   if (tipoDocumento === "contrato_locacao") {
     const primeiroInteressado = interessados[0];
     return {
-      TipoCliente: listaComE(proprietarios.map(qualificacaoTexto)),
-      TipoClienteCliente1: listaComE(interessados.map(qualificacaoTexto)),
+      TipoCliente: listaComE(qualificacoesComConjuge(proprietarios)),
+      TipoClienteCliente1: listaComE(qualificacoesComConjuge(interessados)),
       Cliente: proprietarios.map((c) => c.nome).join(", "),
       "Cpf/Cnpj": proprietarios.map(docTexto).join(", "),
       Cliente1: interessados.map((c) => c.nome).join(", "),
@@ -659,8 +811,8 @@ async function montarDadosTransacao(
   }));
 
   return {
-    QualificacaoVendedor: listaComE(proprietarios.map(qualificacaoTexto)),
-    QualificacaoComprador: listaComE(interessados.map(qualificacaoTexto)),
+    QualificacaoVendedor: listaComE(qualificacoesComConjuge(proprietarios)),
+    QualificacaoComprador: listaComE(qualificacoesComConjuge(interessados)),
     TextoObjetoImovel:
       `O imóvel objeto deste contrato é o localizado em ${t.imoveis?.endereco ?? "endereço não informado"}` +
       `${t.imoveis?.matricula ? `, matrícula nº ${t.imoveis.matricula}` : ""}` +
@@ -679,8 +831,8 @@ async function montarDadosTransacao(
     Loja: t.lojas.nome,
     DataAssinaturaExtenso: dataPorExtenso(t.data_assinatura ?? hoje),
     TextoAssinaturas: [
-      ...proprietarios.map((c) => blocoAssinatura(c.nome, docTexto(c), "VENDEDOR(A)")),
-      ...interessados.map((c) => blocoAssinatura(c.nome, docTexto(c), "COMPRADOR(A)"))
+      ...proprietarios.map((c) => blocoAssinaturaCliente(c, "VENDEDOR(A)")),
+      ...interessados.map((c) => blocoAssinaturaCliente(c, "COMPRADOR(A)"))
     ].join("\n\n"),
     TextoAssinaturasCorretores: [corretorProprietario, corretorContraparte]
       .filter((p, i, arr): p is NonNullable<typeof p> => Boolean(p) && arr.findIndex((x) => x?.id === p?.id) === i)
@@ -728,7 +880,7 @@ async function montarDadosContratoGestao(gestaoId: string): Promise<Record<strin
           estados: true,
           imoveis_proprietarios: {
             orderBy: { ordem: "asc" },
-            include: { clientes: true }
+            include: { clientes: { include: { cidades: true, estados: true } } }
           }
         }
       }
@@ -736,10 +888,15 @@ async function montarDadosContratoGestao(gestaoId: string): Promise<Record<strin
   });
   if (!g) throw new Error(`Gestão "${gestaoId}" não encontrada.`);
 
-  const principal = g.clientes;
-  const demaisProprietarios = g.imoveis.imoveis_proprietarios
+  const demaisProprietariosBrutos = g.imoveis.imoveis_proprietarios
     .map((v) => v.clientes)
-    .filter((c) => c.id !== principal.id);
+    .filter((c) => c.id !== g.clientes.id);
+
+  // Sócio-administrador (representante legal) do contratante principal e
+  // dos demais proprietários, quando algum deles for Pessoa Jurídica — mesmo
+  // padrão de montarDadosTransacao (ver comentário completo lá).
+  const [principal] = await comSociosRepresentantes([g.clientes]);
+  const demaisProprietarios = await comSociosRepresentantes(demaisProprietariosBrutos);
 
   const hoje = new Date();
 
@@ -748,7 +905,7 @@ async function montarDadosContratoGestao(gestaoId: string): Promise<Record<strin
     RG: principal.rg ?? "",
     CpfCnpj: docTexto(principal),
     EnderecoCompleto: enderecoClienteCompleto(principal),
-    Nacionalidade: nacionalidadeTexto(principal),
+    Nacionalidade: ehPessoaJuridica(principal) ? "" : nacionalidadeTexto(principal),
     EstadoCivil: principal.estado_civil ?? "",
     Email: principal.email ?? "",
     TelefoneCelular: formatTelefone(principal.telefone),
@@ -758,7 +915,7 @@ async function montarDadosContratoGestao(gestaoId: string): Promise<Record<strin
     TelefoneReserva: "",
     AssinaturasAdicionais:
       demaisProprietarios.length > 0
-        ? demaisProprietarios.map((c) => blocoAssinatura(c.nome, docTexto(c), "CONTRATANTE")).join("\n\n")
+        ? demaisProprietarios.map((c) => blocoAssinaturaCliente(c, "CONTRATANTE")).join("\n\n")
         : "",
     TipoImovel: g.imoveis.tipo_imovel ?? "",
     Rua: g.imoveis.rua ?? "",
@@ -848,12 +1005,15 @@ async function montarDadosAdmImovel(admImovelId: string): Promise<Record<string,
   });
   if (!a) throw new Error(`Administração "${admImovelId}" não encontrada.`);
 
-  const proprietarios = a.imoveis.imoveis_proprietarios.map((v) => v.clientes);
-  if (proprietarios.length === 0) {
+  const proprietariosBrutos = a.imoveis.imoveis_proprietarios.map((v) => v.clientes);
+  if (proprietariosBrutos.length === 0) {
     throw new Error(
       "O imóvel desta administração não tem nenhum proprietário cadastrado — adicione ao menos um antes de gerar o contrato."
     );
   }
+  // Sócio-administrador (representante legal) de cada Pessoa Jurídica —
+  // mesmo padrão de montarDadosTransacao (ver comentário completo lá).
+  const proprietarios = await comSociosRepresentantes(proprietariosBrutos);
   // Dados bancários do repasse usam sempre o primeiro proprietário da lista.
   const primeiro = proprietarios[0];
 
@@ -862,15 +1022,15 @@ async function montarDadosAdmImovel(admImovelId: string): Promise<Record<string,
   }
 
   return {
-    QualificacaoProprietario: listaComE(proprietarios.map(qualificacaoTexto)),
+    QualificacaoProprietario: listaComE(qualificacoesComConjuge(proprietarios)),
     // Ainda usado pelo loop {{#Proprietarios}} do bloco de assinatura —
     // cada proprietário assina em uma linha própria.
     Proprietarios: proprietarios.map((c) => ({
       Nome: c.nome,
-      Nacionalidade: c.sexo === "Mulher" ? "brasileira" : "brasileiro",
+      Nacionalidade: ehPessoaJuridica(c) ? "" : c.sexo === "Mulher" ? "brasileira" : "brasileiro",
       Profissao: c.profissao ?? c.cat_profissao ?? "",
       EstadoCivil: c.estado_civil ?? "",
-      Cpf: formatarCpf(c.cpf ?? ""),
+      Cpf: docTexto(c),
       Endereco: enderecoCompleto(c)
     })),
     ClienteProprietario: primeiro.nome,

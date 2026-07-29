@@ -16,6 +16,14 @@ const CAMPO = "text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full outl
 // O campo hidden usa `name={campo}` (padrão "proprietario_extra_id") — quem
 // usar este componente precisa chamar sincronizarProprietariosExtra() na
 // server action correspondente pra gravar de fato.
+// Cliente recém-adicionado pelo widget, com o vínculo de cônjuge opcional
+// que o admin declara na hora — "esse novo é cônjuge de fulano, que já
+// estava na lista?" (ver comentário completo em prisma/schema.prisma,
+// campo clientes.conjuge_id). conjugeDeId é o id de alguém JÁ na lista
+// (proprietariosAtuais ou outro já adicionado antes dele) — nunca de outro
+// cliente novo adicionado depois, pra não criar dependência de ordem.
+type ClienteAdicionado = ClienteOpcao & { conjugeDeId?: string };
+
 export function AdicionarProprietarioImovel({
   proprietariosAtuais,
   clientesDisponiveis,
@@ -25,7 +33,7 @@ export function AdicionarProprietarioImovel({
   clientesDisponiveis: ClienteOpcao[];
   campo?: string;
 }) {
-  const [adicionados, setAdicionados] = useState<ClienteOpcao[]>([]);
+  const [adicionados, setAdicionados] = useState<ClienteAdicionado[]>([]);
   const [busca, setBusca] = useState("");
   const [listaAberta, setListaAberta] = useState(false);
 
@@ -42,13 +50,21 @@ export function AdicionarProprietarioImovel({
   }, [busca, clientesDisponiveis, jaVinculadosIds]);
 
   function adicionar(c: ClienteOpcao) {
-    setAdicionados((atual) => [...atual, c]);
+    setAdicionados((atual) => [...atual, { ...c, conjugeDeId: undefined }]);
     setBusca("");
     setListaAberta(false);
   }
 
   function remover(id: string) {
-    setAdicionados((atual) => atual.filter((c) => c.id !== id));
+    setAdicionados((atual) =>
+      // Some com o cônjuge quem apontava pra ele, senão a pergunta "é cônjuge
+      // de fulano" continuaria de pé com o fulano removido.
+      atual.filter((c) => c.id !== id).map((c) => (c.conjugeDeId === id ? { ...c, conjugeDeId: undefined } : c))
+    );
+  }
+
+  function definirConjuge(id: string, conjugeDeId: string) {
+    setAdicionados((atual) => atual.map((c) => (c.id === id ? { ...c, conjugeDeId: conjugeDeId || undefined } : c)));
   }
 
   return (
@@ -56,6 +72,11 @@ export function AdicionarProprietarioImovel({
       {adicionados.map((c) => (
         <input key={c.id} type="hidden" name={campo} value={c.id} />
       ))}
+      {adicionados
+        .filter((c) => c.conjugeDeId)
+        .map((c) => (
+          <input key={`${c.id}-conjuge`} type="hidden" name={`${campo}_conjuge`} value={`${c.id}:${c.conjugeDeId}`} />
+        ))}
 
       {proprietariosAtuais.length > 0 && (
         <div className="text-xs text-gray-700 mb-2">
@@ -65,18 +86,41 @@ export function AdicionarProprietarioImovel({
       )}
 
       {adicionados.length > 0 && (
-        <div className="flex flex-col gap-1 mb-2">
-          {adicionados.map((c) => (
-            <div
-              key={c.id}
-              className="flex items-center justify-between text-xs bg-green-50 border border-green-200 rounded-lg px-3 py-1.5"
-            >
-              <span className="text-green-800 font-medium truncate">+ {c.nome}</span>
-              <button type="button" onClick={() => remover(c.id)} className="text-green-700/60 hover:text-red-600 ml-2">
-                remover
-              </button>
-            </div>
-          ))}
+        <div className="flex flex-col gap-2 mb-2">
+          {adicionados.map((c) => {
+            // Só oferece marcar cônjuge de quem já estava na lista ANTES
+            // deste (proprietariosAtuais + adicionados anteriores a ele) —
+            // evita depender da ordem em que os cliques acontecem.
+            const indiceAtual = adicionados.findIndex((a) => a.id === c.id);
+            const opcoesVinculo = [
+              ...proprietariosAtuais,
+              ...adicionados.slice(0, indiceAtual).map((a) => ({ id: a.id, nome: a.nome }))
+            ];
+            return (
+              <div key={c.id} className="bg-green-50 border border-green-200 rounded-lg px-3 py-1.5">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-green-800 font-medium truncate">+ {c.nome}</span>
+                  <button type="button" onClick={() => remover(c.id)} className="text-green-700/60 hover:text-red-600 ml-2">
+                    remover
+                  </button>
+                </div>
+                {opcoesVinculo.length > 0 && (
+                  <select
+                    className="text-[11px] border border-green-300 rounded-md px-2 py-1 mt-1.5 w-full bg-white text-green-900"
+                    value={c.conjugeDeId ?? ""}
+                    onChange={(e) => definirConjuge(c.id, e.target.value)}
+                  >
+                    <option value="">Não é cônjuge de ninguém na lista</option>
+                    {opcoesVinculo.map((o) => (
+                      <option key={o.id} value={o.id}>
+                        É cônjuge de {o.nome}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 

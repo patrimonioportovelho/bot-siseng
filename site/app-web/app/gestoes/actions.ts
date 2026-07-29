@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAdminSession, logAlteracao } from "@/lib/auth";
 import { valorEditavelParaDecimal, percentualParaDecimal } from "@/lib/format";
 import { registrarEJogarErro } from "@/lib/erros";
-import { sincronizarProprietariosExtra } from "@/lib/imoveis/proprietarios-extra";
+import { sincronizarProprietariosExtra, sincronizarVinculosConjuge } from "@/lib/imoveis/proprietarios-extra";
 
 function texto(formData: FormData, campo: string): string | null {
   const v = formData.get(campo);
@@ -54,6 +54,7 @@ export async function atualizarGestaoAction(formData: FormData) {
   if (!antes) throw new Error("Gestão não encontrada.");
 
   await sincronizarProprietariosExtra(antes.imovel_id, formData);
+  await sincronizarVinculosConjuge(formData);
 
   const novaChavePosse = texto(formData, "chave_posse") ?? "imobiliaria";
   const novaChaveCom = texto(formData, "chave_com");

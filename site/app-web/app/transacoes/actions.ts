@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAdminSession, requireAdm, logAlteracao } from "@/lib/auth";
 import { valorEditavelParaDecimal, percentualParaDecimal } from "@/lib/format";
 import { registrarEJogarErro } from "@/lib/erros";
-import { sincronizarProprietariosExtra } from "@/lib/imoveis/proprietarios-extra";
+import { sincronizarProprietariosExtra, sincronizarVinculosConjuge } from "@/lib/imoveis/proprietarios-extra";
 
 function texto(formData: FormData, campo: string): string | null {
   const v = formData.get(campo);
@@ -289,6 +289,7 @@ export async function criarTransacaoAction(_prev: unknown, formData: FormData): 
     // algum co-titular esquecido pelo corretor direto neste formulário
     // (components/adicionar-proprietario-imovel.tsx), grava primeiro.
     await sincronizarProprietariosExtra(imovelId, formData);
+    await sincronizarVinculosConjuge(formData);
     const clienteId = await proprietarioDoImovel(imovelId);
     const idLegado = await gerarProximoId(tipo);
 
@@ -348,6 +349,7 @@ export async function atualizarTransacaoAction(_prev: unknown, formData: FormDat
 
   try {
     await sincronizarProprietariosExtra(imovelId, formData);
+    await sincronizarVinculosConjuge(formData);
     const clienteId = await proprietarioDoImovel(imovelId);
 
     const depois = await prisma.transacoes

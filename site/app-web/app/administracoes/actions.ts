@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAdminSession, requireAdm, logAlteracao } from "@/lib/auth";
 import { valorEditavelParaDecimal, percentualParaDecimal } from "@/lib/format";
 import { registrarEJogarErro } from "@/lib/erros";
-import { sincronizarProprietariosExtra } from "@/lib/imoveis/proprietarios-extra";
+import { sincronizarProprietariosExtra, sincronizarVinculosConjuge } from "@/lib/imoveis/proprietarios-extra";
 
 function texto(formData: FormData, campo: string): string | null {
   const v = formData.get(campo);
@@ -106,6 +106,7 @@ export async function criarAdministracaoAction(formData: FormData) {
   }
 
   await sincronizarProprietariosExtra(imovelId, formData);
+  await sincronizarVinculosConjuge(formData);
 
   const idLegado = await gerarProximoId();
 
@@ -144,6 +145,7 @@ export async function atualizarAdministracaoAction(formData: FormData) {
 
   const imovelIdForm = texto(formData, "imovel_id") ?? antes.imovel_id;
   await sincronizarProprietariosExtra(imovelIdForm, formData);
+  await sincronizarVinculosConjuge(formData);
 
   const depois = await prisma.adm_imoveis
     .update({

@@ -33,3 +33,31 @@ export async function sincronizarProprietariosExtra(
     skipDuplicates: true
   });
 }
+
+// Grava o vínculo de cônjuge declarado ao adicionar um proprietário/co-
+// titular esquecido (ver components/adicionar-proprietario-imovel.tsx) — o
+// widget manda um ou mais pares "clienteNovoId:clienteJaNaListaId" no campo
+// `${campo}_conjuge`, um por cliente novo que o admin marcou como cônjuge de
+// alguém que já estava na lista. Grava dos dois lados (conjuge_id aponta um
+// pro outro) pra qualificacaoConjuntaTexto (lib/documentos/gerar.ts) achar o
+// par não importa qual dos dois vier primeiro na lista de partes.
+export async function sincronizarVinculosConjuge(formData: FormData, campo = "proprietario_extra_id"): Promise<void> {
+  const pares = formData
+    .getAll(`${campo}_conjuge`)
+    .map((v) => String(v).trim())
+    .filter((v) => v.includes(":"))
+    .map((v) => {
+      const [clienteId, conjugeId] = v.split(":");
+      return { clienteId: clienteId?.trim(), conjugeId: conjugeId?.trim() };
+    })
+    .filter((p): p is { clienteId: string; conjugeId: string } => Boolean(p.clienteId && p.conjugeId));
+
+  if (pares.length === 0) return;
+
+  await prisma.$transaction(
+    pares.flatMap((p) => [
+      prisma.clientes.update({ where: { id: p.clienteId }, data: { conjuge_id: p.conjugeId } }),
+      prisma.clientes.update({ where: { id: p.conjugeId }, data: { conjuge_id: p.clienteId } })
+    ])
+  );
+}

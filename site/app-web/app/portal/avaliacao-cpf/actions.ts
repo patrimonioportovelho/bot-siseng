@@ -7,6 +7,8 @@ import { valorEditavelParaDecimal } from "@/lib/format";
 import { registrarEJogarErro } from "@/lib/erros";
 import { enviarEmail, type EmailAnexo } from "@/lib/email";
 import { buscarClienteDuplicado, mensagemClienteDuplicado } from "@/lib/clientes/duplicidade";
+import { validarCpfCnpj } from "@/lib/clientes/validacao";
+import { montarEnderecoPF } from "@/lib/clientes/endereco";
 import { criarUploadAssinadoDocumento, criarLinkDownloadDocumento, baixarDocumentoPortal } from "@/lib/supabase-admin";
 
 const EMAIL_DESTINO_PADRAO = "engimob@remax.com.br";
@@ -115,6 +117,8 @@ type ClienteAvaliacaoDigitado = {
   expedicao: string;
   telefone: string;
   email: string;
+  nomeMae: string;
+  nomePai: string;
   estadoCivil: string;
   uniaoEstavel: string;
   dataNascimento: string;
@@ -123,6 +127,13 @@ type ClienteAvaliacaoDigitado = {
   profissao: string;
   rendaBruta: string;
   endereco: string;
+  cep: string;
+  rua: string;
+  nPredial: string;
+  complemento: string;
+  bairro: string;
+  estadoId: string;
+  cidadeId: string;
   observacao: string;
   bancoId: string;
   codigoBanco: string;
@@ -157,6 +168,8 @@ function parseCliente(formData: FormData): ClienteAvaliacaoDigitado | null {
       expedicao: String(c?.expedicao ?? "").trim(),
       telefone: String(c?.telefone ?? "").trim(),
       email: String(c?.email ?? "").trim(),
+      nomeMae: String(c?.nomeMae ?? "").trim(),
+      nomePai: String(c?.nomePai ?? "").trim(),
       estadoCivil: String(c?.estadoCivil ?? "").trim(),
       uniaoEstavel: String(c?.uniaoEstavel ?? "").trim(),
       dataNascimento: String(c?.dataNascimento ?? "").trim(),
@@ -165,6 +178,13 @@ function parseCliente(formData: FormData): ClienteAvaliacaoDigitado | null {
       profissao: String(c?.profissao ?? "").trim(),
       rendaBruta: String(c?.rendaBruta ?? "").trim(),
       endereco: String(c?.endereco ?? "").trim(),
+      cep: String(c?.cep ?? "").trim(),
+      rua: String(c?.rua ?? "").trim(),
+      nPredial: String(c?.nPredial ?? "").trim(),
+      complemento: String(c?.complemento ?? "").trim(),
+      bairro: String(c?.bairro ?? "").trim(),
+      estadoId: String(c?.estadoId ?? "").trim(),
+      cidadeId: String(c?.cidadeId ?? "").trim(),
       observacao: String(c?.observacao ?? "").trim(),
       bancoId: String(c?.bancoId ?? "").trim(),
       codigoBanco: String(c?.codigoBanco ?? "").trim(),
@@ -182,6 +202,18 @@ function parseCliente(formData: FormData): ClienteAvaliacaoDigitado | null {
 async function criarClienteCompleto(c: ClienteAvaliacaoDigitado, parceiroId: string) {
   const ehCnpj = c.tipoCliente === "Pessoa Jurídica";
   const dataNasc = c.dataNascimento ? new Date(c.dataNascimento) : null;
+
+  const endereco = ehCnpj
+    ? c.endereco || null
+    : await montarEnderecoPF({
+        rua: c.rua || null,
+        nPredial: c.nPredial || null,
+        complemento: c.complemento || null,
+        bairro: c.bairro || null,
+        cidadeId: c.cidadeId || null,
+        estadoId: c.estadoId || null
+      });
+
   return prisma.clientes.create({
     data: {
       nome: c.nome,
@@ -189,18 +221,27 @@ async function criarClienteCompleto(c: ClienteAvaliacaoDigitado, parceiroId: str
       sexo: !ehCnpj ? c.sexo || null : null,
       cpf: !ehCnpj ? digitos(c.cpf) : null,
       cnpj: ehCnpj ? digitos(c.cnpj) : null,
-      rg: c.rg || null,
-      expedicao: c.expedicao || null,
+      rg: !ehCnpj ? c.rg || null : null,
+      expedicao: !ehCnpj ? c.expedicao || null : null,
+      nome_mae: !ehCnpj ? c.nomeMae || null : null,
+      nome_pai: !ehCnpj ? c.nomePai || null : null,
       telefone: digitos(c.telefone),
       email: c.email || null,
-      estado_civil: c.estadoCivil || null,
-      uniao_estavel: booleanoTri(c.uniaoEstavel),
+      estado_civil: !ehCnpj ? c.estadoCivil || null : null,
+      uniao_estavel: !ehCnpj ? booleanoTri(c.uniaoEstavel) : null,
       data_nascimento: dataNasc && !Number.isNaN(dataNasc.getTime()) ? dataNasc : null,
       cat_profissao: c.catProfissao || null,
       tipo_servidor: c.tipoServidor || null,
       profissao: c.profissao || null,
       renda_bruta: c.rendaBruta ? valorEditavelParaDecimal(c.rendaBruta) : null,
-      endereco: c.endereco || null,
+      cep: !ehCnpj ? digitos(c.cep) : null,
+      rua: !ehCnpj ? c.rua || null : null,
+      n_predial: !ehCnpj ? c.nPredial || null : null,
+      complemento: !ehCnpj ? c.complemento || null : null,
+      bairro: !ehCnpj ? c.bairro || null : null,
+      estado_id: !ehCnpj ? c.estadoId || null : null,
+      cidade_id: !ehCnpj ? c.cidadeId || null : null,
+      endereco,
       observacao: c.observacao || null,
       banco_id: c.bancoId || null,
       codigo_banco: c.codigoBanco || null,
@@ -259,6 +300,9 @@ export async function criarAvaliacaoCpfAction(
       clienteTelefone = existente.telefone;
       clienteCpf = existente.cpf;
     } else {
+      const erroDocumento = documentoDigitado ? validarCpfCnpj(documentoDigitado) : null;
+      if (erroDocumento) return { ok: false, erro: erroDocumento };
+
       const duplicado = await buscarClienteDuplicado({ nome: cliente.nome, cpfCnpj: documentoDigitado });
       if (duplicado) {
         return { ok: false, erro: mensagemClienteDuplicado(duplicado) };

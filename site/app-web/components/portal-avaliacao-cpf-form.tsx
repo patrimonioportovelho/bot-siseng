@@ -11,6 +11,8 @@ import {
   CAT_PROFISSAO_OPCOES
 } from "@/lib/clientes/opcoes";
 import type { ClienteBuscaResultado } from "@/lib/transacoes/buscas";
+import { validarCpfCnpj } from "@/lib/clientes/validacao";
+import { buscarCep, UF_PARA_ESTADO } from "@/lib/enderecos";
 import { criarAvaliacaoCpfAction, prepararUploadDocumentoAvaliacaoAction } from "@/app/portal/avaliacao-cpf/actions";
 import { supabaseBrowser, BUCKET_DOCUMENTOS_PORTAL } from "@/lib/supabase-browser";
 
@@ -32,6 +34,8 @@ type ClienteAvaliacao = {
   expedicao: string;
   telefone: string;
   email: string;
+  nomeMae: string;
+  nomePai: string;
   estadoCivil: string;
   // "" (não perguntado), "true" ou "false" — só perguntado/mostrado quando
   // estadoCivil é um dos que pedem (ver ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL).
@@ -41,7 +45,17 @@ type ClienteAvaliacao = {
   tipoServidor: string;
   profissao: string;
   rendaBruta: string;
+  // Endereço de Pessoa Física é dividido (CEP/logradouro/número/complemento/
+  // bairro/cidade/estado); Pessoa Jurídica usa "endereco" como Sede em texto
+  // livre solto.
   endereco: string;
+  cep: string;
+  rua: string;
+  nPredial: string;
+  complemento: string;
+  bairro: string;
+  estadoId: string;
+  cidadeId: string;
   observacao: string;
   bancoId: string;
   codigoBanco: string;
@@ -63,6 +77,8 @@ function clienteVazio(): ClienteAvaliacao {
     expedicao: "",
     telefone: "",
     email: "",
+    nomeMae: "",
+    nomePai: "",
     estadoCivil: "",
     uniaoEstavel: "",
     dataNascimento: "",
@@ -71,6 +87,13 @@ function clienteVazio(): ClienteAvaliacao {
     profissao: "",
     rendaBruta: "",
     endereco: "",
+    cep: "",
+    rua: "",
+    nPredial: "",
+    complemento: "",
+    bairro: "",
+    estadoId: "",
+    cidadeId: "",
     observacao: "",
     bancoId: "",
     codigoBanco: "",
@@ -125,10 +148,14 @@ const LABEL = "text-xs text-gray-600 block mb-1";
 
 export function PortalAvaliacaoCpfForm({
   clientesDisponiveis,
-  bancos
+  bancos,
+  estados,
+  cidades
 }: {
   clientesDisponiveis: ClienteBuscaResultado[];
   bancos: Banco[];
+  estados: { id: string; nome: string }[];
+  cidades: { id: string; nome: string; estado_id: string }[];
 }) {
   const [cliente, setCliente] = useState<ClienteAvaliacao>(clienteVazio());
   const [busca, setBusca] = useState("");
@@ -230,6 +257,29 @@ export function PortalAvaliacaoCpfForm({
   function selecionarBanco(bancoId: string) {
     const banco = bancos.find((b) => b.id === bancoId);
     setCliente((atual) => ({ ...atual, bancoId, codigoBanco: banco?.codigo ?? atual.codigoBanco }));
+  }
+
+  // Busca automática de CEP (ViaCEP) — mesmo comportamento do cadastro
+  // administrativo (ver components/cliente-form.tsx).
+  async function buscarEnderecoPorCep() {
+    const encontrado = await buscarCep(cliente.cep);
+    if (!encontrado) return;
+
+    const nomeEstado = UF_PARA_ESTADO[encontrado.uf] ?? "";
+    const estadoEncontrado = estados.find((e) => e.nome.toLowerCase() === nomeEstado.toLowerCase());
+    const cidadeEncontrada = estadoEncontrado
+      ? cidades.find(
+          (cid) => cid.estado_id === estadoEncontrado.id && cid.nome.toLowerCase() === encontrado.localidade.toLowerCase()
+        )
+      : undefined;
+
+    setCliente((atual) => ({
+      ...atual,
+      rua: encontrado.logradouro || atual.rua,
+      bairro: encontrado.bairro || atual.bairro,
+      estadoId: estadoEncontrado?.id ?? atual.estadoId,
+      cidadeId: cidadeEncontrada?.id ?? ""
+    }));
   }
 
   function adicionarDocumentos(lista: FileList | null) {
@@ -401,34 +451,70 @@ export function PortalAvaliacaoCpfForm({
                 {mostrarCpf && (
                   <div>
                     <label className={LABEL}>CPF *</label>
-                    <input className={CAMPO} placeholder="000.000.000-00" value={cliente.cpf} onChange={(e) => atualizar("cpf", e.target.value)} />
+                    <input
+                      className={CAMPO}
+                      placeholder="000.000.000-00"
+                      value={cliente.cpf}
+                      onChange={(e) => atualizar("cpf", e.target.value)}
+                      onBlur={(e) => {
+                        const erro = e.target.value ? validarCpfCnpj(e.target.value) : null;
+                        if (erro) alert(erro);
+                      }}
+                    />
                   </div>
                 )}
                 {mostrarCnpj && (
                   <div>
                     <label className={LABEL}>CNPJ *</label>
-                    <input className={CAMPO} placeholder="00.000.000/0000-00" value={cliente.cnpj} onChange={(e) => atualizar("cnpj", e.target.value)} />
+                    <input
+                      className={CAMPO}
+                      placeholder="00.000.000/0000-00"
+                      value={cliente.cnpj}
+                      onChange={(e) => atualizar("cnpj", e.target.value)}
+                      onBlur={(e) => {
+                        const erro = e.target.value ? validarCpfCnpj(e.target.value) : null;
+                        if (erro) alert(erro);
+                      }}
+                    />
                   </div>
                 )}
-                <div>
-                  <label className={LABEL}>RG</label>
-                  <input className={CAMPO} value={cliente.rg} onChange={(e) => atualizar("rg", e.target.value)} />
-                </div>
-                <div>
-                  <label className={LABEL}>Estado de expedição</label>
-                  <input className={CAMPO} value={cliente.expedicao} onChange={(e) => atualizar("expedicao", e.target.value)} />
-                </div>
-                <div>
-                  <label className={LABEL}>Sexo</label>
-                  <select className={CAMPO} value={cliente.sexo} onChange={(e) => atualizar("sexo", e.target.value)}>
-                    <option value="">—</option>
-                    {SEXO_OPCOES.map((s) => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                {mostrarCpf && (
+                  <div>
+                    <label className={LABEL}>RG</label>
+                    <input className={CAMPO} value={cliente.rg} onChange={(e) => atualizar("rg", e.target.value)} />
+                  </div>
+                )}
+                {mostrarCpf && (
+                  <div>
+                    <label className={LABEL}>Estado de expedição</label>
+                    <input className={CAMPO} value={cliente.expedicao} onChange={(e) => atualizar("expedicao", e.target.value)} />
+                  </div>
+                )}
+                {mostrarCpf && (
+                  <div>
+                    <label className={LABEL}>Sexo</label>
+                    <select className={CAMPO} value={cliente.sexo} onChange={(e) => atualizar("sexo", e.target.value)}>
+                      <option value="">—</option>
+                      {SEXO_OPCOES.map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                {mostrarCpf && (
+                  <>
+                    <div>
+                      <label className={LABEL}>Nome da mãe</label>
+                      <input className={CAMPO} value={cliente.nomeMae} onChange={(e) => atualizar("nomeMae", e.target.value)} />
+                    </div>
+                    <div>
+                      <label className={LABEL}>Nome do pai</label>
+                      <input className={CAMPO} value={cliente.nomePai} onChange={(e) => atualizar("nomePai", e.target.value)} />
+                    </div>
+                  </>
+                )}
                 <div>
                   <label className={LABEL}>Estado civil</label>
                   <select
@@ -475,10 +561,66 @@ export function PortalAvaliacaoCpfForm({
                   <label className={LABEL}>E-mail</label>
                   <input className={CAMPO} type="email" value={cliente.email} onChange={(e) => atualizar("email", e.target.value)} />
                 </div>
-                <div className="md:col-span-2">
-                  <label className={LABEL}>Endereço</label>
-                  <input className={CAMPO} value={cliente.endereco} onChange={(e) => atualizar("endereco", e.target.value)} />
-                </div>
+                {!mostrarCpf ? (
+                  <div className="md:col-span-2">
+                    <label className={LABEL}>Sede (endereço completo)</label>
+                    <input className={CAMPO} value={cliente.endereco} onChange={(e) => atualizar("endereco", e.target.value)} />
+                  </div>
+                ) : (
+                  <>
+                    <div>
+                      <label className={LABEL}>CEP</label>
+                      <input className={CAMPO} value={cliente.cep} onChange={(e) => atualizar("cep", e.target.value)} onBlur={buscarEnderecoPorCep} />
+                    </div>
+                    <div>
+                      <label className={LABEL}>Logradouro</label>
+                      <input className={CAMPO} value={cliente.rua} onChange={(e) => atualizar("rua", e.target.value)} />
+                    </div>
+                    <div>
+                      <label className={LABEL}>Número predial</label>
+                      <input className={CAMPO} value={cliente.nPredial} onChange={(e) => atualizar("nPredial", e.target.value)} />
+                    </div>
+                    <div>
+                      <label className={LABEL}>Complemento</label>
+                      <input className={CAMPO} value={cliente.complemento} onChange={(e) => atualizar("complemento", e.target.value)} />
+                    </div>
+                    <div>
+                      <label className={LABEL}>Bairro</label>
+                      <input className={CAMPO} value={cliente.bairro} onChange={(e) => atualizar("bairro", e.target.value)} />
+                    </div>
+                    <div>
+                      <label className={LABEL}>Estado</label>
+                      <select
+                        className={CAMPO}
+                        value={cliente.estadoId}
+                        onChange={(e) => {
+                          atualizar("estadoId", e.target.value);
+                          atualizar("cidadeId", "");
+                        }}
+                      >
+                        <option value="">—</option>
+                        {estados.map((e) => (
+                          <option key={e.id} value={e.id}>
+                            {e.nome}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className={LABEL}>Cidade</label>
+                      <select className={CAMPO} value={cliente.cidadeId} onChange={(e) => atualizar("cidadeId", e.target.value)}>
+                        <option value="">—</option>
+                        {cidades
+                          .filter((c) => c.estado_id === cliente.estadoId)
+                          .map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.nome}
+                            </option>
+                          ))}
+                      </select>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
 

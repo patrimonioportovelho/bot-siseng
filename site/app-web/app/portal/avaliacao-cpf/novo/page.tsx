@@ -20,9 +20,11 @@ export const maxDuration = 30;
 export default async function PortalAvaliacaoCpfNovoPage() {
   const session = await requirePortalSession();
 
-  const [clientes, bancos] = await Promise.all([
+  const [clientes, bancos, estados, cidades] = await Promise.all([
     listarClientesParaCompraVenda(session.parceiroId),
-    prisma.bancos.findMany({ orderBy: { nome: "asc" } })
+    prisma.bancos.findMany({ orderBy: { nome: "asc" } }),
+    prisma.estados.findMany({ orderBy: { nome: "asc" } }),
+    prisma.cidades.findMany({ orderBy: { nome: "asc" } })
   ]);
 
   return (
@@ -43,6 +45,8 @@ export default async function PortalAvaliacaoCpfNovoPage() {
         <PortalAvaliacaoCpfForm
           clientesDisponiveis={clientes}
           bancos={bancos.map((b) => ({ id: b.id, nome: b.nome, codigo: b.codigo }))}
+          estados={estados.map((e) => ({ id: e.id, nome: e.nome }))}
+          cidades={cidades.map((c) => ({ id: c.id, nome: c.nome, estado_id: c.estado_id }))}
         />
       </div>
     </div>

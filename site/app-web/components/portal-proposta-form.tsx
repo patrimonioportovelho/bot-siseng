@@ -1,20 +1,43 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ESTADOS_CIVIS, ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL, TIPOS_CONTA, TIPOS_PIX } from "@/lib/clientes/opcoes";
+import {
+  ESTADOS_CIVIS,
+  ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL,
+  TIPOS_CONTA,
+  TIPOS_PIX,
+  TIPOS_CLIENTE
+} from "@/lib/clientes/opcoes";
 import { TIPO_CONDICAO_OPCOES, FORMA_PAGAMENTO_CONDICAO_OPCOES, MOMENTO_CONDICAO_OPCOES } from "@/lib/transacoes/opcoes";
+import { validarCpfCnpj } from "@/lib/clientes/validacao";
+import { buscarCep, UF_PARA_ESTADO } from "@/lib/enderecos";
 import { gerarPropostaAction } from "@/app/portal/proposta/actions";
 
 type Banco = { id: string; nome: string; codigo: string | null };
 
 type ClienteLinha = {
   // Presente só quando o corretor escolheu um cliente já cadastrado — nesse
-  // caso os campos ficam travados (só leitura), pra não editar um cadastro
-  // existente por aqui.
+  // caso mostra só um resumo (não edita cadastro existente por aqui).
   clienteId?: string;
+  // Sempre perguntado antes do resto — Pessoa Física ou Pessoa Jurídica
+  // (mesmo pente-fino da Central de Clientes, ver components/cliente-form.tsx).
+  tipoCliente: string;
   nome: string;
+  rg: string;
   cpfCnpj: string;
+  // Endereço de Pessoa Física é dividido (CEP/logradouro/número/complemento/
+  // bairro/cidade/estado); Pessoa Jurídica usa "endereco" como Sede em texto
+  // livre solto.
   endereco: string;
+  cep: string;
+  rua: string;
+  nPredial: string;
+  complemento: string;
+  bairro: string;
+  estadoId: string;
+  cidadeId: string;
+  nomeMae: string;
+  nomePai: string;
   estadoCivil: string;
   // "" (não perguntado), "true" ou "false" — só perguntado/mostrado quando
   // estadoCivil é um dos que pedem (ver ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL).
@@ -36,9 +59,6 @@ type ClienteDoCorretor = {
   id: string;
   nome: string;
   cpfCnpj: string;
-  endereco: string;
-  estadoCivil: string;
-  profissao: string;
 };
 
 type CondicaoPagamento = {
@@ -52,9 +72,20 @@ type CondicaoPagamento = {
 
 function clienteVazio(): ClienteLinha {
   return {
+    tipoCliente: "",
     nome: "",
+    rg: "",
     cpfCnpj: "",
     endereco: "",
+    cep: "",
+    rua: "",
+    nPredial: "",
+    complemento: "",
+    bairro: "",
+    estadoId: "",
+    cidadeId: "",
+    nomeMae: "",
+    nomePai: "",
     estadoCivil: "",
     uniaoEstavel: "",
     profissao: "",
@@ -106,11 +137,15 @@ const LABEL = "text-xs text-gray-600 block mb-1";
 export function PortalPropostaForm({
   corretor,
   clientesDoCorretor,
-  bancos
+  bancos,
+  estados,
+  cidades
 }: {
   corretor: { id: string; nome: string; creci: string | null; cpf: string | null };
   clientesDoCorretor: ClienteDoCorretor[];
   bancos: Banco[];
+  estados: { id: string; nome: string }[];
+  cidades: { id: string; nome: string; estado_id: string }[];
 }) {
   const [cliente, setCliente] = useState<ClienteLinha>(clienteVazio());
 
@@ -219,9 +254,8 @@ export function PortalPropostaForm({
     setCliente((atual) => ({ ...atual, bancoId, codigoBanco: banco?.codigo ?? atual.codigoBanco }));
   }
 
-  // Ao escolher um cliente já cadastrado, preenche e trava os campos — só
-  // reaproveita, não edita cadastro existente por aqui. Voltando pra "+ Novo
-  // cliente" limpa a linha.
+  // Ao escolher um cliente já cadastrado, mostra só um resumo — não edita
+  // cadastro existente por aqui. Voltando pra "+ Novo cliente" limpa a linha.
   function selecionarClienteExistente(clienteId: string) {
     if (!clienteId) {
       setCliente(clienteVazio());
@@ -230,21 +264,34 @@ export function PortalPropostaForm({
     const encontrado = clientesDoCorretor.find((c) => c.id === clienteId);
     if (!encontrado) return;
     setCliente({
+      ...clienteVazio(),
       clienteId: encontrado.id,
       nome: encontrado.nome,
-      cpfCnpj: encontrado.cpfCnpj,
-      endereco: encontrado.endereco,
-      estadoCivil: encontrado.estadoCivil,
-      uniaoEstavel: "",
-      profissao: encontrado.profissao,
-      bancoId: "",
-      codigoBanco: "",
-      agencia: "",
-      conta: "",
-      tipoConta: "",
-      tipoPix: "",
-      pix: ""
+      cpfCnpj: encontrado.cpfCnpj
     });
+  }
+
+  // Busca automática de CEP (ViaCEP) — mesmo comportamento do cadastro
+  // administrativo (ver components/cliente-form.tsx).
+  async function buscarEnderecoPorCep() {
+    const encontrado = await buscarCep(cliente.cep);
+    if (!encontrado) return;
+
+    const nomeEstado = UF_PARA_ESTADO[encontrado.uf] ?? "";
+    const estadoEncontrado = estados.find((e) => e.nome.toLowerCase() === nomeEstado.toLowerCase());
+    const cidadeEncontrada = estadoEncontrado
+      ? cidades.find(
+          (cid) => cid.estado_id === estadoEncontrado.id && cid.nome.toLowerCase() === encontrado.localidade.toLowerCase()
+        )
+      : undefined;
+
+    setCliente((atual) => ({
+      ...atual,
+      rua: encontrado.logradouro || atual.rua,
+      bairro: encontrado.bairro || atual.bairro,
+      estadoId: estadoEncontrado?.id ?? atual.estadoId,
+      cidadeId: cidadeEncontrada?.id ?? ""
+    }));
   }
 
   function adicionarCondicao() {
@@ -346,86 +393,180 @@ export function PortalPropostaForm({
           </div>
         )}
 
-        <div className="grid md:grid-cols-2 gap-3">
-          <div>
-            <label className={LABEL}>Nome / Razão social</label>
-            <input
-              className={cliente.clienteId ? CAMPO_TRAVADO : CAMPO}
-              readOnly={Boolean(cliente.clienteId)}
-              value={cliente.nome}
-              onChange={(e) => atualizarCliente("nome", e.target.value)}
-            />
+        {cliente.clienteId ? (
+          <div className="text-xs text-gray-700 font-medium">
+            {cliente.nome}
+            {cliente.cpfCnpj && <span className="text-gray-400 font-normal"> — {cliente.cpfCnpj}</span>}
           </div>
-          <div>
-            <label className={LABEL}>CPF / CNPJ</label>
-            <input
-              className={cliente.clienteId ? CAMPO_TRAVADO : CAMPO}
-              readOnly={Boolean(cliente.clienteId)}
-              value={cliente.cpfCnpj}
-              onChange={(e) => atualizarCliente("cpfCnpj", e.target.value)}
-            />
-          </div>
-          <div>
-            <label className={LABEL}>Endereço</label>
-            <input
-              className={cliente.clienteId ? CAMPO_TRAVADO : CAMPO}
-              readOnly={Boolean(cliente.clienteId)}
-              value={cliente.endereco}
-              onChange={(e) => atualizarCliente("endereco", e.target.value)}
-            />
-          </div>
-          <div>
-            <label className={LABEL}>Estado civil</label>
-            <select
-              className={cliente.clienteId ? CAMPO_TRAVADO : CAMPO}
-              disabled={Boolean(cliente.clienteId)}
-              value={cliente.estadoCivil}
-              onChange={(e) => {
-                atualizarCliente("estadoCivil", e.target.value);
-                if (!ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL.includes(e.target.value)) atualizarCliente("uniaoEstavel", "");
-              }}
-            >
-              <option value="">—</option>
-              {ESTADOS_CIVIS.map((op) => (
-                <option key={op} value={op}>
-                  {op}
-                </option>
-              ))}
-            </select>
-          </div>
-          {!cliente.clienteId && ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL.includes(cliente.estadoCivil) && (
+        ) : (
+          <div className="grid md:grid-cols-2 gap-3">
             <div>
-              <label className={LABEL}>Convive em união estável?</label>
+              <label className={LABEL}>Tipo de cliente</label>
               <select
                 className={CAMPO}
-                value={cliente.uniaoEstavel}
-                onChange={(e) => atualizarCliente("uniaoEstavel", e.target.value)}
+                value={cliente.tipoCliente}
+                onChange={(e) => atualizarCliente("tipoCliente", e.target.value)}
               >
-                <option value="">Não perguntado ainda</option>
-                <option value="false">Não</option>
-                <option value="true">Sim</option>
+                <option value="" disabled>
+                  Selecione...
+                </option>
+                {TIPOS_CLIENTE.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
               </select>
             </div>
-          )}
-          <div>
-            <label className={LABEL}>Profissão</label>
-            <input
-              className={cliente.clienteId ? CAMPO_TRAVADO : CAMPO}
-              readOnly={Boolean(cliente.clienteId)}
-              value={cliente.profissao}
-              onChange={(e) => atualizarCliente("profissao", e.target.value)}
-            />
+            <div>
+              <label className={LABEL}>{cliente.tipoCliente === "Pessoa Jurídica" ? "Razão social" : "Nome completo"}</label>
+              <input className={CAMPO} value={cliente.nome} onChange={(e) => atualizarCliente("nome", e.target.value)} />
+            </div>
+            {cliente.tipoCliente !== "Pessoa Jurídica" && (
+              <div>
+                <label className={LABEL}>RG</label>
+                <input className={CAMPO} value={cliente.rg} onChange={(e) => atualizarCliente("rg", e.target.value)} />
+              </div>
+            )}
+            <div>
+              <label className={LABEL}>{cliente.tipoCliente === "Pessoa Jurídica" ? "CNPJ" : "CPF"}</label>
+              <input
+                className={CAMPO}
+                value={cliente.cpfCnpj}
+                onChange={(e) => atualizarCliente("cpfCnpj", e.target.value)}
+                onBlur={(e) => {
+                  const erro = e.target.value ? validarCpfCnpj(e.target.value) : null;
+                  if (erro) alert(erro);
+                }}
+              />
+            </div>
+            {cliente.tipoCliente === "Pessoa Jurídica" ? (
+              <div className="md:col-span-2">
+                <label className={LABEL}>Sede (endereço completo)</label>
+                <input className={CAMPO} value={cliente.endereco} onChange={(e) => atualizarCliente("endereco", e.target.value)} />
+              </div>
+            ) : (
+              <>
+                <div>
+                  <label className={LABEL}>CEP</label>
+                  <input
+                    className={CAMPO}
+                    value={cliente.cep}
+                    onChange={(e) => atualizarCliente("cep", e.target.value)}
+                    onBlur={buscarEnderecoPorCep}
+                  />
+                </div>
+                <div>
+                  <label className={LABEL}>Logradouro</label>
+                  <input className={CAMPO} value={cliente.rua} onChange={(e) => atualizarCliente("rua", e.target.value)} />
+                </div>
+                <div>
+                  <label className={LABEL}>Número predial</label>
+                  <input className={CAMPO} value={cliente.nPredial} onChange={(e) => atualizarCliente("nPredial", e.target.value)} />
+                </div>
+                <div>
+                  <label className={LABEL}>Complemento</label>
+                  <input
+                    className={CAMPO}
+                    value={cliente.complemento}
+                    onChange={(e) => atualizarCliente("complemento", e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className={LABEL}>Bairro</label>
+                  <input className={CAMPO} value={cliente.bairro} onChange={(e) => atualizarCliente("bairro", e.target.value)} />
+                </div>
+                <div>
+                  <label className={LABEL}>Estado</label>
+                  <select
+                    className={CAMPO}
+                    value={cliente.estadoId}
+                    onChange={(e) => {
+                      atualizarCliente("estadoId", e.target.value);
+                      atualizarCliente("cidadeId", "");
+                    }}
+                  >
+                    <option value="">—</option>
+                    {estados.map((e) => (
+                      <option key={e.id} value={e.id}>
+                        {e.nome}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className={LABEL}>Cidade</label>
+                  <select className={CAMPO} value={cliente.cidadeId} onChange={(e) => atualizarCliente("cidadeId", e.target.value)}>
+                    <option value="">—</option>
+                    {cidades
+                      .filter((c) => c.estado_id === cliente.estadoId)
+                      .map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.nome}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              </>
+            )}
+            {cliente.tipoCliente !== "Pessoa Jurídica" && (
+              <>
+                <div>
+                  <label className={LABEL}>Nome da mãe</label>
+                  <input className={CAMPO} value={cliente.nomeMae} onChange={(e) => atualizarCliente("nomeMae", e.target.value)} />
+                </div>
+                <div>
+                  <label className={LABEL}>Nome do pai</label>
+                  <input className={CAMPO} value={cliente.nomePai} onChange={(e) => atualizarCliente("nomePai", e.target.value)} />
+                </div>
+                <div>
+                  <label className={LABEL}>Estado civil</label>
+                  <select
+                    className={CAMPO}
+                    value={cliente.estadoCivil}
+                    onChange={(e) => {
+                      atualizarCliente("estadoCivil", e.target.value);
+                      if (!ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL.includes(e.target.value)) atualizarCliente("uniaoEstavel", "");
+                    }}
+                  >
+                    <option value="">—</option>
+                    {ESTADOS_CIVIS.map((op) => (
+                      <option key={op} value={op}>
+                        {op}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL.includes(cliente.estadoCivil) && (
+                  <div>
+                    <label className={LABEL}>Convive em união estável?</label>
+                    <select
+                      className={CAMPO}
+                      value={cliente.uniaoEstavel}
+                      onChange={(e) => atualizarCliente("uniaoEstavel", e.target.value)}
+                    >
+                      <option value="">Não perguntado ainda</option>
+                      <option value="false">Não</option>
+                      <option value="true">Sim</option>
+                    </select>
+                  </div>
+                )}
+                <div>
+                  <label className={LABEL}>Profissão</label>
+                  <input className={CAMPO} value={cliente.profissao} onChange={(e) => atualizarCliente("profissao", e.target.value)} />
+                </div>
+              </>
+            )}
           </div>
-        </div>
+        )}
 
+        {!cliente.clienteId && (
         <div className="mt-3 pt-3 border-t border-gray-100">
           <div className="text-[11px] font-semibold text-gray-500 mb-2">Dados bancários</div>
           <div className="grid md:grid-cols-2 gap-3">
             <div>
               <label className={LABEL}>Banco</label>
               <select
-                className={cliente.clienteId ? CAMPO_TRAVADO : CAMPO}
-                disabled={Boolean(cliente.clienteId)}
+                className={CAMPO}
                 value={cliente.bancoId}
                 onChange={(e) => selecionarBanco(e.target.value)}
               >
@@ -440,8 +581,7 @@ export function PortalPropostaForm({
             <div>
               <label className={LABEL}>Código do banco</label>
               <input
-                className={cliente.clienteId ? CAMPO_TRAVADO : CAMPO}
-                readOnly={Boolean(cliente.clienteId)}
+                className={CAMPO}
                 value={cliente.codigoBanco}
                 onChange={(e) => atualizarCliente("codigoBanco", e.target.value)}
                 placeholder="Preenchido ao escolher o banco"
@@ -449,30 +589,15 @@ export function PortalPropostaForm({
             </div>
             <div>
               <label className={LABEL}>Agência</label>
-              <input
-                className={cliente.clienteId ? CAMPO_TRAVADO : CAMPO}
-                readOnly={Boolean(cliente.clienteId)}
-                value={cliente.agencia}
-                onChange={(e) => atualizarCliente("agencia", e.target.value)}
-              />
+              <input className={CAMPO} value={cliente.agencia} onChange={(e) => atualizarCliente("agencia", e.target.value)} />
             </div>
             <div>
               <label className={LABEL}>Conta</label>
-              <input
-                className={cliente.clienteId ? CAMPO_TRAVADO : CAMPO}
-                readOnly={Boolean(cliente.clienteId)}
-                value={cliente.conta}
-                onChange={(e) => atualizarCliente("conta", e.target.value)}
-              />
+              <input className={CAMPO} value={cliente.conta} onChange={(e) => atualizarCliente("conta", e.target.value)} />
             </div>
             <div>
               <label className={LABEL}>Tipo de conta</label>
-              <select
-                className={cliente.clienteId ? CAMPO_TRAVADO : CAMPO}
-                disabled={Boolean(cliente.clienteId)}
-                value={cliente.tipoConta}
-                onChange={(e) => atualizarCliente("tipoConta", e.target.value)}
-              >
+              <select className={CAMPO} value={cliente.tipoConta} onChange={(e) => atualizarCliente("tipoConta", e.target.value)}>
                 <option value="">—</option>
                 {TIPOS_CONTA.map((op) => (
                   <option key={op} value={op}>
@@ -483,12 +608,7 @@ export function PortalPropostaForm({
             </div>
             <div>
               <label className={LABEL}>Tipo de PIX</label>
-              <select
-                className={cliente.clienteId ? CAMPO_TRAVADO : CAMPO}
-                disabled={Boolean(cliente.clienteId)}
-                value={cliente.tipoPix}
-                onChange={(e) => atualizarCliente("tipoPix", e.target.value)}
-              >
+              <select className={CAMPO} value={cliente.tipoPix} onChange={(e) => atualizarCliente("tipoPix", e.target.value)}>
                 <option value="">—</option>
                 {TIPOS_PIX.map((op) => (
                   <option key={op} value={op}>
@@ -499,15 +619,11 @@ export function PortalPropostaForm({
             </div>
             <div className="md:col-span-2">
               <label className={LABEL}>Chave PIX</label>
-              <input
-                className={cliente.clienteId ? CAMPO_TRAVADO : CAMPO}
-                readOnly={Boolean(cliente.clienteId)}
-                value={cliente.pix}
-                onChange={(e) => atualizarCliente("pix", e.target.value)}
-              />
+              <input className={CAMPO} value={cliente.pix} onChange={(e) => atualizarCliente("pix", e.target.value)} />
             </div>
           </div>
         </div>
+        )}
       </div>
 
       <div className="bg-white border border-gray-200 rounded-xl p-4">

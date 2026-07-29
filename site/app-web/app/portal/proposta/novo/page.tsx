@@ -21,7 +21,7 @@ export const maxDuration = 30;
 export default async function PortalPropostaNovoPage() {
   const session = await requirePortalSession();
 
-  const [corretor, clientesDoCorretor, bancos] = await Promise.all([
+  const [corretor, clientesDoCorretor, bancos, estados, cidades] = await Promise.all([
     prisma.parceiros.findUnique({
       where: { id: session.parceiroId },
       select: { id: true, nome: true, creci: true, cpf: true }
@@ -33,17 +33,15 @@ export default async function PortalPropostaNovoPage() {
         id: true,
         nome: true,
         cpf: true,
-        cnpj: true,
-        endereco: true,
-        estado_civil: true,
-        profissao: true,
-        cat_profissao: true
+        cnpj: true
       }
     }),
     // Dados bancários — mesmo cadastro completo do administrativo (ver
     // components/cliente-form.tsx), liberado aqui pro corretor já deixar o
     // cliente novo com a conta certinha desde o cadastro.
-    prisma.bancos.findMany({ orderBy: { nome: "asc" } })
+    prisma.bancos.findMany({ orderBy: { nome: "asc" } }),
+    prisma.estados.findMany({ orderBy: { nome: "asc" } }),
+    prisma.cidades.findMany({ orderBy: { nome: "asc" } })
   ]);
 
   if (!corretor) {
@@ -79,12 +77,11 @@ export default async function PortalPropostaNovoPage() {
           clientesDoCorretor={clientesDoCorretor.map((c) => ({
             id: c.id,
             nome: c.nome,
-            cpfCnpj: c.cpf ? formatCpf(c.cpf) : c.cnpj ? formatCnpj(c.cnpj) : "",
-            endereco: c.endereco ?? "",
-            estadoCivil: c.estado_civil ?? "",
-            profissao: c.profissao ?? c.cat_profissao ?? ""
+            cpfCnpj: c.cpf ? formatCpf(c.cpf) : c.cnpj ? formatCnpj(c.cnpj) : ""
           }))}
           bancos={bancos.map((b) => ({ id: b.id, nome: b.nome, codigo: b.codigo }))}
+          estados={estados.map((e) => ({ id: e.id, nome: e.nome }))}
+          cidades={cidades.map((c) => ({ id: c.id, nome: c.nome, estado_id: c.estado_id }))}
         />
       </div>
     </div>

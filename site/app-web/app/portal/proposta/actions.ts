@@ -7,6 +7,8 @@ import { valorEditavelParaDecimal } from "@/lib/format";
 import { gerarDocumento } from "@/lib/documentos/gerar";
 import { registrarEJogarErro } from "@/lib/erros";
 import { buscarClienteDuplicado, mensagemClienteDuplicado } from "@/lib/clientes/duplicidade";
+import { validarCpfCnpj } from "@/lib/clientes/validacao";
+import { montarEnderecoPF } from "@/lib/clientes/endereco";
 
 function texto(formData: FormData, campo: string): string | null {
   const v = formData.get(campo);
@@ -34,9 +36,20 @@ function data(formData: FormData, campo: string): Date | null {
 // proposta (o template não tem bloco de assinaturas adicionais).
 type ClienteDigitado = {
   clienteId?: string;
+  tipoCliente: string;
   nome: string;
+  rg: string;
   cpfCnpj: string;
   endereco: string;
+  cep: string;
+  rua: string;
+  nPredial: string;
+  complemento: string;
+  bairro: string;
+  estadoId: string;
+  cidadeId: string;
+  nomeMae: string;
+  nomePai: string;
   estadoCivil: string;
   uniaoEstavel: string;
   profissao: string;
@@ -64,9 +77,20 @@ function parseCliente(formData: FormData): ClienteDigitado | null {
     const c = JSON.parse(bruto);
     const cliente: ClienteDigitado = {
       clienteId: typeof c?.clienteId === "string" && c.clienteId.length > 0 ? c.clienteId : undefined,
+      tipoCliente: String(c?.tipoCliente ?? "").trim(),
       nome: String(c?.nome ?? "").trim(),
+      rg: String(c?.rg ?? "").trim(),
       cpfCnpj: String(c?.cpfCnpj ?? "").trim(),
       endereco: String(c?.endereco ?? "").trim(),
+      cep: String(c?.cep ?? "").trim(),
+      rua: String(c?.rua ?? "").trim(),
+      nPredial: String(c?.nPredial ?? "").trim(),
+      complemento: String(c?.complemento ?? "").trim(),
+      bairro: String(c?.bairro ?? "").trim(),
+      estadoId: String(c?.estadoId ?? "").trim(),
+      cidadeId: String(c?.cidadeId ?? "").trim(),
+      nomeMae: String(c?.nomeMae ?? "").trim(),
+      nomePai: String(c?.nomePai ?? "").trim(),
       estadoCivil: String(c?.estadoCivil ?? "").trim(),
       uniaoEstavel: String(c?.uniaoEstavel ?? "").trim(),
       profissao: String(c?.profissao ?? "").trim(),
@@ -188,24 +212,51 @@ export async function gerarPropostaAction(
       // isso seria fácil duplicar sem querer o cadastro que outro corretor
       // já fez pro mesmo cliente. Quem decide se transfere é o
       // administrativo, não o corretor digitando por cima.
+      const erroDocumento = clienteForm.cpfCnpj ? validarCpfCnpj(clienteForm.cpfCnpj) : null;
+      if (erroDocumento) return { ok: false, erro: erroDocumento };
+
       const duplicado = await buscarClienteDuplicado({ nome: clienteForm.nome, cpfCnpj: clienteForm.cpfCnpj });
       if (duplicado) {
         return { ok: false, erro: mensagemClienteDuplicado(duplicado) };
       }
 
       const doc = digitos(clienteForm.cpfCnpj);
-      const ehCnpj = (doc?.length ?? 0) === 14;
+      // tipoCliente é sempre perguntado no formulário agora — o comprimento
+      // do documento só entra como reforço pra rascunhos antigos sem o campo.
+      const ehCnpj = clienteForm.tipoCliente === "Pessoa Jurídica" || (!clienteForm.tipoCliente && (doc?.length ?? 0) === 14);
+
+      const endereco = ehCnpj
+        ? clienteForm.endereco || null
+        : await montarEnderecoPF({
+            rua: clienteForm.rua || null,
+            nPredial: clienteForm.nPredial || null,
+            complemento: clienteForm.complemento || null,
+            bairro: clienteForm.bairro || null,
+            cidadeId: clienteForm.cidadeId || null,
+            estadoId: clienteForm.estadoId || null
+          });
+
       cliente = await prisma.clientes
         .create({
           data: {
             nome: clienteForm.nome,
             tipo_cliente: ehCnpj ? "Pessoa Jurídica" : "Pessoa Física",
+            rg: !ehCnpj ? clienteForm.rg || null : null,
             cpf: !ehCnpj ? doc : null,
             cnpj: ehCnpj ? doc : null,
-            endereco: clienteForm.endereco || null,
-            estado_civil: clienteForm.estadoCivil || null,
-            uniao_estavel: booleanoTri(clienteForm.uniaoEstavel),
-            profissao: clienteForm.profissao || null,
+            nome_mae: !ehCnpj ? clienteForm.nomeMae || null : null,
+            nome_pai: !ehCnpj ? clienteForm.nomePai || null : null,
+            cep: !ehCnpj ? digitos(clienteForm.cep) : null,
+            rua: !ehCnpj ? clienteForm.rua || null : null,
+            n_predial: !ehCnpj ? clienteForm.nPredial || null : null,
+            complemento: !ehCnpj ? clienteForm.complemento || null : null,
+            bairro: !ehCnpj ? clienteForm.bairro || null : null,
+            estado_id: !ehCnpj ? clienteForm.estadoId || null : null,
+            cidade_id: !ehCnpj ? clienteForm.cidadeId || null : null,
+            endereco,
+            estado_civil: !ehCnpj ? clienteForm.estadoCivil || null : null,
+            uniao_estavel: !ehCnpj ? booleanoTri(clienteForm.uniaoEstavel) : null,
+            profissao: !ehCnpj ? clienteForm.profissao || null : null,
             banco_id: clienteForm.bancoId || null,
             codigo_banco: clienteForm.codigoBanco || null,
             agencia: clienteForm.agencia || null,

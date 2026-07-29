@@ -190,6 +190,20 @@ export async function criarClienteAction(_prev: unknown, formData: FormData): Pr
     }
   }
 
+  // Sócios adicionados na própria tela de criação (ver cliente-form.tsx) —
+  // valida o que dá pra validar sem ir ao banco antes de criar a PJ, pra não
+  // deixar meio caminho andado se alguém digitou algo claramente errado.
+  const sociosPendentes = tipoCliente === "Pessoa Jurídica" ? parseSociosPendentes(formData) : [];
+  for (const entrada of sociosPendentes) {
+    if (entrada.modo === "novo" && !entrada.nome) {
+      return { erro: "Informe o nome de todos os sócios adicionados." };
+    }
+    if (entrada.modo === "novo" && entrada.cpf) {
+      const erroCpf = validarCpfCnpj(entrada.cpf);
+      if (erroCpf) return { erro: `Sócio "${entrada.nome}": ${erroCpf}` };
+    }
+  }
+
   let novoId: string;
   try {
     const novo = await prisma.clientes
@@ -211,6 +225,10 @@ export async function criarClienteAction(_prev: unknown, formData: FormData): Pr
     novoId = novo.id;
   } catch (erro) {
     return { erro: mensagemDe(erro) };
+  }
+
+  if (sociosPendentes.length > 0) {
+    await processarSociosPendentes(novoId, sociosPendentes);
   }
 
   revalidatePath("/clientes");
@@ -305,65 +323,65 @@ export async function apagarClienteAction(formData: FormData) {
 
 export type ResultadoSocio = { erro: string } | { ok: true } | undefined;
 
-export async function adicionarSocioAction(_prev: unknown, formData: FormData): Promise<ResultadoSocio> {
-  await requireAdminSession();
+// Um "sócio digitado" pode vir de duas origens: o widget pós-criação
+// (SocioForm, lê direto do FormData) ou a lista pendente montada no próprio
+// formulário de criação da PJ (JSON serializado — ver socios_pendentes_json
+// abaixo). As duas convergem pra este mesmo formato antes de resolver.
+type SocioDigitado = {
+  modo: "existente" | "novo";
+  clienteId: string | null;
+  nome: string | null;
+  cpf: string | null;
+  telefone: string | null;
+  email: string | null;
+};
 
-  const pjClienteId = texto(formData, "pj_cliente_id");
-  if (!pjClienteId) return { erro: "PJ inválida." };
-
-  const pj = await prisma.clientes.findUnique({ where: { id: pjClienteId } });
-  if (!pj || pj.tipo_cliente !== "Pessoa Jurídica") {
-    return { erro: "Só é possível adicionar sócio a um cadastro de Pessoa Jurídica." };
-  }
-
-  const modo = texto(formData, "modo_socio");
-  let socioClienteId: string;
-
-  if (modo === "existente") {
-    const id = texto(formData, "socio_cliente_id");
-    if (!id) return { erro: "Selecione o cliente que é sócio." };
-    const socio = await prisma.clientes.findUnique({ where: { id } });
+// Resolve o cliente Pessoa Física de um sócio: se "existente", só valida;
+// se "novo", reaproveita por CPF (caso já seja nosso cliente por outro
+// motivo) ou cria de verdade — nunca fica só com um nome solto, porque esse
+// sócio pode um dia virar cliente PF nosso por conta própria.
+async function resolverSocioClienteId(entrada: SocioDigitado): Promise<{ id: string } | { erro: string }> {
+  if (entrada.modo === "existente") {
+    if (!entrada.clienteId) return { erro: "Selecione o cliente que é sócio." };
+    const socio = await prisma.clientes.findUnique({ where: { id: entrada.clienteId } });
     if (!socio) return { erro: "Cliente selecionado não encontrado." };
     if (socio.tipo_cliente !== "Pessoa Física") {
       return { erro: "O sócio precisa ser um cliente Pessoa Física." };
     }
-    socioClienteId = socio.id;
-  } else {
-    const nome = texto(formData, "socio_nome");
-    const cpf = texto(formData, "socio_cpf");
-    if (!nome) return { erro: "Informe o nome do sócio." };
-    if (cpf) {
-      const erroCpf = validarCpfCnpj(cpf);
-      if (erroCpf) return { erro: erroCpf };
-    }
-
-    const cpfDigitos = cpf ? cpf.replace(/\D/g, "") : null;
-
-    // Se já existe um cliente PF com esse CPF, reaproveita em vez de criar
-    // duplicado — é exatamente o caso comum (o sócio já é nosso cliente por
-    // outro motivo).
-    const existente = cpfDigitos
-      ? await prisma.clientes.findFirst({ where: { cpf: cpfDigitos, tipo_cliente: "Pessoa Física" } })
-      : null;
-
-    if (existente) {
-      socioClienteId = existente.id;
-    } else {
-      const novo = await prisma.clientes
-        .create({
-          data: {
-            nome,
-            tipo_cliente: "Pessoa Física",
-            cpf: cpfDigitos,
-            telefone: texto(formData, "socio_telefone")?.replace(/\D/g, "") || null,
-            email: texto(formData, "socio_email")
-          }
-        })
-        .catch((erro) => registrarEJogarErro({ entidadeTipo: "clientes", acao: "criar_via_socio_pj", erro }));
-      socioClienteId = novo.id;
-    }
+    return { id: socio.id };
   }
 
+  if (!entrada.nome) return { erro: "Informe o nome do sócio." };
+  if (entrada.cpf) {
+    const erroCpf = validarCpfCnpj(entrada.cpf);
+    if (erroCpf) return { erro: erroCpf };
+  }
+
+  const cpfDigitos = entrada.cpf ? entrada.cpf.replace(/\D/g, "") : null;
+
+  const existente = cpfDigitos
+    ? await prisma.clientes.findFirst({ where: { cpf: cpfDigitos, tipo_cliente: "Pessoa Física" } })
+    : null;
+  if (existente) return { id: existente.id };
+
+  const novo = await prisma.clientes
+    .create({
+      data: {
+        nome: entrada.nome,
+        tipo_cliente: "Pessoa Física",
+        cpf: cpfDigitos,
+        telefone: entrada.telefone?.replace(/\D/g, "") || null,
+        email: entrada.email
+      }
+    })
+    .catch((erro) => registrarEJogarErro({ entidadeTipo: "clientes", acao: "criar_via_socio_pj", erro }));
+  return { id: novo.id };
+}
+
+// Grava o vínculo em clientes_socios (se ainda não existir) — `ordem` decide
+// quem assina como representante legal da empresa nos contratos (o de ordem
+// 0). Usada tanto pelo widget pós-criação quanto pela criação em lote.
+async function vincularSocio(pjClienteId: string, socioClienteId: string): Promise<{ erro: string } | { ok: true }> {
   const jaVinculado = await prisma.clientes_socios.findFirst({
     where: { pj_cliente_id: pjClienteId, socio_cliente_id: socioClienteId }
   });
@@ -386,6 +404,74 @@ export async function adicionarSocioAction(_prev: unknown, formData: FormData): 
 
   revalidatePath(`/clientes/${pjClienteId}`);
   return { ok: true };
+}
+
+export async function adicionarSocioAction(_prev: unknown, formData: FormData): Promise<ResultadoSocio> {
+  await requireAdminSession();
+
+  const pjClienteId = texto(formData, "pj_cliente_id");
+  if (!pjClienteId) return { erro: "PJ inválida." };
+
+  const pj = await prisma.clientes.findUnique({ where: { id: pjClienteId } });
+  if (!pj || pj.tipo_cliente !== "Pessoa Jurídica") {
+    return { erro: "Só é possível adicionar sócio a um cadastro de Pessoa Jurídica." };
+  }
+
+  const modo = texto(formData, "modo_socio") === "existente" ? "existente" : "novo";
+  const resolvido = await resolverSocioClienteId({
+    modo,
+    clienteId: texto(formData, "socio_cliente_id"),
+    nome: texto(formData, "socio_nome"),
+    cpf: texto(formData, "socio_cpf"),
+    telefone: texto(formData, "socio_telefone"),
+    email: texto(formData, "socio_email")
+  });
+  if ("erro" in resolvido) return resolvido;
+
+  return vincularSocio(pjClienteId, resolvido.id);
+}
+
+// Lista de sócios montada no próprio formulário de criação da PJ, antes de
+// existir um id — vem como JSON no campo escondido socios_pendentes_json
+// (ver componente cliente-form.tsx). Formato tolerante a lixo: qualquer
+// entrada mal-formada é descartada em vez de derrubar a criação da PJ.
+function parseSociosPendentes(formData: FormData): SocioDigitado[] {
+  const bruto = texto(formData, "socios_pendentes_json");
+  if (!bruto) return [];
+  try {
+    const lista = JSON.parse(bruto);
+    if (!Array.isArray(lista)) return [];
+    return lista
+      .map((s): SocioDigitado | null => {
+        if (!s || typeof s !== "object") return null;
+        const modo = s.modo === "existente" ? "existente" : "novo";
+        return {
+          modo,
+          clienteId: typeof s.clienteId === "string" && s.clienteId.trim() ? s.clienteId.trim() : null,
+          nome: typeof s.nome === "string" && s.nome.trim() ? s.nome.trim() : null,
+          cpf: typeof s.cpf === "string" && s.cpf.trim() ? s.cpf.trim() : null,
+          telefone: typeof s.telefone === "string" && s.telefone.trim() ? s.telefone.trim() : null,
+          email: typeof s.email === "string" && s.email.trim() ? s.email.trim() : null
+        };
+      })
+      .filter((s): s is SocioDigitado => s !== null);
+  } catch {
+    return [];
+  }
+}
+
+// Roda logo depois de criar a PJ — resolve (ou cria) cada sócio pendente e
+// grava o vínculo, na mesma ordem em que foram adicionados na tela (ordem 0
+// = representante legal). Erros pontuais (ex.: cliente selecionado some por
+// alguma condição de corrida) não derrubam a criação da PJ, que já foi
+// persistida — só ficam de fora e podem ser adicionados depois pelo widget
+// de sócios existente na tela de edição.
+async function processarSociosPendentes(pjClienteId: string, sociosPendentes: SocioDigitado[]): Promise<void> {
+  for (const entrada of sociosPendentes) {
+    const resolvido = await resolverSocioClienteId(entrada);
+    if ("erro" in resolvido) continue;
+    await vincularSocio(pjClienteId, resolvido.id);
+  }
 }
 
 export async function removerSocioAction(formData: FormData) {

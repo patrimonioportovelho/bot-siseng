@@ -7,12 +7,22 @@ import { criarClienteAction } from "../actions";
 export const dynamic = "force-dynamic";
 
 export default async function NovoClientePage() {
-  const [lojas, bancos, parceiros, estados, cidades] = await Promise.all([
+  const [lojas, bancos, parceiros, estados, cidades, clientesPfDisponiveis] = await Promise.all([
     prisma.lojas.findMany({ orderBy: { nome: "asc" } }),
     prisma.bancos.findMany({ orderBy: { nome: "asc" } }),
     prisma.parceiros.findMany({ orderBy: { nome: "asc" }, select: { id: true, nome: true } }),
     prisma.estados.findMany({ orderBy: { nome: "asc" } }),
-    prisma.cidades.findMany({ orderBy: { nome: "asc" } })
+    prisma.cidades.findMany({ orderBy: { nome: "asc" } }),
+    // Usado só se o cadastro virar Pessoa Jurídica — pra buscar um sócio já
+    // existente direto na tela de criação (ver processarSociosPendentes em
+    // app/clientes/actions.ts). Não sabemos o tipo ainda aqui no servidor
+    // (é escolhido no formulário), então busca sempre — é a mesma query já
+    // usada na tela de edição.
+    prisma.clientes.findMany({
+      where: { tipo_cliente: "Pessoa Física", status_cadastro: { not: "Arquivado" } },
+      orderBy: { nome: "asc" },
+      select: { id: true, nome: true, cpf: true }
+    })
   ]);
 
   return (
@@ -32,6 +42,7 @@ export default async function NovoClientePage() {
         parceiros={parceiros}
         estados={estados}
         cidades={cidades}
+        clientesPfDisponiveis={clientesPfDisponiveis}
         action={criarClienteAction}
       />
     </div>

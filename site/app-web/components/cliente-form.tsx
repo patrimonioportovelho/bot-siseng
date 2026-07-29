@@ -135,6 +135,79 @@ export function ClienteForm({
   );
   const [docErro, setDocErro] = useState<string | null>(null);
 
+  // Sócios de uma PJ sendo criada agora: como o cadastro ainda não tem id,
+  // ficam em memória até o envio — vão junto num campo JSON escondido e o
+  // servidor cria o vínculo logo depois de criar a PJ (ver
+  // processarSociosPendentes em app/clientes/actions.ts). Evita o antigo
+  // "salva primeiro, depois abre de novo pra adicionar sócio".
+  type SocioPendente = {
+    modo: "existente" | "novo";
+    clienteId?: string;
+    nome: string;
+    cpf: string;
+    telefone: string;
+    email: string;
+  };
+  const [sociosPendentes, setSociosPendentes] = useState<SocioPendente[]>([]);
+  const [modoSocioPendente, setModoSocioPendente] = useState<"existente" | "novo">("existente");
+  const [buscaSocioPendente, setBuscaSocioPendente] = useState("");
+  const [listaSocioPendenteAberta, setListaSocioPendenteAberta] = useState(false);
+  const [socioPendenteSelecionado, setSocioPendenteSelecionado] = useState<ClientePF | null>(null);
+  const [socioPendenteNome, setSocioPendenteNome] = useState("");
+  const [socioPendenteCpf, setSocioPendenteCpf] = useState("");
+  const [socioPendenteTelefone, setSocioPendenteTelefone] = useState("");
+  const [socioPendenteEmail, setSocioPendenteEmail] = useState("");
+
+  const idsJaAdicionados = useMemo(
+    () => new Set(sociosPendentes.filter((s) => s.clienteId).map((s) => s.clienteId)),
+    [sociosPendentes]
+  );
+  const sociosDisponiveisFiltrados = useMemo(() => {
+    const t = buscaSocioPendente.trim().toLowerCase();
+    const disponiveis = (clientesPfDisponiveis ?? []).filter((cli) => !idsJaAdicionados.has(cli.id));
+    if (!t) return disponiveis.slice(0, 30);
+    return disponiveis.filter((cli) => cli.nome.toLowerCase().includes(t)).slice(0, 30);
+  }, [buscaSocioPendente, clientesPfDisponiveis, idsJaAdicionados]);
+
+  function adicionarSocioPendente() {
+    if (modoSocioPendente === "existente") {
+      if (!socioPendenteSelecionado) return;
+      setSociosPendentes((atual) => [
+        ...atual,
+        {
+          modo: "existente",
+          clienteId: socioPendenteSelecionado.id,
+          nome: socioPendenteSelecionado.nome,
+          cpf: socioPendenteSelecionado.cpf ?? "",
+          telefone: "",
+          email: ""
+        }
+      ]);
+      setSocioPendenteSelecionado(null);
+      setBuscaSocioPendente("");
+      return;
+    }
+    if (!socioPendenteNome.trim()) return;
+    setSociosPendentes((atual) => [
+      ...atual,
+      {
+        modo: "novo",
+        nome: socioPendenteNome.trim(),
+        cpf: socioPendenteCpf,
+        telefone: socioPendenteTelefone,
+        email: socioPendenteEmail
+      }
+    ]);
+    setSocioPendenteNome("");
+    setSocioPendenteCpf("");
+    setSocioPendenteTelefone("");
+    setSocioPendenteEmail("");
+  }
+
+  function removerSocioPendente(indice: number) {
+    setSociosPendentes((atual) => atual.filter((_, i) => i !== indice));
+  }
+
   // Endereço de Pessoa Física dividido em CEP/logradouro/número/complemento/
   // bairro/cidade/estado, com busca automática por CEP (ViaCEP) — pedido
   // explícito do usuário. Pessoa Jurídica usa "Sede" como texto livre solto
@@ -603,6 +676,151 @@ export function ClienteForm({
           </div>
         </div>
 
+        {ehPessoaJuridica && !c && (
+          <div className="bg-white border border-gray-200 rounded-xl p-4">
+            <div className="text-sm font-bold text-gray-800 mb-1">Sócios</div>
+            <p className="text-xs text-gray-400 mb-3">
+              Opcional aqui — também dá pra adicionar depois de cadastrar. O primeiro da lista assina como
+              representante legal da empresa.
+            </p>
+
+            <input type="hidden" name="socios_pendentes_json" value={JSON.stringify(sociosPendentes)} />
+
+            {sociosPendentes.length > 0 && (
+              <div className="flex flex-col gap-1 mb-3">
+                {sociosPendentes.map((s, i) => (
+                  <div
+                    key={i}
+                    className="flex items-center justify-between text-xs bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5"
+                  >
+                    <span className="text-gray-700">
+                      {i === 0 && (
+                        <span className="text-[10px] uppercase text-primary font-bold mr-1">Rep. legal</span>
+                      )}
+                      {s.nome}
+                      {s.cpf && <span className="text-gray-400"> — {s.cpf}</span>}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => removerSocioPendente(i)}
+                      className="text-gray-400 hover:text-red-600"
+                    >
+                      remover
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="border-t border-gray-100 pt-3 flex flex-col gap-2">
+              <div className="flex gap-3 text-xs mb-1">
+                <label className="flex items-center gap-1 cursor-pointer">
+                  <input
+                    type="radio"
+                    checked={modoSocioPendente === "existente"}
+                    onChange={() => setModoSocioPendente("existente")}
+                  />
+                  Cliente já cadastrado
+                </label>
+                <label className="flex items-center gap-1 cursor-pointer">
+                  <input
+                    type="radio"
+                    checked={modoSocioPendente === "novo"}
+                    onChange={() => setModoSocioPendente("novo")}
+                  />
+                  Cadastrar novo
+                </label>
+              </div>
+
+              {modoSocioPendente === "existente" ? (
+                <div className="relative">
+                  <input
+                    className={CAMPO}
+                    placeholder="Digite para buscar cliente Pessoa Física..."
+                    value={socioPendenteSelecionado ? socioPendenteSelecionado.nome : buscaSocioPendente}
+                    onChange={(e) => {
+                      setSocioPendenteSelecionado(null);
+                      setBuscaSocioPendente(e.target.value);
+                      setListaSocioPendenteAberta(true);
+                    }}
+                    onFocus={() => setListaSocioPendenteAberta(true)}
+                    onBlur={() => setTimeout(() => setListaSocioPendenteAberta(false), 150)}
+                  />
+                  {listaSocioPendenteAberta && (
+                    <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-lg max-h-48 overflow-auto shadow-lg">
+                      {sociosDisponiveisFiltrados.length === 0 && (
+                        <p className="text-xs text-gray-400 p-3">Nenhum cliente encontrado.</p>
+                      )}
+                      {sociosDisponiveisFiltrados.map((cli) => (
+                        <button
+                          key={cli.id}
+                          type="button"
+                          onMouseDown={() => {
+                            setSocioPendenteSelecionado(cli);
+                            setListaSocioPendenteAberta(false);
+                          }}
+                          className="block w-full text-left text-xs px-3 py-2 border-b border-gray-50 last:border-0 hover:bg-gray-50 text-gray-700"
+                        >
+                          {cli.nome}
+                          {cli.cpf ? ` — ${formatCpf(cli.cpf)}` : ""}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="grid md:grid-cols-2 gap-2">
+                  <div>
+                    <label className={LABEL}>Nome completo</label>
+                    <input
+                      className={CAMPO}
+                      value={socioPendenteNome}
+                      onChange={(e) => setSocioPendenteNome(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className={LABEL}>CPF</label>
+                    <input
+                      className={CAMPO}
+                      placeholder="000.000.000-00"
+                      value={socioPendenteCpf}
+                      onChange={(e) => setSocioPendenteCpf(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className={LABEL}>Telefone</label>
+                    <input
+                      className={CAMPO}
+                      placeholder="(69) 99999-9999"
+                      value={socioPendenteTelefone}
+                      onChange={(e) => setSocioPendenteTelefone(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className={LABEL}>E-mail</label>
+                    <input
+                      className={CAMPO}
+                      type="email"
+                      value={socioPendenteEmail}
+                      onChange={(e) => setSocioPendenteEmail(e.target.value)}
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={adicionarSocioPendente}
+                  className="text-xs border border-primary text-primary rounded-lg px-3 py-1.5 font-semibold hover:bg-primary/5"
+                >
+                  + Adicionar à lista
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {resultado?.erro && (
           <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg px-3 py-2">
             {resultado.erro} — o que você digitou continua aí em cima, é só corrigir e salvar de novo.
@@ -630,11 +848,6 @@ export function ClienteForm({
           adicionarAction={adicionarSocioAction}
           removerAction={removerSocioAction}
         />
-      )}
-      {ehPessoaJuridica && !c && (
-        <p className="text-xs text-gray-400 text-center">
-          Depois de cadastrar, você poderá adicionar os sócios desta empresa.
-        </p>
       )}
     </div>
   );

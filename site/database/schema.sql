@@ -176,15 +176,43 @@ CREATE TABLE clientes (
   estado_civil     TEXT CHECK (estado_civil IN
                        ('Solteiro','Casado','União Estável','Divorciado','Separado Judicialmente','Viúvo')),
   uniao_estavel    BOOLEAN,   -- só perguntado quando estado_civil é Solteiro/Divorciado/Separado Judicialmente; ver comentário em prisma/schema.prisma
+  -- Vínculo de cônjuge: quando um segundo cliente adicionado (co-proprietário,
+  -- comprador etc.) é confirmado como cônjuge do primeiro, os dois passam a
+  -- apontar um pro outro aqui. Só muda o TEXTO da qualificação em contratos
+  -- (Compra e Venda/Locação/Administração): em vez de dois parágrafos
+  -- independentes juntados por "e", viram um bloco único (ver
+  -- qualificacaoConjuntaTexto em lib/documentos/gerar.ts). "Participante"
+  -- (outro proprietário sem vínculo conjugal) continua exatamente como já
+  -- funciona hoje, sem marcar nada aqui.
   conjuge_id       UUID REFERENCES clientes(id),   -- autorrelacionamento
   renda_bruta      NUMERIC(12,2),
   data_nascimento  DATE,
+  -- Nome da mãe e do pai — pedidos no cadastro de pessoa física em todos os
+  -- pontos de entrada (central de Clientes e formulários do portal do
+  -- corretor). Nenhum documento/contrato usa esses campos hoje.
+  nome_mae         TEXT,
+  nome_pai         TEXT,
   cat_profissao    TEXT CHECK (cat_profissao IN (
                        'Serviço público - Cargo Comissionado (CDS)','Serviço público - Estatutário',
                        'Autônomo','Empresário','Funcionário de empresa privada'
                    )),
   tipo_servidor    TEXT,
   profissao        TEXT,
+  -- Endereço de pessoa física dividido em campos de verdade (CEP com busca
+  -- automática, logradouro, número, complemento, bairro — mesmo padrão já
+  -- usado em imoveis: rua/n_predial/complemento/bairro/cidade_id/estado_id).
+  -- `endereco` deixa de ser digitado direto e passa a ser concatenado
+  -- automaticamente a partir desses campos ao salvar (montarEnderecoCliente
+  -- em app/clientes/actions.ts, mesmo padrão de
+  -- app/imoveis/actions.ts#montarEndereco) — mantido assim pra não quebrar
+  -- nada que já lê `endereco` (qualificação de documentos, listagens etc.).
+  -- Cadastros antigos continuam com `endereco` livre e os campos novos NULL
+  -- até serem editados de novo.
+  cep              TEXT,
+  rua              TEXT,
+  n_predial        TEXT,
+  complemento      TEXT,
+  bairro           TEXT,
   endereco         TEXT,
   estado_id        UUID REFERENCES estados(id),
   cidade_id        UUID REFERENCES cidades(id),
@@ -208,6 +236,24 @@ CREATE TRIGGER trg_clientes_updated_at BEFORE UPDATE ON clientes
 COMMENT ON COLUMN clientes.conjuge_id IS
   'Regra de negócio (validar na aplicação, não travado por CHECK para não quebrar migração de dados legados): '
   'estado_civil Casado/União Estável deveria sempre ter conjuge_id preenchido.';
+
+-- Sócio(s) de um cliente Pessoa Jurídica. Ao cadastrar uma PJ e "adicionar
+-- sócio", o sistema não guarda só um nome solto aqui — cria (ou reaproveita,
+-- se já existir) um cliente de verdade com tipo_cliente 'Pessoa Física' pra
+-- essa pessoa (pode um dia virar cliente PF por conta própria) e só então
+-- grava o vínculo nesta tabela. `ordem` define a sequência de
+-- exibição/assinatura quando há mais de um sócio — o primeiro (ordem 0) é
+-- quem assina como representante legal da empresa nos contratos.
+CREATE TABLE clientes_socios (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  pj_cliente_id     UUID NOT NULL REFERENCES clientes(id) ON DELETE CASCADE,
+  socio_cliente_id  UUID NOT NULL REFERENCES clientes(id),
+  ordem             SMALLINT NOT NULL DEFAULT 0,
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (pj_cliente_id, socio_cliente_id)
+);
+CREATE INDEX idx_clientes_socios_pj ON clientes_socios(pj_cliente_id);
+CREATE INDEX idx_clientes_socios_socio ON clientes_socios(socio_cliente_id);
 
 CREATE TABLE imoveis (
   id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),

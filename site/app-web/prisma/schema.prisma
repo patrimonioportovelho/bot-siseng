@@ -229,12 +229,43 @@ model clientes {
   // estável" / "...declara conviver em união estável"). NULL = pergunta
   // nunca foi respondida (cadastros antigos, ou estado civil que não pede).
   uniao_estavel                                          Boolean?
+  // Vínculo de cônjuge — quando o corretor/administrativo confirma que um
+  // segundo cliente adicionado (co-proprietário, comprador etc.) é cônjuge
+  // do primeiro, os dois registros passam a apontar um pro outro aqui. Só
+  // muda o TEXTO da qualificação em contratos (Compra e Venda/Locação/
+  // Administração): em vez de dois parágrafos independentes juntados por
+  // "e", os dois viram um bloco único ("Fulano e sua/seu cônjuge Fulana,
+  // ambos..." — ver qualificacaoConjuntaTexto em lib/documentos/gerar.ts).
+  // NÃO confundir com "participante" (outro proprietário sem vínculo
+  // conjugal) — esse continua exatamente como já funciona hoje, sem marcar
+  // nada aqui.
   conjuge_id                                             String?       @db.Uuid
   renda_bruta                                            Decimal?      @db.Decimal(12, 2)
   data_nascimento                                        DateTime?     @db.Date
+  // Nome da mãe e do pai — pedidos no cadastro de pessoa física em todos os
+  // pontos de entrada (central de Clientes e os formulários do portal do
+  // corretor). Nenhum documento/contrato usa esses campos hoje; ficam
+  // guardados pro cadastro completo.
+  nome_mae                                               String?
+  nome_pai                                               String?
   cat_profissao                                          String?
   tipo_servidor                                          String?
   profissao                                              String?
+  // Endereço de pessoa física agora é dividido em campos de verdade (CEP com
+  // busca automática, logradouro, número, complemento, bairro — mesmo padrão
+  // já usado em imoveis: rua/n_predial/complemento/bairro/cidade_id/
+  // estado_id). `endereco` deixa de ser digitado direto e passa a ser
+  // concatenado automaticamente a partir desses campos no momento de salvar
+  // (ver montarEnderecoCliente em app/clientes/actions.ts, mesmo padrão de
+  // app/imoveis/actions.ts#montarEndereco) — mantido assim pra não quebrar
+  // nada que já lê `endereco` (qualificação de documentos, listagens etc.).
+  // Cadastros antigos (import de planilha) continuam com `endereco` livre e
+  // os campos novos NULL até serem editados de novo.
+  cep                                                     String?
+  rua                                                     String?
+  n_predial                                              String?
+  complemento                                            String?
+  bairro                                                  String?
   endereco                                               String?
   estado_id                                              String?       @db.Uuid
   cidade_id                                              String?       @db.Uuid
@@ -267,6 +298,11 @@ model clientes {
   propostas                                              propostas[]
   imoveis_proprietarios                                  imoveis_proprietarios[]
   avaliacoes_clientes                                    avaliacoes_clientes[]
+  // Sócios de uma Pessoa Jurídica (este cliente é a PJ) e, do outro lado,
+  // as PJs das quais este cliente (pessoa física) é sócio — ver comentário
+  // completo no model clientes_socios.
+  clientes_socios_pj                                     clientes_socios[] @relation("clientes_socios_pjToclientes")
+  clientes_socios_socio                                  clientes_socios[] @relation("clientes_socios_socioToclientes")
   pagamentos                                             pagamentos[]
   transacoes_contrapartes                                transacoes_contrapartes[]
   transacoes_transacoes_cliente_contraparte_idToclientes transacoes[]  @relation("transacoes_cliente_contraparte_idToclientes")
@@ -279,6 +315,29 @@ model clientes {
   @@index([loja_id], map: "idx_clientes_loja")
   @@index([nome], map: "idx_clientes_nome")
   @@index([parceiro_id], map: "idx_clientes_parceiro")
+}
+
+/// Sócio(s) de um cliente Pessoa Jurídica. Ao cadastrar uma PJ e "adicionar
+/// sócio", o sistema NÃO guarda só um nome solto aqui — ele cria (ou
+/// reaproveita, se já existir) um cliente de verdade com tipo_cliente
+/// "Pessoa Física" pra essa pessoa (pode um dia virar cliente PF nosso por
+/// conta própria) e só então grava o vínculo nesta tabela. `ordem` define a
+/// sequência de exibição/assinatura quando há mais de um sócio — o primeiro
+/// (ordem 0) é quem assina como representante legal da empresa nos
+/// contratos (ver qualificacaoTexto/blocoAssinatura em
+/// lib/documentos/gerar.ts).
+model clientes_socios {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  pj_cliente_id   String   @db.Uuid
+  socio_cliente_id String  @db.Uuid
+  ordem           Int      @default(0) @db.SmallInt
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
+  pj              clientes @relation("clientes_socios_pjToclientes", fields: [pj_cliente_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  socio           clientes @relation("clientes_socios_socioToclientes", fields: [socio_cliente_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([pj_cliente_id, socio_cliente_id])
+  @@index([pj_cliente_id], map: "idx_clientes_socios_pj")
+  @@index([socio_cliente_id], map: "idx_clientes_socios_socio")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.

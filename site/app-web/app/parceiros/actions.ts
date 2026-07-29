@@ -7,6 +7,7 @@ import { requireAdminSession, requireAdm, logAlteracao } from "@/lib/auth";
 import { percentualParaDecimal } from "@/lib/format";
 import { FUNCOES_EQUIPE } from "@/lib/parceiros/opcoes";
 import { registrarEJogarErro } from "@/lib/erros";
+import { montarEnderecoPF } from "@/lib/clientes/endereco";
 
 function texto(formData: FormData, campo: string): string | null {
   const v = formData.get(campo);
@@ -62,13 +63,36 @@ function booleanoTri(formData: FormData, campo: string): boolean | null {
   return null;
 }
 
+// Endereço do parceiro é sempre concatenado a partir dos campos divididos
+// (CEP/rua/número/complemento/bairro/cidade/estado) — mesmo padrão de
+// app/clientes/actions.ts#montarEnderecoCliente (pessoa física), reaproveitando
+// o mesmo helper compartilhado (lib/clientes/endereco.ts#montarEnderecoPF).
+// Quando nenhum campo do endereço dividido foi preenchido (cadastro antigo,
+// aberto pra editar outra coisa sem mexer no endereço), devolve `undefined` —
+// o Prisma não inclui `endereco` no update e o texto livre antigo continua
+// intacto, em vez de ser apagado sem querer.
+async function montarEnderecoParceiro(formData: FormData): Promise<string | null | undefined> {
+  const rua = texto(formData, "rua");
+  const nPredial = texto(formData, "n_predial");
+  const complemento = texto(formData, "complemento");
+  const bairro = texto(formData, "bairro");
+  const cidadeId = texto(formData, "cidade_id");
+  const estadoId = texto(formData, "estado_id");
+
+  if (!rua && !nPredial && !complemento && !bairro && !cidadeId && !estadoId) {
+    return undefined;
+  }
+
+  return montarEnderecoPF({ rua, nPredial, complemento, bairro, cidadeId, estadoId });
+}
+
 // Campos que qualquer parceiro autenticado pode editar em um cadastro já
 // existente. Nome fica de fora de propósito: é a âncora de identidade usada
 // no login (nome + CPF) e só muda via aprovação de acesso em Configurações
 // — nunca por este formulário, nem por ADM. CPF, a pedido do ADM, passou a
 // ser editável por aqui (era protegido antes) — atenção: mudar o CPF de um
 // parceiro que já usa o portal muda o que ele precisa digitar pra entrar.
-function camposEditaveis(formData: FormData) {
+async function camposEditaveis(formData: FormData) {
   return {
     cpf: somenteDigitos(formData, "cpf"),
     telefone: somenteDigitos(formData, "telefone"),
@@ -83,7 +107,14 @@ function camposEditaveis(formData: FormData) {
     estado_civil: texto(formData, "estado_civil"),
     uniao_estavel: booleanoTri(formData, "uniao_estavel"),
     creci: texto(formData, "creci"),
-    endereco: texto(formData, "endereco"),
+    cep: somenteDigitos(formData, "cep"),
+    rua: texto(formData, "rua"),
+    n_predial: texto(formData, "n_predial"),
+    complemento: texto(formData, "complemento"),
+    bairro: texto(formData, "bairro"),
+    estado_id: texto(formData, "estado_id"),
+    cidade_id: texto(formData, "cidade_id"),
+    endereco: await montarEnderecoParceiro(formData),
     data_entrada: data(formData, "data_entrada"),
     data_saida: data(formData, "data_saida"),
     obs_funcao: texto(formData, "obs_funcao"),
@@ -116,7 +147,7 @@ export async function criarParceiroAction(formData: FormData) {
     .create({
       data: {
         nome,
-        ...camposEditaveis(formData),
+        ...(await camposEditaveis(formData)),
         funcao
       }
     })
@@ -142,7 +173,7 @@ export async function atualizarParceiroAction(formData: FormData) {
   const antes = await prisma.parceiros.findUnique({ where: { id } });
   if (!antes) throw new Error("Parceiro não encontrado.");
 
-  const campos = camposEditaveis(formData);
+  const campos = await camposEditaveis(formData);
 
   // Quando Administrativo/Corretor/Corretor Estagiário muda para Inativo, a
   // função sai automaticamente da equipe: vira Corretor Externo se tiver

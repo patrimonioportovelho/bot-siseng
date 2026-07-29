@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import {
   TODAS_FUNCOES,
   STATUS_FUNCAO,
@@ -10,11 +10,19 @@ import {
   TIPOS_PIX
 } from "@/lib/parceiros/opcoes";
 import { formatCpf, formatTelefone, formatPercentual, formatMoeda, formatDataCalendario } from "@/lib/format";
+import { buscarCep, UF_PARA_ESTADO } from "@/lib/enderecos";
 
 const FUNCOES_COM_COMISSIONAMENTO = ["Corretor", "Corretor Estagiário"];
 
 type Loja = { id: string; nome: string };
 type Banco = { id: string; nome: string };
+type EstadoOpcao = { id: string; nome: string };
+type CidadeOpcao = { id: string; nome: string; estado_id: string };
+
+function formatCep(v: string): string {
+  const d = v.replace(/\D/g, "").slice(0, 8);
+  return d.length > 5 ? `${d.slice(0, 5)}-${d.slice(5)}` : d;
+}
 
 type ParceiroExistente = {
   id: string;
@@ -32,6 +40,13 @@ type ParceiroExistente = {
   estado_civil: string | null;
   uniao_estavel: boolean | null;
   creci: string | null;
+  cep: string | null;
+  rua: string | null;
+  n_predial: string | null;
+  complemento: string | null;
+  bairro: string | null;
+  estado_id: string | null;
+  cidade_id: string | null;
   endereco: string | null;
   data_entrada: Date | null;
   data_saida: Date | null;
@@ -132,7 +147,9 @@ function Ficha({ parceiro, onEditar }: { parceiro: ParceiroExistente; onEditar: 
           <Linha label="Telefone" valor={p.telefone ? formatTelefone(p.telefone) : null} />
           <Linha label="E-mail" valor={p.email} />
           <Linha label="Empresa" valor={p.empresa} />
-          <Linha label="Endereço" valor={p.endereco} />
+          <div className="md:col-span-2">
+            <Linha label="Endereço" valor={p.endereco} />
+          </div>
           <div className="md:col-span-2">
             <Linha
               label="Link da pasta do Drive"
@@ -181,11 +198,15 @@ export function ParceiroForm({
   parceiro,
   lojas,
   bancos,
+  estados,
+  cidades,
   action
 }: {
   parceiro: ParceiroExistente | null;
   lojas: Loja[];
   bancos: Banco[];
+  estados: EstadoOpcao[];
+  cidades: CidadeOpcao[];
   action: (formData: FormData) => void;
 }) {
   const p = parceiro;
@@ -200,6 +221,62 @@ export function ParceiroForm({
     p?.uniao_estavel === true ? "true" : p?.uniao_estavel === false ? "false" : ""
   );
   const pedeUniaoEstavel = ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL.includes(estadoCivil);
+
+  // Endereço dividido em CEP/logradouro/número/complemento/bairro/cidade/
+  // estado, com busca automática por CEP (ViaCEP) — complemento do mesmo
+  // pente-fino já aplicado em Clientes (ver components/cliente-form.tsx),
+  // aqui só na seção Contato, sem mexer nas demais abas próprias do parceiro
+  // (Identificação, Comissionamento, Dados bancários, Observações).
+  const [cep, setCep] = useState(p?.cep ? formatCep(p.cep) : "");
+  const [rua, setRua] = useState(p?.rua ?? "");
+  const [bairro, setBairro] = useState(p?.bairro ?? "");
+  const [estadoId, setEstadoId] = useState(p?.estado_id ?? "");
+  const [cidadeId, setCidadeId] = useState(p?.cidade_id ?? "");
+  const [buscandoCep, setBuscandoCep] = useState(false);
+  const [cepAvisoCidade, setCepAvisoCidade] = useState<string | null>(null);
+
+  const cidadesDoEstado = useMemo(() => cidades.filter((cid) => cid.estado_id === estadoId), [cidades, estadoId]);
+
+  // Endereço antigo (cadastro anterior a este pente-fino, sem os campos
+  // divididos preenchidos) — mostrado só como referência, nunca perdido: se
+  // o admin não mexer nos campos de endereço, o texto antigo continua
+  // intacto (ver montarEnderecoParceiro em app/parceiros/actions.ts).
+  const mostrarEnderecoAntigo = !p?.rua && !!p?.endereco;
+
+  async function aoSairDoCep() {
+    const digitos = cep.replace(/\D/g, "");
+    if (digitos.length !== 8) return;
+    setBuscandoCep(true);
+    setCepAvisoCidade(null);
+    try {
+      const encontrado = await buscarCep(digitos);
+      if (!encontrado) {
+        setCepAvisoCidade("CEP não encontrado — preencha o endereço manualmente.");
+        return;
+      }
+      setRua(encontrado.logradouro || rua);
+      setBairro(encontrado.bairro || bairro);
+
+      const nomeEstado = UF_PARA_ESTADO[encontrado.uf] ?? "";
+      const estadoEncontrado = estados.find((e) => e.nome.toLowerCase() === nomeEstado.toLowerCase());
+      if (estadoEncontrado) {
+        setEstadoId(estadoEncontrado.id);
+        const cidadeEncontrada = cidades.find(
+          (cid) => cid.estado_id === estadoEncontrado.id && cid.nome.toLowerCase() === encontrado.localidade.toLowerCase()
+        );
+        if (cidadeEncontrada) {
+          setCidadeId(cidadeEncontrada.id);
+        } else {
+          setCidadeId("");
+          setCepAvisoCidade(`Cidade "${encontrado.localidade}" não está cadastrada — selecione manualmente abaixo.`);
+        }
+      } else {
+        setCepAvisoCidade("Selecione o estado e a cidade manualmente abaixo.");
+      }
+    } finally {
+      setBuscandoCep(false);
+    }
+  }
 
   if (p && !modoEdicao) {
     return <Ficha parceiro={p} onEditar={() => setModoEdicao(true)} />;
@@ -387,9 +464,70 @@ export function ParceiroForm({
             <label className={LABEL}>Empresa</label>
             <input className={CAMPO} name="empresa" defaultValue={p?.empresa ?? ""} />
           </div>
+          {mostrarEnderecoAntigo && (
+            <p className="text-[11px] text-gray-400 md:col-span-2">
+              Endereço atual (cadastro antigo, formato livre): {p?.endereco}. Preencha os campos abaixo para
+              atualizar para o formato dividido.
+            </p>
+          )}
           <div>
-            <label className={LABEL}>Endereço</label>
-            <input className={CAMPO} name="endereco" defaultValue={p?.endereco ?? ""} />
+            <label className={LABEL}>CEP</label>
+            <input
+              className={CAMPO}
+              name="cep"
+              placeholder="76800-000"
+              value={cep}
+              onChange={(e) => setCep(formatCep(e.target.value))}
+              onBlur={aoSairDoCep}
+            />
+            {buscandoCep && <p className="text-[11px] text-gray-400 mt-1">Buscando endereço pelo CEP...</p>}
+            {cepAvisoCidade && <p className="text-[11px] text-amber-600 mt-1">{cepAvisoCidade}</p>}
+          </div>
+          <div>
+            <label className={LABEL}>Logradouro</label>
+            <input className={CAMPO} name="rua" value={rua} onChange={(e) => setRua(e.target.value)} />
+          </div>
+          <div>
+            <label className={LABEL}>Número predial</label>
+            <input className={CAMPO} name="n_predial" defaultValue={p?.n_predial ?? ""} />
+          </div>
+          <div>
+            <label className={LABEL}>Complemento</label>
+            <input className={CAMPO} name="complemento" defaultValue={p?.complemento ?? ""} />
+          </div>
+          <div>
+            <label className={LABEL}>Bairro</label>
+            <input className={CAMPO} name="bairro" value={bairro} onChange={(e) => setBairro(e.target.value)} />
+          </div>
+          <div>
+            <label className={LABEL}>Estado</label>
+            <select
+              className={CAMPO}
+              name="estado_id"
+              value={estadoId}
+              onChange={(e) => {
+                setEstadoId(e.target.value);
+                setCidadeId("");
+              }}
+            >
+              <option value="">—</option>
+              {estados.map((e) => (
+                <option key={e.id} value={e.id}>
+                  {e.nome}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className={LABEL}>Cidade</label>
+            <select className={CAMPO} name="cidade_id" value={cidadeId} onChange={(e) => setCidadeId(e.target.value)}>
+              <option value="">—</option>
+              {cidadesDoEstado.map((cid) => (
+                <option key={cid.id} value={cid.id}>
+                  {cid.nome}
+                </option>
+              ))}
+            </select>
           </div>
           <div className="md:col-span-2">
             <label className={LABEL}>Link da pasta do Drive</label>

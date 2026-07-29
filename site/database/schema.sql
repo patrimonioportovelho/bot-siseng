@@ -99,6 +99,20 @@ CREATE TABLE parceiros (
                               ('solteiro (a)','em uma união estável','casado (a)','divorciado (a)','separado judicialmente (a)','viúvo (a)')),
   uniao_estavel           BOOLEAN,   -- só perguntado quando estado_civil é solteiro/divorciado/separado judicialmente; ver comentário em prisma/schema.prisma
   creci                   TEXT,
+  -- Endereço dividido em campos de verdade (CEP com busca automática,
+  -- logradouro, número, complemento, bairro) — mesmo padrão já usado em
+  -- clientes/imoveis (ver comentário em clientes.cep). `endereco` deixa de
+  -- ser digitado direto e passa a ser concatenado automaticamente a partir
+  -- desses campos ao salvar (montarEnderecoParceiro em app/parceiros/actions.ts,
+  -- reaproveitando lib/clientes/endereco.ts#montarEnderecoPF). Cadastros
+  -- antigos continuam com `endereco` livre até serem editados de novo.
+  cep                     TEXT,
+  rua                     TEXT,
+  n_predial               TEXT,
+  complemento             TEXT,
+  bairro                  TEXT,
+  estado_id               UUID REFERENCES estados(id),
+  cidade_id               UUID REFERENCES cidades(id),
   endereco                TEXT,
   data_entrada            DATE,   -- CORRIGIDO: ~70% dos parceiros reais na planilha não têm essa data preenchida
   obs_funcao              TEXT,

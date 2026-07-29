@@ -32,10 +32,12 @@ export default async function ParceiroDetalhePage({
   const { salvo } = await searchParams;
   const session = await getAdminSession();
 
-  const [parceiro, lojas, bancos] = await Promise.all([
+  const [parceiro, lojas, bancos, estados, cidades] = await Promise.all([
     prisma.parceiros.findUnique({ where: { id } }),
     prisma.lojas.findMany({ orderBy: { nome: "asc" } }),
-    prisma.bancos.findMany({ orderBy: { nome: "asc" } })
+    prisma.bancos.findMany({ orderBy: { nome: "asc" } }),
+    prisma.estados.findMany({ orderBy: { nome: "asc" } }),
+    prisma.cidades.findMany({ orderBy: { nome: "asc" } })
   ]);
 
   if (!parceiro) notFound();
@@ -121,7 +123,14 @@ export default async function ParceiroDetalhePage({
         )}
       </div>
 
-      <ParceiroForm parceiro={parceiro} lojas={lojas} bancos={bancos} action={atualizarParceiroAction} />
+      <ParceiroForm
+        parceiro={parceiro}
+        lojas={lojas}
+        bancos={bancos}
+        estados={estados}
+        cidades={cidades}
+        action={atualizarParceiroAction}
+      />
 
       <div className="grid lg:grid-cols-2 gap-4 mt-6 mb-4">
         <Cartao titulo={`Imóveis vinculados (${imoveis.length})`}>

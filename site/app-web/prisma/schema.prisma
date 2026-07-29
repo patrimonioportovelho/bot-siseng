@@ -195,6 +195,7 @@ model cidades {
   clientes           clientes[]
   contratos_corretor contratos_corretor[]
   imoveis            imoveis[]
+  parceiros          parceiros[]
 
   @@unique([nome, estado_id])
   @@index([estado_id], map: "idx_cidades_estado")
@@ -448,6 +449,7 @@ model estados {
   clientes           clientes[]
   contratos_corretor contratos_corretor[]
   imoveis            imoveis[]
+  parceiros          parceiros[]
 }
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
@@ -776,6 +778,20 @@ model parceiros {
   // Mesmo campo/mesma regra de clientes.uniao_estavel — ver comentário lá.
   uniao_estavel                                                               Boolean?
   creci                                                                       String?
+  // Endereço dividido em campos de verdade (CEP com busca automática,
+  // logradouro, número, complemento, bairro) — mesmo padrão já usado em
+  // clientes/imoveis (ver comentário completo em clientes.cep). `endereco`
+  // deixa de ser digitado direto e passa a ser concatenado automaticamente a
+  // partir desses campos no momento de salvar (ver montarEnderecoParceiro em
+  // app/parceiros/actions.ts, reaproveitando lib/clientes/endereco.ts#montarEnderecoPF).
+  // Cadastros antigos continuam com `endereco` livre até serem editados de novo.
+  cep                                                                         String?
+  rua                                                                         String?
+  n_predial                                                                   String?
+  complemento                                                                 String?
+  bairro                                                                      String?
+  estado_id                                                                   String?                   @db.Uuid
+  cidade_id                                                                   String?                   @db.Uuid
   endereco                                                                    String?
   data_entrada                                                                DateTime?                 @db.Date
   data_saida                                                                  DateTime?                 @db.Date
@@ -816,6 +832,8 @@ model parceiros {
   manutencoes                                                                manutencoes[]
   bancos                                                                      bancos?                   @relation(fields: [banco_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   lojas                                                                       lojas?                    @relation(fields: [loja_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  estados                                                                     estados?                  @relation(fields: [estado_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  cidades                                                                     cidades?                  @relation(fields: [cidade_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   relatorios                                                                  relatorios[]
   solicitacoes_acesso_solicitacoes_acesso_decidido_por_parceiro_idToparceiros solicitacoes_acesso[]     @relation("solicitacoes_acesso_decidido_por_parceiro_idToparceiros")
   solicitacoes_acesso_solicitacoes_acesso_parceiro_idToparceiros              solicitacoes_acesso[]     @relation("solicitacoes_acesso_parceiro_idToparceiros")

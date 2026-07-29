@@ -7,9 +7,11 @@ import { criarParceiroAction } from "../actions";
 export const dynamic = "force-dynamic";
 
 export default async function NovoParceiroPage() {
-  const [lojas, bancos] = await Promise.all([
+  const [lojas, bancos, estados, cidades] = await Promise.all([
     prisma.lojas.findMany({ orderBy: { nome: "asc" } }),
-    prisma.bancos.findMany({ orderBy: { nome: "asc" } })
+    prisma.bancos.findMany({ orderBy: { nome: "asc" } }),
+    prisma.estados.findMany({ orderBy: { nome: "asc" } }),
+    prisma.cidades.findMany({ orderBy: { nome: "asc" } })
   ]);
 
   return (
@@ -22,7 +24,14 @@ export default async function NovoParceiroPage() {
 
       <div className="text-sm font-bold text-gray-800 mb-4">Novo parceiro</div>
 
-      <ParceiroForm parceiro={null} lojas={lojas} bancos={bancos} action={criarParceiroAction} />
+      <ParceiroForm
+        parceiro={null}
+        lojas={lojas}
+        bancos={bancos}
+        estados={estados}
+        cidades={cidades}
+        action={criarParceiroAction}
+      />
     </div>
   );
 }

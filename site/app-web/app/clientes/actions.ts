@@ -8,6 +8,7 @@ import { valorEditavelParaDecimal } from "@/lib/format";
 import { registrarEJogarErro } from "@/lib/erros";
 import { buscarClienteDuplicado } from "@/lib/clientes/duplicidade";
 import { validarCpfCnpj } from "@/lib/clientes/validacao";
+import { montarEnderecoPF } from "@/lib/clientes/endereco";
 
 function texto(formData: FormData, campo: string): string | null {
   const v = formData.get(campo);
@@ -83,20 +84,7 @@ async function montarEnderecoCliente(formData: FormData): Promise<string | null 
     return undefined;
   }
 
-  const [cidade, estado] = await Promise.all([
-    cidadeId ? prisma.cidades.findUnique({ where: { id: cidadeId } }) : Promise.resolve(null),
-    estadoId ? prisma.estados.findUnique({ where: { id: estadoId } }) : Promise.resolve(null)
-  ]);
-
-  const partes = [
-    [rua, nPredial].filter(Boolean).join(", ") || null,
-    complemento,
-    bairro,
-    cidade?.nome ?? null,
-    estado?.nome ?? null
-  ].filter((p): p is string => Boolean(p));
-
-  return partes.length > 0 ? partes.join(" - ") : null;
+  return montarEnderecoPF({ rua, nPredial, complemento, bairro, cidadeId, estadoId });
 }
 
 async function camposEditaveis(formData: FormData) {

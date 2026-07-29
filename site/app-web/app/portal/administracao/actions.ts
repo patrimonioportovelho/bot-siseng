@@ -6,6 +6,8 @@ import { logAlteracaoPortal } from "@/lib/auth";
 import { valorEditavelParaDecimal, percentualParaDecimal } from "@/lib/format";
 import { registrarEJogarErro } from "@/lib/erros";
 import { buscarClienteDuplicado, mensagemClienteDuplicado } from "@/lib/clientes/duplicidade";
+import { validarCpfCnpj } from "@/lib/clientes/validacao";
+import { montarEnderecoPF } from "@/lib/clientes/endereco";
 
 function texto(formData: FormData, campo: string): string | null {
   const v = formData.get(campo);
@@ -55,10 +57,20 @@ function booleano(formData: FormData, campo: string): boolean {
 // qualificação/assinatura no contrato de administração.
 type ClienteDigitado = {
   clienteId?: string;
+  tipoCliente: string;
   nome: string;
   rg: string;
   cpfCnpj: string;
   endereco: string;
+  cep: string;
+  rua: string;
+  nPredial: string;
+  complemento: string;
+  bairro: string;
+  estadoId: string;
+  cidadeId: string;
+  nomeMae: string;
+  nomePai: string;
   nacionalidade: string;
   estadoCivil: string;
   uniaoEstavel: string;
@@ -91,10 +103,20 @@ function parseClientes(formData: FormData): ClienteDigitado[] {
     return lista
       .map((c) => ({
         clienteId: typeof c?.clienteId === "string" && c.clienteId.length > 0 ? c.clienteId : undefined,
+        tipoCliente: String(c?.tipoCliente ?? "").trim(),
         nome: String(c?.nome ?? "").trim(),
         rg: String(c?.rg ?? "").trim(),
         cpfCnpj: String(c?.cpfCnpj ?? "").trim(),
         endereco: String(c?.endereco ?? "").trim(),
+        cep: String(c?.cep ?? "").trim(),
+        rua: String(c?.rua ?? "").trim(),
+        nPredial: String(c?.nPredial ?? "").trim(),
+        complemento: String(c?.complemento ?? "").trim(),
+        bairro: String(c?.bairro ?? "").trim(),
+        estadoId: String(c?.estadoId ?? "").trim(),
+        cidadeId: String(c?.cidadeId ?? "").trim(),
+        nomeMae: String(c?.nomeMae ?? "").trim(),
+        nomePai: String(c?.nomePai ?? "").trim(),
         nacionalidade: String(c?.nacionalidade ?? "").trim(),
         estadoCivil: String(c?.estadoCivil ?? "").trim(),
         uniaoEstavel: String(c?.uniaoEstavel ?? "").trim(),
@@ -113,6 +135,17 @@ function parseClientes(formData: FormData): ClienteDigitado[] {
   } catch {
     return [];
   }
+}
+
+// Valida CPF/CNPJ (dígito verificador) de todos os clientes novos do
+// formulário antes de criar qualquer um.
+function validarDocumentos(clientesNovos: ClienteDigitado[]): string | null {
+  for (const c of clientesNovos) {
+    if (!c.cpfCnpj) continue;
+    const erro = validarCpfCnpj(c.cpfCnpj);
+    if (erro) return `${c.nome || "Cliente"}: ${erro}`;
+  }
+  return null;
 }
 
 // Mesmo esquema de numeração do admin (ADM-0001, ADM-0002...) — as duas
@@ -200,6 +233,9 @@ export async function gerarContratoAdministracaoAction(
     // — a lista de "cliente já cadastrado" do formulário só mostra os
     // clientes do próprio corretor. Só o administrativo decide se transfere
     // o cliente existente.
+    const erroDocumento = validarDocumentos(clientesForm.filter((c) => !c.clienteId));
+    if (erroDocumento) return { ok: false, erro: erroDocumento };
+
     for (const c of clientesForm) {
       if (c.clienteId) continue;
       const duplicado = await buscarClienteDuplicado({
@@ -217,21 +253,42 @@ export async function gerarContratoAdministracaoAction(
     const clientesCriados = await Promise.all(
       clientesForm
         .filter((c) => !c.clienteId)
-        .map((c) => {
+        .map(async (c) => {
           const doc = digitos(c.cpfCnpj);
-          const ehCnpj = (doc?.length ?? 0) === 14;
+          const ehCnpj = c.tipoCliente === "Pessoa Jurídica" || (!c.tipoCliente && (doc?.length ?? 0) === 14);
+
+          const endereco = ehCnpj
+            ? c.endereco || null
+            : await montarEnderecoPF({
+                rua: c.rua || null,
+                nPredial: c.nPredial || null,
+                complemento: c.complemento || null,
+                bairro: c.bairro || null,
+                cidadeId: c.cidadeId || null,
+                estadoId: c.estadoId || null
+              });
+
           return prisma.clientes.create({
             data: {
               nome: c.nome,
               tipo_cliente: ehCnpj ? "Pessoa Jurídica" : "Pessoa Física",
-              rg: c.rg || null,
+              rg: !ehCnpj ? c.rg || null : null,
               cpf: !ehCnpj ? doc : null,
               cnpj: ehCnpj ? doc : null,
-              endereco: c.endereco || null,
+              nome_mae: !ehCnpj ? c.nomeMae || null : null,
+              nome_pai: !ehCnpj ? c.nomePai || null : null,
+              cep: !ehCnpj ? digitos(c.cep) : null,
+              rua: !ehCnpj ? c.rua || null : null,
+              n_predial: !ehCnpj ? c.nPredial || null : null,
+              complemento: !ehCnpj ? c.complemento || null : null,
+              bairro: !ehCnpj ? c.bairro || null : null,
+              estado_id: !ehCnpj ? c.estadoId || null : null,
+              cidade_id: !ehCnpj ? c.cidadeId || null : null,
+              endereco,
               nacionalidade: c.nacionalidade || null,
-              estado_civil: c.estadoCivil || null,
-              uniao_estavel: booleanoTri(c.uniaoEstavel),
-              profissao: c.profissao || null,
+              estado_civil: !ehCnpj ? c.estadoCivil || null : null,
+              uniao_estavel: !ehCnpj ? booleanoTri(c.uniaoEstavel) : null,
+              profissao: !ehCnpj ? c.profissao || null : null,
               email: c.email || null,
               telefone: digitos(c.telefone),
               banco_id: c.bancoId || null,

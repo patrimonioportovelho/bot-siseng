@@ -9,6 +9,8 @@ import { STATUS_COMPRA_VENDA_OPCOES } from "@/lib/transacoes/opcoes";
 import { buscarGestaoPorImovel } from "@/lib/transacoes/buscas";
 import { enviarEmail, type EmailAnexo } from "@/lib/email";
 import { buscarClienteDuplicado, mensagemClienteDuplicado } from "@/lib/clientes/duplicidade";
+import { validarCpfCnpj } from "@/lib/clientes/validacao";
+import { montarEnderecoPF } from "@/lib/clientes/endereco";
 import { criarUploadAssinadoDocumento, criarLinkDownloadDocumento, baixarDocumentoPortal } from "@/lib/supabase-admin";
 
 const EMAIL_DESTINO_PADRAO = "engimob@remax.com.br";
@@ -132,10 +134,20 @@ function inteiro(formData: FormData, campo: string): number | null {
 // (app/portal/administracao/actions.ts#parseClientes).
 type ClienteDigitado = {
   clienteId?: string;
+  tipoCliente: string;
   nome: string;
   rg: string;
   cpfCnpj: string;
   endereco: string;
+  cep: string;
+  rua: string;
+  nPredial: string;
+  complemento: string;
+  bairro: string;
+  estadoId: string;
+  cidadeId: string;
+  nomeMae: string;
+  nomePai: string;
   nacionalidade: string;
   estadoCivil: string;
   uniaoEstavel: string;
@@ -160,10 +172,20 @@ function parseClientes(formData: FormData, campo: string): ClienteDigitado[] {
     return lista
       .map((c) => ({
         clienteId: typeof c?.clienteId === "string" && c.clienteId.length > 0 ? c.clienteId : undefined,
+        tipoCliente: String(c?.tipoCliente ?? "").trim(),
         nome: String(c?.nome ?? "").trim(),
         rg: String(c?.rg ?? "").trim(),
         cpfCnpj: String(c?.cpfCnpj ?? "").trim(),
         endereco: String(c?.endereco ?? "").trim(),
+        cep: String(c?.cep ?? "").trim(),
+        rua: String(c?.rua ?? "").trim(),
+        nPredial: String(c?.nPredial ?? "").trim(),
+        complemento: String(c?.complemento ?? "").trim(),
+        bairro: String(c?.bairro ?? "").trim(),
+        estadoId: String(c?.estadoId ?? "").trim(),
+        cidadeId: String(c?.cidadeId ?? "").trim(),
+        nomeMae: String(c?.nomeMae ?? "").trim(),
+        nomePai: String(c?.nomePai ?? "").trim(),
         nacionalidade: String(c?.nacionalidade ?? "").trim(),
         estadoCivil: String(c?.estadoCivil ?? "").trim(),
         uniaoEstavel: String(c?.uniaoEstavel ?? "").trim(),
@@ -184,6 +206,18 @@ function parseClientes(formData: FormData, campo: string): ClienteDigitado[] {
   }
 }
 
+// Valida CPF/CNPJ (dígito verificador) de todos os clientes novos do
+// formulário antes de criar qualquer um — mesma validação da Central de
+// Clientes do admin (lib/clientes/validacao.ts), aplicada aqui no portal.
+function validarDocumentos(clientesNovos: ClienteDigitado[]): string | null {
+  for (const c of clientesNovos) {
+    if (!c.cpfCnpj) continue;
+    const erro = validarCpfCnpj(c.cpfCnpj);
+    if (erro) return `${c.nome || "Cliente"}: ${erro}`;
+  }
+  return null;
+}
+
 // "" (não perguntado) vira NULL, "true"/"false" viram booleano de verdade —
 // usado no campo uniao_estavel (só existe quando estado_civil pede).
 function booleanoTri(v: string): boolean | null {
@@ -194,19 +228,43 @@ function booleanoTri(v: string): boolean | null {
 
 async function criarCliente(c: ClienteDigitado, parceiroId: string) {
   const doc = digitos(c.cpfCnpj);
-  const ehCnpj = (doc?.length ?? 0) === 14;
+  // tipoCliente é sempre perguntado no formulário agora — o comprimento do
+  // documento só entra como reforço pra cadastros antigos/rascunhos sem o
+  // campo preenchido.
+  const ehCnpj = c.tipoCliente === "Pessoa Jurídica" || (!c.tipoCliente && (doc?.length ?? 0) === 14);
+
+  const endereco = ehCnpj
+    ? c.endereco || null
+    : await montarEnderecoPF({
+        rua: c.rua || null,
+        nPredial: c.nPredial || null,
+        complemento: c.complemento || null,
+        bairro: c.bairro || null,
+        cidadeId: c.cidadeId || null,
+        estadoId: c.estadoId || null
+      });
+
   return prisma.clientes.create({
     data: {
       nome: c.nome,
       tipo_cliente: ehCnpj ? "Pessoa Jurídica" : "Pessoa Física",
-      rg: c.rg || null,
+      rg: !ehCnpj ? c.rg || null : null,
       cpf: !ehCnpj ? doc : null,
       cnpj: ehCnpj ? doc : null,
-      endereco: c.endereco || null,
+      nome_mae: !ehCnpj ? c.nomeMae || null : null,
+      nome_pai: !ehCnpj ? c.nomePai || null : null,
+      cep: !ehCnpj ? digitos(c.cep) : null,
+      rua: !ehCnpj ? c.rua || null : null,
+      n_predial: !ehCnpj ? c.nPredial || null : null,
+      complemento: !ehCnpj ? c.complemento || null : null,
+      bairro: !ehCnpj ? c.bairro || null : null,
+      estado_id: !ehCnpj ? c.estadoId || null : null,
+      cidade_id: !ehCnpj ? c.cidadeId || null : null,
+      endereco,
       nacionalidade: c.nacionalidade || null,
-      estado_civil: c.estadoCivil || null,
-      uniao_estavel: booleanoTri(c.uniaoEstavel),
-      profissao: c.profissao || null,
+      estado_civil: !ehCnpj ? c.estadoCivil || null : null,
+      uniao_estavel: !ehCnpj ? booleanoTri(c.uniaoEstavel) : null,
+      profissao: !ehCnpj ? c.profissao || null : null,
       email: c.email || null,
       telefone: digitos(c.telefone),
       banco_id: c.bancoId || null,
@@ -389,6 +447,10 @@ export async function gerarCompraVendaAction(
     // evita duplicar cliente que outro corretor já cadastrou. Só o
     // administrativo decide se transfere o cliente existente.
     const todosNovos = [...compradoresForm, ...vendedoresForm].filter((c) => !c.clienteId);
+
+    const erroDocumento = validarDocumentos(todosNovos);
+    if (erroDocumento) return { ok: false, erro: erroDocumento };
+
     for (const c of todosNovos) {
       const duplicado = await buscarClienteDuplicado({ nome: c.nome, cpfCnpj: c.cpfCnpj, ignorarIds: idsExistentes });
       if (duplicado) {

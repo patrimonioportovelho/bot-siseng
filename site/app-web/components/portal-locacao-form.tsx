@@ -8,7 +8,15 @@ import {
   ENCARGOS_OPCOES
 } from "@/lib/transacoes/opcoes";
 import { TIPOS_IMOVEL } from "@/lib/imoveis/opcoes";
-import { ESTADOS_CIVIS, ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL, TIPOS_CONTA, TIPOS_PIX } from "@/lib/clientes/opcoes";
+import {
+  ESTADOS_CIVIS,
+  ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL,
+  TIPOS_CONTA,
+  TIPOS_PIX,
+  TIPOS_CLIENTE
+} from "@/lib/clientes/opcoes";
+import { validarCpfCnpj } from "@/lib/clientes/validacao";
+import { buscarCep, UF_PARA_ESTADO } from "@/lib/enderecos";
 import { formatInscricao, somarMeses } from "@/lib/format";
 import type { ImovelBuscaResultado, ClienteBuscaResultado } from "@/lib/transacoes/buscas";
 import { gerarLocacaoAction, prepararUploadDocumentoAction } from "@/app/portal/locacao/actions";
@@ -121,10 +129,25 @@ type BairroCadastrado = { cidade_id: string | null; bairro: string | null };
 // formulários do portal.
 type PessoaLinha = {
   clienteId?: string;
+  // Sempre perguntado antes do resto — Pessoa Física ou Pessoa Jurídica
+  // (mesmo pente-fino da Central de Clientes, ver components/cliente-form.tsx).
+  tipoCliente: string;
   nome: string;
   rg: string;
   cpfCnpj: string;
+  // Endereço de Pessoa Física é dividido (CEP/logradouro/número/complemento/
+  // bairro/cidade/estado); Pessoa Jurídica usa "endereco" como Sede em texto
+  // livre solto.
   endereco: string;
+  cep: string;
+  rua: string;
+  nPredial: string;
+  complemento: string;
+  bairro: string;
+  estadoId: string;
+  cidadeId: string;
+  nomeMae: string;
+  nomePai: string;
   nacionalidade: string;
   estadoCivil: string;
   // "" (não perguntado), "true" ou "false" — só perguntado/mostrado quando
@@ -144,10 +167,20 @@ type PessoaLinha = {
 
 function pessoaVazia(): PessoaLinha {
   return {
+    tipoCliente: "",
     nome: "",
     rg: "",
     cpfCnpj: "",
     endereco: "",
+    cep: "",
+    rua: "",
+    nPredial: "",
+    complemento: "",
+    bairro: "",
+    estadoId: "",
+    cidadeId: "",
+    nomeMae: "",
+    nomePai: "",
     nacionalidade: "Brasileira",
     estadoCivil: "",
     uniaoEstavel: "",
@@ -167,10 +200,20 @@ function pessoaVazia(): PessoaLinha {
 function pessoaDeClienteExistente(c: ClienteBuscaResultado): PessoaLinha {
   return {
     clienteId: c.id,
+    tipoCliente: "",
     nome: c.nome,
     rg: "",
     cpfCnpj: c.cpfCnpj ?? "",
     endereco: "",
+    cep: "",
+    rua: "",
+    nPredial: "",
+    complemento: "",
+    bairro: "",
+    estadoId: "",
+    cidadeId: "",
+    nomeMae: "",
+    nomePai: "",
     nacionalidade: "",
     estadoCivil: "",
     uniaoEstavel: "",
@@ -204,7 +247,9 @@ function BlocoPessoas({
   setBusca,
   listaAberta,
   setListaAberta,
-  bancos
+  bancos,
+  estados,
+  cidades
 }: {
   titulo: string;
   ajuda: string;
@@ -216,6 +261,8 @@ function BlocoPessoas({
   listaAberta: boolean;
   setListaAberta: (v: boolean) => void;
   bancos: Banco[];
+  estados: { id: string; nome: string }[];
+  cidades: { id: string; nome: string; estado_id: string }[];
 }) {
   const idsJaAdicionados = new Set(pessoas.map((p) => p.clienteId).filter(Boolean));
 
@@ -252,6 +299,36 @@ function BlocoPessoas({
     );
   }
 
+  // Busca automática de CEP (ViaCEP) — mesmo comportamento do cadastro
+  // administrativo (ver components/cliente-form.tsx), aplicado por linha.
+  async function buscarEnderecoPorCep(index: number) {
+    const cepDigitado = pessoas[index]?.cep ?? "";
+    const encontrado = await buscarCep(cepDigitado);
+    if (!encontrado) return;
+
+    const nomeEstado = UF_PARA_ESTADO[encontrado.uf] ?? "";
+    const estadoEncontrado = estados.find((e) => e.nome.toLowerCase() === nomeEstado.toLowerCase());
+    const cidadeEncontrada = estadoEncontrado
+      ? cidades.find(
+          (cid) => cid.estado_id === estadoEncontrado.id && cid.nome.toLowerCase() === encontrado.localidade.toLowerCase()
+        )
+      : undefined;
+
+    setPessoas((atual) =>
+      atual.map((p, i) =>
+        i === index
+          ? {
+              ...p,
+              rua: encontrado.logradouro || p.rua,
+              bairro: encontrado.bairro || p.bairro,
+              estadoId: estadoEncontrado?.id ?? p.estadoId,
+              cidadeId: cidadeEncontrada?.id ?? ""
+            }
+          : p
+      )
+    );
+  }
+
   return (
     <div>
       <div className="text-sm font-bold text-gray-800 mb-1">{titulo}</div>
@@ -278,65 +355,177 @@ function BlocoPessoas({
               ) : (
                 <div className="grid md:grid-cols-2 gap-3">
                   <div>
-                    <label className={LABEL}>Nome</label>
-                    <input className={CAMPO} value={p.nome} onChange={(e) => atualizar(index, "nome", e.target.value)} />
-                  </div>
-                  <div>
-                    <label className={LABEL}>RG</label>
-                    <input className={CAMPO} value={p.rg} onChange={(e) => atualizar(index, "rg", e.target.value)} />
-                  </div>
-                  <div>
-                    <label className={LABEL}>CPF / CNPJ</label>
-                    <input className={CAMPO} value={p.cpfCnpj} onChange={(e) => atualizar(index, "cpfCnpj", e.target.value)} />
-                  </div>
-                  <div>
-                    <label className={LABEL}>Endereço</label>
-                    <input className={CAMPO} value={p.endereco} onChange={(e) => atualizar(index, "endereco", e.target.value)} />
-                  </div>
-                  <div>
-                    <label className={LABEL}>Nacionalidade</label>
-                    <input
-                      className={CAMPO}
-                      value={p.nacionalidade}
-                      onChange={(e) => atualizar(index, "nacionalidade", e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <label className={LABEL}>Estado civil</label>
+                    <label className={LABEL}>Tipo de cliente</label>
                     <select
                       className={CAMPO}
-                      value={p.estadoCivil}
-                      onChange={(e) => {
-                        atualizar(index, "estadoCivil", e.target.value);
-                        if (!ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL.includes(e.target.value)) atualizar(index, "uniaoEstavel", "");
-                      }}
+                      value={p.tipoCliente}
+                      onChange={(e) => atualizar(index, "tipoCliente", e.target.value)}
                     >
-                      <option value="">—</option>
-                      {ESTADOS_CIVIS.map((op) => (
-                        <option key={op} value={op}>
-                          {op}
+                      <option value="" disabled>
+                        Selecione...
+                      </option>
+                      {TIPOS_CLIENTE.map((t) => (
+                        <option key={t} value={t}>
+                          {t}
                         </option>
                       ))}
                     </select>
                   </div>
-                  {ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL.includes(p.estadoCivil) && (
+                  <div>
+                    <label className={LABEL}>{p.tipoCliente === "Pessoa Jurídica" ? "Razão social" : "Nome completo"}</label>
+                    <input className={CAMPO} value={p.nome} onChange={(e) => atualizar(index, "nome", e.target.value)} />
+                  </div>
+                  {p.tipoCliente !== "Pessoa Jurídica" && (
                     <div>
-                      <label className={LABEL}>Convive em união estável?</label>
-                      <select
-                        className={CAMPO}
-                        value={p.uniaoEstavel}
-                        onChange={(e) => atualizar(index, "uniaoEstavel", e.target.value)}
-                      >
-                        <option value="">Não perguntado ainda</option>
-                        <option value="false">Não</option>
-                        <option value="true">Sim</option>
-                      </select>
+                      <label className={LABEL}>RG</label>
+                      <input className={CAMPO} value={p.rg} onChange={(e) => atualizar(index, "rg", e.target.value)} />
                     </div>
                   )}
                   <div>
-                    <label className={LABEL}>Profissão</label>
-                    <input className={CAMPO} value={p.profissao} onChange={(e) => atualizar(index, "profissao", e.target.value)} />
+                    <label className={LABEL}>{p.tipoCliente === "Pessoa Jurídica" ? "CNPJ" : "CPF"}</label>
+                    <input
+                      className={CAMPO}
+                      value={p.cpfCnpj}
+                      onChange={(e) => atualizar(index, "cpfCnpj", e.target.value)}
+                      onBlur={(e) => {
+                        const erro = e.target.value ? validarCpfCnpj(e.target.value) : null;
+                        if (erro) alert(erro);
+                      }}
+                    />
                   </div>
+                  {p.tipoCliente === "Pessoa Jurídica" ? (
+                    <div className="md:col-span-2">
+                      <label className={LABEL}>Sede (endereço completo)</label>
+                      <input className={CAMPO} value={p.endereco} onChange={(e) => atualizar(index, "endereco", e.target.value)} />
+                    </div>
+                  ) : (
+                    <>
+                      <div>
+                        <label className={LABEL}>CEP</label>
+                        <input
+                          className={CAMPO}
+                          value={p.cep}
+                          onChange={(e) => atualizar(index, "cep", e.target.value)}
+                          onBlur={() => buscarEnderecoPorCep(index)}
+                        />
+                      </div>
+                      <div>
+                        <label className={LABEL}>Logradouro</label>
+                        <input className={CAMPO} value={p.rua} onChange={(e) => atualizar(index, "rua", e.target.value)} />
+                      </div>
+                      <div>
+                        <label className={LABEL}>Número predial</label>
+                        <input
+                          className={CAMPO}
+                          value={p.nPredial}
+                          onChange={(e) => atualizar(index, "nPredial", e.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <label className={LABEL}>Complemento</label>
+                        <input
+                          className={CAMPO}
+                          value={p.complemento}
+                          onChange={(e) => atualizar(index, "complemento", e.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <label className={LABEL}>Bairro</label>
+                        <input className={CAMPO} value={p.bairro} onChange={(e) => atualizar(index, "bairro", e.target.value)} />
+                      </div>
+                      <div>
+                        <label className={LABEL}>Estado</label>
+                        <select
+                          className={CAMPO}
+                          value={p.estadoId}
+                          onChange={(e) => {
+                            atualizar(index, "estadoId", e.target.value);
+                            atualizar(index, "cidadeId", "");
+                          }}
+                        >
+                          <option value="">—</option>
+                          {estados.map((e) => (
+                            <option key={e.id} value={e.id}>
+                              {e.nome}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className={LABEL}>Cidade</label>
+                        <select className={CAMPO} value={p.cidadeId} onChange={(e) => atualizar(index, "cidadeId", e.target.value)}>
+                          <option value="">—</option>
+                          {cidades
+                            .filter((c) => c.estado_id === p.estadoId)
+                            .map((c) => (
+                              <option key={c.id} value={c.id}>
+                                {c.nome}
+                              </option>
+                            ))}
+                        </select>
+                      </div>
+                    </>
+                  )}
+                  {p.tipoCliente !== "Pessoa Jurídica" && (
+                    <>
+                      <div>
+                        <label className={LABEL}>Nome da mãe</label>
+                        <input className={CAMPO} value={p.nomeMae} onChange={(e) => atualizar(index, "nomeMae", e.target.value)} />
+                      </div>
+                      <div>
+                        <label className={LABEL}>Nome do pai</label>
+                        <input className={CAMPO} value={p.nomePai} onChange={(e) => atualizar(index, "nomePai", e.target.value)} />
+                      </div>
+                      <div>
+                        <label className={LABEL}>Nacionalidade</label>
+                        <input
+                          className={CAMPO}
+                          value={p.nacionalidade}
+                          onChange={(e) => atualizar(index, "nacionalidade", e.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <label className={LABEL}>Estado civil</label>
+                        <select
+                          className={CAMPO}
+                          value={p.estadoCivil}
+                          onChange={(e) => {
+                            atualizar(index, "estadoCivil", e.target.value);
+                            if (!ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL.includes(e.target.value)) atualizar(index, "uniaoEstavel", "");
+                          }}
+                        >
+                          <option value="">—</option>
+                          {ESTADOS_CIVIS.map((op) => (
+                            <option key={op} value={op}>
+                              {op}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      {ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL.includes(p.estadoCivil) && (
+                        <div>
+                          <label className={LABEL}>Convive em união estável?</label>
+                          <select
+                            className={CAMPO}
+                            value={p.uniaoEstavel}
+                            onChange={(e) => atualizar(index, "uniaoEstavel", e.target.value)}
+                          >
+                            <option value="">Não perguntado ainda</option>
+                            <option value="false">Não</option>
+                            <option value="true">Sim</option>
+                          </select>
+                        </div>
+                      )}
+                      <div>
+                        <label className={LABEL}>Profissão</label>
+                        <input
+                          className={CAMPO}
+                          value={p.profissao}
+                          onChange={(e) => atualizar(index, "profissao", e.target.value)}
+                        />
+                      </div>
+                    </>
+                  )}
                   <div>
                     <label className={LABEL}>Email</label>
                     <input className={CAMPO} value={p.email} onChange={(e) => atualizar(index, "email", e.target.value)} />
@@ -1190,6 +1379,8 @@ export function PortalLocacaoForm({
               listaAberta={listaProprietarioAberta}
               setListaAberta={setListaProprietarioAberta}
               bancos={bancos}
+              estados={estados}
+              cidades={cidades}
             />
           </>
         )}
@@ -1207,6 +1398,8 @@ export function PortalLocacaoForm({
           listaAberta={listaLocatarioAberta}
           setListaAberta={setListaLocatarioAberta}
           bancos={bancos}
+          estados={estados}
+          cidades={cidades}
         />
       </div>
 

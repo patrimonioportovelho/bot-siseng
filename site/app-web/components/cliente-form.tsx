@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useMemo, useState } from "react";
 import {
   ESTADOS_CIVIS,
   ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL,
@@ -11,10 +11,17 @@ import {
   CAT_PROFISSAO_OPCOES
 } from "@/lib/clientes/opcoes";
 import { formatCpf, formatCnpj, formatTelefone, formatValorEditavel } from "@/lib/format";
+import { validarCpfCnpj } from "@/lib/clientes/validacao";
+import { buscarCep, UF_PARA_ESTADO } from "@/lib/enderecos";
+import { SocioForm } from "@/components/socio-form";
 
 type Loja = { id: string; nome: string };
 type Banco = { id: string; nome: string; codigo: string | null };
 type ParceiroOpcao = { id: string; nome: string };
+type EstadoOpcao = { id: string; nome: string };
+type CidadeOpcao = { id: string; nome: string; estado_id: string };
+type ClientePF = { id: string; nome: string; cpf: string | null };
+type SocioVinculado = { vinculoId: string; id: string; nome: string; cpf: string | null };
 
 type ClienteExistente = {
   id: string;
@@ -29,11 +36,20 @@ type ClienteExistente = {
   email: string | null;
   estado_civil: string | null;
   uniao_estavel: boolean | null;
+  nome_mae: string | null;
+  nome_pai: string | null;
   renda_bruta: unknown;
   data_nascimento: Date | null;
   cat_profissao: string | null;
   tipo_servidor: string | null;
   profissao: string | null;
+  cep: string | null;
+  rua: string | null;
+  n_predial: string | null;
+  complemento: string | null;
+  bairro: string | null;
+  estado_id: string | null;
+  cidade_id: string | null;
   endereco: string | null;
   observacao: string | null;
   parceiro_id: string | null;
@@ -52,6 +68,11 @@ function inputDate(d: Date | null) {
   return new Date(d).toISOString().slice(0, 10);
 }
 
+function formatCep(v: string): string {
+  const d = v.replace(/\D/g, "").slice(0, 8);
+  return d.length > 5 ? `${d.slice(0, 5)}-${d.slice(5)}` : d;
+}
+
 const CAMPO = "text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full outline-none focus:border-primary bg-white";
 const LABEL = "text-xs text-gray-600 block mb-1";
 
@@ -60,13 +81,21 @@ export function ClienteForm({
   lojas,
   bancos,
   parceiros,
+  estados,
+  cidades,
   action,
-  embutido
+  embutido,
+  sociosAtuais,
+  clientesPfDisponiveis,
+  adicionarSocioAction,
+  removerSocioAction
 }: {
   cliente: ClienteExistente | null;
   lojas: Loja[];
   bancos: Banco[];
   parceiros: ParceiroOpcao[];
+  estados: EstadoOpcao[];
+  cidades: CidadeOpcao[];
   // Retorna { erro } em vez de lançar exceção — assim o erro aparece inline
   // aqui embaixo e o que foi digitado continua intacto (antes, qualquer erro
   // derrubava a página inteira e apagava o formulário). `duplicado: true`
@@ -74,10 +103,22 @@ export function ClienteForm({
   // assim" abaixo.
   action: (prevState: unknown, formData: FormData) => Promise<{ erro: string; duplicado?: boolean } | undefined | void>;
   embutido?: boolean;
+  // Sócios só fazem sentido depois que a PJ já existe (precisa do id pra
+  // gravar o vínculo). Em "novo cliente" esses props vêm vazios/undefined.
+  sociosAtuais?: SocioVinculado[];
+  clientesPfDisponiveis?: ClientePF[];
+  adicionarSocioAction?: (
+    prevState: unknown,
+    formData: FormData
+  ) => Promise<{ erro: string } | { ok: true } | undefined>;
+  removerSocioAction?: (formData: FormData) => Promise<void>;
 }) {
   const c = cliente;
   const [resultado, formAction] = useActionState(action, undefined);
   const [tipoCliente, setTipoCliente] = useState(c?.tipo_cliente ?? "");
+  const ehPessoaJuridica = tipoCliente === "Pessoa Jurídica";
+  const ehPessoaFisica = !ehPessoaJuridica;
+
   const [estadoCivil, setEstadoCivil] = useState(c?.estado_civil ?? "");
   // Só pergunta união estável quando o estado civil formal é Solteiro,
   // Divorciado ou Separado Judicialmente — ver comentário em
@@ -86,8 +127,68 @@ export function ClienteForm({
     c?.uniao_estavel === true ? "true" : c?.uniao_estavel === false ? "false" : ""
   );
   const pedeUniaoEstavel = ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL.includes(estadoCivil);
-  const mostrarCpf = tipoCliente !== "Pessoa Jurídica";
-  const mostrarCnpj = tipoCliente !== "Pessoa Física";
+
+  // Validação de CPF/CNPJ em tempo real (mesmo dígito verificador usado no
+  // servidor) — pega erro de digitação antes de tentar salvar.
+  const [docTexto, setDocTexto] = useState(
+    ehPessoaJuridica ? (c?.cnpj ? formatCnpj(c.cnpj) : "") : c?.cpf ? formatCpf(c.cpf) : ""
+  );
+  const [docErro, setDocErro] = useState<string | null>(null);
+
+  // Endereço de Pessoa Física dividido em CEP/logradouro/número/complemento/
+  // bairro/cidade/estado, com busca automática por CEP (ViaCEP) — pedido
+  // explícito do usuário. Pessoa Jurídica usa "Sede" como texto livre solto
+  // (campo `endereco` de sempre, sem divisão).
+  const [cep, setCep] = useState(c?.cep ? formatCep(c.cep) : "");
+  const [rua, setRua] = useState(c?.rua ?? "");
+  const [bairro, setBairro] = useState(c?.bairro ?? "");
+  const [estadoId, setEstadoId] = useState(c?.estado_id ?? "");
+  const [cidadeId, setCidadeId] = useState(c?.cidade_id ?? "");
+  const [buscandoCep, setBuscandoCep] = useState(false);
+  const [cepAvisoCidade, setCepAvisoCidade] = useState<string | null>(null);
+
+  const cidadesDoEstado = useMemo(() => cidades.filter((cid) => cid.estado_id === estadoId), [cidades, estadoId]);
+
+  // Endereço antigo (importado da planilha, sem os campos divididos
+  // preenchidos) — só mostrado como referência, nunca perdido: se o admin
+  // não mexer nos campos de endereço, o texto antigo continua intacto (ver
+  // montarEnderecoCliente em app/clientes/actions.ts).
+  const mostrarEnderecoAntigo = ehPessoaFisica && !c?.rua && !!c?.endereco;
+
+  async function aoSairDoCep() {
+    const digitos = cep.replace(/\D/g, "");
+    if (digitos.length !== 8) return;
+    setBuscandoCep(true);
+    setCepAvisoCidade(null);
+    try {
+      const encontrado = await buscarCep(digitos);
+      if (!encontrado) {
+        setCepAvisoCidade("CEP não encontrado — preencha o endereço manualmente.");
+        return;
+      }
+      setRua(encontrado.logradouro || rua);
+      setBairro(encontrado.bairro || bairro);
+
+      const nomeEstado = UF_PARA_ESTADO[encontrado.uf] ?? "";
+      const estadoEncontrado = estados.find((e) => e.nome.toLowerCase() === nomeEstado.toLowerCase());
+      if (estadoEncontrado) {
+        setEstadoId(estadoEncontrado.id);
+        const cidadeEncontrada = cidades.find(
+          (cid) => cid.estado_id === estadoEncontrado.id && cid.nome.toLowerCase() === encontrado.localidade.toLowerCase()
+        );
+        if (cidadeEncontrada) {
+          setCidadeId(cidadeEncontrada.id);
+        } else {
+          setCidadeId("");
+          setCepAvisoCidade(`Cidade "${encontrado.localidade}" não está cadastrada — selecione manualmente abaixo.`);
+        }
+      } else {
+        setCepAvisoCidade("Selecione o estado e a cidade manualmente abaixo.");
+      }
+    } finally {
+      setBuscandoCep(false);
+    }
+  }
 
   // Código do banco vem automaticamente ao escolher o Banco — antes era um
   // campo de texto solto, sem relação nenhuma com o banco selecionado, e
@@ -102,309 +203,439 @@ export function ClienteForm({
   }
 
   return (
-    <form action={formAction} className="flex flex-col gap-5">
-      {c && <input type="hidden" name="clienteId" value={c.id} />}
-      {embutido && <input type="hidden" name="_embed" value="1" />}
+    <div className="flex flex-col gap-5">
+      <form action={formAction} className="flex flex-col gap-5">
+        {c && <input type="hidden" name="clienteId" value={c.id} />}
+        {embutido && <input type="hidden" name="_embed" value="1" />}
 
-      <div className="bg-white border border-gray-200 rounded-xl p-4">
-        <div className="text-sm font-bold text-gray-800 mb-3">Identificação</div>
-        <div className="grid md:grid-cols-2 gap-3">
-          <div>
-            <label className={LABEL}>Nome completo</label>
-            {c ? (
-              <input className={CAMPO} value={c.nome} disabled />
-            ) : (
-              <input className={CAMPO} name="nome" required placeholder="Nome completo" />
+        <div className="bg-white border border-gray-200 rounded-xl p-4">
+          <div className="text-sm font-bold text-gray-800 mb-3">Identificação</div>
+          <div className="grid md:grid-cols-2 gap-3">
+            <div>
+              <label className={LABEL}>Tipo de cliente</label>
+              {c ? (
+                <input className={CAMPO} value={c.tipo_cliente} disabled />
+              ) : (
+                <select
+                  className={CAMPO}
+                  name="tipo_cliente"
+                  value={tipoCliente}
+                  onChange={(e) => setTipoCliente(e.target.value)}
+                  required
+                >
+                  <option value="" disabled>
+                    Selecione...
+                  </option>
+                  {TIPOS_CLIENTE.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+              )}
+              {c && <input type="hidden" name="tipo_cliente" value={c.tipo_cliente} />}
+            </div>
+            <div>
+              <label className={LABEL}>{ehPessoaJuridica ? "Razão social" : "Nome completo"}</label>
+              {c ? (
+                <input className={CAMPO} value={c.nome} disabled />
+              ) : (
+                <input
+                  className={CAMPO + " capitalize"}
+                  name="nome"
+                  required
+                  disabled={!tipoCliente}
+                  placeholder={ehPessoaJuridica ? "Razão social" : "Nome completo"}
+                />
+              )}
+            </div>
+            {!tipoCliente && !c && (
+              <p className="text-[11px] text-gray-400 md:col-span-2 -mt-2">
+                Escolha Pessoa Física ou Pessoa Jurídica para liberar o restante do cadastro.
+              </p>
+            )}
+            {ehPessoaFisica && (
+              <div>
+                <label className={LABEL}>CPF</label>
+                <input
+                  className={CAMPO}
+                  name="cpf"
+                  placeholder="000.000.000-00"
+                  value={docTexto}
+                  onChange={(e) => {
+                    setDocTexto(formatCpf(e.target.value.replace(/\D/g, "")) || e.target.value);
+                    setDocErro(null);
+                  }}
+                  onBlur={(e) => setDocErro(e.target.value ? validarCpfCnpj(e.target.value) : null)}
+                />
+                {docErro && <p className="text-[11px] text-red-600 mt-1">{docErro}</p>}
+              </div>
+            )}
+            {ehPessoaJuridica && (
+              <div>
+                <label className={LABEL}>CNPJ</label>
+                <input
+                  className={CAMPO}
+                  name="cnpj"
+                  placeholder="00.000.000/0000-00"
+                  value={docTexto}
+                  required
+                  onChange={(e) => {
+                    setDocTexto(formatCnpj(e.target.value.replace(/\D/g, "")) || e.target.value);
+                    setDocErro(null);
+                  }}
+                  onBlur={(e) => setDocErro(e.target.value ? validarCpfCnpj(e.target.value) : null)}
+                />
+                {docErro && <p className="text-[11px] text-red-600 mt-1">{docErro}</p>}
+              </div>
+            )}
+            {ehPessoaFisica && (
+              <>
+                <div>
+                  <label className={LABEL}>RG</label>
+                  <input className={CAMPO} name="rg" defaultValue={c?.rg ?? ""} />
+                </div>
+                <div>
+                  <label className={LABEL}>Expedição</label>
+                  <input className={CAMPO} name="expedicao" defaultValue={c?.expedicao ?? ""} />
+                </div>
+                <div>
+                  <label className={LABEL}>Sexo</label>
+                  <select className={CAMPO} name="sexo" defaultValue={c?.sexo ?? ""}>
+                    <option value="">—</option>
+                    {SEXO_OPCOES.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className={LABEL}>Estado civil</label>
+                  <select
+                    className={CAMPO + " capitalize"}
+                    name="estado_civil"
+                    value={estadoCivil}
+                    onChange={(e) => setEstadoCivil(e.target.value)}
+                  >
+                    <option value="">—</option>
+                    {ESTADOS_CIVIS.map((e) => (
+                      <option key={e} value={e} className="capitalize">
+                        {e}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {pedeUniaoEstavel && (
+                  <div>
+                    <label className={LABEL}>Convive em união estável?</label>
+                    <select
+                      className={CAMPO}
+                      name="uniao_estavel"
+                      value={uniaoEstavel}
+                      onChange={(e) => setUniaoEstavel(e.target.value)}
+                    >
+                      <option value="">Não perguntado ainda</option>
+                      <option value="false">Não</option>
+                      <option value="true">Sim</option>
+                    </select>
+                    <p className="text-[11px] text-gray-400 mt-1">
+                      Precisa constar na qualificação de contratos, mesmo sem mudar o estado civil formal.
+                    </p>
+                  </div>
+                )}
+                <div>
+                  <label className={LABEL}>Data de nascimento</label>
+                  <input
+                    type="date"
+                    className={CAMPO}
+                    name="data_nascimento"
+                    defaultValue={inputDate(c?.data_nascimento ?? null)}
+                  />
+                </div>
+                <div>
+                  <label className={LABEL}>Nome da mãe</label>
+                  <input className={CAMPO} name="nome_mae" defaultValue={c?.nome_mae ?? ""} />
+                </div>
+                <div>
+                  <label className={LABEL}>Nome do pai</label>
+                  <input className={CAMPO} name="nome_pai" defaultValue={c?.nome_pai ?? ""} />
+                </div>
+              </>
             )}
           </div>
-          <div>
-            <label className={LABEL}>Tipo de cliente</label>
-            <select
-              className={CAMPO}
-              name="tipo_cliente"
-              value={tipoCliente}
-              onChange={(e) => setTipoCliente(e.target.value)}
-              required
-            >
-              <option value="" disabled>
-                Selecione...
-              </option>
-              {TIPOS_CLIENTE.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
-          </div>
-          {mostrarCpf && (
+        </div>
+
+        <div className="bg-white border border-gray-200 rounded-xl p-4">
+          <div className="text-sm font-bold text-gray-800 mb-3">Contato</div>
+          <div className="grid md:grid-cols-2 gap-3">
             <div>
-              <label className={LABEL}>CPF</label>
+              <label className={LABEL}>Telefone</label>
               <input
                 className={CAMPO}
-                name="cpf"
-                placeholder="000.000.000-00"
-                defaultValue={c?.cpf ? formatCpf(c.cpf) : ""}
+                name="telefone"
+                placeholder="(69) 99999-9999"
+                defaultValue={c?.telefone ? formatTelefone(c.telefone) : ""}
               />
             </div>
-          )}
-          {mostrarCnpj && (
             <div>
-              <label className={LABEL}>CNPJ</label>
-              <input
-                className={CAMPO}
-                name="cnpj"
-                placeholder="00.000.000/0000-00"
-                defaultValue={c?.cnpj ? formatCnpj(c.cnpj) : ""}
-              />
+              <label className={LABEL}>E-mail</label>
+              <input className={CAMPO} type="email" name="email" defaultValue={c?.email ?? ""} />
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white border border-gray-200 rounded-xl p-4">
+          <div className="text-sm font-bold text-gray-800 mb-3">{ehPessoaJuridica ? "Sede" : "Endereço"}</div>
+          {ehPessoaJuridica ? (
+            <div>
+              <label className={LABEL}>Endereço completo da sede</label>
+              <textarea className={CAMPO + " min-h-20"} name="endereco" defaultValue={c?.endereco ?? ""} />
+            </div>
+          ) : (
+            <div className="grid md:grid-cols-2 gap-3">
+              {mostrarEnderecoAntigo && (
+                <p className="text-[11px] text-gray-400 md:col-span-2">
+                  Endereço atual (cadastro antigo, formato livre): {c?.endereco}. Preencha os campos abaixo para
+                  atualizar para o formato dividido.
+                </p>
+              )}
+              <div>
+                <label className={LABEL}>CEP</label>
+                <input
+                  className={CAMPO}
+                  name="cep"
+                  placeholder="76800-000"
+                  value={cep}
+                  onChange={(e) => setCep(formatCep(e.target.value))}
+                  onBlur={aoSairDoCep}
+                />
+                {buscandoCep && <p className="text-[11px] text-gray-400 mt-1">Buscando endereço pelo CEP...</p>}
+                {cepAvisoCidade && <p className="text-[11px] text-amber-600 mt-1">{cepAvisoCidade}</p>}
+              </div>
+              <div>
+                <label className={LABEL}>Logradouro</label>
+                <input className={CAMPO} name="rua" value={rua} onChange={(e) => setRua(e.target.value)} />
+              </div>
+              <div>
+                <label className={LABEL}>Número predial</label>
+                <input className={CAMPO} name="n_predial" defaultValue={c?.n_predial ?? ""} />
+              </div>
+              <div>
+                <label className={LABEL}>Complemento</label>
+                <input className={CAMPO} name="complemento" defaultValue={c?.complemento ?? ""} />
+              </div>
+              <div>
+                <label className={LABEL}>Bairro</label>
+                <input className={CAMPO} name="bairro" value={bairro} onChange={(e) => setBairro(e.target.value)} />
+              </div>
+              <div>
+                <label className={LABEL}>Estado</label>
+                <select
+                  className={CAMPO}
+                  name="estado_id"
+                  value={estadoId}
+                  onChange={(e) => {
+                    setEstadoId(e.target.value);
+                    setCidadeId("");
+                  }}
+                >
+                  <option value="">—</option>
+                  {estados.map((e) => (
+                    <option key={e.id} value={e.id}>
+                      {e.nome}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className={LABEL}>Cidade</label>
+                <select className={CAMPO} name="cidade_id" value={cidadeId} onChange={(e) => setCidadeId(e.target.value)}>
+                  <option value="">—</option>
+                  {cidadesDoEstado.map((cid) => (
+                    <option key={cid.id} value={cid.id}>
+                      {cid.nome}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           )}
-          <div>
-            <label className={LABEL}>RG</label>
-            <input className={CAMPO} name="rg" defaultValue={c?.rg ?? ""} />
+        </div>
+
+        {ehPessoaFisica && (
+          <div className="bg-white border border-gray-200 rounded-xl p-4">
+            <div className="text-sm font-bold text-gray-800 mb-3">Profissional</div>
+            <div className="grid md:grid-cols-2 gap-3">
+              <div>
+                <label className={LABEL}>Profissão</label>
+                <input className={CAMPO} name="profissao" defaultValue={c?.profissao ?? ""} />
+              </div>
+              <div>
+                <label className={LABEL}>Categoria de profissão</label>
+                <select className={CAMPO} name="cat_profissao" defaultValue={c?.cat_profissao ?? ""}>
+                  <option value="">—</option>
+                  {CAT_PROFISSAO_OPCOES.map((o) => (
+                    <option key={o} value={o}>
+                      {o}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className={LABEL}>Tipo de servidor</label>
+                <input className={CAMPO} name="tipo_servidor" defaultValue={c?.tipo_servidor ?? ""} />
+              </div>
+              <div>
+                <label className={LABEL}>Renda bruta (R$)</label>
+                <input
+                  className={CAMPO}
+                  name="renda_bruta"
+                  placeholder="2.500,00"
+                  defaultValue={formatValorEditavel(c?.renda_bruta)}
+                />
+              </div>
+            </div>
           </div>
-          <div>
-            <label className={LABEL}>Estado de expedição</label>
-            <input className={CAMPO} name="expedicao" defaultValue={c?.expedicao ?? ""} />
-          </div>
-          <div>
-            <label className={LABEL}>Sexo</label>
-            <select className={CAMPO} name="sexo" defaultValue={c?.sexo ?? ""}>
-              <option value="">—</option>
-              {SEXO_OPCOES.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className={LABEL}>Estado civil</label>
-            <select
-              className={CAMPO + " capitalize"}
-              name="estado_civil"
-              value={estadoCivil}
-              onChange={(e) => setEstadoCivil(e.target.value)}
-            >
-              <option value="">—</option>
-              {ESTADOS_CIVIS.map((e) => (
-                <option key={e} value={e} className="capitalize">
-                  {e}
-                </option>
-              ))}
-            </select>
-          </div>
-          {pedeUniaoEstavel && (
+        )}
+
+        <div className="bg-white border border-gray-200 rounded-xl p-4">
+          <div className="text-sm font-bold text-gray-800 mb-3">Vínculo</div>
+          <div className="grid md:grid-cols-2 gap-3">
             <div>
-              <label className={LABEL}>Convive em união estável?</label>
+              <label className={LABEL}>Parceiro responsável</label>
+              <select className={CAMPO} name="parceiro_id" defaultValue={c?.parceiro_id ?? ""}>
+                <option value="">—</option>
+                {parceiros.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.nome}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className={LABEL}>Loja</label>
+              <select className={CAMPO} name="loja_id" defaultValue={c?.loja_id ?? ""}>
+                <option value="">—</option>
+                {lojas.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.nome}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="md:col-span-2">
+              <label className={LABEL}>Observação</label>
+              <textarea className={CAMPO + " min-h-20"} name="observacao" defaultValue={c?.observacao ?? ""} />
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white border border-gray-200 rounded-xl p-4">
+          <div className="text-sm font-bold text-gray-800 mb-3">Dados bancários</div>
+          <div className="grid md:grid-cols-2 gap-3">
+            <div>
+              <label className={LABEL}>Banco</label>
               <select
                 className={CAMPO}
-                name="uniao_estavel"
-                value={uniaoEstavel}
-                onChange={(e) => setUniaoEstavel(e.target.value)}
+                name="banco_id"
+                value={bancoId}
+                onChange={(e) => selecionarBanco(e.target.value)}
               >
-                <option value="">Não perguntado ainda</option>
-                <option value="false">Não</option>
-                <option value="true">Sim</option>
+                <option value="">—</option>
+                {bancos.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.nome}
+                  </option>
+                ))}
               </select>
-              <p className="text-[11px] text-gray-400 mt-1">
-                Precisa constar na qualificação de contratos, mesmo sem mudar o estado civil formal.
-              </p>
+              {!c?.banco_id && c?.codigo_banco && (
+                <p className="text-[11px] text-gray-400 mt-1">
+                  Código {c.codigo_banco} importado da planilha, ainda não vinculado a um banco da lista —
+                  selecione acima.
+                </p>
+              )}
             </div>
-          )}
-          <div>
-            <label className={LABEL}>Data de nascimento</label>
-            <input
-              type="date"
-              className={CAMPO}
-              name="data_nascimento"
-              defaultValue={inputDate(c?.data_nascimento ?? null)}
-            />
+            <div>
+              <label className={LABEL}>Código do banco</label>
+              <input
+                className={CAMPO}
+                name="codigo_banco"
+                value={codigoBanco}
+                onChange={(e) => setCodigoBanco(e.target.value)}
+                placeholder="Preenchido ao escolher o banco"
+              />
+            </div>
+            <div>
+              <label className={LABEL}>Agência</label>
+              <input className={CAMPO} name="agencia" defaultValue={c?.agencia ?? ""} />
+            </div>
+            <div>
+              <label className={LABEL}>Conta</label>
+              <input className={CAMPO} name="conta" defaultValue={c?.conta ?? ""} />
+            </div>
+            <div>
+              <label className={LABEL}>Tipo de conta</label>
+              <select className={CAMPO} name="tipo_conta" defaultValue={c?.tipo_conta ?? ""}>
+                <option value="">—</option>
+                {TIPOS_CONTA.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className={LABEL}>Tipo de PIX</label>
+              <select className={CAMPO} name="tipo_pix" defaultValue={c?.tipo_pix ?? ""}>
+                <option value="">—</option>
+                {TIPOS_PIX.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="md:col-span-2">
+              <label className={LABEL}>Chave PIX</label>
+              <input className={CAMPO} name="pix" defaultValue={c?.pix ?? ""} />
+            </div>
           </div>
         </div>
-      </div>
 
-      <div className="bg-white border border-gray-200 rounded-xl p-4">
-        <div className="text-sm font-bold text-gray-800 mb-3">Contato</div>
-        <div className="grid md:grid-cols-2 gap-3">
-          <div>
-            <label className={LABEL}>Telefone</label>
-            <input
-              className={CAMPO}
-              name="telefone"
-              placeholder="(69) 99999-9999"
-              defaultValue={c?.telefone ? formatTelefone(c.telefone) : ""}
-            />
-          </div>
-          <div>
-            <label className={LABEL}>E-mail</label>
-            <input className={CAMPO} type="email" name="email" defaultValue={c?.email ?? ""} />
-          </div>
-          <div className="md:col-span-2">
-            <label className={LABEL}>Endereço</label>
-            <input className={CAMPO} name="endereco" defaultValue={c?.endereco ?? ""} />
-          </div>
-        </div>
-      </div>
-
-      <div className="bg-white border border-gray-200 rounded-xl p-4">
-        <div className="text-sm font-bold text-gray-800 mb-3">Profissional</div>
-        <div className="grid md:grid-cols-2 gap-3">
-          <div>
-            <label className={LABEL}>Profissão</label>
-            <input className={CAMPO} name="profissao" defaultValue={c?.profissao ?? ""} />
-          </div>
-          <div>
-            <label className={LABEL}>Categoria de profissão</label>
-            <select className={CAMPO} name="cat_profissao" defaultValue={c?.cat_profissao ?? ""}>
-              <option value="">—</option>
-              {CAT_PROFISSAO_OPCOES.map((o) => (
-                <option key={o} value={o}>
-                  {o}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className={LABEL}>Tipo de servidor</label>
-            <input className={CAMPO} name="tipo_servidor" defaultValue={c?.tipo_servidor ?? ""} />
-          </div>
-          <div>
-            <label className={LABEL}>Renda bruta (R$)</label>
-            <input
-              className={CAMPO}
-              name="renda_bruta"
-              placeholder="2.500,00"
-              defaultValue={formatValorEditavel(c?.renda_bruta)}
-            />
-          </div>
-        </div>
-      </div>
-
-      <div className="bg-white border border-gray-200 rounded-xl p-4">
-        <div className="text-sm font-bold text-gray-800 mb-3">Vínculo</div>
-        <div className="grid md:grid-cols-2 gap-3">
-          <div>
-            <label className={LABEL}>Parceiro responsável</label>
-            <select className={CAMPO} name="parceiro_id" defaultValue={c?.parceiro_id ?? ""}>
-              <option value="">—</option>
-              {parceiros.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.nome}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className={LABEL}>Loja</label>
-            <select className={CAMPO} name="loja_id" defaultValue={c?.loja_id ?? ""}>
-              <option value="">—</option>
-              {lojas.map((l) => (
-                <option key={l.id} value={l.id}>
-                  {l.nome}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="md:col-span-2">
-            <label className={LABEL}>Observação</label>
-            <textarea
-              className={CAMPO + " min-h-20"}
-              name="observacao"
-              defaultValue={c?.observacao ?? ""}
-            />
-          </div>
-        </div>
-      </div>
-
-      <div className="bg-white border border-gray-200 rounded-xl p-4">
-        <div className="text-sm font-bold text-gray-800 mb-3">Dados bancários</div>
-        <div className="grid md:grid-cols-2 gap-3">
-          <div>
-            <label className={LABEL}>Banco</label>
-            <select
-              className={CAMPO}
-              name="banco_id"
-              value={bancoId}
-              onChange={(e) => selecionarBanco(e.target.value)}
-            >
-              <option value="">—</option>
-              {bancos.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.nome}
-                </option>
-              ))}
-            </select>
-            {!c?.banco_id && c?.codigo_banco && (
-              <p className="text-[11px] text-gray-400 mt-1">
-                Código {c.codigo_banco} importado da planilha, ainda não vinculado a um banco da lista —
-                selecione acima.
-              </p>
+        {resultado?.erro && (
+          <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg px-3 py-2">
+            {resultado.erro} — o que você digitou continua aí em cima, é só corrigir e salvar de novo.
+            {resultado.duplicado && (
+              <label className="flex items-center gap-2 mt-2 text-red-800 font-medium cursor-pointer">
+                <input type="checkbox" name="criar_mesmo_assim" />
+                Já conferi, não é a mesma pessoa — criar mesmo assim
+              </label>
             )}
           </div>
-          <div>
-            <label className={LABEL}>Código do banco</label>
-            <input
-              className={CAMPO}
-              name="codigo_banco"
-              value={codigoBanco}
-              onChange={(e) => setCodigoBanco(e.target.value)}
-              placeholder="Preenchido ao escolher o banco"
-            />
-          </div>
-          <div>
-            <label className={LABEL}>Agência</label>
-            <input className={CAMPO} name="agencia" defaultValue={c?.agencia ?? ""} />
-          </div>
-          <div>
-            <label className={LABEL}>Conta</label>
-            <input className={CAMPO} name="conta" defaultValue={c?.conta ?? ""} />
-          </div>
-          <div>
-            <label className={LABEL}>Tipo de conta</label>
-            <select className={CAMPO} name="tipo_conta" defaultValue={c?.tipo_conta ?? ""}>
-              <option value="">—</option>
-              {TIPOS_CONTA.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className={LABEL}>Tipo de PIX</label>
-            <select className={CAMPO} name="tipo_pix" defaultValue={c?.tipo_pix ?? ""}>
-              <option value="">—</option>
-              {TIPOS_PIX.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="md:col-span-2">
-            <label className={LABEL}>Chave PIX</label>
-            <input className={CAMPO} name="pix" defaultValue={c?.pix ?? ""} />
-          </div>
-        </div>
-      </div>
+        )}
 
-      {resultado?.erro && (
-        <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg px-3 py-2">
-          {resultado.erro} — o que você digitou continua aí em cima, é só corrigir e salvar de novo.
-          {resultado.duplicado && (
-            <label className="flex items-center gap-2 mt-2 text-red-800 font-medium cursor-pointer">
-              <input type="checkbox" name="criar_mesmo_assim" />
-              Já conferi, não é a mesma pessoa — criar mesmo assim
-            </label>
-          )}
+        <div className="flex justify-end">
+          <button type="submit" className="bg-primary text-white rounded-lg px-5 py-2 text-sm font-semibold hover:opacity-90">
+            {c ? "Salvar alterações" : "Cadastrar cliente"}
+          </button>
         </div>
+      </form>
+
+      {ehPessoaJuridica && c && adicionarSocioAction && removerSocioAction && (
+        <SocioForm
+          pjClienteId={c.id}
+          sociosAtuais={sociosAtuais ?? []}
+          clientesPfDisponiveis={clientesPfDisponiveis ?? []}
+          adicionarAction={adicionarSocioAction}
+          removerAction={removerSocioAction}
+        />
       )}
-
-      <div className="flex justify-end">
-        <button type="submit" className="bg-primary text-white rounded-lg px-5 py-2 text-sm font-semibold hover:opacity-90">
-          {c ? "Salvar alterações" : "Cadastrar cliente"}
-        </button>
-      </div>
-    </form>
+      {ehPessoaJuridica && !c && (
+        <p className="text-xs text-gray-400 text-center">
+          Depois de cadastrar, você poderá adicionar os sócios desta empresa.
+        </p>
+      )}
+    </div>
   );
 }

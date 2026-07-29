@@ -4,7 +4,7 @@ import { Topbar } from "@/components/topbar";
 import { prisma } from "@/lib/prisma";
 import { getAdminSession } from "@/lib/auth";
 import { ClienteForm } from "@/components/cliente-form";
-import { atualizarClienteAction, apagarClienteAction } from "../actions";
+import { atualizarClienteAction, apagarClienteAction, adicionarSocioAction, removerSocioAction } from "../actions";
 
 export const dynamic = "force-dynamic";
 
@@ -20,14 +20,41 @@ export default async function ClienteDetalhePage({
   const embutido = embed === "1";
   const session = await getAdminSession();
 
-  const [cliente, lojas, bancos, parceiros] = await Promise.all([
+  const [cliente, lojas, bancos, parceiros, estados, cidades] = await Promise.all([
     prisma.clientes.findUnique({ where: { id }, include: { parceiros: true } }),
     prisma.lojas.findMany({ orderBy: { nome: "asc" } }),
     prisma.bancos.findMany({ orderBy: { nome: "asc" } }),
-    prisma.parceiros.findMany({ orderBy: { nome: "asc" }, select: { id: true, nome: true } })
+    prisma.parceiros.findMany({ orderBy: { nome: "asc" }, select: { id: true, nome: true } }),
+    prisma.estados.findMany({ orderBy: { nome: "asc" } }),
+    prisma.cidades.findMany({ orderBy: { nome: "asc" } })
   ]);
 
   if (!cliente) notFound();
+
+  // Sócios só fazem sentido pra Pessoa Jurídica — evita duas queries extras
+  // em toda visita a um cadastro de Pessoa Física.
+  const ehPessoaJuridica = cliente.tipo_cliente === "Pessoa Jurídica";
+  const [vinculos, clientesPfDisponiveis] = ehPessoaJuridica
+    ? await Promise.all([
+        prisma.clientes_socios.findMany({
+          where: { pj_cliente_id: cliente.id },
+          orderBy: { ordem: "asc" },
+          include: { socio: { select: { id: true, nome: true, cpf: true } } }
+        }),
+        prisma.clientes.findMany({
+          where: { tipo_cliente: "Pessoa Física", status_cadastro: { not: "Arquivado" } },
+          orderBy: { nome: "asc" },
+          select: { id: true, nome: true, cpf: true }
+        })
+      ])
+    : [[], []];
+
+  const sociosAtuais = vinculos.map((v) => ({
+    vinculoId: v.id,
+    id: v.socio.id,
+    nome: v.socio.nome,
+    cpf: v.socio.cpf
+  }));
 
   return (
     <div>
@@ -72,8 +99,14 @@ export default async function ClienteDetalhePage({
         lojas={lojas}
         bancos={bancos}
         parceiros={parceiros}
+        estados={estados}
+        cidades={cidades}
         action={atualizarClienteAction}
         embutido={embutido}
+        sociosAtuais={sociosAtuais}
+        clientesPfDisponiveis={clientesPfDisponiveis}
+        adicionarSocioAction={adicionarSocioAction}
+        removerSocioAction={removerSocioAction}
       />
     </div>
   );

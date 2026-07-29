@@ -7,10 +7,12 @@ import { criarClienteAction } from "../actions";
 export const dynamic = "force-dynamic";
 
 export default async function NovoClientePage() {
-  const [lojas, bancos, parceiros] = await Promise.all([
+  const [lojas, bancos, parceiros, estados, cidades] = await Promise.all([
     prisma.lojas.findMany({ orderBy: { nome: "asc" } }),
     prisma.bancos.findMany({ orderBy: { nome: "asc" } }),
-    prisma.parceiros.findMany({ orderBy: { nome: "asc" }, select: { id: true, nome: true } })
+    prisma.parceiros.findMany({ orderBy: { nome: "asc" }, select: { id: true, nome: true } }),
+    prisma.estados.findMany({ orderBy: { nome: "asc" } }),
+    prisma.cidades.findMany({ orderBy: { nome: "asc" } })
   ]);
 
   return (
@@ -23,7 +25,15 @@ export default async function NovoClientePage() {
 
       <div className="text-sm font-bold text-gray-800 mb-4">Novo cliente</div>
 
-      <ClienteForm cliente={null} lojas={lojas} bancos={bancos} parceiros={parceiros} action={criarClienteAction} />
+      <ClienteForm
+        cliente={null}
+        lojas={lojas}
+        bancos={bancos}
+        parceiros={parceiros}
+        estados={estados}
+        cidades={cidades}
+        action={criarClienteAction}
+      />
     </div>
   );
 }

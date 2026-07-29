@@ -7,6 +7,7 @@ import { requireAdminSession, requireAdm, logAlteracao } from "@/lib/auth";
 import { valorEditavelParaDecimal } from "@/lib/format";
 import { registrarEJogarErro } from "@/lib/erros";
 import { buscarClienteDuplicado } from "@/lib/clientes/duplicidade";
+import { validarCpfCnpj } from "@/lib/clientes/validacao";
 
 function texto(formData: FormData, campo: string): string | null {
   const v = formData.get(campo);
@@ -54,24 +55,80 @@ function booleanoTri(formData: FormData, campo: string): boolean | null {
   return null;
 }
 
-function camposEditaveis(formData: FormData) {
+// Endereço de Pessoa Física é sempre concatenado a partir dos campos
+// divididos (CEP/rua/número/complemento/bairro/cidade/estado) — mesmo
+// padrão de app/imoveis/actions.ts#montarEndereco. Pessoa Jurídica usa
+// "Sede" como campo de texto livre solto (não tem divisão), então o valor
+// digitado no campo `endereco` do formulário é usado direto nesse caso.
+//
+// Quando é PF mas nenhum campo do endereço dividido foi preenchido (ex.:
+// cadastro antigo da planilha, aberto pra editar outra coisa sem mexer no
+// endereço), devolve `undefined` — assim o Prisma não inclui `endereco` no
+// update e o texto livre antigo (importado) continua intacto, em vez de
+// ser apagado sem querer.
+async function montarEnderecoCliente(formData: FormData): Promise<string | null | undefined> {
+  const tipoCliente = texto(formData, "tipo_cliente");
+  if (tipoCliente === "Pessoa Jurídica") {
+    return texto(formData, "endereco");
+  }
+
+  const rua = texto(formData, "rua");
+  const nPredial = texto(formData, "n_predial");
+  const complemento = texto(formData, "complemento");
+  const bairro = texto(formData, "bairro");
+  const cidadeId = texto(formData, "cidade_id");
+  const estadoId = texto(formData, "estado_id");
+
+  if (!rua && !nPredial && !complemento && !bairro && !cidadeId && !estadoId) {
+    return undefined;
+  }
+
+  const [cidade, estado] = await Promise.all([
+    cidadeId ? prisma.cidades.findUnique({ where: { id: cidadeId } }) : Promise.resolve(null),
+    estadoId ? prisma.estados.findUnique({ where: { id: estadoId } }) : Promise.resolve(null)
+  ]);
+
+  const partes = [
+    [rua, nPredial].filter(Boolean).join(", ") || null,
+    complemento,
+    bairro,
+    cidade?.nome ?? null,
+    estado?.nome ?? null
+  ].filter((p): p is string => Boolean(p));
+
+  return partes.length > 0 ? partes.join(" - ") : null;
+}
+
+async function camposEditaveis(formData: FormData) {
+  const tipoCliente = texto(formData, "tipo_cliente");
+  const ehPessoaFisica = tipoCliente !== "Pessoa Jurídica";
+
   return {
-    tipo_cliente: texto(formData, "tipo_cliente") ?? undefined,
-    sexo: texto(formData, "sexo"),
+    tipo_cliente: tipoCliente ?? undefined,
+    sexo: ehPessoaFisica ? texto(formData, "sexo") : null,
     cpf: digitos(formData, "cpf"),
     cnpj: digitos(formData, "cnpj"),
-    rg: texto(formData, "rg"),
-    expedicao: texto(formData, "expedicao"),
+    rg: ehPessoaFisica ? texto(formData, "rg") : null,
+    expedicao: ehPessoaFisica ? texto(formData, "expedicao") : null,
     telefone: telefoneDigitos(formData, "telefone"),
     email: texto(formData, "email"),
-    estado_civil: texto(formData, "estado_civil"),
-    uniao_estavel: booleanoTri(formData, "uniao_estavel"),
+    estado_civil: ehPessoaFisica ? texto(formData, "estado_civil") : null,
+    uniao_estavel: ehPessoaFisica ? booleanoTri(formData, "uniao_estavel") : null,
+    nome_mae: ehPessoaFisica ? texto(formData, "nome_mae") : null,
+    nome_pai: ehPessoaFisica ? texto(formData, "nome_pai") : null,
     renda_bruta: rendaBruta(formData, "renda_bruta"),
-    data_nascimento: data(formData, "data_nascimento"),
-    cat_profissao: texto(formData, "cat_profissao"),
-    tipo_servidor: texto(formData, "tipo_servidor"),
-    profissao: texto(formData, "profissao"),
-    endereco: texto(formData, "endereco"),
+    data_nascimento: ehPessoaFisica ? data(formData, "data_nascimento") : null,
+    cat_profissao: ehPessoaFisica ? texto(formData, "cat_profissao") : null,
+    tipo_servidor: ehPessoaFisica ? texto(formData, "tipo_servidor") : null,
+    profissao: ehPessoaFisica ? texto(formData, "profissao") : null,
+    cep: ehPessoaFisica ? digitos(formData, "cep") : null,
+    rua: ehPessoaFisica ? texto(formData, "rua") : null,
+    n_predial: ehPessoaFisica ? texto(formData, "n_predial") : null,
+    complemento: ehPessoaFisica ? texto(formData, "complemento") : null,
+    bairro: ehPessoaFisica ? texto(formData, "bairro") : null,
+    estado_id: ehPessoaFisica ? texto(formData, "estado_id") : null,
+    cidade_id: ehPessoaFisica ? texto(formData, "cidade_id") : null,
+    endereco: await montarEnderecoCliente(formData),
     observacao: texto(formData, "observacao"),
     parceiro_id: texto(formData, "parceiro_id"),
     loja_id: texto(formData, "loja_id"),
@@ -111,6 +168,20 @@ export async function criarClienteAction(_prev: unknown, formData: FormData): Pr
     return { erro: "Nome e tipo de cliente são obrigatórios." };
   }
 
+  // Valida dígito verificador de CPF/CNPJ antes de qualquer outra checagem
+  // — pega erro de digitação (número trocado) antes mesmo de ir atrás de
+  // duplicidade. Pessoa Jurídica exige CNPJ; Pessoa Física só valida o CPF
+  // se algo foi digitado (o campo não é obrigatório em todo cadastro
+  // antigo importado da planilha).
+  const docDigitado = tipoCliente === "Pessoa Jurídica" ? texto(formData, "cnpj") : texto(formData, "cpf");
+  if (tipoCliente === "Pessoa Jurídica" && !docDigitado) {
+    return { erro: "Informe o CNPJ." };
+  }
+  if (docDigitado) {
+    const erroDoc = validarCpfCnpj(docDigitado);
+    if (erroDoc) return { erro: erroDoc };
+  }
+
   // Mesma checagem de duplicidade que o portal do corretor já faz — o admin
   // era o único caminho que criava cliente sem conferir nada (e a auditoria
   // achou 19 CPFs e 27 nomes duplicados na base). Diferente do portal, aqui
@@ -137,7 +208,7 @@ export async function criarClienteAction(_prev: unknown, formData: FormData): Pr
       .create({
         data: {
           nome,
-          ...camposEditaveis(formData),
+          ...(await camposEditaveis(formData)),
           tipo_cliente: tipoCliente
         }
       })
@@ -167,11 +238,19 @@ export async function atualizarClienteAction(_prev: unknown, formData: FormData)
   const antes = await prisma.clientes.findUnique({ where: { id } });
   if (!antes) return { erro: "Cliente não encontrado." };
 
+  const tipoClienteEditado = texto(formData, "tipo_cliente");
+  const docDigitadoEditado =
+    tipoClienteEditado === "Pessoa Jurídica" ? texto(formData, "cnpj") : texto(formData, "cpf");
+  if (docDigitadoEditado) {
+    const erroDoc = validarCpfCnpj(docDigitadoEditado);
+    if (erroDoc) return { erro: erroDoc };
+  }
+
   try {
     const depois = await prisma.clientes
       .update({
         where: { id },
-        data: camposEditaveis(formData)
+        data: await camposEditaveis(formData)
       })
       .catch((erro) => registrarEJogarErro({ entidadeTipo: "clientes", entidadeId: id, acao: "editar", erro }));
 
@@ -222,4 +301,120 @@ export async function apagarClienteAction(formData: FormData) {
 
   revalidatePath("/clientes");
   redirect("/clientes?excluido=1");
+}
+
+// --------------------------------------------------------------------
+// Sócios de Pessoa Jurídica
+//
+// "Adicionar sócio" no cadastro de uma PJ não guarda só um nome solto: cria
+// (ou reaproveita, se já existir pelo CPF) um cliente de verdade com
+// tipo_cliente "Pessoa Física" — porque esse sócio pode um dia virar
+// cliente PF nosso por conta própria, independente da empresa. Só depois
+// grava o vínculo na tabela clientes_socios. `ordem` decide quem assina
+// como representante legal da empresa nos contratos (o de ordem 0) — ver
+// qualificacaoTexto/blocoAssinatura em lib/documentos/gerar.ts.
+// --------------------------------------------------------------------
+
+export type ResultadoSocio = { erro: string } | { ok: true } | undefined;
+
+export async function adicionarSocioAction(_prev: unknown, formData: FormData): Promise<ResultadoSocio> {
+  await requireAdminSession();
+
+  const pjClienteId = texto(formData, "pj_cliente_id");
+  if (!pjClienteId) return { erro: "PJ inválida." };
+
+  const pj = await prisma.clientes.findUnique({ where: { id: pjClienteId } });
+  if (!pj || pj.tipo_cliente !== "Pessoa Jurídica") {
+    return { erro: "Só é possível adicionar sócio a um cadastro de Pessoa Jurídica." };
+  }
+
+  const modo = texto(formData, "modo_socio");
+  let socioClienteId: string;
+
+  if (modo === "existente") {
+    const id = texto(formData, "socio_cliente_id");
+    if (!id) return { erro: "Selecione o cliente que é sócio." };
+    const socio = await prisma.clientes.findUnique({ where: { id } });
+    if (!socio) return { erro: "Cliente selecionado não encontrado." };
+    if (socio.tipo_cliente !== "Pessoa Física") {
+      return { erro: "O sócio precisa ser um cliente Pessoa Física." };
+    }
+    socioClienteId = socio.id;
+  } else {
+    const nome = texto(formData, "socio_nome");
+    const cpf = texto(formData, "socio_cpf");
+    if (!nome) return { erro: "Informe o nome do sócio." };
+    if (cpf) {
+      const erroCpf = validarCpfCnpj(cpf);
+      if (erroCpf) return { erro: erroCpf };
+    }
+
+    const cpfDigitos = cpf ? cpf.replace(/\D/g, "") : null;
+
+    // Se já existe um cliente PF com esse CPF, reaproveita em vez de criar
+    // duplicado — é exatamente o caso comum (o sócio já é nosso cliente por
+    // outro motivo).
+    const existente = cpfDigitos
+      ? await prisma.clientes.findFirst({ where: { cpf: cpfDigitos, tipo_cliente: "Pessoa Física" } })
+      : null;
+
+    if (existente) {
+      socioClienteId = existente.id;
+    } else {
+      const novo = await prisma.clientes
+        .create({
+          data: {
+            nome,
+            tipo_cliente: "Pessoa Física",
+            cpf: cpfDigitos,
+            telefone: texto(formData, "socio_telefone")?.replace(/\D/g, "") || null,
+            email: texto(formData, "socio_email")
+          }
+        })
+        .catch((erro) => registrarEJogarErro({ entidadeTipo: "clientes", acao: "criar_via_socio_pj", erro }));
+      socioClienteId = novo.id;
+    }
+  }
+
+  const jaVinculado = await prisma.clientes_socios.findFirst({
+    where: { pj_cliente_id: pjClienteId, socio_cliente_id: socioClienteId }
+  });
+  if (jaVinculado) return { erro: "Esse cliente já está vinculado como sócio dessa empresa." };
+
+  const totalAtual = await prisma.clientes_socios.count({ where: { pj_cliente_id: pjClienteId } });
+
+  await prisma.clientes_socios
+    .create({
+      data: { pj_cliente_id: pjClienteId, socio_cliente_id: socioClienteId, ordem: totalAtual }
+    })
+    .catch((erro) => registrarEJogarErro({ entidadeTipo: "clientes_socios", acao: "criar", erro }));
+
+  await logAlteracao({
+    entidadeTipo: "clientes",
+    entidadeId: pjClienteId,
+    acao: "adicionar_socio",
+    dadosDepois: { socio_cliente_id: socioClienteId }
+  });
+
+  revalidatePath(`/clientes/${pjClienteId}`);
+  return { ok: true };
+}
+
+export async function removerSocioAction(formData: FormData) {
+  await requireAdminSession();
+
+  const vinculoId = texto(formData, "vinculo_id");
+  const pjClienteId = texto(formData, "pj_cliente_id");
+  if (!vinculoId || !pjClienteId) throw new Error("Vínculo inválido.");
+
+  await prisma.clientes_socios.delete({ where: { id: vinculoId } });
+
+  await logAlteracao({
+    entidadeTipo: "clientes",
+    entidadeId: pjClienteId,
+    acao: "remover_socio",
+    dadosAntes: { vinculo_id: vinculoId }
+  });
+
+  revalidatePath(`/clientes/${pjClienteId}`);
 }

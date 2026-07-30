@@ -993,6 +993,11 @@ model transacoes {
   valor_administracao                                      Decimal?                 @db.Decimal(14, 2)
   iptu                                                     Decimal?                 @db.Decimal(14, 2)
   trsd                                                     Decimal?                 @db.Decimal(14, 2)
+  // Diferente de iptu/trsd (cobrados JUNTO do aluguel, somam no Valor de
+  // pacote): condominio é a parte do valor_transacao que já é o condomínio
+  // embutido — quando marcado, é DESCONTADO do Valor da locação, não somado
+  // (ver lib/transacoes/valores.ts). valor_transacao continua intocado.
+  condominio                                               Decimal?                 @db.Decimal(14, 2)
   // Toggle rápido (fora do modo Editar) pra marcar se o boleto desse mês já
   // foi gerado/enviado — só faz sentido quando forma_pagamento = "Boleto" e
   // status = "Imóvel em Locação".

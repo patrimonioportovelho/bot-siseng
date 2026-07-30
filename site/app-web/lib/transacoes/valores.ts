@@ -1,33 +1,49 @@
-import { ENCARGO_IPTU, ENCARGO_TRSD } from "@/lib/transacoes/opcoes";
+import { ENCARGO_IPTU, ENCARGO_TRSD, ENCARGO_CONDOMINIO } from "@/lib/transacoes/opcoes";
 
 // Composição do valor de uma Locação — pedido explícito do usuário pra
-// "destrinchar" o que o Valor da Transação realmente representa:
+// "destrinchar" o que o Valor da Transação realmente representa. valor_
+// transacao é sempre o número que o corretor/administrativo digitou e NUNCA
+// é alterado por esses cálculos — os dois valores abaixo são só leitura,
+// derivados dele:
 //
-// - Valor da locação: o aluguel puro (campo valor_transacao), sem nenhum
-//   encargo somado — é o valor que o corretor/administrativo sempre digitou.
+// - Valor da locação: o aluguel puro, SEM nenhum encargo — quando o
+//   Condomínio vem embutido no valor_transacao (marcado como encargo, com um
+//   valor próprio informado), esse valor é DESCONTADO aqui, porque
+//   Condomínio não é aluguel de verdade, é só um repasse.
 // - Valor de pacote: o valor real que o inquilino paga TODO MÊS através da
-//   imobiliária, somando o aluguel + os encargos que são cobrados junto
-//   (fracionados nas mensalidades) — hoje só IPTU e TRSD têm esse
-//   comportamento (têm campo de valor próprio e entram no boleto). Os demais
-//   encargos (Condomínio/Água/Energia/Gás) são pagos direto pelo inquilino
-//   ao terceiro responsável, não passam pela imobiliária, então não somam
-//   aqui.
+//   imobiliária — valor_transacao (que já inclui o Condomínio, se houver) +
+//   os encargos cobrados À PARTE, somados no boleto (hoje só IPTU e TRSD).
+//   Água/Energia/Gás continuam sendo só um registro de responsabilidade,
+//   pagos direto pelo inquilino ao terceiro, sem valor e sem entrar em
+//   nenhuma dessas contas.
 //
-// Existe só como cálculo — não é uma coluna nova no banco — assim nunca fica
-// desatualizado em relação a valor_transacao/iptu/trsd/encargos.
-export function calcularValorPacoteLocacao(dados: {
+// Existe só como cálculo — não são colunas novas no banco além de
+// iptu/trsd/condominio — assim nunca fica desatualizado.
+type ValoresLocacao = {
   // Decimal do Prisma chega tipado como unknown nos componentes (mesmo
   // padrão usado em todo o resto do código, ex. transacao-detalhe.tsx) — o
   // Number(...) abaixo lida com qualquer formato (Decimal, string, number).
   valorTransacao: unknown;
   iptu: unknown;
   trsd: unknown;
+  condominio: unknown;
   encargos: string[] | null | undefined;
-}): number {
+};
+
+export function calcularValorLocacaoSemEncargos(dados: ValoresLocacao): number {
+  const base = Number(dados.valorTransacao ?? 0);
+  const encargos = dados.encargos ?? [];
+  const condominio = encargos.includes(ENCARGO_CONDOMINIO) ? Number(dados.condominio ?? 0) : 0;
+  return base - condominio;
+}
+
+export function calcularValorPacoteLocacao(dados: ValoresLocacao): number {
   const base = Number(dados.valorTransacao ?? 0);
   const encargos = dados.encargos ?? [];
   const iptu = encargos.includes(ENCARGO_IPTU) ? Number(dados.iptu ?? 0) : 0;
   const trsd = encargos.includes(ENCARGO_TRSD) ? Number(dados.trsd ?? 0) : 0;
+  // Condomínio já está dentro de valor_transacao (não soma de novo aqui) —
+  // ver calcularValorLocacaoSemEncargos, que é quem desconta.
   return base + iptu + trsd;
 }
 
@@ -39,4 +55,12 @@ export function temAdicionalNoPacote(dados: { iptu: unknown; trsd: unknown; enca
   const temIptu = encargos.includes(ENCARGO_IPTU) && Number(dados.iptu ?? 0) > 0;
   const temTrsd = encargos.includes(ENCARGO_TRSD) && Number(dados.trsd ?? 0) > 0;
   return temIptu || temTrsd;
+}
+
+// Verdadeiro só quando o Condomínio está mesmo embutido (marcado + com
+// valor) — usado pra mostrar uma notinha explicando o desconto no Valor da
+// locação, em vez de deixar o número aparecer sem contexto.
+export function temCondominioEmbutido(dados: { condominio: unknown; encargos: string[] | null | undefined }): boolean {
+  const encargos = dados.encargos ?? [];
+  return encargos.includes(ENCARGO_CONDOMINIO) && Number(dados.condominio ?? 0) > 0;
 }

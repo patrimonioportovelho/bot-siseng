@@ -109,6 +109,7 @@ function camposEditaveis(formData: FormData) {
     encargos: formData.getAll("encargos").map((v) => String(v)),
     iptu: valorMonetario(formData, "iptu"),
     trsd: valorMonetario(formData, "trsd"),
+    condominio: valorMonetario(formData, "condominio"),
     forma_pagamento: texto(formData, "forma_pagamento"),
     finalidade_locacao: texto(formData, "finalidade_locacao"),
     chave: texto(formData, "chave"),

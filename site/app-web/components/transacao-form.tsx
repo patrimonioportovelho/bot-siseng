@@ -9,6 +9,7 @@ import {
   ENCARGOS_OPCOES,
   ENCARGO_IPTU,
   ENCARGO_TRSD,
+  ENCARGO_CONDOMINIO,
   CHAVE_OPCOES,
   STATUS_HONORARIO_OPCOES,
   FUNCOES_CORRETOR,
@@ -17,7 +18,7 @@ import {
   MOMENTO_CONDICAO_OPCOES,
   statusOpcoesPorTipo
 } from "@/lib/transacoes/opcoes";
-import { calcularValorPacoteLocacao } from "@/lib/transacoes/valores";
+import { calcularValorPacoteLocacao, calcularValorLocacaoSemEncargos, temCondominioEmbutido } from "@/lib/transacoes/valores";
 import {
   formatValorEditavel,
   formatPercentual,
@@ -83,6 +84,7 @@ type TransacaoExistente = {
   encargos: string[];
   iptu: unknown;
   trsd: unknown;
+  condominio: unknown;
   forma_pagamento: string | null;
   finalidade_locacao: string | null;
   chave: string | null;
@@ -216,6 +218,7 @@ export function TransacaoForm({
   const [encargos, setEncargos] = useState<string[]>(t?.encargos ?? []);
   const [iptuTexto, setIptuTexto] = useState(formatValorEditavel(t?.iptu));
   const [trsdTexto, setTrsdTexto] = useState(formatValorEditavel(t?.trsd));
+  const [condominioTexto, setCondominioTexto] = useState(formatValorEditavel(t?.condominio));
 
   // Datas e valor — Data de vencimento é preenchida automaticamente
   // (assinatura + tempo de contrato em meses) mas continua editável: em
@@ -228,20 +231,26 @@ export function TransacaoForm({
   );
   const [valorTransacaoTexto, setValorTransacaoTexto] = useState(formatValorEditavel(t?.valor_transacao));
 
-  // "Valor de pacote" ao vivo, enquanto o administrativo/corretor ainda está
-  // digitando — mostra o total real (aluguel + IPTU/TRSD, quando marcados)
-  // antes mesmo de salvar, pra já conferir na hora do cadastro (pedido
-  // explícito do usuário).
-  const valorPacote = useMemo(
-    () =>
-      calcularValorPacoteLocacao({
-        valorTransacao: valorEditavelParaDecimal(valorTransacaoTexto),
-        iptu: valorEditavelParaDecimal(iptuTexto),
-        trsd: valorEditavelParaDecimal(trsdTexto),
-        encargos
-      }),
-    [valorTransacaoTexto, iptuTexto, trsdTexto, encargos]
+  // Valor da locação / Valor de pacote ao vivo, enquanto o
+  // administrativo/corretor ainda está digitando — mostra o aluguel sem
+  // Condomínio embutido e o total real (aluguel + IPTU/TRSD, quando
+  // marcados) antes mesmo de salvar, pra já conferir na hora do cadastro
+  // (pedido explícito do usuário).
+  const valoresLocacaoParaCalculo = useMemo(
+    () => ({
+      valorTransacao: valorEditavelParaDecimal(valorTransacaoTexto),
+      iptu: valorEditavelParaDecimal(iptuTexto),
+      trsd: valorEditavelParaDecimal(trsdTexto),
+      condominio: valorEditavelParaDecimal(condominioTexto),
+      encargos
+    }),
+    [valorTransacaoTexto, iptuTexto, trsdTexto, condominioTexto, encargos]
   );
+  const valorLocacaoSemEncargos = useMemo(
+    () => calcularValorLocacaoSemEncargos(valoresLocacaoParaCalculo),
+    [valoresLocacaoParaCalculo]
+  );
+  const valorPacote = useMemo(() => calcularValorPacoteLocacao(valoresLocacaoParaCalculo), [valoresLocacaoParaCalculo]);
   // Começa com a Data de vencimento já salva (respeita um ajuste manual
   // feito antes, ex.: aditivo) — só cai pro cálculo automático se o
   // contrato ainda não tiver nada salvo (cadastro novo).
@@ -851,6 +860,21 @@ export function TransacaoForm({
                         />
                       </div>
                     )}
+                    {op === ENCARGO_CONDOMINIO && encargos.includes(op) && (
+                      <div className="mt-1 ml-6">
+                        <label className={LABEL}>
+                          Valor do Condomínio (R$) — já incluso no Valor da transação, será descontado do Valor da
+                          locação
+                        </label>
+                        <input
+                          className={CAMPO}
+                          name="condominio"
+                          placeholder="200,00"
+                          value={condominioTexto}
+                          onChange={(e) => setCondominioTexto(e.target.value)}
+                        />
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -859,10 +883,14 @@ export function TransacaoForm({
 
           <div className="grid grid-cols-1 gap-2 md:grid-cols-2 mt-3 pt-3 border-t border-gray-100">
             <div>
-              <span className={LABEL}>Valor da locação (aluguel)</span>
-              <div className="text-sm font-semibold text-gray-800">
-                {formatMoeda(valorEditavelParaDecimal(valorTransacaoTexto) ?? 0)}
-              </div>
+              <span className={LABEL}>Valor da locação (aluguel, sem encargos)</span>
+              <div className="text-sm font-semibold text-gray-800">{formatMoeda(valorLocacaoSemEncargos)}</div>
+              {temCondominioEmbutido(valoresLocacaoParaCalculo) && (
+                <p className="text-[11px] text-gray-400 mt-0.5">
+                  Valor da transação ({formatMoeda(valorEditavelParaDecimal(valorTransacaoTexto) ?? 0)}) já descontado
+                  do Condomínio embutido.
+                </p>
+              )}
             </div>
             <div>
               <span className={LABEL}>Valor de pacote (real, com IPTU/TRSD)</span>

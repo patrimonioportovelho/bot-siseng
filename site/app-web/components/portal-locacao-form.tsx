@@ -7,9 +7,10 @@ import {
   FINALIDADE_LOCACAO_OPCOES,
   ENCARGOS_OPCOES,
   ENCARGO_IPTU,
-  ENCARGO_TRSD
+  ENCARGO_TRSD,
+  ENCARGO_CONDOMINIO
 } from "@/lib/transacoes/opcoes";
-import { calcularValorPacoteLocacao } from "@/lib/transacoes/valores";
+import { calcularValorPacoteLocacao, calcularValorLocacaoSemEncargos, temCondominioEmbutido } from "@/lib/transacoes/valores";
 import { TIPOS_IMOVEL } from "@/lib/imoveis/opcoes";
 import {
   ESTADOS_CIVIS,
@@ -112,6 +113,7 @@ type RascunhoLocacao = {
   encargos: string[];
   iptuTexto: string;
   trsdTexto: string;
+  condominioTexto: string;
   porcHonorarioTexto: string;
   temParceria: boolean;
   parceiroExternoId: string;
@@ -721,21 +723,28 @@ export function PortalLocacaoForm({
   const [encargos, setEncargos] = useState<string[]>([]);
   const [iptuTexto, setIptuTexto] = useState("");
   const [trsdTexto, setTrsdTexto] = useState("");
+  const [condominioTexto, setCondominioTexto] = useState("");
 
-  // "Valor de pacote" ao vivo — mesmo cálculo do admin (ver
-  // components/transacao-form.tsx e lib/transacoes/valores.ts): aluguel +
-  // IPTU/TRSD marcados, pra o corretor já conferir o total real antes de
-  // enviar (e o administrador ver isso certo assim que abrir o cadastro).
-  const valorPacote = useMemo(
-    () =>
-      calcularValorPacoteLocacao({
-        valorTransacao: valorEditavelParaDecimal(valorTransacaoTexto),
-        iptu: valorEditavelParaDecimal(iptuTexto),
-        trsd: valorEditavelParaDecimal(trsdTexto),
-        encargos
-      }),
-    [valorTransacaoTexto, iptuTexto, trsdTexto, encargos]
+  // Valor da locação / Valor de pacote ao vivo — mesmo cálculo do admin (ver
+  // components/transacao-form.tsx e lib/transacoes/valores.ts): aluguel sem
+  // Condomínio embutido, e aluguel + IPTU/TRSD marcados, pra o corretor já
+  // conferir o total real antes de enviar (e o administrador ver isso certo
+  // assim que abrir o cadastro).
+  const valoresLocacaoParaCalculo = useMemo(
+    () => ({
+      valorTransacao: valorEditavelParaDecimal(valorTransacaoTexto),
+      iptu: valorEditavelParaDecimal(iptuTexto),
+      trsd: valorEditavelParaDecimal(trsdTexto),
+      condominio: valorEditavelParaDecimal(condominioTexto),
+      encargos
+    }),
+    [valorTransacaoTexto, iptuTexto, trsdTexto, condominioTexto, encargos]
   );
+  const valorLocacaoSemEncargos = useMemo(
+    () => calcularValorLocacaoSemEncargos(valoresLocacaoParaCalculo),
+    [valoresLocacaoParaCalculo]
+  );
+  const valorPacote = useMemo(() => calcularValorPacoteLocacao(valoresLocacaoParaCalculo), [valoresLocacaoParaCalculo]);
 
   const [porcHonorarioTexto, setPorcHonorarioTexto] = useState("");
   const [temParceria, setTemParceria] = useState(false);
@@ -807,6 +816,7 @@ export function PortalLocacaoForm({
       encargos,
       iptuTexto,
       trsdTexto,
+      condominioTexto,
       porcHonorarioTexto,
       temParceria,
       parceiroExternoId,
@@ -865,6 +875,7 @@ export function PortalLocacaoForm({
     encargos,
     iptuTexto,
     trsdTexto,
+    condominioTexto,
     porcHonorarioTexto,
     temParceria,
     parceiroExternoId,
@@ -909,6 +920,7 @@ export function PortalLocacaoForm({
     setEncargos(r.encargos);
     setIptuTexto(r.iptuTexto ?? "");
     setTrsdTexto(r.trsdTexto ?? "");
+    setCondominioTexto(r.condominioTexto ?? "");
     setPorcHonorarioTexto(r.porcHonorarioTexto);
     setTemParceria(r.temParceria);
     setParceiroExternoId(r.parceiroExternoId);
@@ -1146,6 +1158,7 @@ export function PortalLocacaoForm({
       encargos.forEach((e) => formData.append("encargos", e));
       if (encargos.includes(ENCARGO_IPTU)) formData.set("iptu", iptuTexto);
       if (encargos.includes(ENCARGO_TRSD)) formData.set("trsd", trsdTexto);
+      if (encargos.includes(ENCARGO_CONDOMINIO)) formData.set("condominio", condominioTexto);
       formData.set("porc_honorario", porcHonorarioTexto);
       formData.set("tem_parceria", temParceria ? "on" : "");
       formData.set("parceiro_externo_id", parceiroExternoId);
@@ -1579,6 +1592,20 @@ export function PortalLocacaoForm({
                       <input className={CAMPO} placeholder="40,00" value={trsdTexto} onChange={(e) => setTrsdTexto(e.target.value)} />
                     </div>
                   )}
+                  {op === ENCARGO_CONDOMINIO && encargos.includes(op) && (
+                    <div className="mt-1 ml-6">
+                      <label className={LABEL}>
+                        Valor do Condomínio (R$) — já incluso no Valor da transação, será descontado do Valor da
+                        locação
+                      </label>
+                      <input
+                        className={CAMPO}
+                        placeholder="200,00"
+                        value={condominioTexto}
+                        onChange={(e) => setCondominioTexto(e.target.value)}
+                      />
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -1587,10 +1614,14 @@ export function PortalLocacaoForm({
 
         <div className="grid md:grid-cols-2 gap-3 mt-3 pt-3 border-t border-gray-100">
           <div>
-            <span className={LABEL}>Valor da locação (aluguel)</span>
-            <div className="text-sm font-semibold text-gray-800">
-              {formatMoeda(valorEditavelParaDecimal(valorTransacaoTexto) ?? 0)}
-            </div>
+            <span className={LABEL}>Valor da locação (aluguel, sem encargos)</span>
+            <div className="text-sm font-semibold text-gray-800">{formatMoeda(valorLocacaoSemEncargos)}</div>
+            {temCondominioEmbutido(valoresLocacaoParaCalculo) && (
+              <p className="text-[11px] text-gray-400 mt-0.5">
+                Valor da transação ({formatMoeda(valorEditavelParaDecimal(valorTransacaoTexto) ?? 0)}) já descontado
+                do Condomínio embutido.
+              </p>
+            )}
           </div>
           <div>
             <span className={LABEL}>Valor de pacote (real, com IPTU/TRSD)</span>

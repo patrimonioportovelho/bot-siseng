@@ -534,6 +534,8 @@ export async function gerarLocacaoAction(
     const iptu = iptuTxt ? valorEditavelParaDecimal(iptuTxt) : null;
     const trsdTxt = texto(formData, "trsd");
     const trsd = trsdTxt ? valorEditavelParaDecimal(trsdTxt) : null;
+    const condominioTxt = texto(formData, "condominio");
+    const condominio = condominioTxt ? valorEditavelParaDecimal(condominioTxt) : null;
 
     const porcHonorarioTxt = texto(formData, "porc_honorario");
     const porcHonorario = porcHonorarioTxt ? percentualParaDecimal(porcHonorarioTxt) ?? 0 : 0;
@@ -571,6 +573,7 @@ export async function gerarLocacaoAction(
           encargos,
           iptu,
           trsd,
+          condominio,
           porc_honorario: porcHonorario,
           tem_parceria: temParceria,
           porc_parceria: porcParceria,

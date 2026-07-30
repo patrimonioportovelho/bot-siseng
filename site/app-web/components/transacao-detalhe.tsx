@@ -5,8 +5,13 @@ import Link from "next/link";
 import { TransacaoForm, type ComissaoExtra } from "@/components/transacao-form";
 import { PainelLateral } from "@/components/painel-lateral";
 import { formatMoeda, formatPercentual, formatDataCalendario, formatValorEditavel, valorEditavelParaDecimal } from "@/lib/format";
-import { ENCARGO_IPTU, ENCARGO_TRSD } from "@/lib/transacoes/opcoes";
-import { calcularValorPacoteLocacao, temAdicionalNoPacote } from "@/lib/transacoes/valores";
+import { ENCARGO_IPTU, ENCARGO_TRSD, ENCARGO_CONDOMINIO } from "@/lib/transacoes/opcoes";
+import {
+  calcularValorPacoteLocacao,
+  calcularValorLocacaoSemEncargos,
+  temAdicionalNoPacote,
+  temCondominioEmbutido
+} from "@/lib/transacoes/valores";
 
 type ClienteOpcao = { id: string; nome: string; id_legado: string | null; parceiroId: string | null };
 type LojaOpcao = { id: string; nome: string };
@@ -72,6 +77,7 @@ type TransacaoParaVisualizar = {
   encargos: string[];
   iptu: unknown;
   trsd: unknown;
+  condominio: unknown;
   forma_pagamento: string | null;
   finalidade_locacao: string | null;
   chave: string | null;
@@ -361,6 +367,9 @@ export function TransacaoDetalhe({
                         {op === ENCARGO_TRSD && t.trsd != null && (
                           <span className="text-gray-500"> — {formatMoeda(t.trsd)}</span>
                         )}
+                        {op === ENCARGO_CONDOMINIO && t.condominio != null && (
+                          <span className="text-gray-500"> — {formatMoeda(t.condominio)}</span>
+                        )}
                       </li>
                     ))}
                   </ul>
@@ -372,13 +381,33 @@ export function TransacaoDetalhe({
           </div>
 
           {/* Destrincha o que o "Valor da transação" realmente representa —
-              pedido explícito do usuário: o aluguel puro (Valor da locação) e
-              o total real que o inquilino paga todo mês através da
-              imobiliária, já somando IPTU/TRSD quando cobrados junto (Valor
-              de pacote) — pra quem está conferindo o cadastro não precisar
-              somar isso de cabeça. */}
+              pedido explícito do usuário: o aluguel puro (Valor da locação),
+              já descontando o Condomínio quando ele vem embutido no valor
+              digitado, e o total real que o inquilino paga todo mês através
+              da imobiliária, já somando IPTU/TRSD quando cobrados junto
+              (Valor de pacote) — pra quem está conferindo o cadastro não
+              precisar somar/descontar isso de cabeça. Valor da transação em
+              si nunca é alterado. */}
           <div className="grid grid-cols-1 gap-2 md:grid-cols-3 md:gap-4 mt-3 pt-3 border-t border-gray-100">
-            <Campo label="Valor da locação (aluguel)" valor={formatMoeda(t.valor_transacao)} />
+            <Campo
+              label="Valor da locação (aluguel)"
+              valor={
+                <>
+                  {formatMoeda(
+                    calcularValorLocacaoSemEncargos({
+                      valorTransacao: t.valor_transacao,
+                      iptu: t.iptu,
+                      trsd: t.trsd,
+                      condominio: t.condominio,
+                      encargos: t.encargos
+                    })
+                  )}
+                  {temCondominioEmbutido({ condominio: t.condominio, encargos: t.encargos }) && (
+                    <span className="block text-xs text-gray-500 font-normal">já descontado o condomínio</span>
+                  )}
+                </>
+              }
+            />
             <Campo
               label="Valor de pacote (real, com IPTU/TRSD)"
               valor={
@@ -388,6 +417,7 @@ export function TransacaoDetalhe({
                       valorTransacao: t.valor_transacao,
                       iptu: t.iptu,
                       trsd: t.trsd,
+                      condominio: t.condominio,
                       encargos: t.encargos
                     })
                   )}

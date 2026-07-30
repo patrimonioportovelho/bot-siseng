@@ -39,6 +39,15 @@ function inscricaoValor(formData: FormData, campo: string): string | null {
   return d.length === 14 ? d : t;
 }
 
+// CEP é digitado com máscara (00000-000) mas gravado só com dígitos, no
+// mesmo formato já usado em Clientes e Parceiros.
+function somenteDigitos(formData: FormData, campo: string): string | null {
+  const t = texto(formData, campo);
+  if (t === null) return null;
+  const d = t.replace(/\D/g, "");
+  return d.length > 0 ? d : null;
+}
+
 // Endereço é sempre concatenado a partir de rua/número/complemento/bairro/
 // cidade/estado — não é um campo digitado à parte no formulário.
 async function montarEndereco(formData: FormData): Promise<string | null> {
@@ -73,6 +82,7 @@ async function camposEditaveis(formData: FormData) {
     inscricao: inscricaoValor(formData, "inscricao"),
     matricula: texto(formData, "matricula"),
     pasta_url: texto(formData, "pasta_url"),
+    cep: somenteDigitos(formData, "cep"),
     rua: texto(formData, "rua"),
     n_predial: texto(formData, "n_predial"),
     complemento: texto(formData, "complemento"),

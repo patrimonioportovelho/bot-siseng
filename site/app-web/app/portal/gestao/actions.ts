@@ -149,6 +149,7 @@ export async function gerarContratoGestaoAction(
     }
 
     const tipoImovel = texto(formData, "tipo_imovel");
+    const cep = digitos(texto(formData, "cep"));
     const rua = texto(formData, "rua");
     const nPredial = texto(formData, "n_predial");
     const complemento = texto(formData, "complemento");
@@ -335,6 +336,7 @@ export async function gerarContratoGestaoAction(
         .create({
           data: {
             tipo_imovel: tipoImovel,
+            cep,
             rua,
             n_predial: nPredial,
             complemento,

@@ -4,6 +4,15 @@ import { useMemo, useState } from "react";
 import { TIPOS_IMOVEL, STATUS_IMOVEL, TIPOS_OFERTA } from "@/lib/imoveis/opcoes";
 import { formatValorEditavel, formatInscricao } from "@/lib/format";
 import { CampoLink } from "@/components/campo-link";
+import { buscarCep, UF_PARA_ESTADO } from "@/lib/enderecos";
+
+// Mesmo helper de máscara duplicado em todo formulário com CEP (ver
+// components/cliente-form.tsx e components/parceiro-form.tsx).
+function formatCep(v: string | null | undefined): string {
+  const d = (v ?? "").replace(/\D/g, "").slice(0, 8);
+  if (d.length <= 5) return d;
+  return `${d.slice(0, 5)}-${d.slice(5)}`;
+}
 
 type ClienteOpcao = { id: string; nome: string; id_legado: string | null; parceiro_id: string | null };
 type ParceiroOpcao = { id: string; nome: string };
@@ -18,6 +27,7 @@ type ImovelExistente = {
   parceiro_id: string | null;
   pasta_url: string | null;
   inscricao: string | null;
+  cep: string | null;
   rua: string | null;
   n_predial: string | null;
   complemento: string | null;
@@ -73,6 +83,54 @@ export function ImovelForm({
   const [parceiroId, setParceiroId] = useState(i?.parceiro_id ?? "");
   const [estadoId, setEstadoId] = useState(i?.estado_id ?? "");
   const [cidadeId, setCidadeId] = useState(i?.cidade_id ?? "");
+
+  // Endereço com busca automática por CEP (ViaCEP) — mesmo padrão já usado
+  // em Clientes e Parceiros (pedido explícito do usuário para os cadastros
+  // de imóvel também). rua/n_predial/complemento/bairro precisam ser
+  // controlados (não mais defaultValue) pra poder ser preenchidos pelo
+  // resultado da busca.
+  const [cep, setCep] = useState(i?.cep ? formatCep(i.cep) : "");
+  const [rua, setRua] = useState(i?.rua ?? "");
+  const [nPredial, setNPredial] = useState(i?.n_predial ?? "");
+  const [complemento, setComplemento] = useState(i?.complemento ?? "");
+  const [bairro, setBairro] = useState(i?.bairro ?? "");
+  const [buscandoCep, setBuscandoCep] = useState(false);
+  const [cepAvisoCidade, setCepAvisoCidade] = useState<string | null>(null);
+
+  async function aoSairDoCep() {
+    const digitos = cep.replace(/\D/g, "");
+    if (digitos.length !== 8) return;
+    setBuscandoCep(true);
+    setCepAvisoCidade(null);
+    try {
+      const encontrado = await buscarCep(digitos);
+      if (!encontrado) {
+        setCepAvisoCidade("CEP não encontrado — preencha o endereço manualmente.");
+        return;
+      }
+      setRua(encontrado.logradouro || rua);
+      setBairro(encontrado.bairro || bairro);
+
+      const nomeEstado = UF_PARA_ESTADO[encontrado.uf] ?? "";
+      const estadoEncontrado = estados.find((e) => e.nome.toLowerCase() === nomeEstado.toLowerCase());
+      if (estadoEncontrado) {
+        setEstadoId(estadoEncontrado.id);
+        const cidadeEncontrada = cidades.find(
+          (cid) => cid.estado_id === estadoEncontrado.id && cid.nome.toLowerCase() === encontrado.localidade.toLowerCase()
+        );
+        if (cidadeEncontrada) {
+          setCidadeId(cidadeEncontrada.id);
+        } else {
+          setCidadeId("");
+          setCepAvisoCidade(`Cidade "${encontrado.localidade}" não está cadastrada — selecione manualmente abaixo.`);
+        }
+      } else {
+        setCepAvisoCidade("Selecione o estado e a cidade manualmente abaixo.");
+      }
+    } finally {
+      setBuscandoCep(false);
+    }
+  }
 
   // Autocomplete de Bairro "que vai aprendendo sozinho" (tipo EnumList do
   // AppSheet, pedido do usuário): em vez de uma lista fixa cadastrada à mão,
@@ -179,6 +237,20 @@ export function ImovelForm({
         <div className="text-sm font-bold text-gray-800 mb-3">Localização</div>
         <div className="grid md:grid-cols-2 gap-3">
           <div>
+            <label className={LABEL}>CEP</label>
+            <input
+              className={CAMPO}
+              name="cep"
+              value={cep}
+              onChange={(e) => setCep(formatCep(e.target.value))}
+              onBlur={aoSairDoCep}
+              placeholder="00000-000"
+              maxLength={9}
+            />
+            {buscandoCep && <p className="text-[11px] text-gray-400 mt-1">Buscando endereço...</p>}
+            {cepAvisoCidade && <p className="text-[11px] text-amber-600 mt-1">{cepAvisoCidade}</p>}
+          </div>
+          <div>
             <label className={LABEL}>Estado</label>
             <select
               className={CAMPO}
@@ -210,19 +282,30 @@ export function ImovelForm({
           </div>
           <div>
             <label className={LABEL}>Rua</label>
-            <input className={CAMPO} name="rua" defaultValue={i?.rua ?? ""} />
+            <input className={CAMPO} name="rua" value={rua} onChange={(e) => setRua(e.target.value)} />
           </div>
           <div>
             <label className={LABEL}>Número</label>
-            <input className={CAMPO} name="n_predial" defaultValue={i?.n_predial ?? ""} />
+            <input className={CAMPO} name="n_predial" value={nPredial} onChange={(e) => setNPredial(e.target.value)} />
           </div>
           <div>
             <label className={LABEL}>Complemento</label>
-            <input className={CAMPO} name="complemento" defaultValue={i?.complemento ?? ""} />
+            <input
+              className={CAMPO}
+              name="complemento"
+              value={complemento}
+              onChange={(e) => setComplemento(e.target.value)}
+            />
           </div>
           <div>
             <label className={LABEL}>Bairro</label>
-            <input className={CAMPO} name="bairro" defaultValue={i?.bairro ?? ""} list="lista-bairros" />
+            <input
+              className={CAMPO}
+              name="bairro"
+              value={bairro}
+              onChange={(e) => setBairro(e.target.value)}
+              list="lista-bairros"
+            />
             <datalist id="lista-bairros">
               {bairrosDaCidade.map((b) => (
                 <option key={b} value={b} />

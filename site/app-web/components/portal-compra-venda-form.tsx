@@ -222,6 +222,7 @@ type RascunhoCompraVenda = {
   buscaImovel: string;
   imovelNovo: boolean;
   tipoImovelNovo: string;
+  cepNovo: string;
   ruaNovo: string;
   nPredialNovo: string;
   complementoNovo: string;
@@ -693,6 +694,7 @@ export function PortalCompraVendaForm({
   // direta captada e vendida na mesma hora, sem passar por Gestão antes).
   const [imovelNovo, setImovelNovo] = useState(false);
   const [tipoImovelNovo, setTipoImovelNovo] = useState("");
+  const [cepNovo, setCepNovo] = useState("");
   const [ruaNovo, setRuaNovo] = useState("");
   const [nPredialNovo, setNPredialNovo] = useState("");
   const [complementoNovo, setComplementoNovo] = useState("");
@@ -765,6 +767,26 @@ export function PortalCompraVendaForm({
     return [...set].sort((a, b) => a.localeCompare(b, "pt-BR"));
   }, [bairrosCadastrados, cidadeIdNovo]);
 
+  // Busca automática de CEP (ViaCEP) pro imóvel novo — mesmo comportamento
+  // já usado nas linhas de vendedor/comprador (BlocoPessoas acima).
+  async function buscarEnderecoImovelNovoPorCep() {
+    const encontrado = await buscarCep(cepNovo);
+    if (!encontrado) return;
+
+    const nomeEstado = UF_PARA_ESTADO[encontrado.uf] ?? "";
+    const estadoEncontrado = estados.find((e) => e.nome.toLowerCase() === nomeEstado.toLowerCase());
+    const cidadeEncontrada = estadoEncontrado
+      ? cidades.find(
+          (cid) => cid.estado_id === estadoEncontrado.id && cid.nome.toLowerCase() === encontrado.localidade.toLowerCase()
+        )
+      : undefined;
+
+    setRuaNovo(encontrado.logradouro || ruaNovo);
+    setBairroNovo(encontrado.bairro || bairroNovo);
+    setEstadoIdNovo(estadoEncontrado?.id ?? estadoIdNovo);
+    setCidadeIdNovo(cidadeEncontrada?.id ?? "");
+  }
+
   const imoveisFiltrados = useMemo(() => {
     const b = buscaImovel.trim().toLowerCase();
     if (!b) return imoveis.slice(0, RESULTADOS_MAXIMO);
@@ -801,6 +823,7 @@ export function PortalCompraVendaForm({
       buscaImovel,
       imovelNovo,
       tipoImovelNovo,
+      cepNovo,
       ruaNovo,
       nPredialNovo,
       complementoNovo,
@@ -852,6 +875,7 @@ export function PortalCompraVendaForm({
     buscaImovel,
     imovelNovo,
     tipoImovelNovo,
+    cepNovo,
     ruaNovo,
     nPredialNovo,
     complementoNovo,
@@ -886,6 +910,7 @@ export function PortalCompraVendaForm({
     setBuscaImovel(r.buscaImovel);
     setImovelNovo(r.imovelNovo);
     setTipoImovelNovo(r.tipoImovelNovo);
+    setCepNovo(r.cepNovo ?? "");
     setRuaNovo(r.ruaNovo);
     setNPredialNovo(r.nPredialNovo);
     setComplementoNovo(r.complementoNovo);
@@ -1066,6 +1091,7 @@ export function PortalCompraVendaForm({
       formData.set("vendedoresJson", JSON.stringify(vendedores));
       if (imovelNovo) {
         formData.set("tipo_imovel", tipoImovelNovo);
+        formData.set("cep", cepNovo);
         formData.set("rua", ruaNovo);
         formData.set("n_predial", nPredialNovo);
         formData.set("complemento", complementoNovo);
@@ -1251,6 +1277,16 @@ export function PortalCompraVendaForm({
                     </option>
                   ))}
                 </select>
+              </div>
+              <div>
+                <label className={LABEL}>CEP</label>
+                <input
+                  className={CAMPO}
+                  value={cepNovo}
+                  onChange={(e) => setCepNovo(e.target.value)}
+                  onBlur={buscarEnderecoImovelNovoPorCep}
+                  placeholder="00000-000"
+                />
               </div>
               <div>
                 <label className={LABEL}>Rua</label>

@@ -541,6 +541,7 @@ model imoveis {
   parceiro_id           String?                 @db.Uuid
   pasta_url             String?
   inscricao             String?
+  cep                   String?
   rua                   String?
   n_predial             String?
   complemento           String?

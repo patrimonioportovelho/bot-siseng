@@ -278,6 +278,7 @@ CREATE TABLE imoveis (
   cliente_vendedor_id   UUID REFERENCES clientes(id),   -- nullable: há órfãos conhecidos na base legada
   pasta_url             TEXT,
   inscricao             TEXT,
+  cep                   TEXT,
   rua                   TEXT,
   n_predial             TEXT,
   complemento           TEXT,

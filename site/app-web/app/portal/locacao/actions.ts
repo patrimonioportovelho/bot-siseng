@@ -336,6 +336,7 @@ export async function gerarLocacaoAction(
     // imóvel ainda não existe no sistema.
     let proprietariosForm: ClienteDigitado[] = [];
     let tipoImovelNovo: string | null = null;
+    let cepNovo: string | null = null;
     let ruaNovo: string | null = null;
     let nPredialNovo: string | null = null;
     let complementoNovo: string | null = null;
@@ -355,6 +356,7 @@ export async function gerarLocacaoAction(
       if (!tipoImovelNovo || !ruaNovo) {
         return { ok: false, erro: "Preencha ao menos o tipo do imóvel e a rua do imóvel novo." };
       }
+      cepNovo = digitos(texto(formData, "cep"));
       nPredialNovo = texto(formData, "n_predial");
       complementoNovo = texto(formData, "complemento");
       bairroNovo = texto(formData, "bairro");
@@ -474,6 +476,7 @@ export async function gerarLocacaoAction(
         .create({
           data: {
             tipo_imovel: tipoImovelNovo!,
+            cep: cepNovo,
             rua: ruaNovo!,
             n_predial: nPredialNovo,
             complemento: complementoNovo,

@@ -135,6 +135,7 @@ type RascunhoGestao = {
   clientes: ClienteLinha[];
   imovelId: string;
   tipoImovel: string;
+  cep: string;
   rua: string;
   nPredial: string;
   complemento: string;
@@ -176,6 +177,7 @@ export function PortalGestaoForm({
 
   const [imovelId, setImovelId] = useState("");
   const [tipoImovel, setTipoImovel] = useState("");
+  const [cep, setCep] = useState("");
   const [rua, setRua] = useState("");
   const [nPredial, setNPredial] = useState("");
   const [complemento, setComplemento] = useState("");
@@ -212,6 +214,7 @@ export function PortalGestaoForm({
       clientes,
       imovelId,
       tipoImovel,
+      cep,
       rua,
       nPredial,
       complemento,
@@ -240,6 +243,7 @@ export function PortalGestaoForm({
     clientes,
     imovelId,
     tipoImovel,
+    cep,
     rua,
     nPredial,
     complemento,
@@ -260,6 +264,7 @@ export function PortalGestaoForm({
     setClientes(r.clientes.length > 0 ? r.clientes : [clienteVazio()]);
     setImovelId(r.imovelId);
     setTipoImovel(r.tipoImovel);
+    setCep(r.cep ?? "");
     setRua(r.rua);
     setNPredial(r.nPredial);
     setComplemento(r.complemento);
@@ -317,6 +322,27 @@ export function PortalGestaoForm({
     ? clientesDoCorretor.find((c) => c.id === clientePrincipal.clienteId)
     : undefined;
   const imoveisDoClientePrincipal = clienteExistentePrincipal?.imoveis ?? [];
+
+  // Busca automática de CEP (ViaCEP) pro imóvel — mesmo comportamento já
+  // usado em components/portal-compra-venda-form.tsx,
+  // components/portal-locacao-form.tsx e components/portal-administracao-form.tsx.
+  async function buscarEnderecoImovelPorCep() {
+    const encontrado = await buscarCep(cep);
+    if (!encontrado) return;
+
+    const nomeEstado = UF_PARA_ESTADO[encontrado.uf] ?? "";
+    const estadoEncontrado = estados.find((e) => e.nome.toLowerCase() === nomeEstado.toLowerCase());
+    const cidadeEncontrada = estadoEncontrado
+      ? cidades.find(
+          (cid) => cid.estado_id === estadoEncontrado.id && cid.nome.toLowerCase() === encontrado.localidade.toLowerCase()
+        )
+      : undefined;
+
+    setRua(encontrado.logradouro || rua);
+    setBairro(encontrado.bairro || bairro);
+    setEstadoId(estadoEncontrado?.id ?? estadoId);
+    setCidadeId(cidadeEncontrada?.id ?? "");
+  }
 
   function atualizarCliente(index: number, campo: keyof ClienteLinha, valor: string) {
     setClientes((atual) => atual.map((c, i) => (i === index ? { ...c, [campo]: valor } : c)));
@@ -470,6 +496,7 @@ export function PortalGestaoForm({
       formData.set("clientesJson", JSON.stringify(clientes));
       formData.set("imovel_id", imovelId);
       formData.set("tipo_imovel", tipoImovel);
+      formData.set("cep", cep);
       formData.set("rua", rua);
       formData.set("n_predial", nPredial);
       formData.set("complemento", complemento);
@@ -914,6 +941,17 @@ export function PortalGestaoForm({
                 </option>
               ))}
             </select>
+          </div>
+          <div>
+            <label className={LABEL}>CEP</label>
+            <input
+              className={imovelId ? CAMPO_TRAVADO : CAMPO}
+              readOnly={Boolean(imovelId)}
+              value={cep}
+              onChange={(e) => setCep(e.target.value)}
+              onBlur={buscarEnderecoImovelPorCep}
+              placeholder="00000-000"
+            />
           </div>
           <div>
             <label className={LABEL}>Rua</label>

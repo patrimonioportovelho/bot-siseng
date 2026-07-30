@@ -11,14 +11,16 @@ export const FORMA_PAGAMENTO_OPCOES = ["Pix", "Boleto"];
 
 export const FINALIDADE_LOCACAO_OPCOES = ["Residencial", "Comercial", "Mista"];
 
-export const ENCARGOS_OPCOES = [
-  "IPTU do ano vigente ao andamento do contrato",
-  "TRSD do ano vigente ao andamento do contrato",
-  "Condomínio",
-  "Água",
-  "Energia elétrica",
-  "Gás"
-];
+// IPTU e TRSD, dos encargos abaixo, são os únicos que a imobiliária cobra
+// junto com o aluguel (fracionado nas mensalidades, ver campos iptu/trsd em
+// transacoes) — por isso entram no "Valor de pacote" (lib/transacoes/valores.ts).
+// Os demais (Condomínio/Água/Energia/Gás) são só um registro de quem é
+// responsável por pagar, cobrados direto pelo terceiro (condomínio,
+// concessionária), sem valor nem cobrança passando pela imobiliária.
+export const ENCARGO_IPTU = "IPTU do ano vigente ao andamento do contrato";
+export const ENCARGO_TRSD = "TRSD do ano vigente ao andamento do contrato";
+
+export const ENCARGOS_OPCOES = [ENCARGO_IPTU, ENCARGO_TRSD, "Condomínio", "Água", "Energia elétrica", "Gás"];
 
 // Momento de entrega das chaves (usado no cálculo de risco de posse em
 // contratos de compra e venda).

@@ -530,6 +530,10 @@ export async function gerarLocacaoAction(
     const pgCaucao = texto(formData, "pg_caucao");
     const formaPagamento = texto(formData, "forma_pagamento");
     const encargos = formData.getAll("encargos").map((v) => String(v));
+    const iptuTxt = texto(formData, "iptu");
+    const iptu = iptuTxt ? valorEditavelParaDecimal(iptuTxt) : null;
+    const trsdTxt = texto(formData, "trsd");
+    const trsd = trsdTxt ? valorEditavelParaDecimal(trsdTxt) : null;
 
     const porcHonorarioTxt = texto(formData, "porc_honorario");
     const porcHonorario = porcHonorarioTxt ? percentualParaDecimal(porcHonorarioTxt) ?? 0 : 0;
@@ -565,6 +569,8 @@ export async function gerarLocacaoAction(
           pg_caucao: pgCaucao,
           forma_pagamento: formaPagamento,
           encargos,
+          iptu,
+          trsd,
           porc_honorario: porcHonorario,
           tem_parceria: temParceria,
           porc_parceria: porcParceria,

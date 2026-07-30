@@ -5,8 +5,11 @@ import {
   GARANTIA_OPCOES,
   FORMA_PAGAMENTO_OPCOES,
   FINALIDADE_LOCACAO_OPCOES,
-  ENCARGOS_OPCOES
+  ENCARGOS_OPCOES,
+  ENCARGO_IPTU,
+  ENCARGO_TRSD
 } from "@/lib/transacoes/opcoes";
+import { calcularValorPacoteLocacao } from "@/lib/transacoes/valores";
 import { TIPOS_IMOVEL } from "@/lib/imoveis/opcoes";
 import {
   ESTADOS_CIVIS,
@@ -17,7 +20,7 @@ import {
 } from "@/lib/clientes/opcoes";
 import { validarCpfCnpj } from "@/lib/clientes/validacao";
 import { buscarCep, UF_PARA_ESTADO } from "@/lib/enderecos";
-import { formatInscricao, somarMeses } from "@/lib/format";
+import { formatInscricao, somarMeses, formatMoeda, valorEditavelParaDecimal } from "@/lib/format";
 import type { ImovelBuscaResultado, ClienteBuscaResultado } from "@/lib/transacoes/buscas";
 import { gerarLocacaoAction, prepararUploadDocumentoAction } from "@/app/portal/locacao/actions";
 import { supabaseBrowser, BUCKET_DOCUMENTOS_PORTAL } from "@/lib/supabase-browser";
@@ -107,6 +110,8 @@ type RascunhoLocacao = {
   pgCaucao: string;
   formaPagamento: string;
   encargos: string[];
+  iptuTexto: string;
+  trsdTexto: string;
   porcHonorarioTexto: string;
   temParceria: boolean;
   parceiroExternoId: string;
@@ -714,6 +719,23 @@ export function PortalLocacaoForm({
   const [pgCaucao, setPgCaucao] = useState("");
   const [formaPagamento, setFormaPagamento] = useState("");
   const [encargos, setEncargos] = useState<string[]>([]);
+  const [iptuTexto, setIptuTexto] = useState("");
+  const [trsdTexto, setTrsdTexto] = useState("");
+
+  // "Valor de pacote" ao vivo — mesmo cálculo do admin (ver
+  // components/transacao-form.tsx e lib/transacoes/valores.ts): aluguel +
+  // IPTU/TRSD marcados, pra o corretor já conferir o total real antes de
+  // enviar (e o administrador ver isso certo assim que abrir o cadastro).
+  const valorPacote = useMemo(
+    () =>
+      calcularValorPacoteLocacao({
+        valorTransacao: valorEditavelParaDecimal(valorTransacaoTexto),
+        iptu: valorEditavelParaDecimal(iptuTexto),
+        trsd: valorEditavelParaDecimal(trsdTexto),
+        encargos
+      }),
+    [valorTransacaoTexto, iptuTexto, trsdTexto, encargos]
+  );
 
   const [porcHonorarioTexto, setPorcHonorarioTexto] = useState("");
   const [temParceria, setTemParceria] = useState(false);
@@ -783,6 +805,8 @@ export function PortalLocacaoForm({
       pgCaucao,
       formaPagamento,
       encargos,
+      iptuTexto,
+      trsdTexto,
       porcHonorarioTexto,
       temParceria,
       parceiroExternoId,
@@ -839,6 +863,8 @@ export function PortalLocacaoForm({
     pgCaucao,
     formaPagamento,
     encargos,
+    iptuTexto,
+    trsdTexto,
     porcHonorarioTexto,
     temParceria,
     parceiroExternoId,
@@ -881,6 +907,8 @@ export function PortalLocacaoForm({
     setPgCaucao(r.pgCaucao);
     setFormaPagamento(r.formaPagamento);
     setEncargos(r.encargos);
+    setIptuTexto(r.iptuTexto ?? "");
+    setTrsdTexto(r.trsdTexto ?? "");
     setPorcHonorarioTexto(r.porcHonorarioTexto);
     setTemParceria(r.temParceria);
     setParceiroExternoId(r.parceiroExternoId);
@@ -1116,6 +1144,8 @@ export function PortalLocacaoForm({
       formData.set("pg_caucao", pgCaucao);
       formData.set("forma_pagamento", formaPagamento);
       encargos.forEach((e) => formData.append("encargos", e));
+      if (encargos.includes(ENCARGO_IPTU)) formData.set("iptu", iptuTexto);
+      if (encargos.includes(ENCARGO_TRSD)) formData.set("trsd", trsdTexto);
       formData.set("porc_honorario", porcHonorarioTexto);
       formData.set("tem_parceria", temParceria ? "on" : "");
       formData.set("parceiro_externo_id", parceiroExternoId);
@@ -1532,12 +1562,43 @@ export function PortalLocacaoForm({
             <label className={LABEL}>Encargos</label>
             <div className="flex flex-col gap-1 mt-1">
               {ENCARGOS_OPCOES.map((op) => (
-                <label key={op} className="flex items-center gap-2 text-xs text-gray-600">
-                  <input type="checkbox" checked={encargos.includes(op)} onChange={() => toggleEncargo(op)} />
-                  {op}
-                </label>
+                <div key={op}>
+                  <label className="flex items-center gap-2 text-xs text-gray-600">
+                    <input type="checkbox" checked={encargos.includes(op)} onChange={() => toggleEncargo(op)} />
+                    {op}
+                  </label>
+                  {op === ENCARGO_IPTU && encargos.includes(op) && (
+                    <div className="mt-1 ml-6">
+                      <label className={LABEL}>Valor do IPTU (R$) — pode ser fracionado nas mensalidades</label>
+                      <input className={CAMPO} placeholder="80,00" value={iptuTexto} onChange={(e) => setIptuTexto(e.target.value)} />
+                    </div>
+                  )}
+                  {op === ENCARGO_TRSD && encargos.includes(op) && (
+                    <div className="mt-1 ml-6">
+                      <label className={LABEL}>Valor do TRSD (R$) — pode ser fracionado nas mensalidades</label>
+                      <input className={CAMPO} placeholder="40,00" value={trsdTexto} onChange={(e) => setTrsdTexto(e.target.value)} />
+                    </div>
+                  )}
+                </div>
               ))}
             </div>
+          </div>
+        </div>
+
+        <div className="grid md:grid-cols-2 gap-3 mt-3 pt-3 border-t border-gray-100">
+          <div>
+            <span className={LABEL}>Valor da locação (aluguel)</span>
+            <div className="text-sm font-semibold text-gray-800">
+              {formatMoeda(valorEditavelParaDecimal(valorTransacaoTexto) ?? 0)}
+            </div>
+          </div>
+          <div>
+            <span className={LABEL}>Valor de pacote (real, com IPTU/TRSD)</span>
+            <div className="text-sm font-semibold text-primary">{formatMoeda(valorPacote)}</div>
+            <p className="text-[11px] text-gray-400 mt-0.5">
+              Aluguel + IPTU/TRSD marcados acima — é o total que o inquilino paga todo mês através da imobiliária.
+              Ajuda o administrativo a conferir o valor real da locação.
+            </p>
           </div>
         </div>
       </div>

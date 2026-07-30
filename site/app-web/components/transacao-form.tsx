@@ -7,6 +7,8 @@ import {
   FORMA_PAGAMENTO_OPCOES,
   FINALIDADE_LOCACAO_OPCOES,
   ENCARGOS_OPCOES,
+  ENCARGO_IPTU,
+  ENCARGO_TRSD,
   CHAVE_OPCOES,
   STATUS_HONORARIO_OPCOES,
   FUNCOES_CORRETOR,
@@ -15,6 +17,7 @@ import {
   MOMENTO_CONDICAO_OPCOES,
   statusOpcoesPorTipo
 } from "@/lib/transacoes/opcoes";
+import { calcularValorPacoteLocacao } from "@/lib/transacoes/valores";
 import {
   formatValorEditavel,
   formatPercentual,
@@ -224,6 +227,21 @@ export function TransacaoForm({
     t?.prazo_contrato_meses != null ? String(t.prazo_contrato_meses) : ""
   );
   const [valorTransacaoTexto, setValorTransacaoTexto] = useState(formatValorEditavel(t?.valor_transacao));
+
+  // "Valor de pacote" ao vivo, enquanto o administrativo/corretor ainda está
+  // digitando — mostra o total real (aluguel + IPTU/TRSD, quando marcados)
+  // antes mesmo de salvar, pra já conferir na hora do cadastro (pedido
+  // explícito do usuário).
+  const valorPacote = useMemo(
+    () =>
+      calcularValorPacoteLocacao({
+        valorTransacao: valorEditavelParaDecimal(valorTransacaoTexto),
+        iptu: valorEditavelParaDecimal(iptuTexto),
+        trsd: valorEditavelParaDecimal(trsdTexto),
+        encargos
+      }),
+    [valorTransacaoTexto, iptuTexto, trsdTexto, encargos]
+  );
   // Começa com a Data de vencimento já salva (respeita um ajuste manual
   // feito antes, ex.: aditivo) — só cai pro cálculo automático se o
   // contrato ainda não tiver nada salvo (cadastro novo).
@@ -809,7 +827,7 @@ export function TransacaoForm({
                       />
                       {op}
                     </label>
-                    {op === "IPTU do ano vigente ao andamento do contrato" && encargos.includes(op) && (
+                    {op === ENCARGO_IPTU && encargos.includes(op) && (
                       <div className="mt-1 ml-6">
                         <label className={LABEL}>Valor do IPTU (R$) — pode ser fracionado nas mensalidades</label>
                         <input
@@ -821,7 +839,7 @@ export function TransacaoForm({
                         />
                       </div>
                     )}
-                    {op === "TRSD do ano vigente ao andamento do contrato" && encargos.includes(op) && (
+                    {op === ENCARGO_TRSD && encargos.includes(op) && (
                       <div className="mt-1 ml-6">
                         <label className={LABEL}>Valor do TRSD (R$) — pode ser fracionado nas mensalidades</label>
                         <input
@@ -836,6 +854,22 @@ export function TransacaoForm({
                   </div>
                 ))}
               </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-2 mt-3 pt-3 border-t border-gray-100">
+            <div>
+              <span className={LABEL}>Valor da locação (aluguel)</span>
+              <div className="text-sm font-semibold text-gray-800">
+                {formatMoeda(valorEditavelParaDecimal(valorTransacaoTexto) ?? 0)}
+              </div>
+            </div>
+            <div>
+              <span className={LABEL}>Valor de pacote (real, com IPTU/TRSD)</span>
+              <div className="text-sm font-semibold text-primary">{formatMoeda(valorPacote)}</div>
+              <p className="text-[11px] text-gray-400 mt-0.5">
+                Aluguel + IPTU/TRSD marcados acima — é o total que o inquilino paga todo mês através da imobiliária.
+              </p>
             </div>
           </div>
         </div>

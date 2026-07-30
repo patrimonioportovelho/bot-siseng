@@ -284,12 +284,29 @@ export function calcularPrazoRestante(
   if (!fim || Number.isNaN(fim.getTime())) return "—";
 
   const hoje = hojePortoVelho();
-  const mesesRestantes =
-    (fim.getFullYear() - hoje.getFullYear()) * 12 + (fim.getMonth() - hoje.getMonth());
+  // Diferença de mês-calendário "cheios" — sem considerar o dia, atravessar
+  // de julho pra agosto já contava como +1 mês inteiro mesmo faltando só
+  // 1-2 dias (ex.: hoje 30/07, vencimento 01/08 do ano seguinte contava 13
+  // meses em vez de 12). Corrige comparando o dia: se o dia de hoje ainda
+  // não chegou no dia do vencimento dentro do mês corrente, esse mês ainda
+  // não fechou, então desconta 1.
+  let mesesRestantes = (fim.getFullYear() - hoje.getFullYear()) * 12 + (fim.getMonth() - hoje.getMonth());
+  if (fim.getDate() < hoje.getDate()) mesesRestantes -= 1;
 
   if (mesesRestantes <= 0) return "Vencido";
   if (mesesRestantes === 1) return "1 mês";
   return `${mesesRestantes} meses`;
+}
+
+// Formata o "Tempo de contrato (meses)" digitado direto no cadastro (ex.: 12
+// → "12 meses") — usado na listagem de Locação pra mostrar exatamente o que
+// foi preenchido no formulário, sem recalcular nada. calcularPrazoRestante
+// (acima) continua existindo só como fallback pra contrato legado importado
+// sem esse campo preenchido (ver comentário dela).
+export function formatarPrazoContrato(meses: number | null): string {
+  if (meses == null) return "—";
+  if (meses === 1) return "1 mês";
+  return `${meses} meses`;
 }
 
 // Soma meses a uma data no formato do <input type="date"> (yyyy-mm-dd) e

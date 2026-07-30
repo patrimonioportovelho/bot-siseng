@@ -5,6 +5,7 @@ import {
   formatDataCalendario,
   formatInscricao,
   calcularPrazoRestante,
+  formatarPrazoContrato,
   diasParaVencimento,
   situacaoContratoLocacao,
   statusTone,
@@ -287,6 +288,13 @@ export async function TransacoesLista({ tipo, q, novoHref }: { tipo: "Locação"
                                 ? "Vencido"
                                 : situacao === "alerta"
                                 ? `${diasParaVencimento(t.data_vencimento)} dia(s) — renovar/cancelar`
+                                : // Mostra o que foi digitado no cadastro (ex.: 12 meses) — antes
+                                // caía sempre no cálculo de "tempo restante a partir de hoje" (ver
+                                // calcularPrazoRestante), que pra contrato ainda não iniciado dava
+                                // um número diferente do prazo real do contrato. Só usa o cálculo
+                                // como fallback pra contrato legado importado sem esse campo.
+                                t.prazo_contrato_meses != null
+                                ? formatarPrazoContrato(t.prazo_contrato_meses)
                                 : calcularPrazoRestante(t.data_assinatura, t.prazo_contrato_meses, t.data_vencimento)}
                             </span>
                           )}

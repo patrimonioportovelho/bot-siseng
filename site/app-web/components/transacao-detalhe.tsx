@@ -5,6 +5,8 @@ import Link from "next/link";
 import { TransacaoForm, type ComissaoExtra } from "@/components/transacao-form";
 import { PainelLateral } from "@/components/painel-lateral";
 import { formatMoeda, formatPercentual, formatDataCalendario, formatValorEditavel, valorEditavelParaDecimal } from "@/lib/format";
+import { ENCARGO_IPTU, ENCARGO_TRSD } from "@/lib/transacoes/opcoes";
+import { calcularValorPacoteLocacao, temAdicionalNoPacote } from "@/lib/transacoes/valores";
 
 type ClienteOpcao = { id: string; nome: string; id_legado: string | null; parceiroId: string | null };
 type LojaOpcao = { id: string; nome: string };
@@ -353,10 +355,10 @@ export function TransacaoDetalhe({
                     {t.encargos.map((op) => (
                       <li key={op}>
                         {op}
-                        {op === "IPTU do ano vigente ao andamento do contrato" && t.iptu != null && (
+                        {op === ENCARGO_IPTU && t.iptu != null && (
                           <span className="text-gray-500"> — {formatMoeda(t.iptu)}</span>
                         )}
-                        {op === "TRSD do ano vigente ao andamento do contrato" && t.trsd != null && (
+                        {op === ENCARGO_TRSD && t.trsd != null && (
                           <span className="text-gray-500"> — {formatMoeda(t.trsd)}</span>
                         )}
                       </li>
@@ -365,6 +367,31 @@ export function TransacaoDetalhe({
                 ) : (
                   "—"
                 )
+              }
+            />
+          </div>
+
+          {/* Destrincha o que o "Valor da transação" realmente representa —
+              pedido explícito do usuário: o aluguel puro (Valor da locação) e
+              o total real que o inquilino paga todo mês através da
+              imobiliária, já somando IPTU/TRSD quando cobrados junto (Valor
+              de pacote) — pra quem está conferindo o cadastro não precisar
+              somar isso de cabeça. */}
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-3 md:gap-4 mt-3 pt-3 border-t border-gray-100">
+            <Campo label="Valor da locação (aluguel)" valor={formatMoeda(t.valor_transacao)} />
+            <Campo
+              label="Valor de pacote (real, com IPTU/TRSD)"
+              valor={
+                <span className={temAdicionalNoPacote({ iptu: t.iptu, trsd: t.trsd, encargos: t.encargos }) ? "font-semibold text-gray-800" : undefined}>
+                  {formatMoeda(
+                    calcularValorPacoteLocacao({
+                      valorTransacao: t.valor_transacao,
+                      iptu: t.iptu,
+                      trsd: t.trsd,
+                      encargos: t.encargos
+                    })
+                  )}
+                </span>
               }
             />
           </div>

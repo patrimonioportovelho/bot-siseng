@@ -8,6 +8,7 @@ import { percentualParaDecimal } from "@/lib/format";
 import { FUNCOES_EQUIPE } from "@/lib/parceiros/opcoes";
 import { registrarEJogarErro } from "@/lib/erros";
 import { montarEnderecoPF } from "@/lib/clientes/endereco";
+import { buscarParceiroDuplicado, mensagemParceiroDuplicado } from "@/lib/parceiros/duplicidade";
 
 function texto(formData: FormData, campo: string): string | null {
   const v = formData.get(campo);
@@ -134,24 +135,53 @@ async function camposEditaveis(formData: FormData) {
   };
 }
 
-export async function criarParceiroAction(formData: FormData) {
+// Mesmo padrão de app/clientes/actions.ts: retorna { erro } em vez de dar
+// throw, pra não derrubar a página inteira (com o formulário preenchido
+// junto) quando o problema é uma validação esperada — só bug de verdade
+// continua indo pro catch/registrarEJogarErro. `duplicado: true` acompanha
+// o erro quando o bloqueio foi a checagem de nome+CPF repetido — o
+// formulário usa isso pra mostrar a opção "cadastrar mesmo assim".
+export type ResultadoFormulario = { erro: string; duplicado?: boolean } | undefined;
+
+function mensagemDe(erro: unknown): string {
+  return erro instanceof Error ? erro.message : String(erro);
+}
+
+export async function criarParceiroAction(_prev: unknown, formData: FormData): Promise<ResultadoFormulario> {
   await requireAdminSession();
 
   const nome = texto(formData, "nome");
   const funcao = texto(formData, "funcao");
   if (!nome || !funcao) {
-    throw new Error("Nome e função são obrigatórios.");
+    return { erro: "Nome e função são obrigatórios." };
   }
 
-  const novo = await prisma.parceiros
-    .create({
-      data: {
-        nome,
-        ...(await camposEditaveis(formData)),
-        funcao
-      }
-    })
-    .catch((erro) => registrarEJogarErro({ entidadeTipo: "parceiros", acao: "criar", erro }));
+  // Bloqueia cadastro repetido: mesmo nome E mesmo CPF já cadastrados em
+  // outro parceiro (ver lib/parceiros/duplicidade.ts — homônimo sem o CPF
+  // bater não é bloqueado, só quando os dois coincidem). ADM pode decidir
+  // cadastrar mesmo assim marcando a opção que o formulário mostra.
+  const cadastrarMesmoAssim = formData.get("cadastrar_mesmo_assim") === "on";
+  if (!cadastrarMesmoAssim) {
+    const duplicado = await buscarParceiroDuplicado({ nome, cpf: texto(formData, "cpf") });
+    if (duplicado) {
+      return { erro: mensagemParceiroDuplicado(duplicado), duplicado: true };
+    }
+  }
+
+  let novo: { id: string; nome: string; funcao: string };
+  try {
+    novo = await prisma.parceiros
+      .create({
+        data: {
+          nome,
+          ...(await camposEditaveis(formData)),
+          funcao
+        }
+      })
+      .catch((erro) => registrarEJogarErro({ entidadeTipo: "parceiros", acao: "criar", erro }));
+  } catch (erro) {
+    return { erro: mensagemDe(erro) };
+  }
 
   await logAlteracao({
     entidadeTipo: "parceiros",
@@ -164,14 +194,14 @@ export async function criarParceiroAction(formData: FormData) {
   redirect(`/parceiros/${novo.id}?salvo=1`);
 }
 
-export async function atualizarParceiroAction(formData: FormData) {
+export async function atualizarParceiroAction(_prev: unknown, formData: FormData): Promise<ResultadoFormulario> {
   await requireAdminSession();
 
   const id = texto(formData, "parceiroId");
-  if (!id) throw new Error("Parceiro inválido.");
+  if (!id) return { erro: "Parceiro inválido." };
 
   const antes = await prisma.parceiros.findUnique({ where: { id } });
-  if (!antes) throw new Error("Parceiro não encontrado.");
+  if (!antes) return { erro: "Parceiro não encontrado." };
 
   const campos = await camposEditaveis(formData);
 
@@ -188,12 +218,17 @@ export async function atualizarParceiroAction(formData: FormData) {
     }
   }
 
-  const depois = await prisma.parceiros
-    .update({
-      where: { id },
-      data: campos
-    })
-    .catch((erro) => registrarEJogarErro({ entidadeTipo: "parceiros", entidadeId: id, acao: "editar", erro }));
+  let depois: unknown;
+  try {
+    depois = await prisma.parceiros
+      .update({
+        where: { id },
+        data: campos
+      })
+      .catch((erro) => registrarEJogarErro({ entidadeTipo: "parceiros", entidadeId: id, acao: "editar", erro }));
+  } catch (erro) {
+    return { erro: mensagemDe(erro) };
+  }
 
   await logAlteracao({
     entidadeTipo: "parceiros",

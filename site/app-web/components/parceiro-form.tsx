@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useActionState, useMemo, useState, type ReactNode } from "react";
 import {
   TODAS_FUNCOES,
   STATUS_FUNCAO,
@@ -207,9 +207,10 @@ export function ParceiroForm({
   bancos: Banco[];
   estados: EstadoOpcao[];
   cidades: CidadeOpcao[];
-  action: (formData: FormData) => void;
+  action: (prevState: unknown, formData: FormData) => Promise<{ erro: string; duplicado?: boolean } | undefined | void>;
 }) {
   const p = parceiro;
+  const [resultado, formAction] = useActionState(action, undefined);
   // Cadastro novo já nasce em modo de edição (não tem ficha pra mostrar
   // ainda). Cadastro existente abre em modo visualização — só entra em
   // edição clicando em "Editar" (mesmo padrão do AppSheet: side-by-side,
@@ -283,7 +284,7 @@ export function ParceiroForm({
   }
 
   return (
-    <form action={action} className="flex flex-col gap-5">
+    <form action={formAction} className="flex flex-col gap-5">
       {p && <input type="hidden" name="parceiroId" value={p.id} />}
 
       <div className="bg-white border border-gray-200 rounded-xl p-4">
@@ -651,6 +652,18 @@ export function ParceiroForm({
           placeholder="Observações sobre a função/contrato deste parceiro"
         />
       </div>
+
+      {resultado?.erro && (
+        <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg px-3 py-2">
+          {resultado.erro} — o que você digitou continua aí em cima, é só corrigir e salvar de novo.
+          {resultado.duplicado && (
+            <label className="flex items-center gap-2 mt-2 text-red-800 font-medium cursor-pointer">
+              <input type="checkbox" name="cadastrar_mesmo_assim" />
+              Já conferi, não é a mesma pessoa — cadastrar mesmo assim
+            </label>
+          )}
+        </div>
+      )}
 
       <div className="flex justify-end gap-2">
         {p && (

@@ -156,6 +156,14 @@ export async function criarParceiroAction(_prev: unknown, formData: FormData): P
     return { erro: "Nome e função são obrigatórios." };
   }
 
+  // Loja obrigatória em todo cadastro novo (pedido do usuário em
+  // 01/08/2026) — dá suporte ao filtro de loja no Topbar. Cadastro já
+  // existente sem loja continua editável normalmente (reforçado só pelo
+  // `required` no <select>, mesmo padrão de Transações/Administrações).
+  if (!texto(formData, "loja_id")) {
+    return { erro: "Loja é obrigatória." };
+  }
+
   // Bloqueia cadastro repetido: mesmo nome E mesmo CPF já cadastrados em
   // outro parceiro (ver lib/parceiros/duplicidade.ts — homônimo sem o CPF
   // bater não é bloqueado, só quando os dois coincidem). ADM pode decidir

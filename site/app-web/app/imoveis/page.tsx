@@ -3,6 +3,7 @@ import { Topbar } from "@/components/topbar";
 import { Pagination } from "@/components/pagination";
 import { prisma } from "@/lib/prisma";
 import { formatMoeda } from "@/lib/format";
+import { lojasSelecionadas, whereLojaFiltro } from "@/lib/lojas/filtro";
 
 export const dynamic = "force-dynamic";
 
@@ -16,23 +17,31 @@ export default async function ImoveisPage({
   const { q, page: pageParam, excluido } = await searchParams;
   const termo = (q ?? "").trim();
   const page = Math.max(1, Number(pageParam ?? "1") || 1);
+  const lojasFiltro = await lojasSelecionadas();
 
   const where = {
     excluido: false,
-    ...(termo
-      ? {
-          OR: [
-            { endereco: { contains: termo, mode: "insensitive" as const } },
-            { bairro: { contains: termo, mode: "insensitive" as const } },
-            { rua: { contains: termo, mode: "insensitive" as const } },
+    // Filtro de Loja (seletor no Topbar) — imóvel sem loja definida
+    // (cadastro anterior a 01/08/2026) continua aparecendo em qualquer filtro.
+    AND: [
+      whereLojaFiltro(lojasFiltro),
+      ...(termo
+        ? [
             {
-              imoveis_proprietarios: {
-                some: { clientes: { nome: { contains: termo, mode: "insensitive" as const } } }
-              }
+              OR: [
+                { endereco: { contains: termo, mode: "insensitive" as const } },
+                { bairro: { contains: termo, mode: "insensitive" as const } },
+                { rua: { contains: termo, mode: "insensitive" as const } },
+                {
+                  imoveis_proprietarios: {
+                    some: { clientes: { nome: { contains: termo, mode: "insensitive" as const } } }
+                  }
+                }
+              ]
             }
           ]
-        }
-      : {})
+        : [])
+    ]
   };
 
   const [imoveis, total] = await Promise.all([

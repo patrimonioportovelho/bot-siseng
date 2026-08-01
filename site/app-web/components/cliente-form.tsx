@@ -587,9 +587,11 @@ export function ClienteForm({
               </select>
             </div>
             <div>
-              <label className={LABEL}>Loja</label>
-              <select className={CAMPO} name="loja_id" defaultValue={c?.loja_id ?? ""}>
-                <option value="">—</option>
+              <label className={LABEL}>Loja *</label>
+              <select className={CAMPO} name="loja_id" defaultValue={c?.loja_id ?? ""} required>
+                <option value="" disabled>
+                  Selecione...
+                </option>
                 {lojas.map((l) => (
                   <option key={l.id} value={l.id}>
                     {l.nome}

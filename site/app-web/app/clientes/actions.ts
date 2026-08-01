@@ -156,6 +156,14 @@ export async function criarClienteAction(_prev: unknown, formData: FormData): Pr
     return { erro: "Nome e tipo de cliente são obrigatórios." };
   }
 
+  // Loja obrigatória em todo cadastro novo (pedido do usuário em
+  // 01/08/2026) — dá suporte ao filtro de loja no Topbar. Cadastro já
+  // existente sem loja continua editável normalmente (reforçado só pelo
+  // `required` no <select>, mesmo padrão de Transações/Administrações).
+  if (!texto(formData, "loja_id")) {
+    return { erro: "Loja é obrigatória." };
+  }
+
   // Valida dígito verificador de CPF/CNPJ antes de qualquer outra checagem
   // — pega erro de digitação (número trocado) antes mesmo de ir atrás de
   // duplicidade. Pessoa Jurídica exige CNPJ; Pessoa Física só valida o CPF

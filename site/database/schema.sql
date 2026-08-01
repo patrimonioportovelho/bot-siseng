@@ -285,6 +285,11 @@ CREATE TABLE imoveis (
   bairro                TEXT,
   estado_id             UUID REFERENCES estados(id),
   cidade_id             UUID REFERENCES cidades(id),
+  -- Loja (Porto Velho/Jaru) responsável pelo imóvel — adicionada em
+  -- 01/08/2026 pro filtro de loja em todas as telas do admin. Nullable:
+  -- cadastro anterior a essa data não tem loja e aparece nos dois filtros
+  -- até alguém editar e escolher.
+  loja_id               UUID REFERENCES lojas(id),
   endereco              TEXT,
   matricula             TEXT,
   status_imovel         TEXT CHECK (status_imovel IN ('Pendente','Parcial','Completo','Vencido','Irregular')),
@@ -300,6 +305,7 @@ CREATE TABLE imoveis (
 );
 CREATE INDEX idx_imoveis_parceiro ON imoveis(parceiro_id);
 CREATE INDEX idx_imoveis_cliente_vendedor ON imoveis(cliente_vendedor_id);
+CREATE INDEX idx_imoveis_loja ON imoveis(loja_id);
 CREATE INDEX idx_imoveis_endereco ON imoveis(endereco);
 CREATE TRIGGER trg_imoveis_updated_at BEFORE UPDATE ON imoveis
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();

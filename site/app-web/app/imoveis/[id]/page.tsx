@@ -6,6 +6,7 @@ import { getAdminSession } from "@/lib/auth";
 import { ImovelForm } from "@/components/imovel-form";
 import { FUNCOES_CAPTADOR } from "@/lib/imoveis/opcoes";
 import { URGENCIA_COR, URGENCIA_LABEL, labelColuna } from "@/lib/manutencao/opcoes";
+import { listarLojas } from "@/lib/lojas/filtro";
 import { atualizarImovelAction, apagarImovelAction } from "../actions";
 
 export const dynamic = "force-dynamic";
@@ -22,7 +23,7 @@ export default async function ImovelDetalhePage({
   const embutido = embed === "1";
   const session = await getAdminSession();
 
-  const [imovel, clientes, parceiros, estados, cidades, manutencoes, bairrosCadastrados] = await Promise.all([
+  const [imovel, clientes, parceiros, estados, cidades, manutencoes, bairrosCadastrados, lojas] = await Promise.all([
     prisma.imoveis.findUnique({
       where: { id },
       include: {
@@ -60,7 +61,8 @@ export default async function ImovelDetalhePage({
       where: { excluido: false, bairro: { not: null }, cidade_id: { not: null } },
       select: { cidade_id: true, bairro: true },
       distinct: ["cidade_id", "bairro"]
-    })
+    }),
+    listarLojas()
   ]);
 
   if (!imovel) notFound();
@@ -165,6 +167,7 @@ export default async function ImovelDetalhePage({
         estados={estados}
         cidades={cidades}
         bairrosCadastrados={bairrosCadastrados}
+        lojas={lojas}
         action={atualizarImovelAction}
         embutido={embutido}
       />

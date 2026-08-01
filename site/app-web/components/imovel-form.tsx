@@ -19,12 +19,14 @@ type ParceiroOpcao = { id: string; nome: string };
 type EstadoOpcao = { id: string; nome: string };
 type CidadeOpcao = { id: string; nome: string; estado_id: string };
 type BairroCadastrado = { cidade_id: string | null; bairro: string | null };
+type LojaOpcao = { id: string; nome: string };
 
 type ImovelExistente = {
   id: string;
   id_legado: string | null;
   tipo_imovel: string | null;
   parceiro_id: string | null;
+  loja_id: string | null;
   pasta_url: string | null;
   inscricao: string | null;
   cep: string | null;
@@ -60,6 +62,7 @@ export function ImovelForm({
   estados,
   cidades,
   bairrosCadastrados,
+  lojas,
   action,
   embutido
 }: {
@@ -70,6 +73,7 @@ export function ImovelForm({
   estados: EstadoOpcao[];
   cidades: CidadeOpcao[];
   bairrosCadastrados: BairroCadastrado[];
+  lojas: LojaOpcao[];
   action: (formData: FormData) => void;
   embutido?: boolean;
 }) {
@@ -228,6 +232,23 @@ export function ImovelForm({
           <div>
             <label className={LABEL}>Matrícula</label>
             <input className={CAMPO} name="matricula" defaultValue={i?.matricula ?? ""} />
+          </div>
+          <div>
+            <label className={LABEL}>Loja *</label>
+            {/* Obrigatório (pedido do usuário em 01/08/2026) — dá suporte ao
+                filtro de Loja no Topbar (ver lib/lojas/filtro.ts). Cadastro
+                anterior a essa data sem loja definida aparece nos dois
+                filtros até alguém abrir e escolher aqui. */}
+            <select className={CAMPO} name="loja_id" defaultValue={i?.loja_id ?? ""} required>
+              <option value="" disabled>
+                Selecione...
+              </option>
+              {lojas.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.nome}
+                </option>
+              ))}
+            </select>
           </div>
           <CampoLink label="Pasta (link)" name="pasta_url" defaultValue={i?.pasta_url} />
         </div>

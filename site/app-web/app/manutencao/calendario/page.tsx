@@ -6,6 +6,7 @@ import { AtividadesTabs } from "@/components/atividades-tabs";
 import { hojePortoVelho } from "@/lib/format";
 import { TIPO_ATIVIDADE_LABEL as TIPO_ATIVIDADE_LABEL_MANUTENCAO } from "@/lib/manutencao/opcoes";
 import { TIPO_ATIVIDADE_LABEL as TIPO_ATIVIDADE_LABEL_GESTAO } from "@/lib/gestoes/opcoes";
+import { lojasSelecionadas } from "@/lib/lojas/filtro";
 
 export const dynamic = "force-dynamic";
 
@@ -32,12 +33,16 @@ export default async function ManutencaoCalendarioPage({
 
   const inicioMes = new Date(ano, mesIndice, 1);
   const fimMes = new Date(ano, mesIndice + 1, 1);
+  // Filtro de Loja (seletor no Topbar) — via imóvel vinculado (mesmo padrão
+  // de app/manutencao/painel/page.tsx).
+  const lojasFiltro = await lojasSelecionadas();
+  const filtroLojaImovel = { OR: [{ loja_id: { in: lojasFiltro } }, { loja_id: null }] };
 
   const [atividadesManutencao, atividadesGestao] = await Promise.all([
     prisma.manutencao_atividades.findMany({
       where: {
         data: { gte: inicioMes, lt: fimMes },
-        manutencoes: { excluido: false }
+        manutencoes: { excluido: false, imoveis: filtroLojaImovel }
       },
       orderBy: { data: "asc" },
       include: {
@@ -49,7 +54,7 @@ export default async function ManutencaoCalendarioPage({
     prisma.gestao_atividades.findMany({
       where: {
         data: { gte: inicioMes, lt: fimMes },
-        gestoes: { excluido: false }
+        gestoes: { excluido: false, imoveis: filtroLojaImovel }
       },
       orderBy: { data: "asc" },
       include: {

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
+import { lojasSelecionadas, whereLojaFiltro } from "@/lib/lojas/filtro";
 import {
   formatMoeda,
   formatDataCalendario,
@@ -34,27 +35,40 @@ const TONE_CLASSES: Record<Tone, string> = {
 export async function TransacoesLista({ tipo, q, novoHref }: { tipo: "Locação" | "Compra e Venda"; q?: string; novoHref: string }) {
   const termo = (q ?? "").trim();
   const somenteLocacao = tipo === "Locação";
+  const lojasFiltro = await lojasSelecionadas();
 
   const where = {
     tipo,
     excluido: false,
-    ...(termo
-      ? {
-          OR: [
-            { imoveis: { endereco: { contains: termo, mode: "insensitive" as const } } },
-            { imoveis: { inscricao: { contains: termo, mode: "insensitive" as const } } },
+    // Filtro de Loja (seletor no Topbar) — transação sem loja (não deveria
+    // existir hoje em dia, mas cobre legado) continua aparecendo em
+    // qualquer filtro.
+    AND: [
+      whereLojaFiltro(lojasFiltro),
+      ...(termo
+        ? [
             {
-              imoveis: {
-                imoveis_proprietarios: { some: { clientes: { nome: { contains: termo, mode: "insensitive" as const } } } }
-              }
-            },
-            {
-              transacoes_contrapartes: { some: { clientes: { nome: { contains: termo, mode: "insensitive" as const } } } }
-            },
-            { id_legado: { contains: termo, mode: "insensitive" as const } }
+              OR: [
+                { imoveis: { endereco: { contains: termo, mode: "insensitive" as const } } },
+                { imoveis: { inscricao: { contains: termo, mode: "insensitive" as const } } },
+                {
+                  imoveis: {
+                    imoveis_proprietarios: {
+                      some: { clientes: { nome: { contains: termo, mode: "insensitive" as const } } }
+                    }
+                  }
+                },
+                {
+                  transacoes_contrapartes: {
+                    some: { clientes: { nome: { contains: termo, mode: "insensitive" as const } } }
+                  }
+                },
+                { id_legado: { contains: termo, mode: "insensitive" as const } }
+              ]
+            }
           ]
-        }
-      : {})
+        : [])
+    ]
   };
 
   // Compra e Venda ordena pela data de assinatura (mais recentes primeiro,

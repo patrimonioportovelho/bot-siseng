@@ -81,6 +81,7 @@ async function camposEditaveis(formData: FormData) {
     tipo_oferta: texto(formData, "tipo_oferta"),
     inscricao: inscricaoValor(formData, "inscricao"),
     matricula: texto(formData, "matricula"),
+    loja_id: texto(formData, "loja_id"),
     pasta_url: texto(formData, "pasta_url"),
     cep: somenteDigitos(formData, "cep"),
     rua: texto(formData, "rua"),
@@ -123,6 +124,15 @@ async function sincronizarProprietarios(imovelId: string, formData: FormData) {
 
 export async function criarImovelAction(formData: FormData) {
   await requireAdminSession();
+
+  // Loja obrigatória em todo cadastro novo (pedido do usuário em
+  // 01/08/2026) — dá suporte ao filtro de loja no Topbar. Cadastro já
+  // existente sem loja continua podendo ser editado normalmente (o campo já
+  // vem preenchido quando existe; só fica vazio pra registro legado, que aí
+  // sim precisa ser escolhido — reforçado pelo `required` no <select>).
+  if (!texto(formData, "loja_id")) {
+    throw new Error("Loja é obrigatória.");
+  }
 
   const novo = await prisma.imoveis
     .create({

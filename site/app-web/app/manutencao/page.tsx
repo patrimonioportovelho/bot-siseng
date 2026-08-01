@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { ManutencaoKanban } from "@/components/manutencao-kanban";
 import { AtividadesTabs } from "@/components/atividades-tabs";
 import { moverColunaAction } from "./actions";
+import { lojasSelecionadas } from "@/lib/lojas/filtro";
 
 export const dynamic = "force-dynamic";
 
@@ -14,20 +15,30 @@ export default async function ManutencaoPage({
 }) {
   const { q } = await searchParams;
   const termo = (q ?? "").trim();
+  const lojasFiltro = await lojasSelecionadas();
 
   const tickets = await prisma.manutencoes.findMany({
     where: {
       excluido: false,
-      ...(termo
-        ? {
-            OR: [
-              { titulo: { contains: termo, mode: "insensitive" as const } },
-              { clientes: { nome: { contains: termo, mode: "insensitive" as const } } },
-              { parceiros: { nome: { contains: termo, mode: "insensitive" as const } } },
-              { imoveis: { endereco: { contains: termo, mode: "insensitive" as const } } }
+      // Filtro de Loja (seletor no Topbar) — manutenções não têm loja
+      // própria, só através do imóvel vinculado (sempre existe um). Imóvel
+      // sem loja definida (cadastro legado) continua aparecendo em qualquer
+      // filtro.
+      AND: [
+        { OR: [{ imoveis: { loja_id: { in: lojasFiltro } } }, { imoveis: { loja_id: null } }] },
+        ...(termo
+          ? [
+              {
+                OR: [
+                  { titulo: { contains: termo, mode: "insensitive" as const } },
+                  { clientes: { nome: { contains: termo, mode: "insensitive" as const } } },
+                  { parceiros: { nome: { contains: termo, mode: "insensitive" as const } } },
+                  { imoveis: { endereco: { contains: termo, mode: "insensitive" as const } } }
+                ]
+              }
             ]
-          }
-        : {})
+          : [])
+      ]
     },
     orderBy: [{ urgencia: "asc" }, { created_at: "desc" }],
     include: {

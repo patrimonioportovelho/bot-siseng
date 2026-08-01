@@ -52,6 +52,12 @@ function camposEditaveis(formData: FormData) {
 export async function criarMetaAction(formData: FormData) {
   await requireAdminSession();
 
+  // Loja obrigatória em toda meta nova (pedido do usuário em 01/08/2026) —
+  // antes era opcional ("Todas as lojas"); essa opção deixou de existir.
+  if (!texto(formData, "loja_id")) {
+    throw new Error("Loja é obrigatória.");
+  }
+
   const campos = camposEditaveis(formData);
 
   // metas.criado_por_usuario_id aponta pra tabela usuarios (login antigo,

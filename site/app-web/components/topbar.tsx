@@ -1,5 +1,7 @@
 import { getAdminSession } from "@/lib/auth";
 import { logoutAction } from "@/app/login/actions";
+import { listarLojas, lojasSelecionadas } from "@/lib/lojas/filtro";
+import { LojaFiltroBotao } from "@/components/loja-filtro-botao";
 
 function iniciais(nome: string | undefined) {
   if (!nome) return "—";
@@ -11,12 +13,11 @@ function iniciais(nome: string | undefined) {
 
 export async function Topbar() {
   const session = await getAdminSession();
+  const [lojas, selecionadas] = await Promise.all([listarLojas(), lojasSelecionadas()]);
 
   return (
     <div className="flex items-center justify-between gap-2 flex-wrap mb-4">
-      <button className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-3 py-1.5 text-xs text-gray-600">
-        Porto Velho
-      </button>
+      <LojaFiltroBotao lojas={lojas} selecionadas={selecionadas} />
       <div className="flex items-center gap-3">
         <div className="w-7 h-7 rounded-full bg-primary text-white text-xs font-bold flex items-center justify-center shrink-0">
           {iniciais(session?.nome)}

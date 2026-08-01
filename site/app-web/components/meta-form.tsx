@@ -167,9 +167,15 @@ export function MetaForm({
         )}
 
         <div className="mt-3">
-          <label className={LABEL}>Loja (opcional)</label>
-          <select className={CAMPO} name="loja_id" defaultValue={m?.loja_id ?? ""}>
-            <option value="">Todas as lojas</option>
+          <label className={LABEL}>Loja *</label>
+          {/* Passou a ser obrigatório em 01/08/2026 (pedido do usuário) —
+              antes era opcional e vazio significava "meta pras duas lojas
+              juntas"; essa opção deixou de existir, cada meta agora escolhe
+              uma loja específica. */}
+          <select className={CAMPO} name="loja_id" defaultValue={m?.loja_id ?? ""} required>
+            <option value="" disabled>
+              Selecione...
+            </option>
             {lojas.map((l) => (
               <option key={l.id} value={l.id}>
                 {l.nome}

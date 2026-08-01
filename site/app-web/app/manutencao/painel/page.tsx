@@ -11,6 +11,7 @@ import {
   iconeTipoServico
 } from "@/lib/manutencao/opcoes";
 import { CHAVE_POSSE_LABEL as CHAVE_POSSE_LABEL_GESTAO, labelColuna as labelColunaGestao } from "@/lib/gestoes/opcoes";
+import { lojasSelecionadas } from "@/lib/lojas/filtro";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +27,11 @@ export default async function ManutencaoPainelPage() {
   const hoje = hojePortoVelho();
   const em7dias = new Date(hoje);
   em7dias.setDate(em7dias.getDate() + 7);
+  // Filtro de Loja (seletor no Topbar) — manutenções/gestões não têm loja
+  // própria, só através do imóvel vinculado (sempre existe um). Imóvel sem
+  // loja definida (cadastro legado) continua aparecendo em qualquer filtro.
+  const lojasFiltro = await lojasSelecionadas();
+  const filtroLojaImovel = { OR: [{ loja_id: { in: lojasFiltro } }, { loja_id: null }] };
 
   const [
     emAberto,
@@ -38,7 +44,7 @@ export default async function ManutencaoPainelPage() {
     atividadesProximasGestao
   ] = await Promise.all([
     prisma.manutencoes.findMany({
-      where: { excluido: false, coluna: { not: "pago" } },
+      where: { excluido: false, coluna: { not: "pago" }, imoveis: filtroLojaImovel },
       include: {
         imoveis: { select: { id: true, id_legado: true, endereco: true } },
         clientes: { select: { nome: true } },
@@ -46,18 +52,22 @@ export default async function ManutencaoPainelPage() {
       }
     }),
     prisma.manutencoes.findMany({
-      where: { excluido: false, chave_posse: { not: "imobiliaria" } },
+      where: { excluido: false, chave_posse: { not: "imobiliaria" }, imoveis: filtroLojaImovel },
       orderBy: { chave_atualizado_em: "asc" },
       include: { imoveis: { select: { id: true, id_legado: true, endereco: true } } }
     }),
     prisma.manutencao_atividades.count({
-      where: { feito: false, data: { lt: hoje }, manutencoes: { excluido: false } }
+      where: { feito: false, data: { lt: hoje }, manutencoes: { excluido: false, imoveis: filtroLojaImovel } }
     }),
     prisma.manutencao_atividades.count({
-      where: { feito: false, data: { gte: hoje, lt: em7dias }, manutencoes: { excluido: false } }
+      where: {
+        feito: false,
+        data: { gte: hoje, lt: em7dias },
+        manutencoes: { excluido: false, imoveis: filtroLojaImovel }
+      }
     }),
     prisma.gestoes.findMany({
-      where: { excluido: false, coluna: { not: "proposta_negociacao" } },
+      where: { excluido: false, coluna: { not: "proposta_negociacao" }, imoveis: filtroLojaImovel },
       include: {
         imoveis: { select: { id: true, id_legado: true, endereco: true } },
         clientes: { select: { nome: true } },
@@ -65,15 +75,19 @@ export default async function ManutencaoPainelPage() {
       }
     }),
     prisma.gestoes.findMany({
-      where: { excluido: false, chave_posse: { not: "imobiliaria" } },
+      where: { excluido: false, chave_posse: { not: "imobiliaria" }, imoveis: filtroLojaImovel },
       orderBy: { chave_atualizado_em: "asc" },
       include: { imoveis: { select: { id: true, id_legado: true, endereco: true } } }
     }),
     prisma.gestao_atividades.count({
-      where: { feito: false, data: { lt: hoje }, gestoes: { excluido: false } }
+      where: { feito: false, data: { lt: hoje }, gestoes: { excluido: false, imoveis: filtroLojaImovel } }
     }),
     prisma.gestao_atividades.count({
-      where: { feito: false, data: { gte: hoje, lt: em7dias }, gestoes: { excluido: false } }
+      where: {
+        feito: false,
+        data: { gte: hoje, lt: em7dias },
+        gestoes: { excluido: false, imoveis: filtroLojaImovel }
+      }
     })
   ]);
 

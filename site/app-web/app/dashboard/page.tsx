@@ -19,6 +19,7 @@ import {
 import { FUNCOES_CORRETOR } from "@/lib/transacoes/opcoes";
 import { getAdminSession } from "@/lib/auth";
 import { ultimoResetSessaoMs } from "@/lib/session";
+import { lojasSelecionadas, whereLojaFiltro, whereLojaFiltroMovimentacao } from "@/lib/lojas/filtro";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +39,12 @@ export default async function DashboardPage({
   const { periodo, inicio: inicioParam, fim: fimParam } = await searchParams;
   const periodoResolvido = resolverPeriodo({ periodo, inicio: inicioParam, fim: fimParam });
   const { inicio, fimExclusivo } = periodoResolvido;
+  // Filtro de Loja (seletor no Topbar) — vale pra praticamente todo o
+  // Dashboard. Avaliações/Financiamento e Solicitações de acesso ficaram de
+  // fora de propósito: não têm uma loja associada de forma confiável (só um
+  // parceiro, que também pode não ter loja definida), então filtrar ali
+  // esconderia coisa sem um critério realmente certeiro.
+  const lojasFiltro = await lojasSelecionadas();
 
   const hoje = hojePortoVelho();
   const em90Dias = new Date(hoje);
@@ -62,7 +69,8 @@ export default async function DashboardPage({
       excluido: false,
       tipo: "Compra e Venda",
       criado_no_portal: true,
-      created_at: { gte: new Date(ultimoResetSessaoMs()) }
+      created_at: { gte: new Date(ultimoResetSessaoMs()) },
+      ...whereLojaFiltro(lojasFiltro)
     },
     orderBy: { created_at: "desc" },
     select: {
@@ -115,13 +123,19 @@ export default async function DashboardPage({
     clientesCadastradosPorParceiroPeriodo,
     imoveisCaptadosPorParceiroPeriodo
   ] = await Promise.all([
-    prisma.imoveis.count({ where: { excluido: false } }),
-    prisma.transacoes.count({ where: { excluido: false, status: STATUS_TRANSACAO_EM_ABERTO } }),
+    prisma.imoveis.count({ where: { excluido: false, ...whereLojaFiltro(lojasFiltro) } }),
+    prisma.transacoes.count({
+      where: { excluido: false, status: STATUS_TRANSACAO_EM_ABERTO, ...whereLojaFiltro(lojasFiltro) }
+    }),
     // Base de tudo que é "negócio assinado no período": alimenta VGH/VGV/VGL,
     // a quantidade de Locação sem administração, os distratos e o gráfico de
     // novos negócios mês a mês — uma única busca em vez de várias parecidas.
     prisma.transacoes.findMany({
-      where: { excluido: false, data_assinatura: { gte: inicio, lt: fimExclusivo } },
+      where: {
+        excluido: false,
+        data_assinatura: { gte: inicio, lt: fimExclusivo },
+        ...whereLojaFiltro(lojasFiltro)
+      },
       select: {
         tipo: true,
         status: true,
@@ -139,17 +153,26 @@ export default async function DashboardPage({
         excluido: false,
         tipo: "Locação",
         status: STATUS_TRANSACAO_EM_ABERTO,
-        data_vencimento: { gte: hoje, lte: em90Dias }
+        data_vencimento: { gte: hoje, lte: em90Dias },
+        ...whereLojaFiltro(lojasFiltro)
       }
     }),
     prisma.transacoes.count({
-      where: { excluido: false, tipo: "Locação", status: STATUS_TRANSACAO_EM_ABERTO, data_vencimento: { lt: hoje } }
+      where: {
+        excluido: false,
+        tipo: "Locação",
+        status: STATUS_TRANSACAO_EM_ABERTO,
+        data_vencimento: { lt: hoje },
+        ...whereLojaFiltro(lojasFiltro)
+      }
     }),
     // Administrações ativas é sempre "agora" (estado atual), não do período —
     // mesma lógica do "Vencido em aberto" do Financeiro, mais abaixo.
-    prisma.adm_imoveis.count({ where: { status: "Ativo", excluido: false } }),
+    prisma.adm_imoveis.count({ where: { status: "Ativo", excluido: false, ...whereLojaFiltro(lojasFiltro) } }),
     prisma.solicitacoes_acesso.count({ where: { status: "pendente" } }),
-    prisma.imoveis.count({ where: { excluido: false, data_cadastro: { gte: inicio, lt: fimExclusivo } } }),
+    prisma.imoveis.count({
+      where: { excluido: false, data_cadastro: { gte: inicio, lt: fimExclusivo }, ...whereLojaFiltro(lojasFiltro) }
+    }),
     // Transações "recentes" agora significa "assinadas dentro do período
     // selecionado", ordenadas pela própria Data de assinatura — não mais
     // pela data de criação do registro no sistema. Antes, um contrato
@@ -160,7 +183,11 @@ export default async function DashboardPage({
     // ao filtrar "Este ano" — sinal de que a data cadastrada precisa ser
     // corrigida na ficha da transação.
     prisma.transacoes.findMany({
-      where: { excluido: false, data_assinatura: { gte: inicio, lt: fimExclusivo } },
+      where: {
+        excluido: false,
+        data_assinatura: { gte: inicio, lt: fimExclusivo },
+        ...whereLojaFiltro(lojasFiltro)
+      },
       // Antes era 15 e o resto só aparecia clicando em "Ver todas" — agora a
       // tabela rola dentro do card (mesmo padrão das listas da Saúde da
       // operação), então dá pra trazer o período inteiro; o take alto é só
@@ -176,42 +203,61 @@ export default async function DashboardPage({
     // VGA (administração) e o "Administração" do gráfico de novos negócios —
     // por Data de assinatura da administração, igual às transações.
     prisma.adm_imoveis.findMany({
-      where: { excluido: false, data_assinatura: { gte: inicio, lt: fimExclusivo } },
+      where: {
+        excluido: false,
+        data_assinatura: { gte: inicio, lt: fimExclusivo },
+        ...whereLojaFiltro(lojasFiltro)
+      },
       select: { valor_administracao: true, data_assinatura: true }
     }),
     prisma.movimentacoes.aggregate({
       _sum: { valor: true },
       _count: true,
-      where: { tipo: "Recebimento", pago: false, vencimento: { gte: inicio, lt: fimExclusivo } }
+      where: {
+        tipo: "Recebimento",
+        pago: false,
+        vencimento: { gte: inicio, lt: fimExclusivo },
+        ...whereLojaFiltroMovimentacao(lojasFiltro)
+      }
     }),
     prisma.movimentacoes.aggregate({
       _sum: { valor: true },
       _count: true,
-      where: { tipo: "Despesa", pago: false, vencimento: { gte: inicio, lt: fimExclusivo } }
+      where: {
+        tipo: "Despesa",
+        pago: false,
+        vencimento: { gte: inicio, lt: fimExclusivo },
+        ...whereLojaFiltroMovimentacao(lojasFiltro)
+      }
     }),
     // Vencido "em aberto" é sempre em relação a hoje, independente do período
     // selecionado no filtro — é um alerta de atraso, não uma métrica histórica.
     prisma.movimentacoes.aggregate({
       _sum: { valor: true },
       _count: true,
-      where: { tipo: "Recebimento", pago: false, vencimento: { lt: hoje } }
+      where: { tipo: "Recebimento", pago: false, vencimento: { lt: hoje }, ...whereLojaFiltroMovimentacao(lojasFiltro) }
     }),
     prisma.movimentacoes.aggregate({
       _sum: { valor: true },
       _count: true,
-      where: { tipo: "Despesa", pago: false, vencimento: { lt: hoje } }
+      where: { tipo: "Despesa", pago: false, vencimento: { lt: hoje }, ...whereLojaFiltroMovimentacao(lojasFiltro) }
     }),
     // Uma única busca cobre os dois gráficos financeiros (mês a mês e pizza
     // por categoria) — evita rodar duas queries parecidas à toa.
     prisma.movimentacoes.findMany({
-      where: { pago: true, data_pagamento: { gte: inicio, lt: fimExclusivo } },
+      where: {
+        pago: true,
+        data_pagamento: { gte: inicio, lt: fimExclusivo },
+        ...whereLojaFiltroMovimentacao(lojasFiltro)
+      },
       select: { tipo: true, valor: true, data_pagamento: true, categorias_financeiras: { select: { nome: true } } }
     }),
     // Quadro "Corretores" mais abaixo: todo parceiro com função Corretor ou
     // Corretor Estagiário, ativo, pra listar mesmo quem ainda não tem nenhum
-    // repasse lançado (aparece com R$ 0,00 nas duas colunas).
+    // repasse lançado (aparece com R$ 0,00 nas duas colunas). Filtro de Loja
+    // aqui é pela loja do próprio corretor (parceiros.loja_id).
     prisma.parceiros.findMany({
-      where: { funcao: { in: FUNCOES_CORRETOR }, status_funcao: "Ativo" },
+      where: { funcao: { in: FUNCOES_CORRETOR }, status_funcao: "Ativo", ...whereLojaFiltro(lojasFiltro) },
       orderBy: { nome: "asc" },
       select: { id: true, nome: true, funcao: true }
     }),
@@ -229,7 +275,13 @@ export default async function DashboardPage({
     // marca no dia a dia); quando não existe, cai pro status histórico
     // gravado direto em pagamentos.status.
     prisma.pagamentos.findMany({
-      where: { transacoes: { data_assinatura: { gte: inicio, lt: fimExclusivo }, excluido: false } },
+      where: {
+        transacoes: {
+          data_assinatura: { gte: inicio, lt: fimExclusivo },
+          excluido: false,
+          loja_id: { in: lojasFiltro }
+        }
+      },
       select: {
         parceiro_id: true,
         valor_parceiro: true,
@@ -260,7 +312,7 @@ export default async function DashboardPage({
       where: {
         pago: true,
         data_pagamento: { gte: inicio, lt: fimExclusivo },
-        transacoes: { tipo: { in: ["Compra e Venda", "Locação"] } }
+        transacoes: { tipo: { in: ["Compra e Venda", "Locação"] }, loja_id: { in: lojasFiltro } }
       },
       select: { tipo: true, valor: true, data_pagamento: true }
     }),
@@ -270,7 +322,7 @@ export default async function DashboardPage({
           where: {
             pago: true,
             data_pagamento: { gte: inicioAnterior, lt: fimAnteriorExclusivo },
-            transacoes: { tipo: { in: ["Compra e Venda", "Locação"] } }
+            transacoes: { tipo: { in: ["Compra e Venda", "Locação"] }, loja_id: { in: lojasFiltro } }
           },
           select: { tipo: true, valor: true, data_pagamento: true }
         })
@@ -281,12 +333,21 @@ export default async function DashboardPage({
     // Data de cadastro já usada em "novosImoveisPeriodo").
     prisma.clientes.groupBy({
       by: ["parceiro_id"],
-      where: { parceiro_id: { not: null }, data_cadastro: { gte: inicio, lt: fimExclusivo } },
+      where: {
+        parceiro_id: { not: null },
+        data_cadastro: { gte: inicio, lt: fimExclusivo },
+        ...whereLojaFiltro(lojasFiltro)
+      },
       _count: { _all: true }
     }),
     prisma.imoveis.groupBy({
       by: ["parceiro_id"],
-      where: { excluido: false, parceiro_id: { not: null }, data_cadastro: { gte: inicio, lt: fimExclusivo } },
+      where: {
+        excluido: false,
+        parceiro_id: { not: null },
+        data_cadastro: { gte: inicio, lt: fimExclusivo },
+        ...whereLojaFiltro(lojasFiltro)
+      },
       _count: { _all: true }
     })
   ]);
@@ -632,10 +693,11 @@ export default async function DashboardPage({
   // — confirmado com o usuário.
   const [clientesPerfil, imoveisPerfil, topParceirosClientes, topParceirosImoveisCaptados] = await Promise.all([
     prisma.clientes.findMany({
+      where: whereLojaFiltro(lojasFiltro),
       select: { estado_civil: true, renda_bruta: true, data_nascimento: true }
     }),
     prisma.imoveis.findMany({
-      where: { excluido: false },
+      where: { excluido: false, ...whereLojaFiltro(lojasFiltro) },
       select: {
         valor_venda: true,
         valor_avaliacao: true,
@@ -646,14 +708,14 @@ export default async function DashboardPage({
     }),
     prisma.clientes.groupBy({
       by: ["parceiro_id"],
-      where: { parceiro_id: { not: null } },
+      where: { parceiro_id: { not: null }, ...whereLojaFiltro(lojasFiltro) },
       _count: { _all: true },
       orderBy: { _count: { parceiro_id: "desc" } },
       take: 5
     }),
     prisma.imoveis.groupBy({
       by: ["parceiro_id"],
-      where: { excluido: false, parceiro_id: { not: null } },
+      where: { excluido: false, parceiro_id: { not: null }, ...whereLojaFiltro(lojasFiltro) },
       _count: { _all: true },
       orderBy: { _count: { parceiro_id: "desc" } },
       take: 5

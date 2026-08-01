@@ -3,12 +3,13 @@ import { Topbar } from "@/components/topbar";
 import { prisma } from "@/lib/prisma";
 import { ImovelForm } from "@/components/imovel-form";
 import { FUNCOES_CAPTADOR } from "@/lib/imoveis/opcoes";
+import { listarLojas } from "@/lib/lojas/filtro";
 import { criarImovelAction } from "../actions";
 
 export const dynamic = "force-dynamic";
 
 export default async function NovoImovelPage() {
-  const [clientes, parceiros, estados, cidades, bairrosCadastrados] = await Promise.all([
+  const [clientes, parceiros, estados, cidades, bairrosCadastrados, lojas] = await Promise.all([
     prisma.clientes.findMany({
       // NULL em status_cadastro conta como "não arquivado" — todo cliente
       // criado pela tela nova fica com esse campo NULL (nunca é setado na
@@ -32,7 +33,8 @@ export default async function NovoImovelPage() {
       where: { excluido: false, bairro: { not: null }, cidade_id: { not: null } },
       select: { cidade_id: true, bairro: true },
       distinct: ["cidade_id", "bairro"]
-    })
+    }),
+    listarLojas()
   ]);
 
   return (
@@ -53,6 +55,7 @@ export default async function NovoImovelPage() {
         estados={estados}
         cidades={cidades}
         bairrosCadastrados={bairrosCadastrados}
+        lojas={lojas}
         action={criarImovelAction}
       />
     </div>

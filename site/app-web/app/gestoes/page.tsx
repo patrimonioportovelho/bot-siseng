@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { GestaoKanban } from "@/components/gestao-kanban";
 import { AtividadesTabs } from "@/components/atividades-tabs";
 import { moverColunaAction } from "./actions";
+import { lojasSelecionadas } from "@/lib/lojas/filtro";
 
 export const dynamic = "force-dynamic";
 
@@ -13,19 +14,27 @@ export default async function GestoesPage({
 }) {
   const { q } = await searchParams;
   const termo = (q ?? "").trim();
+  const lojasFiltro = await lojasSelecionadas();
 
   const gestoes = await prisma.gestoes.findMany({
     where: {
       excluido: false,
-      ...(termo
-        ? {
-            OR: [
-              { imoveis: { endereco: { contains: termo, mode: "insensitive" as const } } },
-              { clientes: { nome: { contains: termo, mode: "insensitive" as const } } },
-              { parceiros: { nome: { contains: termo, mode: "insensitive" as const } } }
+      // Filtro de Loja (seletor no Topbar) — via imóvel vinculado (gestões
+      // não têm loja própria).
+      AND: [
+        { imoveis: { OR: [{ loja_id: { in: lojasFiltro } }, { loja_id: null }] } },
+        ...(termo
+          ? [
+              {
+                OR: [
+                  { imoveis: { endereco: { contains: termo, mode: "insensitive" as const } } },
+                  { clientes: { nome: { contains: termo, mode: "insensitive" as const } } },
+                  { parceiros: { nome: { contains: termo, mode: "insensitive" as const } } }
+                ]
+              }
             ]
-          }
-        : {})
+          : [])
+      ]
     },
     orderBy: { created_at: "desc" },
     include: {

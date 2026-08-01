@@ -3,22 +3,32 @@ import { Topbar } from "@/components/topbar";
 import { prisma } from "@/lib/prisma";
 import { FUNCOES_EQUIPE, FUNCOES_EXTERNAS } from "@/lib/parceiros/opcoes";
 import { formatTelefone } from "@/lib/format";
+import { lojasSelecionadas, whereLojaFiltro } from "@/lib/lojas/filtro";
 
 export const dynamic = "force-dynamic";
 
 type Parceiro = Awaited<ReturnType<typeof buscarParceiros>>[number];
 
-async function buscarParceiros(termo: string) {
+async function buscarParceiros(termo: string, lojasFiltro: string[]) {
   return prisma.parceiros.findMany({
-    where: termo
-      ? {
-          OR: [
-            { nome: { contains: termo, mode: "insensitive" } },
-            { email: { contains: termo, mode: "insensitive" } },
-            { funcao: { contains: termo, mode: "insensitive" } }
-          ]
-        }
-      : undefined,
+    where: {
+      AND: [
+        // Filtro de Loja (seletor no Topbar) — parceiro sem loja definida
+        // (cadastro legado) continua aparecendo em qualquer filtro.
+        whereLojaFiltro(lojasFiltro),
+        ...(termo
+          ? [
+              {
+                OR: [
+                  { nome: { contains: termo, mode: "insensitive" as const } },
+                  { email: { contains: termo, mode: "insensitive" as const } },
+                  { funcao: { contains: termo, mode: "insensitive" as const } }
+                ]
+              }
+            ]
+          : [])
+      ]
+    },
     orderBy: { nome: "asc" },
     take: 500,
     include: { lojas: true }
@@ -77,7 +87,8 @@ export default async function ParceirosPage({
 }) {
   const { q, excluido } = await searchParams;
   const termo = (q ?? "").trim();
-  const parceiros = await buscarParceiros(termo);
+  const lojasFiltro = await lojasSelecionadas();
+  const parceiros = await buscarParceiros(termo, lojasFiltro);
 
   const porFuncao = new Map<string, Parceiro[]>();
   for (const p of parceiros) {

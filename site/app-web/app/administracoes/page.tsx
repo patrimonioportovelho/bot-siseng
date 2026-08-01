@@ -3,6 +3,7 @@ import { Topbar } from "@/components/topbar";
 import { prisma } from "@/lib/prisma";
 import { formatMoeda } from "@/lib/format";
 import { STATUS_ADM } from "@/lib/administracoes/opcoes";
+import { lojasSelecionadas, whereLojaFiltro } from "@/lib/lojas/filtro";
 
 export const dynamic = "force-dynamic";
 
@@ -13,18 +14,25 @@ export default async function AdministracoesPage({
 }) {
   const { q, excluido } = await searchParams;
   const termo = (q ?? "").trim();
+  const lojasFiltro = await lojasSelecionadas();
 
   const where = {
     excluido: false,
-    ...(termo
-      ? {
-          OR: [
-            { clientes: { nome: { contains: termo, mode: "insensitive" as const } } },
-            { imoveis: { endereco: { contains: termo, mode: "insensitive" as const } } },
-            { id_legado: { contains: termo, mode: "insensitive" as const } }
+    // Filtro de Loja (seletor no Topbar).
+    AND: [
+      whereLojaFiltro(lojasFiltro),
+      ...(termo
+        ? [
+            {
+              OR: [
+                { clientes: { nome: { contains: termo, mode: "insensitive" as const } } },
+                { imoveis: { endereco: { contains: termo, mode: "insensitive" as const } } },
+                { id_legado: { contains: termo, mode: "insensitive" as const } }
+              ]
+            }
           ]
-        }
-      : {})
+        : [])
+    ]
   };
 
   const administracoes = await prisma.adm_imoveis.findMany({

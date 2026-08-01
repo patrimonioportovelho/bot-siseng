@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Topbar } from "@/components/topbar";
 import { Pagination } from "@/components/pagination";
 import { prisma } from "@/lib/prisma";
+import { lojasSelecionadas, whereLojaFiltro } from "@/lib/lojas/filtro";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +16,7 @@ export default async function ClientesPage({
   const { q, page: pageParam, excluido } = await searchParams;
   const termo = (q ?? "").trim();
   const page = Math.max(1, Number(pageParam ?? "1") || 1);
+  const lojasFiltro = await lojasSelecionadas();
 
   const where = {
     // NULL em status_cadastro conta como "não arquivado" — todo cliente
@@ -22,6 +24,9 @@ export default async function ClientesPage({
     // NULL no Postgres, o que sumia com clientes recém-criados da lista.
     AND: [
       { OR: [{ status_cadastro: null }, { status_cadastro: { not: "Arquivado" } }] },
+      // Filtro de Loja (seletor no Topbar) — cliente sem loja definida
+      // (cadastro legado) continua aparecendo em qualquer filtro.
+      whereLojaFiltro(lojasFiltro),
       ...(termo
         ? [
             {

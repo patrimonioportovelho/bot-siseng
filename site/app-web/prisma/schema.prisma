@@ -554,6 +554,13 @@ model imoveis {
   bairro                String?
   estado_id             String?                 @db.Uuid
   cidade_id             String?                 @db.Uuid
+  // Loja (Porto Velho/Jaru) responsável pelo imóvel — adicionada em
+  // 01/08/2026 a pedido do usuário, pra dar suporte ao filtro de loja em
+  // todas as telas do admin (ver lib/lojas/filtro.ts). Nullable porque todo
+  // o cadastro existente antes desta data não tem loja definida — esses
+  // imóveis aparecem nos dois filtros até alguém editar e escolher a loja.
+  // Novo cadastro passa a exigir loja (ver components/imovel-form.tsx).
+  loja_id               String?                 @db.Uuid
   endereco              String?
   matricula             String?
   status_imovel         String?
@@ -577,10 +584,12 @@ model imoveis {
   cidades               cidades?                @relation(fields: [cidade_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   estados               estados?                @relation(fields: [estado_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   parceiros             parceiros?              @relation(fields: [parceiro_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  lojas                 lojas?                  @relation(fields: [loja_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   transacoes            transacoes[]
 
   @@index([endereco], map: "idx_imoveis_endereco")
   @@index([parceiro_id], map: "idx_imoveis_parceiro")
+  @@index([loja_id], map: "idx_imoveis_loja")
 }
 
 /// Proprietários vinculados a um imóvel (pode ser mais de um — casos de
@@ -624,6 +633,7 @@ model lojas {
   created_at  DateTime      @default(now()) @db.Timestamptz(6)
   adm_imoveis adm_imoveis[]
   clientes    clientes[]
+  imoveis     imoveis[]
   metas       metas[]
   parceiros   parceiros[]
   transacoes  transacoes[]

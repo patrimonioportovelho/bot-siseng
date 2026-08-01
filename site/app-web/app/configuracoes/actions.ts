@@ -22,6 +22,11 @@ export async function definirSenhaParceiroAction(formData: FormData) {
   if (!parceiroId || !senha) {
     redirect(`/configuracoes?erro=${encodeURIComponent("Selecione o parceiro e digite uma senha.")}`);
   }
+  // Mesmo mínimo já exigido no autoatendimento do portal (achado "Baixo" da
+  // auditoria de 01/08/2026 — esse fluxo manual não pedia tamanho nenhum).
+  if (senha.length < 6) {
+    redirect(`/configuracoes?erro=${encodeURIComponent("A senha precisa ter pelo menos 6 caracteres.")}`);
+  }
 
   const senhaHash = await hashSenha(senha);
 

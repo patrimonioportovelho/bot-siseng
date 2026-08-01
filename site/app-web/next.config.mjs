@@ -22,6 +22,26 @@ const nextConfig = {
       // codificação base64 do multipart, com folga.
       bodySizeLimit: "25mb"
     }
+  },
+  // Headers de segurança (achado "Baixo" da auditoria de 01/08/2026).
+  // De propósito SEM Content-Security-Policy aqui: o sistema carrega
+  // imagem/documento de domínio externo (Supabase Storage) e uma CSP
+  // errada quebraria isso silenciosamente sem eu poder testar contra o
+  // ambiente real — fica como melhoria futura, testada com calma. Os
+  // headers abaixo são de baixo risco (não dependem de saber toda origem
+  // externa usada pelo site).
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" }
+        ]
+      }
+    ];
   }
 };
 

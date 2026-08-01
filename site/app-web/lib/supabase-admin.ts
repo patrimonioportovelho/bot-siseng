@@ -136,6 +136,26 @@ function extensaoDoNome(nomeArquivo: string): string {
   return partes.length > 1 ? partes[partes.length - 1].slice(0, 10) : "bin";
 }
 
+// Extensões aceitas nos anexos do portal (RG, comprovante, contrato
+// assinado etc.) — achado "Médio" da auditoria de 01/08/2026: antes
+// aceitava QUALQUER extensão (inclusive .exe, .html, .svg — esse último
+// pode carregar script). PDF/imagem/Word cobre tudo que os formulários do
+// portal já pedem de anexo hoje.
+// heic/heif incluído de propósito: é o formato padrão de foto do iPhone —
+// sem isso, corretor anexando foto direto da câmera do celular (bem comum
+// pro RG/comprovante) ia começar a levar erro do nada depois dessa validação.
+const EXTENSOES_DOCUMENTO_ACEITAS = new Set([
+  "pdf",
+  "jpg",
+  "jpeg",
+  "png",
+  "webp",
+  "heic",
+  "heif",
+  "doc",
+  "docx"
+]);
+
 // Pede ao Supabase uma URL de upload assinada, de uso único, pro navegador
 // subir o arquivo direto (sem passar pela função da Vercel). Devolve o
 // caminho definitivo (guardado depois no formulário) e o token que
@@ -143,8 +163,13 @@ function extensaoDoNome(nomeArquivo: string): string {
 export async function criarUploadAssinadoDocumento(
   nomeArquivo: string
 ): Promise<{ caminho: string; token: string }> {
+  const extensao = extensaoDoNome(nomeArquivo).toLowerCase();
+  if (!EXTENSOES_DOCUMENTO_ACEITAS.has(extensao)) {
+    throw new Error(`Formato de arquivo não aceito ("${extensao}"). Envie PDF, JPG, PNG ou Word.`);
+  }
+
   await garantirBucketDocumentosPortal();
-  const caminho = `${randomUUID()}.${extensaoDoNome(nomeArquivo)}`;
+  const caminho = `${randomUUID()}.${extensao}`;
   const supabase = supabaseAdmin();
   const { data, error } = await supabase.storage.from(BUCKET_DOCUMENTOS_PORTAL).createSignedUploadUrl(caminho);
   if (error || !data) {

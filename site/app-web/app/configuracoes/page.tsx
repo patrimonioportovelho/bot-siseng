@@ -231,15 +231,6 @@ export default async function ConfiguracoesPage({
         </form>
       </div>
 
-      <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4">
-        <div className="text-sm font-bold text-gray-800 mb-1">Portal externo do corretor</div>
-        <p className="text-xs text-gray-500">
-          A senha de acesso do portal (<code>/portal</code>) fica na variável{" "}
-          <code>PORTAL_CORRETOR_SENHA</code> do arquivo <code>.env</code> (e nas variáveis de ambiente da
-          Vercel em produção). Para trocar, edite lá e reinicie o servidor.
-        </p>
-      </div>
-
       <div className="grid md:grid-cols-2 gap-4 mb-4">
         <div className="bg-white border border-gray-200 rounded-xl p-4">
           <div className="text-sm font-bold text-gray-800 mb-3">Lojas</div>

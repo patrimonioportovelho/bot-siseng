@@ -2,7 +2,8 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { signSession, verifySession, sessaoExpiradaPeloResetDiario } from "@/lib/session";
-import { logAcessoPortal, logAlteracaoPortal, hashSenha, verificarSenha } from "@/lib/auth";
+import { logAcessoPortal, logAlteracaoPortal, hashSenha, verificarSenha, precisaRehash } from "@/lib/auth";
+import { checarBloqueioLogin, registrarTentativaFalha, limparTentativas } from "@/lib/rate-limit";
 
 const PORTAL_COOKIE = "sis_portal_session";
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 dias
@@ -122,6 +123,18 @@ export async function loginPortal(email: string, senha: string): Promise<LoginPo
     return { ok: false, error: `O portal do corretor só aceita email ${DOMINIO_PORTAL}.` };
   }
 
+  // Rate limiting (achado "Alto" da auditoria de 01/08/2026) — ver
+  // lib/rate-limit.ts. Chave com prefixo "portal:" pra não compartilhar
+  // contador com o login administrativo (lib/auth.ts#loginAdmin).
+  const chaveLimite = `portal:${emailNorm}`;
+  const bloqueio = checarBloqueioLogin(chaveLimite);
+  if (bloqueio.bloqueado) {
+    return {
+      ok: false,
+      error: `Muitas tentativas erradas. Tente de novo em ${bloqueio.minutosRestantes} minuto(s).`
+    };
+  }
+
   const parceiro = await prisma.parceiros.findFirst({
     where: {
       status_funcao: "Ativo",
@@ -132,6 +145,7 @@ export async function loginPortal(email: string, senha: string): Promise<LoginPo
   });
 
   if (!parceiro) {
+    registrarTentativaFalha(chaveLimite);
     return {
       ok: false,
       error:
@@ -151,12 +165,24 @@ export async function loginPortal(email: string, senha: string): Promise<LoginPo
       entidadeId: parceiro.id,
       acao: "criar_senha_primeiro_acesso_portal"
     });
+    limparTentativas(chaveLimite);
     return await concederAcessoPortal(parceiro.id, parceiro.nome);
   }
 
   const senhaOk = await verificarSenha(senha, parceiro.senha_hash);
   if (!senhaOk) {
+    registrarTentativaFalha(chaveLimite);
     return { ok: false, error: "Senha incorreta." };
+  }
+
+  limparTentativas(chaveLimite);
+
+  // Mesma migração gradual de contagem de iterações do login admin (ver
+  // lib/auth.ts#hashSenha) — a senha é compartilhada entre os dois acessos,
+  // então o rehash feito aqui também vale pro admin e vice-versa.
+  if (precisaRehash(parceiro.senha_hash)) {
+    const novoHash = await hashSenha(senha);
+    await prisma.parceiros.update({ where: { id: parceiro.id }, data: { senha_hash: novoHash } }).catch(() => {});
   }
 
   return await concederAcessoPortal(parceiro.id, parceiro.nome);

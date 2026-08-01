@@ -1,7 +1,9 @@
+import { timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { signSession, verifySession, sessaoExpiradaPeloResetDiario } from "@/lib/session";
+import { checarBloqueioLogin, registrarTentativaFalha, limparTentativas } from "@/lib/rate-limit";
 
 const ADMIN_COOKIE = "sis_admin_session";
 const SESSION_TTL_MS = 1000 * 60 * 60 * 12; // 12 horas
@@ -32,35 +34,75 @@ function normalizeEmail(email: string) {
 }
 
 // Hash de senha com PBKDF2 (Web Crypto, já disponível no runtime do Node —
-// sem precisar adicionar bcrypt/argon2 como dependência nova). Formato
-// salvo: "<salt em hex>:<hash em hex>".
-const PBKDF2_ITERACOES = 100_000;
+// sem precisar adicionar bcrypt/argon2 como dependência nova).
+//
+// Formato salvo (achado "Médio" da auditoria de 01/08/2026): antes era fixo
+// "<salt em hex>:<hash em hex>", com a contagem de iterações hardcoded em
+// 100_000 (abaixo da recomendação atual da OWASP, 600_000+ pro PBKDF2-SHA256
+// — 100k reduz o custo de um ataque offline de força bruta se o hash
+// vazasse do banco). Pra subir a contagem SEM quebrar login de quem já tem
+// senha (não dá pra recalcular hash de senha que a gente não guarda em
+// texto puro), o formato novo passou a incluir a própria contagem:
+// "<iterações>:<salt em hex>:<hash em hex>". Hash antigo (2 partes, sem
+// contagem) continua verificado com 100_000 — só troca pro formato/contagem
+// nova depois de um login bem-sucedido (ver rehashSeNecessario mais abaixo),
+// de forma gradual e transparente, sem exigir reset de senha de ninguém.
+const PBKDF2_ITERACOES_ATUAL = 600_000;
+const PBKDF2_ITERACOES_LEGADO = 100_000;
+
+async function derivarBits(senha: string, salt: Uint8Array, iteracoes: number): Promise<ArrayBuffer> {
+  const chave = await crypto.subtle.importKey("raw", new TextEncoder().encode(senha), "PBKDF2", false, ["deriveBits"]);
+  return crypto.subtle.deriveBits({ name: "PBKDF2", salt, iterations: iteracoes, hash: "SHA-256" }, chave, 256);
+}
 
 export async function hashSenha(senha: string): Promise<string> {
   const salt = crypto.getRandomValues(new Uint8Array(16));
-  const chave = await crypto.subtle.importKey("raw", new TextEncoder().encode(senha), "PBKDF2", false, ["deriveBits"]);
-  const bits = await crypto.subtle.deriveBits(
-    { name: "PBKDF2", salt, iterations: PBKDF2_ITERACOES, hash: "SHA-256" },
-    chave,
-    256
-  );
-  return `${Buffer.from(salt).toString("hex")}:${Buffer.from(bits).toString("hex")}`;
+  const bits = await derivarBits(senha, salt, PBKDF2_ITERACOES_ATUAL);
+  return `${PBKDF2_ITERACOES_ATUAL}:${Buffer.from(salt).toString("hex")}:${Buffer.from(bits).toString("hex")}`;
 }
 
 // Exportado para o lib/portal-auth.ts reusar a mesma verificação de senha
 // (PBKDF2) no login do portal do corretor — mesmo mecanismo, sem duplicar.
 export async function verificarSenha(senha: string, hashArmazenado: string | null): Promise<boolean> {
   if (!hashArmazenado) return false;
-  const [saltHex, hashHex] = hashArmazenado.split(":");
-  if (!saltHex || !hashHex) return false;
+  const partes = hashArmazenado.split(":");
+
+  let iteracoes: number;
+  let saltHex: string;
+  let hashHex: string;
+  if (partes.length === 3) {
+    [iteracoes, saltHex, hashHex] = [Number(partes[0]), partes[1], partes[2]] as [number, string, string];
+  } else if (partes.length === 2) {
+    iteracoes = PBKDF2_ITERACOES_LEGADO;
+    [saltHex, hashHex] = partes as [string, string];
+  } else {
+    return false;
+  }
+  if (!Number.isFinite(iteracoes) || !saltHex || !hashHex) return false;
+
   const salt = Buffer.from(saltHex, "hex");
-  const chave = await crypto.subtle.importKey("raw", new TextEncoder().encode(senha), "PBKDF2", false, ["deriveBits"]);
-  const bits = await crypto.subtle.deriveBits(
-    { name: "PBKDF2", salt, iterations: PBKDF2_ITERACOES, hash: "SHA-256" },
-    chave,
-    256
-  );
-  return Buffer.from(bits).toString("hex") === hashHex;
+  const bits = await derivarBits(senha, salt, iteracoes);
+
+  // Comparação constant-time (achado "Baixo" da auditoria de 01/08/2026):
+  // "===" entre strings pode retornar mais rápido quando o primeiro
+  // caractere já diverge, o que teoricamente vaza informação por tempo de
+  // resposta. timingSafeEqual exige buffers do mesmo tamanho — se o hash
+  // guardado tiver tamanho diferente (corrompido/formato inesperado), já é
+  // seguro dizer que não bate, sem chamar timingSafeEqual.
+  const calculado = Buffer.from(bits);
+  const armazenado = Buffer.from(hashHex, "hex");
+  if (calculado.length !== armazenado.length) return false;
+  return timingSafeEqual(calculado, armazenado);
+}
+
+// true quando o hash guardado ainda está no formato/contagem antiga — quem
+// chama (loginAdmin/loginPortal) usa isso pra, só depois de confirmar a
+// senha certa, recalcular e gravar um hash novo com a contagem atual.
+export function precisaRehash(hashArmazenado: string | null): boolean {
+  if (!hashArmazenado) return false;
+  const partes = hashArmazenado.split(":");
+  if (partes.length !== 3) return true;
+  return Number(partes[0]) < PBKDF2_ITERACOES_ATUAL;
 }
 
 export async function getAdminSession(): Promise<AdminSession | null> {
@@ -112,6 +154,17 @@ export async function loginAdmin(email: string, senha: string): Promise<LoginRes
     return { ok: false, error: "Informe email e senha." };
   }
 
+  // Rate limiting (achado "Alto" da auditoria de 01/08/2026): bloqueia por
+  // um tempo depois de várias tentativas erradas seguidas pro mesmo email —
+  // ver lib/rate-limit.ts.
+  const bloqueio = checarBloqueioLogin(emailNorm);
+  if (bloqueio.bloqueado) {
+    return {
+      ok: false,
+      error: `Muitas tentativas erradas. Tente de novo em ${bloqueio.minutosRestantes} minuto(s).`
+    };
+  }
+
   const parceiro = await prisma.parceiros.findFirst({
     where: {
       status_funcao: "Ativo",
@@ -121,6 +174,7 @@ export async function loginAdmin(email: string, senha: string): Promise<LoginRes
   });
 
   if (!parceiro) {
+    registrarTentativaFalha(emailNorm);
     return {
       ok: false,
       error:
@@ -137,8 +191,19 @@ export async function loginAdmin(email: string, senha: string): Promise<LoginRes
 
   const senhaOk = await verificarSenha(senha, parceiro.senha_hash);
   if (!senhaOk) {
+    registrarTentativaFalha(emailNorm);
     return { ok: false, error: "Senha incorreta." };
   }
+  limparTentativas(emailNorm);
+
+  // Migração gradual e transparente pra contagem de iterações nova (ver
+  // comentário em hashSenha) — só acontece depois de confirmar a senha
+  // certa, nunca bloqueia o login se der algum erro salvando.
+  if (precisaRehash(parceiro.senha_hash)) {
+    const novoHash = await hashSenha(senha);
+    await prisma.parceiros.update({ where: { id: parceiro.id }, data: { senha_hash: novoHash } }).catch(() => {});
+  }
+
   return await concederAcesso(parceiro.id, parceiro.nome);
 }
 

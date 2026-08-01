@@ -1,10 +1,14 @@
 // Status reais encontrados em transacoes.status (ver levantamento no Supabase).
+// "Cancelado" e "Elaboração do Contrato de Promessa de Compra e Venda"
+// adicionados em 01/08/2026 (só valem pra Compra e Venda — ver
+// lib/transacoes/opcoes.ts, STATUS_COMPRA_VENDA_OPCOES).
 const STATUS_CONCLUIDA = ["Transação Finalizada"];
-const STATUS_CANCELADA = ["Distrato", "Locação cancelada"];
+const STATUS_CANCELADA = ["Distrato", "Locação cancelada", "Cancelado"];
 const STATUS_ABERTA = [
   "Imóvel em Locação",
   "Imóvel em locação sem administração",
   "Elaboração do Contrato de Compra e Venda",
+  "Elaboração do Contrato de Promessa de Compra e Venda",
   "Elaboração de Contrato de Locação"
 ];
 

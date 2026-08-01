@@ -971,6 +971,13 @@ model transacoes {
   cliente_contraparte_id                                   String                   @db.Uuid
   imovel_id                                                String?                  @db.Uuid
   status                                                   String?
+  // Sub-status de andamento do CONTRATO de Compra e Venda (Elaboração,
+  // Conferência, Assinatura, Escritura, Financiamento, Registro, Conclusão,
+  // Cancelado — ver lib/transacoes/opcoes.ts) — campo independente de
+  // `status` acima, adicionado em 01/08/2026 a pedido do usuário: continua
+  // avançando mesmo depois de `status` já estar "Transação Finalizada".
+  // Só usado quando tipo = "Compra e Venda"; Locação sempre fica NULL aqui.
+  andamento                                                String?
   garantia                                                 String?
   valor_caucao                                             Decimal?                 @db.Decimal(14, 2)
   pg_caucao                                                String?

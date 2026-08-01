@@ -6,7 +6,7 @@ import { requirePortalSession } from "@/lib/portal-auth";
 import { logAlteracaoPortal } from "@/lib/auth";
 import { valorEditavelParaDecimal, percentualParaDecimal, formatMoeda, formatData } from "@/lib/format";
 import { registrarEJogarErro } from "@/lib/erros";
-import { STATUS_COMPRA_VENDA_OPCOES } from "@/lib/transacoes/opcoes";
+import { STATUS_COMPRA_VENDA_OPCOES, ANDAMENTO_COMPRA_VENDA_PADRAO } from "@/lib/transacoes/opcoes";
 import { buscarGestaoPorImovel } from "@/lib/transacoes/buscas";
 import { enviarEmail, type EmailAnexo } from "@/lib/email";
 import { buscarClienteDuplicado, mensagemClienteDuplicado } from "@/lib/clientes/duplicidade";
@@ -597,6 +597,11 @@ export async function gerarCompraVendaAction(
           cliente_id: vendedorPrincipalId,
           cliente_contraparte_id: compradorIds[0],
           status: STATUS_COMPRA_VENDA_OPCOES[0],
+          // Andamento (etapa do processo — Elaboração/Conferência/.../
+          // Conclusão, ver lib/transacoes/opcoes.ts) começa sempre em
+          // "Elaboração" pra negócio novo — só o administrativo altera
+          // depois, o portal do corretor nunca oferece esse controle.
+          andamento: ANDAMENTO_COMPRA_VENDA_PADRAO,
           data_assinatura: dataAssinatura,
           valor_transacao: valorTransacao,
           chave,

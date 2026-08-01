@@ -56,10 +56,65 @@ export const STATUS_LOCACAO_OPCOES = [
   "Locação cancelada"
 ];
 
-export const STATUS_COMPRA_VENDA_OPCOES = ["Elaboração do Contrato de Compra e Venda", "Transação Finalizada", "Distrato"];
+// "Elaboração do Contrato de Promessa de Compra e Venda" e "Cancelado"
+// adicionados em 01/08/2026 (pedido do usuário) — o primeiro é uma etapa
+// intermediária que só o administrativo vê/escolhe (o portal do corretor
+// nunca mostra esse dropdown; toda transação criada por lá nasce sempre em
+// STATUS_COMPRA_VENDA_OPCOES[0], então basta não colocar o novo status no
+// índice 0 pra ele ficar "invisível" pro corretor). "Cancelado" é novo,
+// separado de "Distrato" — mesmo padrão que Locação já tinha (Distrato +
+// Locação cancelada como dois status distintos). Ver ANDAMENTO_COMPRA_VENDA_OPCOES
+// logo abaixo pro sub-status de andamento do contrato, que é um campo
+// independente deste.
+export const STATUS_COMPRA_VENDA_OPCOES = [
+  "Elaboração do Contrato de Compra e Venda",
+  "Elaboração do Contrato de Promessa de Compra e Venda",
+  "Transação Finalizada",
+  "Distrato",
+  "Cancelado"
+];
+
+// Status de Compra e Venda que, ao serem escolhidos, forçam o Andamento
+// (ver ANDAMENTO_COMPRA_VENDA_OPCOES) para "Cancelado" automaticamente —
+// aplicado no servidor (app/transacoes/actions.ts), não só na tela.
+export const STATUS_COMPRA_VENDA_CANCELAMENTO = ["Distrato", "Cancelado"];
 
 export function statusOpcoesPorTipo(tipo: string): string[] {
   return tipo === "Locação" ? STATUS_LOCACAO_OPCOES : STATUS_COMPRA_VENDA_OPCOES;
+}
+
+// Sub-status de ANDAMENTO do contrato de Compra e Venda — pedido do usuário
+// em 01/08/2026: diferente do Status normal (que reflete a etapa comercial:
+// elaboração/finalizada/distrato/cancelado), o Andamento acompanha o
+// processo burocrático de verdade e continua avançando MESMO depois do
+// Status já estar "Transação Finalizada" (o negócio em si fechou, mas o
+// registro em cartório, por exemplo, ainda pode levar meses). Só existe
+// pra Compra e Venda; Locação não usa este campo (fica sempre NULL). Só o
+// administrativo altera (mesmo padrão do Status — o portal do corretor
+// nunca oferece esse controle).
+export const ANDAMENTO_COMPRA_VENDA_OPCOES = [
+  "Elaboração",
+  "Conferência",
+  "Assinatura",
+  "Escritura",
+  "Financiamento",
+  "Registro",
+  "Conclusão",
+  "Cancelado"
+];
+
+// Valor padrão do Andamento pra toda Compra e Venda nova (admin ou portal).
+export const ANDAMENTO_COMPRA_VENDA_PADRAO = ANDAMENTO_COMPRA_VENDA_OPCOES[0];
+
+// Mesma paleta de "Tone" usada em statusTone (lib/format.ts) — cores
+// diferentes por enquanto: Cancelado vira "cancelada" (vermelho), Conclusão
+// vira "concluida" (verde), o resto do processo (ainda rodando) vira
+// "ativa" (azul).
+export function andamentoTone(andamento: string | null | undefined): "ativa" | "concluida" | "pendente" | "cancelada" {
+  if (!andamento) return "pendente";
+  if (andamento === "Cancelado") return "cancelada";
+  if (andamento === "Conclusão") return "concluida";
+  return "ativa";
 }
 
 // Condições de pagamento (o "negócio" em si) — Tipo de cada parcela/etapa do

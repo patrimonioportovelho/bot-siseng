@@ -494,6 +494,14 @@ CREATE TABLE transacoes (
   cliente_contraparte_id      UUID NOT NULL REFERENCES clientes(id),   -- comprador/locatário (era "Cliente1")
   imovel_id                   UUID REFERENCES imoveis(id),             -- nullable: há órfãos conhecidos na base legada
   status                      TEXT,   -- referência a tabela de domínio "Status" no AppSheet (lista aberta, sem CHECK aqui)
+  -- Sub-status de andamento do CONTRATO de Compra e Venda (Elaboração,
+  -- Conferência, Assinatura, Escritura, Financiamento, Registro, Conclusão,
+  -- Cancelado — ver site/app-web/lib/transacoes/opcoes.ts) — adicionado em
+  -- 01/08/2026, independente de "status" acima: continua avançando mesmo
+  -- depois de status já estar "Transação Finalizada". Só Compra e Venda usa
+  -- (Locação fica sempre NULL). Lista aberta, sem CHECK aqui (mesmo padrão
+  -- de status, acima).
+  andamento                   TEXT,
   garantia                    TEXT CHECK (garantia IN ('Fiador','Caução','Seguro fiança','Sem garantias')),
   valor_caucao                NUMERIC(14,2),
   pg_caucao                   TEXT,

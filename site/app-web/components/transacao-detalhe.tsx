@@ -56,6 +56,7 @@ type TransacaoParaVisualizar = {
   imovel_id: string | null;
   adm_imovel_id: string | null;
   status: string | null;
+  andamento: string | null;
   garantia: string | null;
   valor_caucao: unknown;
   pg_caucao: string | null;
@@ -262,6 +263,7 @@ export function TransacaoDetalhe({
           <Campo label="Tipo de transação" valor={t.tipo} />
           <Campo label="Loja" valor={lojaNome || "—"} />
           <Campo label="Status" valor={t.status || "—"} />
+          {!eLocacao && <Campo label="Andamento do contrato" valor={t.andamento || "—"} />}
           <Campo
             label="Pasta (link)"
             valor={t.pasta_url ? <LinkNovaAba href={t.pasta_url}>Abrir pasta →</LinkNovaAba> : "—"}

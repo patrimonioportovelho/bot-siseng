@@ -7,6 +7,18 @@ import { requireAdminSession, requireAdm, logAlteracao } from "@/lib/auth";
 import { valorEditavelParaDecimal, percentualParaDecimal } from "@/lib/format";
 import { registrarEJogarErro } from "@/lib/erros";
 import { sincronizarProprietariosExtra, sincronizarVinculosConjuge } from "@/lib/imoveis/proprietarios-extra";
+import { STATUS_COMPRA_VENDA_CANCELAMENTO, ANDAMENTO_COMPRA_VENDA_PADRAO } from "@/lib/transacoes/opcoes";
+
+// Resolve o valor de `andamento` (só usado por Compra e Venda — ver
+// comentário completo em prisma/schema.prisma) a cada criação/edição: se o
+// Status novo for Distrato ou Cancelado, força "Cancelado" (regra pedida em
+// 01/08/2026), independente do que veio no formulário. Fora isso, usa o que
+// foi digitado, ou o que já estava salvo, ou o padrão ("Elaboração") pra
+// registro novo.
+function resolverAndamento(statusNovo: string | null, andamentoForm: string | null, andamentoAtual: string | null): string {
+  if (statusNovo && STATUS_COMPRA_VENDA_CANCELAMENTO.includes(statusNovo)) return "Cancelado";
+  return andamentoForm || andamentoAtual || ANDAMENTO_COMPRA_VENDA_PADRAO;
+}
 
 function texto(formData: FormData, campo: string): string | null {
   const v = formData.get(campo);
@@ -293,17 +305,20 @@ export async function criarTransacaoAction(_prev: unknown, formData: FormData): 
     await sincronizarVinculosConjuge(formData);
     const clienteId = await proprietarioDoImovel(imovelId);
     const idLegado = await gerarProximoId(tipo);
+    const campos = camposEditaveis(formData);
+    const ehCompraVenda = tipo === "Compra e Venda";
 
     const novo = await prisma.transacoes
       .create({
         data: {
-          ...camposEditaveis(formData),
+          ...campos,
           tipo,
           loja_id: lojaId,
           imovel_id: imovelId,
           cliente_id: clienteId,
           cliente_contraparte_id: interessadosIds[0],
-          id_legado: idLegado
+          id_legado: idLegado,
+          andamento: ehCompraVenda ? resolverAndamento(campos.status, texto(formData, "andamento"), null) : null
         }
       })
       .catch((erro) => registrarEJogarErro({ entidadeTipo: "transacoes", acao: "criar", erro }));
@@ -352,15 +367,20 @@ export async function atualizarTransacaoAction(_prev: unknown, formData: FormDat
     await sincronizarProprietariosExtra(imovelId, formData);
     await sincronizarVinculosConjuge(formData);
     const clienteId = await proprietarioDoImovel(imovelId);
+    const campos = camposEditaveis(formData);
+    const ehCompraVenda = antes.tipo === "Compra e Venda";
 
     const depois = await prisma.transacoes
       .update({
         where: { id },
         data: {
-          ...camposEditaveis(formData),
+          ...campos,
           imovel_id: imovelId,
           cliente_id: clienteId,
-          cliente_contraparte_id: interessadosIds[0]
+          cliente_contraparte_id: interessadosIds[0],
+          ...(ehCompraVenda
+            ? { andamento: resolverAndamento(campos.status, texto(formData, "andamento"), antes.andamento) }
+            : {})
         }
       })
       .catch((erro) => registrarEJogarErro({ entidadeTipo: "transacoes", entidadeId: id, acao: "editar", erro }));
@@ -401,10 +421,19 @@ export async function atualizarStatusTransacaoAction(formData: FormData) {
   const antes = await prisma.transacoes.findUnique({ where: { id } });
   if (!antes) throw new Error("Transação não encontrada.");
 
+  const ehCompraVenda = antes.tipo === "Compra e Venda";
+
   const depois = await prisma.transacoes
     .update({
       where: { id },
-      data: { status, updated_at: new Date() }
+      data: {
+        status,
+        updated_at: new Date(),
+        // Troca rápida de status também aplica a regra de andamento (ver
+        // resolverAndamento acima) — sem isso, mudar o status pra Distrato/
+        // Cancelado por aqui deixaria o andamento parado na etapa antiga.
+        ...(ehCompraVenda ? { andamento: resolverAndamento(status, null, antes.andamento) } : {})
+      }
     })
     .catch((erro) => registrarEJogarErro({ entidadeTipo: "transacoes", entidadeId: id, acao: "atualizar_status", erro }));
 

@@ -16,7 +16,10 @@ import {
   TIPO_CONDICAO_OPCOES,
   FORMA_PAGAMENTO_CONDICAO_OPCOES,
   MOMENTO_CONDICAO_OPCOES,
-  statusOpcoesPorTipo
+  statusOpcoesPorTipo,
+  ANDAMENTO_COMPRA_VENDA_OPCOES,
+  ANDAMENTO_COMPRA_VENDA_PADRAO,
+  STATUS_COMPRA_VENDA_CANCELAMENTO
 } from "@/lib/transacoes/opcoes";
 import { calcularValorPacoteLocacao, calcularValorLocacaoSemEncargos, temCondominioEmbutido } from "@/lib/transacoes/valores";
 import {
@@ -63,6 +66,7 @@ type TransacaoExistente = {
   imovel_id: string | null;
   adm_imovel_id: string | null;
   status: string | null;
+  andamento: string | null;
   garantia: string | null;
   valor_caucao: unknown;
   pg_caucao: string | null;
@@ -177,6 +181,16 @@ export function TransacaoForm({
   const eLocacao = tipo === "Locação";
 
   const [status, setStatus] = useState(t?.status ?? "");
+
+  // Andamento (etapa real do processo — Elaboração/Conferência/.../
+  // Conclusão/Cancelado, ver lib/transacoes/opcoes.ts) — campo independente
+  // do Status, só existe pra Compra e Venda, adicionado em 01/08/2026.
+  // Continua avançando mesmo depois do Status já estar "Transação
+  // Finalizada". Quando o Status vira Distrato/Cancelado, trava
+  // automaticamente em "Cancelado" (reforçado no servidor de qualquer
+  // jeito — ver resolverAndamento em app/transacoes/actions.ts).
+  const [andamento, setAndamento] = useState(t?.andamento ?? ANDAMENTO_COMPRA_VENDA_PADRAO);
+  const andamentoCancelado = STATUS_COMPRA_VENDA_CANCELAMENTO.includes(status);
 
   // Regra pedida: Status "Elaboração de Contrato de Locação" só pode vir de
   // uma Administração com status Ativo (imóvel e proprietário vêm dela).
@@ -544,6 +558,34 @@ export function TransacaoForm({
               ))}
             </select>
           </div>
+          {!eLocacao && (
+            <div>
+              <label className={LABEL}>Andamento do contrato</label>
+              {/* Select só de interface — o valor de verdade que vai pro
+                  servidor é sempre o do input hidden logo abaixo, que trava
+                  em "Cancelado" quando o Status é Distrato/Cancelado (select
+                  desabilitado não manda valor nenhum no submit, por isso o
+                  hidden separado). */}
+              <select
+                className={CAMPO}
+                value={andamentoCancelado ? "Cancelado" : andamento}
+                onChange={(e) => setAndamento(e.target.value)}
+                disabled={andamentoCancelado}
+              >
+                {ANDAMENTO_COMPRA_VENDA_OPCOES.map((op) => (
+                  <option key={op} value={op}>
+                    {op}
+                  </option>
+                ))}
+              </select>
+              <input type="hidden" name="andamento" value={andamentoCancelado ? "Cancelado" : andamento} />
+              <p className="text-[11px] text-gray-400 mt-1">
+                {andamentoCancelado
+                  ? "Travado em Cancelado automaticamente porque o Status é Distrato/Cancelado."
+                  : "Etapa real do processo — continua avançando mesmo depois do Status virar Transação Finalizada."}
+              </p>
+            </div>
+          )}
           <CampoLink label="Pasta (link)" name="pasta_url" defaultValue={t?.pasta_url} />
         </div>
       </div>

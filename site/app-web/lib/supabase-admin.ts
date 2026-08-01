@@ -206,3 +206,82 @@ export async function baixarDocumentoPortal(caminho: string): Promise<Buffer | n
   const arrayBuffer = await data.arrayBuffer();
   return Buffer.from(arrayBuffer);
 }
+
+// Documentos gerados pelo motor de modelos (contratos, recibos etc. — ver
+// lib/documentos/gerar.ts). Achado "Crítico" da auditoria de 01/08/2026: até
+// esta mudança, esse bucket ("documentos", que continua existindo do jeito
+// que está) era PÚBLICO — qualquer um com o link direto (URL permanente,
+// nunca expira) abria o documento sem estar logado, e esses documentos têm
+// CPF/RG/endereço/dados bancários dentro.
+//
+// Decisão tomada com calma (pedido explícito do usuário em 01/08/2026): em
+// vez de virar o bucket "documentos" de público pra privado — o que
+// quebraria, na hora, TODOS os links já gerados e possivelmente já salvos/
+// enviados por alguém, já que essa configuração é do bucket inteiro, não dá
+// pra deixar "alguns arquivos" público e outros não dentro do mesmo bucket —
+// os documentos já existentes continuam exatamente como estavam (mesmo
+// bucket, mesmo link público antigo, sem nenhuma mudança). Só os documentos
+// gerados A PARTIR de agora vão para este bucket novo, privado, e são
+// abertos por URL assinada (com validade, teoricamente pedida de novo a
+// cada abertura da tela) em vez de link público permanente.
+const BUCKET_DOCUMENTOS_GERADOS = "documentos-gerados";
+
+async function garantirBucketDocumentosGerados(): Promise<void> {
+  const supabase = supabaseAdmin();
+  const { data: buckets, error } = await supabase.storage.listBuckets();
+  if (error) throw new Error(`Não consegui verificar o armazenamento: ${error.message}`);
+  if (buckets?.some((b) => b.name === BUCKET_DOCUMENTOS_GERADOS)) return;
+
+  const { error: erroCriar } = await supabase.storage.createBucket(BUCKET_DOCUMENTOS_GERADOS, {
+    public: false
+  });
+  // Corrida entre duas requisições criando o bucket ao mesmo tempo não é um
+  // erro de verdade — só a segunda perde a corrida.
+  if (erroCriar && !erroCriar.message.toLowerCase().includes("already exists")) {
+    throw new Error(`Não consegui preparar o armazenamento: ${erroCriar.message}`);
+  }
+}
+
+// Sobe um documento recém-gerado pro bucket privado — chamado por
+// gerarDocumento (lib/documentos/gerar.ts) logo depois de preencher o
+// template. O caminho devolvido pra quem chama é o mesmo que fica salvo em
+// documentos_gerados.arquivo_caminho, usado depois por
+// criarUrlAssinadaDocumentoGerado pra reabrir o arquivo.
+export async function subirDocumentoGerado(caminho: string, arquivo: Buffer, contentType: string): Promise<void> {
+  await garantirBucketDocumentosGerados();
+  const supabase = supabaseAdmin();
+  const { error } = await supabase.storage.from(BUCKET_DOCUMENTOS_GERADOS).upload(caminho, arquivo, { contentType });
+  if (error) throw new Error(`Não consegui subir o documento gerado: ${error.message}`);
+}
+
+// 24h de validade — bastante folga pra quem gerou o documento agora e quer
+// abrir em seguida, e também renovada do zero toda vez que a tela que lista
+// o documento é recarregada (ver resolverUrlDocumentoGerado), então nunca
+// fica um link "parado" esperando expirar sem ninguém perceber.
+const VALIDADE_URL_DOCUMENTO_GERADO_SEGUNDOS = 60 * 60 * 24;
+
+export async function criarUrlAssinadaDocumentoGerado(caminho: string): Promise<string | null> {
+  const supabase = supabaseAdmin();
+  const { data, error } = await supabase.storage
+    .from(BUCKET_DOCUMENTOS_GERADOS)
+    .createSignedUrl(caminho, VALIDADE_URL_DOCUMENTO_GERADO_SEGUNDOS);
+  if (error || !data) return null;
+  return data.signedUrl;
+}
+
+// Resolve a URL certa pra abrir um documento gerado, cobrindo os dois
+// formatos que convivem na mesma tabela depois desta mudança: registros
+// NOVOS (têm arquivo_caminho) pedem uma URL assinada fresca, na hora —
+// nunca fica um link salvo que pode expirar. Registros ANTIGOS (só têm
+// arquivo_url, do bucket público de antes) continuam abrindo pelo link
+// salvo, sem nenhuma mudança de comportamento — é assim que documentos já
+// gerados antes de 01/08/2026 continuam funcionando exatamente como antes.
+export async function resolverUrlDocumentoGerado(doc: {
+  arquivo_url?: string | null;
+  arquivo_caminho?: string | null;
+}): Promise<string | null> {
+  if (doc.arquivo_caminho) {
+    return criarUrlAssinadaDocumentoGerado(doc.arquivo_caminho);
+  }
+  return doc.arquivo_url ?? null;
+}

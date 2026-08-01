@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { Topbar } from "@/components/topbar";
 import { prisma } from "@/lib/prisma";
 import { getAdminSession } from "@/lib/auth";
+import { resolverUrlDocumentoGerado } from "@/lib/supabase-admin";
 import { ParceiroForm } from "@/components/parceiro-form";
 import { formatMoeda, formatData, formatDataCalendario } from "@/lib/format";
 import { atualizarParceiroAction, apagarParceiroAction } from "../actions";
@@ -75,6 +76,14 @@ export default async function ParceiroDetalhePage({
       select: { tipo: true, data_assinatura: true, created_at: true }
     })
   ]);
+
+  // Resolve a URL de cada documento na hora de renderizar a página — cobre
+  // tanto os registros antigos (arquivo_url do bucket público) quanto os
+  // novos (arquivo_caminho, resolvido por URL assinada fresca a cada
+  // carregamento da tela; ver resolverUrlDocumentoGerado).
+  const documentosComUrl = await Promise.all(
+    documentos.map(async (d) => ({ ...d, urlResolvida: await resolverUrlDocumentoGerado(d) }))
+  );
 
   const totalHonorarios = pagamentos.reduce((soma, p) => soma + Number(p.valor_parceiro ?? 0), 0);
   const mostrarComissionamento = FUNCOES_COM_COMISSIONAMENTO.includes(parceiro.funcao);
@@ -204,14 +213,14 @@ export default async function ParceiroDetalhePage({
           {documentos.length > 0 && (
             <Cartao titulo="Documentos gerados">
               <div className="flex flex-col gap-1.5">
-                {documentos.map((d) => (
+                {documentosComUrl.map((d) => (
                   <div key={d.id} className="text-xs text-gray-600 border-b border-gray-50 pb-1.5">
                     <span className="font-medium text-gray-800">{d.tipo_documento}</span>{" "}
                     <span className="text-gray-400">
                       · {d.status} · {formatData(d.gerado_em)}
                     </span>
-                    {d.arquivo_url && (
-                      <a href={d.arquivo_url} target="_blank" rel="noopener noreferrer" className="text-primary ml-2">
+                    {d.urlResolvida && (
+                      <a href={d.urlResolvida} target="_blank" rel="noopener noreferrer" className="text-primary ml-2">
                         abrir
                       </a>
                     )}

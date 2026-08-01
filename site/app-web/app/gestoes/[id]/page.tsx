@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Topbar } from "@/components/topbar";
 import { prisma } from "@/lib/prisma";
+import { resolverUrlDocumentoGerado } from "@/lib/supabase-admin";
 import { GestaoEditarForm } from "@/components/gestao-editar-form";
 import { GestaoChecklist } from "@/components/gestao-checklist";
 import { GestaoAtividades } from "@/components/gestao-atividades";
@@ -70,6 +71,12 @@ export default async function GestaoDetalhePage({
     })
   ]);
 
+  // Resolve a URL na hora de renderizar — cobre tanto o registro antigo
+  // (arquivo_url do bucket público) quanto o novo (arquivo_caminho,
+  // resolvido por URL assinada fresca a cada carregamento da tela; ver
+  // resolverUrlDocumentoGerado em lib/supabase-admin.ts).
+  const urlDocumento = ultimoDocumento ? await resolverUrlDocumentoGerado(ultimoDocumento) : null;
+
   const outrosProprietarios = gestao.imoveis.imoveis_proprietarios
     .map((v) => v.clientes)
     .filter((c) => c.nome !== gestao.clientes.nome);
@@ -118,9 +125,9 @@ export default async function GestaoDetalhePage({
             Demais assinantes: {outrosProprietarios.map((c) => c.nome).join(", ")}
           </div>
         )}
-        {ultimoDocumento?.arquivo_url && (
+        {urlDocumento && ultimoDocumento && (
           <a
-            href={ultimoDocumento.arquivo_url}
+            href={urlDocumento}
             target="_blank"
             rel="noopener noreferrer"
             className="text-xs text-primary underline inline-block mt-2"

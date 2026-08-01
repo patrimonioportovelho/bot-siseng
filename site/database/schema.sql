@@ -793,6 +793,13 @@ CREATE TABLE documentos_gerados (
                                 'contrato_gestao','proposta_compra_venda'
                             )),
   arquivo_url               TEXT,
+  -- Caminho dentro do bucket privado "documentos-gerados" (achado "Crítico"
+  -- da auditoria de 01/08/2026 — bucket "documentos" acima era público,
+  -- link permanente sem exigir login; ver comentário completo em
+  -- site/app-web/lib/supabase-admin.ts, resolverUrlDocumentoGerado). Só
+  -- preenchido pra documentos gerados a partir dessa mudança; registros
+  -- antigos continuam com arquivo_url (link público antigo) e este NULL.
+  arquivo_caminho           TEXT,
   gerado_por_usuario_id     UUID REFERENCES usuarios(id),
   status                    TEXT NOT NULL DEFAULT 'Sucesso' CHECK (status IN ('Sucesso','Erro')),
   mensagem                  TEXT,

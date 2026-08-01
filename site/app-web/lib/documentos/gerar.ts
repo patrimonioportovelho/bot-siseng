@@ -3,7 +3,7 @@ import path from "node:path";
 import PizZip from "pizzip";
 import Docxtemplater from "docxtemplater";
 import { prisma } from "@/lib/prisma";
-import { supabaseAdmin } from "@/lib/supabase-admin";
+import { supabaseAdmin, subirDocumentoGerado, criarUrlAssinadaDocumentoGerado } from "@/lib/supabase-admin";
 import type { TipoDocumento } from "./campos";
 import { valorPorExtenso, dataPorExtenso, dataPorExtensoComZero, formatarCpf } from "./extenso";
 import { formatTelefone, formatInscricao, formatCnpj } from "@/lib/format";
@@ -79,27 +79,32 @@ export async function gerarDocumento(params: GerarDocumentoParams): Promise<stri
       ? await converterParaPdf(docxBuffer)
       : { buffer: docxBuffer, extensao: "docx" as const };
 
+    // Achado "Crítico" da auditoria de 01/08/2026: o bucket "documentos"
+    // (usado até aqui) é público — link permanente, abre sem login, e o
+    // documento tem CPF/RG/endereço/dados bancários dentro. A partir de
+    // agora, todo documento gerado vai pro bucket privado
+    // "documentos-gerados" (ver lib/supabase-admin.ts) e é aberto por URL
+    // assinada, pedida de novo a cada abertura — nunca fica um link
+    // permanente exposto. Documentos já gerados antes disso continuam com
+    // arquivo_url apontando pro bucket antigo, sem nenhuma mudança.
     const caminho = `${entidadeTipo}/${tipoDocumento}/${entidadeId}-${Date.now()}.${arquivoFinal.extensao}`;
-    const supabase = supabaseAdmin();
-    const { error: erroUpload } = await supabase.storage
-      .from("documentos")
-      .upload(caminho, arquivoFinal.buffer, {
-        contentType:
-          arquivoFinal.extensao === "pdf"
-            ? "application/pdf"
-            : "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-      });
+    const contentType =
+      arquivoFinal.extensao === "pdf"
+        ? "application/pdf"
+        : "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    await subirDocumentoGerado(caminho, arquivoFinal.buffer, contentType);
 
-    if (erroUpload) throw new Error(erroUpload.message);
-
-    const { data: urlPublica } = supabase.storage.from("documentos").getPublicUrl(caminho);
+    const urlAssinada = await criarUrlAssinadaDocumentoGerado(caminho);
+    if (!urlAssinada) {
+      throw new Error("O documento foi salvo, mas não consegui gerar o link para abrir agora. Tente abrir de novo em instantes.");
+    }
 
     await prisma.documentos_gerados.create({
       data: {
         entidade_tipo: entidadeTipo,
         entidade_id: entidadeId,
         tipo_documento: tipoDocumento,
-        arquivo_url: urlPublica.publicUrl,
+        arquivo_caminho: caminho,
         gerado_por_usuario_id: usuarioId ?? null,
         status: "Sucesso"
       }
@@ -114,7 +119,7 @@ export async function gerarDocumento(params: GerarDocumentoParams): Promise<stri
       });
     }
 
-    return urlPublica.publicUrl;
+    return urlAssinada;
   } catch (erro) {
     const mensagem = erro instanceof Error ? erro.message : String(erro);
     await prisma.documentos_gerados.create({

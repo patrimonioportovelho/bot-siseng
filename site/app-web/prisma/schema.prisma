@@ -404,6 +404,12 @@ model documentos_gerados {
   entidade_id           String    @db.Uuid
   tipo_documento        String
   arquivo_url           String?
+  // Caminho dentro do bucket privado "documentos-gerados" (achado "Crítico"
+  // da auditoria de 01/08/2026 — ver comentário completo em
+  // lib/supabase-admin.ts, resolverUrlDocumentoGerado). Só preenchido para
+  // documentos gerados a partir dessa mudança; registros antigos continuam
+  // com arquivo_url (link público antigo) e este campo NULL.
+  arquivo_caminho       String?
   gerado_por_usuario_id String?   @db.Uuid
   status                String    @default("Sucesso")
   mensagem              String?

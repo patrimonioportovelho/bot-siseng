@@ -19,7 +19,12 @@ import {
 import { FUNCOES_CORRETOR } from "@/lib/transacoes/opcoes";
 import { getAdminSession } from "@/lib/auth";
 import { ultimoResetSessaoMs } from "@/lib/session";
-import { lojasSelecionadas, whereLojaFiltro, whereLojaFiltroMovimentacao } from "@/lib/lojas/filtro";
+import {
+  lojasSelecionadas,
+  whereLojaFiltro,
+  whereLojaFiltroMovimentacao,
+  whereLojaFiltroParceiro
+} from "@/lib/lojas/filtro";
 
 export const dynamic = "force-dynamic";
 
@@ -39,11 +44,11 @@ export default async function DashboardPage({
   const { periodo, inicio: inicioParam, fim: fimParam } = await searchParams;
   const periodoResolvido = resolverPeriodo({ periodo, inicio: inicioParam, fim: fimParam });
   const { inicio, fimExclusivo } = periodoResolvido;
-  // Filtro de Loja (seletor no Topbar) — vale pra praticamente todo o
-  // Dashboard. Avaliações/Financiamento e Solicitações de acesso ficaram de
-  // fora de propósito: não têm uma loja associada de forma confiável (só um
-  // parceiro, que também pode não ter loja definida), então filtrar ali
-  // esconderia coisa sem um critério realmente certeiro.
+  // Filtro de Loja (seletor no Topbar) — vale pra todo o Dashboard,
+  // inclusive Avaliações/Financiamento e Solicitações de acesso: usam a
+  // loja do PRÓPRIO parceiro (whereLojaFiltroParceiro) já que esses
+  // cadastros não têm loja nem transação vinculada — confirmado com o
+  // usuário que o corretor costuma atuar numa loja só.
   const lojasFiltro = await lojasSelecionadas();
 
   const hoje = hojePortoVelho();
@@ -88,7 +93,8 @@ export default async function DashboardPage({
     where: {
       excluido: false,
       criado_no_portal: true,
-      created_at: { gte: new Date(ultimoResetSessaoMs()) }
+      created_at: { gte: new Date(ultimoResetSessaoMs()) },
+      ...whereLojaFiltroParceiro(lojasFiltro)
     },
     orderBy: { created_at: "desc" },
     select: {
@@ -169,7 +175,19 @@ export default async function DashboardPage({
     // Administrações ativas é sempre "agora" (estado atual), não do período —
     // mesma lógica do "Vencido em aberto" do Financeiro, mais abaixo.
     prisma.adm_imoveis.count({ where: { status: "Ativo", excluido: false, ...whereLojaFiltro(lojasFiltro) } }),
-    prisma.solicitacoes_acesso.count({ where: { status: "pendente" } }),
+    prisma.solicitacoes_acesso.count({
+      where: {
+        status: "pendente",
+        // Loja do próprio parceiro que pediu acesso (relação chamada
+        // "parceiros_solicitacoes_acesso_parceiro_idToparceiros" no schema,
+        // não a genérica "parceiros" — solicitacoes_acesso tem duas FKs
+        // pra parceiros, por isso o nome composto).
+        OR: [
+          { parceiros_solicitacoes_acesso_parceiro_idToparceiros: { loja_id: { in: lojasFiltro } } },
+          { parceiros_solicitacoes_acesso_parceiro_idToparceiros: { loja_id: null } }
+        ]
+      }
+    }),
     prisma.imoveis.count({
       where: { excluido: false, data_cadastro: { gte: inicio, lt: fimExclusivo }, ...whereLojaFiltro(lojasFiltro) }
     }),
@@ -294,7 +312,7 @@ export default async function DashboardPage({
     // inclusive pros Andamentos vinculados (por isso eles vêm aninhados aqui,
     // em vez de uma query separada filtrando por Data de conclusão).
     prisma.avaliacoes.findMany({
-      where: { data_avaliacao: { gte: inicio, lt: fimExclusivo } },
+      where: { data_avaliacao: { gte: inicio, lt: fimExclusivo }, ...whereLojaFiltroParceiro(lojasFiltro) },
       select: {
         status: true,
         valor_aprovado: true,

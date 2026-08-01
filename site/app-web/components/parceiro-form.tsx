@@ -15,7 +15,7 @@ import { buscarCep, UF_PARA_ESTADO } from "@/lib/enderecos";
 const FUNCOES_COM_COMISSIONAMENTO = ["Corretor", "Corretor Estagiário"];
 
 type Loja = { id: string; nome: string };
-type Banco = { id: string; nome: string };
+type Banco = { id: string; nome: string; codigo: string | null };
 type EstadoOpcao = { id: string; nome: string };
 type CidadeOpcao = { id: string; nome: string; estado_id: string };
 
@@ -235,6 +235,19 @@ export function ParceiroForm({
   const [cidadeId, setCidadeId] = useState(p?.cidade_id ?? "");
   const [buscandoCep, setBuscandoCep] = useState(false);
   const [cepAvisoCidade, setCepAvisoCidade] = useState<string | null>(null);
+
+  // Código do banco vem automaticamente ao escolher o Banco — mesmo fix já
+  // aplicado em cliente-form.tsx (era um campo de texto solto aqui, sem
+  // relação nenhuma com o banco selecionado, e dava pra ficar com código e
+  // banco combinando errado).
+  const [bancoId, setBancoId] = useState(p?.banco_id ?? "");
+  const [codigoBanco, setCodigoBanco] = useState(p?.codigo_banco ?? "");
+
+  function selecionarBanco(id: string) {
+    setBancoId(id);
+    const banco = bancos.find((b) => b.id === id);
+    if (banco?.codigo) setCodigoBanco(banco.codigo);
+  }
 
   const cidadesDoEstado = useMemo(() => cidades.filter((cid) => cid.estado_id === estadoId), [cidades, estadoId]);
 
@@ -589,7 +602,12 @@ export function ParceiroForm({
         <div className="grid md:grid-cols-2 gap-3">
           <div>
             <label className={LABEL}>Banco</label>
-            <select className={CAMPO} name="banco_id" defaultValue={p?.banco_id ?? ""}>
+            <select
+              className={CAMPO}
+              name="banco_id"
+              value={bancoId}
+              onChange={(e) => selecionarBanco(e.target.value)}
+            >
               <option value="">—</option>
               {bancos.map((b) => (
                 <option key={b.id} value={b.id}>
@@ -606,7 +624,13 @@ export function ParceiroForm({
           </div>
           <div>
             <label className={LABEL}>Código do banco</label>
-            <input className={CAMPO} name="codigo_banco" defaultValue={p?.codigo_banco ?? ""} />
+            <input
+              className={CAMPO}
+              name="codigo_banco"
+              value={codigoBanco}
+              onChange={(e) => setCodigoBanco(e.target.value)}
+              placeholder="Preenchido ao escolher o banco"
+            />
           </div>
           <div>
             <label className={LABEL}>Agência</label>

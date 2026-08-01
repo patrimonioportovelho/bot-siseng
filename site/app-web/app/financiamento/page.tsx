@@ -3,6 +3,7 @@ import { Topbar } from "@/components/topbar";
 import { prisma } from "@/lib/prisma";
 import { formatMoeda, formatDataCalendario, diasParaVencimento, situacaoVencimento } from "@/lib/format";
 import { STATUS_AVALIACAO_PRIORIDADE, STATUS_AVALIACAO_ATIVOS, STATUS_AVALIACAO_ENCERRADOS } from "@/lib/financiamento/opcoes";
+import { lojasSelecionadas, whereLojaFiltroParceiro } from "@/lib/lojas/filtro";
 
 export const dynamic = "force-dynamic";
 
@@ -69,18 +70,26 @@ export default async function FinanciamentoPage({
 }) {
   const { q, excluido } = await searchParams;
   const termo = (q ?? "").trim();
+  const lojasFiltro = await lojasSelecionadas();
 
   const where = {
     excluido: false,
-    ...(termo
-      ? {
-          OR: [
-            { clientes: { nome: { contains: termo, mode: "insensitive" as const } } },
-            { cpf: { contains: termo.replace(/\D/g, ""), mode: "insensitive" as const } },
-            { id_legado: { contains: termo, mode: "insensitive" as const } }
+    // Filtro de Loja (seletor no Topbar) — via loja do próprio parceiro que
+    // registrou a Avaliação (ver whereLojaFiltroParceiro).
+    AND: [
+      whereLojaFiltroParceiro(lojasFiltro),
+      ...(termo
+        ? [
+            {
+              OR: [
+                { clientes: { nome: { contains: termo, mode: "insensitive" as const } } },
+                { cpf: { contains: termo.replace(/\D/g, ""), mode: "insensitive" as const } },
+                { id_legado: { contains: termo, mode: "insensitive" as const } }
+              ]
+            }
           ]
-        }
-      : {})
+        : [])
+    ]
   };
 
   const [avaliacoes, andamentosEmAberto] = await Promise.all([

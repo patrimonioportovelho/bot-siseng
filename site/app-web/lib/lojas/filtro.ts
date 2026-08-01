@@ -65,3 +65,20 @@ export function whereLojaFiltroMovimentacao(selecionadas: string[]) {
     OR: [{ transacao_id: null }, { transacoes: { loja_id: { in: selecionadas } } }]
   };
 }
+
+// Pra models que não têm loja nem transação vinculada, só um parceiro (ex.:
+// avaliacoes, solicitacoes_acesso) — usa a loja do PRÓPRIO parceiro
+// (parceiros.loja_id) como aproximação. Pedido do usuário em 01/08/2026,
+// depois de confirmar que "geralmente o corretor atua numa loja só" — antes
+// disso essas telas tinham ficado de fora do filtro por falta de um vínculo
+// confiável. Avaliação/solicitação sem parceiro vinculado, ou cujo parceiro
+// não tem loja definida, sempre aparece em qualquer filtro.
+export function whereLojaFiltroParceiro(selecionadas: string[], campoParceiroId: string = "parceiro_id") {
+  return {
+    OR: [
+      { [campoParceiroId]: null },
+      { parceiros: { loja_id: { in: selecionadas } } },
+      { parceiros: { loja_id: null } }
+    ]
+  };
+}

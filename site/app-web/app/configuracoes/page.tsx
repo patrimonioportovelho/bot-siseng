@@ -15,6 +15,7 @@ import {
   marcarErroVistoAction
 } from "./actions";
 import { limparErrosAntigos } from "@/lib/erros";
+import { lojasSelecionadas } from "@/lib/lojas/filtro";
 
 export const dynamic = "force-dynamic";
 
@@ -69,10 +70,19 @@ export default async function ConfiguracoesPage({
   // Erros de cadastro com mais de 3 dias somem sozinhos toda vez que essa
   // página é aberta — dá tempo de revisar sem deixar a tabela crescendo.
   await limparErrosAntigos();
+  const lojasFiltro = await lojasSelecionadas();
 
   const [pendentes, parceirosAtivos, lojas, acessos, alteracoes, publicacoes, mensagensSac, errosCadastro] = await Promise.all([
     prisma.solicitacoes_acesso.findMany({
-      where: { status: "pendente" },
+      where: {
+        status: "pendente",
+        // Filtro de Loja (seletor no Topbar) — pela loja do próprio parceiro
+        // que pediu acesso.
+        OR: [
+          { parceiros_solicitacoes_acesso_parceiro_idToparceiros: { loja_id: { in: lojasFiltro } } },
+          { parceiros_solicitacoes_acesso_parceiro_idToparceiros: { loja_id: null } }
+        ]
+      },
       orderBy: { criado_em: "asc" },
       include: { parceiros_solicitacoes_acesso_parceiro_idToparceiros: true }
     }),

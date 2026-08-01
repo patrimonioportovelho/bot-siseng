@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Suspense } from "react";
 import { AppShell } from "@/components/app-shell";
+import { CarregandoTelaCheia } from "@/components/carregando-tela-cheia";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -31,7 +32,7 @@ export default function RootLayout({
   return (
     <html lang="pt-BR">
       <body>
-        <Suspense fallback={null}>
+        <Suspense fallback={<CarregandoTelaCheia />}>
           <AppShell>{children}</AppShell>
         </Suspense>
       </body>

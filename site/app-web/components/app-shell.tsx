@@ -3,6 +3,7 @@
 import { usePathname, useSearchParams } from "next/navigation";
 import { Sidebar } from "@/components/sidebar";
 import { PortalSidebar } from "@/components/portal-sidebar";
+import { RouteLoadingBar } from "@/components/route-loading-bar";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -23,7 +24,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const isPortal = pathname?.startsWith("/portal") && !semMenu;
 
   if (semMenu) {
-    return <main className="min-h-screen">{children}</main>;
+    return (
+      <>
+        <RouteLoadingBar />
+        <main className="min-h-screen">{children}</main>
+      </>
+    );
   }
 
   // Portal do corretor ganhou o mesmo menu lateral vertical do administrativo
@@ -32,17 +38,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // padding próprio (diferente do admin, que aplica p-4 md:p-6).
   if (isPortal) {
     return (
-      <div className="flex flex-col md:flex-row min-h-screen">
-        <PortalSidebar />
-        <main className="flex-1 min-w-0">{children}</main>
-      </div>
+      <>
+        <RouteLoadingBar />
+        <div className="flex flex-col md:flex-row min-h-screen">
+          <PortalSidebar />
+          <main className="flex-1 min-w-0">{children}</main>
+        </div>
+      </>
     );
   }
 
   return (
-    <div className="flex flex-col md:flex-row min-h-screen">
-      <Sidebar />
-      <main className="flex-1 min-w-0 p-4 md:p-6">{children}</main>
-    </div>
+    <>
+      <RouteLoadingBar />
+      <div className="flex flex-col md:flex-row min-h-screen">
+        <Sidebar />
+        <main className="flex-1 min-w-0 p-4 md:p-6">{children}</main>
+      </div>
+    </>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { BotaoEnviar } from "@/components/botao-enviar";
 
 // Painel de "Acesso administrativo" — vive dentro da página pública
 // (app/login/page.tsx) como um botão discreto que abre o formulário de
@@ -83,12 +84,12 @@ export function AdminLoginPanel({
               placeholder="Sua senha"
             />
 
-            <button
-              type="submit"
+            <BotaoEnviar
+              textoEnviando="Entrando..."
               className="w-full bg-primary text-white rounded-lg py-2 text-sm font-semibold hover:opacity-90"
             >
               Entrar
-            </button>
+            </BotaoEnviar>
 
             <p className="text-[11px] text-gray-400 mt-4 leading-relaxed">
               O email precisa estar cadastrado na ficha de parceiro ativo. Se ainda não tem senha, peça

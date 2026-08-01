@@ -1,5 +1,6 @@
 "use server";
 
+import { after } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requirePortalSession } from "@/lib/portal-auth";
 import { logAlteracaoPortal } from "@/lib/auth";
@@ -283,18 +284,26 @@ async function criarCliente(c: ClienteDigitado, parceiroId: string) {
 // origens (admin e portal) escrevem na mesma tabela transacoes, então o
 // próximo número sempre olha pra todos os registros com esse prefixo, não só
 // os criados por aqui.
+// Achado da revisão de 01/08/2026 (erro "An unexpected response was received
+// from the server." no cadastro de Compra e Venda): esta função buscava
+// TODAS as transações "CV-" já cadastradas (uma por uma, pra achar o maior
+// número em JavaScript) — fica mais lento a cada nova transação, porque
+// toda vez precisa trazer o histórico inteiro do banco pro servidor só pra
+// descobrir um número. Isso vira o próprio banco (Postgres já sabe fazer
+// esse MAX direto, sem trazer as linhas todas), e foi um dos pontos que
+// contribuía pro cadastro mais pesado (cliente+vendedor+imóvel novos, com
+// anexo) demorar demais. O filtro duplo (LIKE + regex) garante que só
+// entram no cálculo os id_legado no formato esperado ("CV-" seguido só de
+// dígitos) — um registro antigo fora do padrão não trava a consulta com
+// erro de conversão, só fica de fora do cálculo (mesmo comportamento de
+// antes, que ignorava silenciosamente qualquer coisa não numérica).
 async function gerarProximoIdCV(): Promise<string> {
-  const registros = await prisma.transacoes.findMany({
-    where: { id_legado: { startsWith: "CV-" } },
-    select: { id_legado: true }
-  });
-
-  let maior = 0;
-  for (const r of registros) {
-    const n = Number(r.id_legado?.replace("CV-", ""));
-    if (Number.isFinite(n) && n > maior) maior = n;
-  }
-
+  const resultado = await prisma.$queryRaw<{ maior: number | null }[]>`
+    SELECT MAX(CAST(SUBSTRING(id_legado FROM 4) AS INTEGER)) AS maior
+    FROM transacoes
+    WHERE id_legado LIKE 'CV-%' AND id_legado ~ '^CV-[0-9]+$'
+  `;
+  const maior = Number(resultado[0]?.maior ?? 0);
   return `CV-${String(maior + 1).padStart(4, "0")}`;
 }
 
@@ -366,10 +375,7 @@ async function sincronizarCondicoesPagamento(transacaoId: string, formData: Form
 // nenhuma.
 export async function gerarCompraVendaAction(
   formData: FormData
-): Promise<
-  | { ok: true; idLegado: string | null; emailEnviado: boolean; emailErro?: string }
-  | { ok: false; erro: string }
-> {
+): Promise<{ ok: true; idLegado: string | null } | { ok: false; erro: string }> {
   const session = await requirePortalSession();
 
   try {
@@ -641,72 +647,95 @@ export async function gerarCompraVendaAction(
     // Email pro administrativo — resumo da transação + a documentação que o
     // corretor já tiver anexado, como anexo de verdade (não só link — ver
     // montarAnexosDocumentos) sempre que couber no orçamento de tamanho; o
-    // link continua indo no corpo do email também, como reforço. Isso é
-    // best-effort: se o envio falhar (ex.: Gmail fora do ar ou senha de app
-    // inválida), a transação já está salva do mesmo jeito — só avisa o
-    // corretor pra reportar por outro canal.
-    const [imovelInfo, vendedorInfo, compradoresInfo, lojaInfo] = await Promise.all([
-      prisma.imoveis.findUnique({ where: { id: imovelId }, select: { endereco: true } }),
-      prisma.clientes.findUnique({ where: { id: vendedorPrincipalId }, select: { nome: true } }),
-      prisma.clientes.findMany({ where: { id: { in: compradorIds } }, select: { nome: true } }),
-      prisma.lojas.findUnique({ where: { id: lojaId }, select: { nome: true } })
-    ]);
-
+    // link continua indo no corpo do email também, como reforço.
+    //
+    // Achado da revisão de 01/08/2026 (erro "An unexpected response was
+    // received from the server." no cadastro, principalmente "do zero":
+    // cliente+vendedor+imóvel novos, com anexo): baixar cada documento do
+    // Storage (um de cada vez) e depois mandar pelo Gmail (SMTP, até ~20s de
+    // tolerância numa conexão lenta) era a ÚLTIMA coisa que a função fazia
+    // antes de responder pro corretor — e empurrava o tempo total da função
+    // pra perto do limite (ou passava dele), MESMO com a transação já salva
+    // no banco antes disso. Por isso o corretor via um erro assustador de
+    // "não foi possível concluir o cadastro" quando na verdade o cadastro já
+    // tinha sido concluído — só o email de aviso é que travou.
+    //
+    // A partir de agora, tudo relacionado ao email (baixar anexo, montar o
+    // HTML, mandar pelo Gmail) roda DEPOIS que a resposta já foi devolvida
+    // pro corretor (after(), do Next.js) — nunca mais atrasa nem arrisca
+    // travar a confirmação do cadastro. Se o email falhar, vai pra
+    // Configurações > Erros de cadastro (mesmo lugar de qualquer outra
+    // falha técnica do sistema) — o corretor não precisa mais ficar sabendo
+    // disso na hora, só o administrativo, que já acompanha essa tela.
     const documentosEnviados = parseDocumentos(formData);
-    const linksDocumentosHtml = await montarLinksDocumentos(documentosEnviados);
-    const anexosDocumentos = await montarAnexosDocumentos(documentosEnviados);
 
-    const linhasResumo = [
-      `<strong>Id:</strong> ${novo.id_legado ?? novo.id}`,
-      `<strong>Loja:</strong> ${lojaInfo?.nome ?? "—"}`,
-      `<strong>Corretor que cadastrou:</strong> ${session.nome}`,
-      `<strong>Imóvel:</strong> ${imovelInfo?.endereco ?? "—"}${!imovelIdExistente ? " (imóvel novo, cadastrado agora)" : ""}`,
-      `<strong>Cliente vendedor:</strong> ${vendedorInfo?.nome ?? "—"}`,
-      `<strong>Cliente(s) comprador(es):</strong> ${compradoresInfo.map((c) => c.nome).join(", ") || "—"}`,
-      `<strong>Valor da transação:</strong> ${formatMoeda(valorTransacao)}`,
-      `<strong>Data de assinatura:</strong> ${formatData(dataAssinatura)}`,
-      `<strong>Momento de entrega das chaves:</strong> ${chave ?? "—"}`,
-      `<strong>Honorário informado pelo corretor:</strong> ${porcHonorario ? `${(porcHonorario * 100).toFixed(2)}%` : "—"}`,
-      compraSemGestao
-        ? "<strong>Gestão:</strong> compra sem gestão (venda direta)"
-        : gestaoId
-        ? "<strong>Gestão:</strong> vinculada automaticamente a uma gestão já cadastrada"
-        : historicoData || historicoPrazoMeses || historicoValor
-        ? `<strong>Gestão antiga (não cadastrada):</strong> assinatura ${historicoData ? formatData(historicoData) : "—"}, prazo ${historicoPrazoMeses ?? "—"} meses, valor da época ${historicoValor ? formatMoeda(historicoValor) : "—"}`
-        : "<strong>Gestão:</strong> nenhuma encontrada e nenhum dado histórico informado"
-    ];
+    after(async () => {
+      try {
+        const [imovelInfo, vendedorInfo, compradoresInfo, lojaInfo] = await Promise.all([
+          prisma.imoveis.findUnique({ where: { id: imovelId }, select: { endereco: true } }),
+          prisma.clientes.findUnique({ where: { id: vendedorPrincipalId }, select: { nome: true } }),
+          prisma.clientes.findMany({ where: { id: { in: compradorIds } }, select: { nome: true } }),
+          prisma.lojas.findUnique({ where: { id: lojaId }, select: { nome: true } })
+        ]);
 
-    const html = `
-      <div style="font-family: sans-serif; font-size: 14px; color: #1f2937;">
-        <p>Nova <strong>Elaboração de Compra e Venda</strong> cadastrada pelo portal do corretor.</p>
-        <p>${linhasResumo.join("<br/>")}</p>
-        ${linksDocumentosHtml}
-        <p style="color:#6b7280; font-size:12px;">A divisão do comissionamento entre os corretores ainda precisa ser preenchida no administrativo.</p>
-      </div>
-    `;
+        const linksDocumentosHtml = await montarLinksDocumentos(documentosEnviados);
+        const anexosDocumentos = await montarAnexosDocumentos(documentosEnviados);
 
-    const resultadoEmail = await enviarEmail({
-      to: process.env.EMAIL_ADM_COMPRA_VENDA || EMAIL_DESTINO_PADRAO,
-      subject: `Compra e Venda ${novo.id_legado ?? ""} — ${imovelInfo?.endereco ?? "imóvel sem endereço"}`,
-      html,
-      attachments: anexosDocumentos
+        const linhasResumo = [
+          `<strong>Id:</strong> ${novo.id_legado ?? novo.id}`,
+          `<strong>Loja:</strong> ${lojaInfo?.nome ?? "—"}`,
+          `<strong>Corretor que cadastrou:</strong> ${session.nome}`,
+          `<strong>Imóvel:</strong> ${imovelInfo?.endereco ?? "—"}${!imovelIdExistente ? " (imóvel novo, cadastrado agora)" : ""}`,
+          `<strong>Cliente vendedor:</strong> ${vendedorInfo?.nome ?? "—"}`,
+          `<strong>Cliente(s) comprador(es):</strong> ${compradoresInfo.map((c) => c.nome).join(", ") || "—"}`,
+          `<strong>Valor da transação:</strong> ${formatMoeda(valorTransacao)}`,
+          `<strong>Data de assinatura:</strong> ${formatData(dataAssinatura)}`,
+          `<strong>Momento de entrega das chaves:</strong> ${chave ?? "—"}`,
+          `<strong>Honorário informado pelo corretor:</strong> ${porcHonorario ? `${(porcHonorario * 100).toFixed(2)}%` : "—"}`,
+          compraSemGestao
+            ? "<strong>Gestão:</strong> compra sem gestão (venda direta)"
+            : gestaoId
+            ? "<strong>Gestão:</strong> vinculada automaticamente a uma gestão já cadastrada"
+            : historicoData || historicoPrazoMeses || historicoValor
+            ? `<strong>Gestão antiga (não cadastrada):</strong> assinatura ${historicoData ? formatData(historicoData) : "—"}, prazo ${historicoPrazoMeses ?? "—"} meses, valor da época ${historicoValor ? formatMoeda(historicoValor) : "—"}`
+            : "<strong>Gestão:</strong> nenhuma encontrada e nenhum dado histórico informado"
+        ];
+
+        const html = `
+          <div style="font-family: sans-serif; font-size: 14px; color: #1f2937;">
+            <p>Nova <strong>Elaboração de Compra e Venda</strong> cadastrada pelo portal do corretor.</p>
+            <p>${linhasResumo.join("<br/>")}</p>
+            ${linksDocumentosHtml}
+            <p style="color:#6b7280; font-size:12px;">A divisão do comissionamento entre os corretores ainda precisa ser preenchida no administrativo.</p>
+          </div>
+        `;
+
+        const resultadoEmail = await enviarEmail({
+          to: process.env.EMAIL_ADM_COMPRA_VENDA || EMAIL_DESTINO_PADRAO,
+          subject: `Compra e Venda ${novo.id_legado ?? ""} — ${imovelInfo?.endereco ?? "imóvel sem endereço"}`,
+          html,
+          attachments: anexosDocumentos
+        });
+
+        if (!resultadoEmail.ok) {
+          await registrarEJogarErro({
+            entidadeTipo: "transacoes",
+            entidadeId: novo.id,
+            acao: "enviar_email_compra_venda",
+            erro: new Error(resultadoEmail.erro)
+          }).catch(() => undefined);
+        }
+      } catch (erroEmail) {
+        await registrarEJogarErro({
+          entidadeTipo: "transacoes",
+          entidadeId: novo.id,
+          acao: "enviar_email_compra_venda",
+          erro: erroEmail instanceof Error ? erroEmail : new Error(String(erroEmail))
+        }).catch(() => undefined);
+      }
     });
 
-    if (!resultadoEmail.ok) {
-      await registrarEJogarErro({
-        entidadeTipo: "transacoes",
-        entidadeId: novo.id,
-        acao: "enviar_email_compra_venda",
-        erro: new Error(resultadoEmail.erro)
-      }).catch(() => undefined);
-    }
-
-    return {
-      ok: true,
-      idLegado: novo.id_legado,
-      emailEnviado: resultadoEmail.ok,
-      emailErro: resultadoEmail.ok ? undefined : resultadoEmail.erro
-    };
+    return { ok: true, idLegado: novo.id_legado };
   } catch (erro) {
     const mensagem = erro instanceof Error ? erro.message : String(erro);
     return { ok: false, erro: mensagem };

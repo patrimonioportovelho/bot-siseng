@@ -1,5 +1,6 @@
 "use server";
 
+import { after } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requirePortalSession } from "@/lib/portal-auth";
 import { logAlteracaoPortal } from "@/lib/auth";
@@ -259,18 +260,17 @@ async function criarCliente(c: ClienteDigitado, parceiroId: string) {
 // origens (admin e portal) escrevem na mesma tabela transacoes, então o
 // próximo número sempre olha pra todos os registros com esse prefixo, não só
 // os criados por aqui.
+// Mesmo achado do Compra e Venda (ver comentário completo em
+// app/portal/compra-venda/actions.ts#gerarProximoIdCV): trocado de
+// findMany + cálculo em JS pra um MAX direto no Postgres, bem mais leve
+// conforme a base de transações cresce.
 async function gerarProximoIdLocacao(): Promise<string> {
-  const registros = await prisma.transacoes.findMany({
-    where: { id_legado: { startsWith: "LOC-" } },
-    select: { id_legado: true }
-  });
-
-  let maior = 0;
-  for (const r of registros) {
-    const n = Number(r.id_legado?.replace("LOC-", ""));
-    if (Number.isFinite(n) && n > maior) maior = n;
-  }
-
+  const resultado = await prisma.$queryRaw<{ maior: number | null }[]>`
+    SELECT MAX(CAST(SUBSTRING(id_legado FROM 5) AS INTEGER)) AS maior
+    FROM transacoes
+    WHERE id_legado LIKE 'LOC-%' AND id_legado ~ '^LOC-[0-9]+$'
+  `;
+  const maior = Number(resultado[0]?.maior ?? 0);
   return `LOC-${String(maior + 1).padStart(4, "0")}`;
 }
 
@@ -313,10 +313,7 @@ async function proprietarioDoImovel(imovelId: string): Promise<string | null> {
 // administrativo.
 export async function gerarLocacaoAction(
   formData: FormData
-): Promise<
-  | { ok: true; idLegado: string | null; emailEnviado: boolean; emailErro?: string }
-  | { ok: false; erro: string }
-> {
+): Promise<{ ok: true; idLegado: string | null } | { ok: false; erro: string }> {
   const session = await requirePortalSession();
 
   try {
@@ -612,63 +609,78 @@ export async function gerarLocacaoAction(
       }
     });
 
-    const [imovelInfo, proprietarioInfo, locatariosInfo, lojaInfo] = await Promise.all([
-      prisma.imoveis.findUnique({ where: { id: imovelId }, select: { endereco: true } }),
-      prisma.clientes.findUnique({ where: { id: proprietarioId }, select: { nome: true } }),
-      prisma.clientes.findMany({ where: { id: { in: locatarioIds } }, select: { nome: true } }),
-      prisma.lojas.findUnique({ where: { id: lojaId }, select: { nome: true } })
-    ]);
-
+    // Email pro administrativo — movido pra depois da resposta ao corretor
+    // (after(), do Next.js). Mesmo achado do Compra e Venda (ver comentário
+    // completo em app/portal/compra-venda/actions.ts): baixar anexo do
+    // Storage + mandar pelo Gmail (SMTP) no fim da função é que empurrava o
+    // tempo total pra perto do limite e causava "An unexpected response was
+    // received from the server." pro corretor, mesmo com a transação já
+    // salva. Falha no envio agora só aparece em Configurações > Erros de
+    // cadastro, não trava nem assusta o corretor.
     const documentosEnviados = parseDocumentos(formData);
-    const linksDocumentosHtml = await montarLinksDocumentos(documentosEnviados);
-    const anexosDocumentos = await montarAnexosDocumentos(documentosEnviados);
 
-    const linhasResumo = [
-      `<strong>Id:</strong> ${novo.id_legado ?? novo.id}`,
-      `<strong>Loja:</strong> ${lojaInfo?.nome ?? "—"}`,
-      `<strong>Corretor que cadastrou:</strong> ${session.nome}`,
-      `<strong>Imóvel:</strong> ${imovelInfo?.endereco ?? "—"}`,
-      `<strong>Origem:</strong> ${
-        admImovelId ? "Através de Administração (status passou de Ativo para Locado)" : "Sem administração"
-      }`,
-      `<strong>Cliente proprietário:</strong> ${proprietarioInfo?.nome ?? "—"}`,
-      `<strong>Locatário(s):</strong> ${locatariosInfo.map((c) => c.nome).join(", ") || "—"}`,
-      `<strong>Valor do aluguel:</strong> ${formatMoeda(valorTransacao)}`,
-      `<strong>Data de assinatura:</strong> ${formatData(dataAssinatura)}`,
-      `<strong>Honorário informado pelo corretor:</strong> ${porcHonorario ? `${(porcHonorario * 100).toFixed(2)}%` : "—"}`
-    ];
+    after(async () => {
+      try {
+        const [imovelInfo, proprietarioInfo, locatariosInfo, lojaInfo] = await Promise.all([
+          prisma.imoveis.findUnique({ where: { id: imovelId }, select: { endereco: true } }),
+          prisma.clientes.findUnique({ where: { id: proprietarioId }, select: { nome: true } }),
+          prisma.clientes.findMany({ where: { id: { in: locatarioIds } }, select: { nome: true } }),
+          prisma.lojas.findUnique({ where: { id: lojaId }, select: { nome: true } })
+        ]);
 
-    const html = `
-      <div style="font-family: sans-serif; font-size: 14px; color: #1f2937;">
-        <p>Nova <strong>Elaboração de Locação</strong> cadastrada pelo portal do corretor.</p>
-        <p>${linhasResumo.join("<br/>")}</p>
-        ${linksDocumentosHtml}
-        <p style="color:#6b7280; font-size:12px;">A divisão do comissionamento entre os corretores ainda precisa ser preenchida no administrativo.</p>
-      </div>
-    `;
+        const linksDocumentosHtml = await montarLinksDocumentos(documentosEnviados);
+        const anexosDocumentos = await montarAnexosDocumentos(documentosEnviados);
 
-    const resultadoEmail = await enviarEmail({
-      to: process.env.EMAIL_ADM_LOCACAO || EMAIL_DESTINO_PADRAO,
-      subject: `Locação ${novo.id_legado ?? ""} — ${imovelInfo?.endereco ?? "imóvel sem endereço"}`,
-      html,
-      attachments: anexosDocumentos
+        const linhasResumo = [
+          `<strong>Id:</strong> ${novo.id_legado ?? novo.id}`,
+          `<strong>Loja:</strong> ${lojaInfo?.nome ?? "—"}`,
+          `<strong>Corretor que cadastrou:</strong> ${session.nome}`,
+          `<strong>Imóvel:</strong> ${imovelInfo?.endereco ?? "—"}`,
+          `<strong>Origem:</strong> ${
+            admImovelId ? "Através de Administração (status passou de Ativo para Locado)" : "Sem administração"
+          }`,
+          `<strong>Cliente proprietário:</strong> ${proprietarioInfo?.nome ?? "—"}`,
+          `<strong>Locatário(s):</strong> ${locatariosInfo.map((c) => c.nome).join(", ") || "—"}`,
+          `<strong>Valor do aluguel:</strong> ${formatMoeda(valorTransacao)}`,
+          `<strong>Data de assinatura:</strong> ${formatData(dataAssinatura)}`,
+          `<strong>Honorário informado pelo corretor:</strong> ${porcHonorario ? `${(porcHonorario * 100).toFixed(2)}%` : "—"}`
+        ];
+
+        const html = `
+          <div style="font-family: sans-serif; font-size: 14px; color: #1f2937;">
+            <p>Nova <strong>Elaboração de Locação</strong> cadastrada pelo portal do corretor.</p>
+            <p>${linhasResumo.join("<br/>")}</p>
+            ${linksDocumentosHtml}
+            <p style="color:#6b7280; font-size:12px;">A divisão do comissionamento entre os corretores ainda precisa ser preenchida no administrativo.</p>
+          </div>
+        `;
+
+        const resultadoEmail = await enviarEmail({
+          to: process.env.EMAIL_ADM_LOCACAO || EMAIL_DESTINO_PADRAO,
+          subject: `Locação ${novo.id_legado ?? ""} — ${imovelInfo?.endereco ?? "imóvel sem endereço"}`,
+          html,
+          attachments: anexosDocumentos
+        });
+
+        if (!resultadoEmail.ok) {
+          await registrarEJogarErro({
+            entidadeTipo: "transacoes",
+            entidadeId: novo.id,
+            acao: "enviar_email_locacao",
+            erro: new Error(resultadoEmail.erro)
+          }).catch(() => undefined);
+        }
+      } catch (erroEmail) {
+        await registrarEJogarErro({
+          entidadeTipo: "transacoes",
+          entidadeId: novo.id,
+          acao: "enviar_email_locacao",
+          erro: erroEmail instanceof Error ? erroEmail : new Error(String(erroEmail))
+        }).catch(() => undefined);
+      }
     });
 
-    if (!resultadoEmail.ok) {
-      await registrarEJogarErro({
-        entidadeTipo: "transacoes",
-        entidadeId: novo.id,
-        acao: "enviar_email_locacao",
-        erro: new Error(resultadoEmail.erro)
-      }).catch(() => undefined);
-    }
-
-    return {
-      ok: true,
-      idLegado: novo.id_legado,
-      emailEnviado: resultadoEmail.ok,
-      emailErro: resultadoEmail.ok ? undefined : resultadoEmail.erro
-    };
+    return { ok: true, idLegado: novo.id_legado };
   } catch (erro) {
     const mensagem = erro instanceof Error ? erro.message : String(erro);
     return { ok: false, erro: mensagem };

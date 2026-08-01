@@ -1,5 +1,6 @@
 "use server";
 
+import { after } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requirePortalSession } from "@/lib/portal-auth";
 import { logAlteracaoPortal } from "@/lib/auth";
@@ -264,10 +265,7 @@ async function criarClienteCompleto(c: ClienteAvaliacaoDigitado, parceiroId: str
 // administrativo, que já vê isso na tela /financiamento assim que salva.
 export async function criarAvaliacaoCpfAction(
   formData: FormData
-): Promise<
-  | { ok: true; avaliacaoId: string; emailEnviado: boolean; emailErro?: string }
-  | { ok: false; erro: string }
-> {
+): Promise<{ ok: true; avaliacaoId: string } | { ok: false; erro: string }> {
   const session = await requirePortalSession();
 
   try {
@@ -341,50 +339,62 @@ export async function criarAvaliacaoCpfAction(
 
     // Email pro administrativo, com os documentos do cliente anexados de
     // verdade (mesmo padrão do Compra e Venda — ver montarAnexosDocumentos).
-    // Best-effort: se o envio falhar, a avaliação já está salva do mesmo
-    // jeito, só avisa o corretor pra reportar por outro canal.
+    // Movido pra depois da resposta ao corretor (after(), do Next.js) — mesmo
+    // achado do Compra e Venda (ver comentário completo em
+    // app/portal/compra-venda/actions.ts): baixar anexo do Storage + mandar
+    // pelo Gmail no fim da função é que empurrava o tempo total pra perto do
+    // limite e causava "An unexpected response was received from the
+    // server." pro corretor, mesmo com a avaliação já salva. Falha no envio
+    // agora só aparece em Configurações > Erros de cadastro.
     const documentosEnviados = parseDocumentos(formData);
-    const linksDocumentosHtml = await montarLinksDocumentos(documentosEnviados);
-    const anexosDocumentos = await montarAnexosDocumentos(documentosEnviados);
 
-    const html = `
-      <div style="font-family: sans-serif; font-size: 14px; color: #1f2937;">
-        <p>Nova <strong>Avaliação de CPF</strong> cadastrada pelo portal do corretor — cliente quer comprar imóvel.</p>
-        <p>
-          <strong>Cliente:</strong> ${clienteNome}<br/>
-          <strong>CPF/CNPJ:</strong> ${documentoDigitado || clienteCpf || "—"}<br/>
-          <strong>Telefone:</strong> ${clienteTelefone ?? "—"}<br/>
-          <strong>Corretor que cadastrou:</strong> ${session.nome}
-        </p>
-        ${linksDocumentosHtml}
-        <p style="color:#6b7280; font-size:12px;">
-          Defina a finalidade (Financiamento, Análise de crédito ou Locação) e dê seguimento no módulo Financiamento.
-        </p>
-      </div>
-    `;
+    after(async () => {
+      try {
+        const linksDocumentosHtml = await montarLinksDocumentos(documentosEnviados);
+        const anexosDocumentos = await montarAnexosDocumentos(documentosEnviados);
 
-    const resultadoEmail = await enviarEmail({
-      to: process.env.EMAIL_ADM_FINANCIAMENTO || EMAIL_DESTINO_PADRAO,
-      subject: `Avaliação de CPF — ${clienteNome}`,
-      html,
-      attachments: anexosDocumentos
+        const html = `
+          <div style="font-family: sans-serif; font-size: 14px; color: #1f2937;">
+            <p>Nova <strong>Avaliação de CPF</strong> cadastrada pelo portal do corretor — cliente quer comprar imóvel.</p>
+            <p>
+              <strong>Cliente:</strong> ${clienteNome}<br/>
+              <strong>CPF/CNPJ:</strong> ${documentoDigitado || clienteCpf || "—"}<br/>
+              <strong>Telefone:</strong> ${clienteTelefone ?? "—"}<br/>
+              <strong>Corretor que cadastrou:</strong> ${session.nome}
+            </p>
+            ${linksDocumentosHtml}
+            <p style="color:#6b7280; font-size:12px;">
+              Defina a finalidade (Financiamento, Análise de crédito ou Locação) e dê seguimento no módulo Financiamento.
+            </p>
+          </div>
+        `;
+
+        const resultadoEmail = await enviarEmail({
+          to: process.env.EMAIL_ADM_FINANCIAMENTO || EMAIL_DESTINO_PADRAO,
+          subject: `Avaliação de CPF — ${clienteNome}`,
+          html,
+          attachments: anexosDocumentos
+        });
+
+        if (!resultadoEmail.ok) {
+          await registrarEJogarErro({
+            entidadeTipo: "avaliacoes",
+            entidadeId: novaAvaliacao.id,
+            acao: "enviar_email_avaliacao_cpf",
+            erro: new Error(resultadoEmail.erro)
+          }).catch(() => undefined);
+        }
+      } catch (erroEmail) {
+        await registrarEJogarErro({
+          entidadeTipo: "avaliacoes",
+          entidadeId: novaAvaliacao.id,
+          acao: "enviar_email_avaliacao_cpf",
+          erro: erroEmail instanceof Error ? erroEmail : new Error(String(erroEmail))
+        }).catch(() => undefined);
+      }
     });
 
-    if (!resultadoEmail.ok) {
-      await registrarEJogarErro({
-        entidadeTipo: "avaliacoes",
-        entidadeId: novaAvaliacao.id,
-        acao: "enviar_email_avaliacao_cpf",
-        erro: new Error(resultadoEmail.erro)
-      }).catch(() => undefined);
-    }
-
-    return {
-      ok: true,
-      avaliacaoId: novaAvaliacao.id,
-      emailEnviado: resultadoEmail.ok,
-      emailErro: resultadoEmail.ok ? undefined : resultadoEmail.erro
-    };
+    return { ok: true, avaliacaoId: novaAvaliacao.id };
   } catch (erro) {
     const mensagem = erro instanceof Error ? erro.message : String(erro);
     return { ok: false, erro: mensagem };

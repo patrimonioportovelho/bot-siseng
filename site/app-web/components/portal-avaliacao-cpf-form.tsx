@@ -167,7 +167,7 @@ export function PortalAvaliacaoCpfForm({
   const [enviando, setEnviando] = useState(false);
   const [etapaEnvio, setEtapaEnvio] = useState("");
   const [resultado, setResultado] = useState<
-    { ok: true; avaliacaoId: string; emailEnviado: boolean; emailErro?: string } | { ok: false; erro: string } | null
+    { ok: true; avaliacaoId: string } | { ok: false; erro: string } | null
   >(null);
 
   const [rascunhoEncontrado, setRascunhoEncontrado] = useState<RascunhoAvaliacaoCpf | null>(null);
@@ -776,12 +776,6 @@ export function PortalAvaliacaoCpfForm({
         {resultado?.ok && (
           <span className="text-xs text-green-700 font-semibold">
             Cadastrado com sucesso. O administrativo vai definir a finalidade e dar sequência no Financiamento.
-            {!resultado.emailEnviado && (
-              <span className="block text-amber-700 font-normal mt-0.5">
-                A avaliação foi salva, mas o email com a documentação não saiu{resultado.emailErro ? `: ${resultado.emailErro}` : "."} Avise o
-                administrativo por outro canal.
-              </span>
-            )}
           </span>
         )}
         {resultado && !resultado.ok && <span className="text-xs text-red-600">{resultado.erro}</span>}

@@ -760,9 +760,7 @@ export function PortalLocacaoForm({
   const [enviando, setEnviando] = useState(false);
   const [etapaEnvio, setEtapaEnvio] = useState("");
   const [resultado, setResultado] = useState<
-    | { ok: true; idLegado: string | null; emailEnviado: boolean; emailErro?: string }
-    | { ok: false; erro: string }
-    | null
+    { ok: true; idLegado: string | null } | { ok: false; erro: string } | null
   >(null);
 
   const [rascunhoEncontrado, setRascunhoEncontrado] = useState<RascunhoLocacao | null>(null);
@@ -1756,11 +1754,6 @@ export function PortalLocacaoForm({
           <span className="text-xs text-green-700 font-semibold">
             Cadastrado com sucesso{resultado.idLegado ? ` — ${resultado.idLegado}` : ""}. O administrativo vai dar
             sequência.
-            {!resultado.emailEnviado && (
-              <span className="block text-amber-700 font-normal mt-0.5">
-                A transação foi salva, mas o email com a documentação não saiu{resultado.emailErro ? `: ${resultado.emailErro}` : "."} Avise o administrativo por outro canal.
-              </span>
-            )}
           </span>
         )}
         {resultado && !resultado.ok && <span className="text-xs text-red-600">{resultado.erro}</span>}

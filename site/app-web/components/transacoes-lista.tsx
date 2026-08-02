@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { prisma } from "@/lib/prisma";
-import { lojasSelecionadas, whereLojaFiltro } from "@/lib/lojas/filtro";
+import { lojasSelecionadas, whereLojaFiltroObrigatorio } from "@/lib/lojas/filtro";
 import {
   formatMoeda,
   formatDataCalendario,
@@ -40,11 +40,11 @@ export async function TransacoesLista({ tipo, q, novoHref }: { tipo: "Locação"
   const where = {
     tipo,
     excluido: false,
-    // Filtro de Loja (seletor no Topbar) — transação sem loja (não deveria
-    // existir hoje em dia, mas cobre legado) continua aparecendo em
-    // qualquer filtro.
+    // Filtro de Loja (seletor no Topbar) — loja_id é obrigatório em
+    // transacoes no banco, então não precisa (e não pode) do "OR loja_id
+    // null" que whereLojaFiltro usa pros models onde loja é opcional.
     AND: [
-      whereLojaFiltro(lojasFiltro),
+      whereLojaFiltroObrigatorio(lojasFiltro),
       ...(termo
         ? [
             {

@@ -3,7 +3,7 @@ import { Topbar } from "@/components/topbar";
 import { prisma } from "@/lib/prisma";
 import { formatMoeda } from "@/lib/format";
 import { STATUS_ADM } from "@/lib/administracoes/opcoes";
-import { lojasSelecionadas, whereLojaFiltro } from "@/lib/lojas/filtro";
+import { lojasSelecionadas, whereLojaFiltroObrigatorio } from "@/lib/lojas/filtro";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +20,7 @@ export default async function AdministracoesPage({
     excluido: false,
     // Filtro de Loja (seletor no Topbar).
     AND: [
-      whereLojaFiltro(lojasFiltro),
+      whereLojaFiltroObrigatorio(lojasFiltro),
       ...(termo
         ? [
             {

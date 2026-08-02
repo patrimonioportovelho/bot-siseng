@@ -51,6 +51,20 @@ export function whereLojaFiltro(selecionadas: string[], campo: string = "loja_id
   };
 }
 
+// Mesma ideia, mas pra models onde `loja_id` é OBRIGATÓRIO no banco
+// (transacoes e adm_imoveis — todo registro já tem uma loja desde sempre,
+// nunca fica NULL). Bug encontrado em 02/08/2026: usar whereLojaFiltro (que
+// inclui "OR loja_id null") nesses dois models quebrava o Dashboard e as
+// listagens de Transações/Administrações em produção — o Prisma rejeita
+// `null` como valor de filtro pra uma coluna String obrigatória
+// (PrismaClientValidationError: "Argument `loja_id` is missing"), porque o
+// tipo gerado pra ela é StringFilter, não StringNullableFilter. Sem o "OR
+// null" aqui não tem problema nenhum: não existe (e não pode existir)
+// transacao/adm_imovel sem loja pra "vazar" do filtro.
+export function whereLojaFiltroObrigatorio(selecionadas: string[], campo: string = "loja_id") {
+  return { [campo]: { in: selecionadas } };
+}
+
 // Mesma ideia, mas pra `movimentacoes` (usado em várias contas do
 // Dashboard/Financeiro) — esse model não tem loja_id próprio, só chega na
 // loja através da transação vinculada (transacao_id/transacoes, ambos

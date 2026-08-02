@@ -22,6 +22,7 @@ import { ultimoResetSessaoMs } from "@/lib/session";
 import {
   lojasSelecionadas,
   whereLojaFiltro,
+  whereLojaFiltroObrigatorio,
   whereLojaFiltroMovimentacao,
   whereLojaFiltroParceiro
 } from "@/lib/lojas/filtro";
@@ -75,7 +76,7 @@ export default async function DashboardPage({
       tipo: "Compra e Venda",
       criado_no_portal: true,
       created_at: { gte: new Date(ultimoResetSessaoMs()) },
-      ...whereLojaFiltro(lojasFiltro)
+      ...whereLojaFiltroObrigatorio(lojasFiltro)
     },
     orderBy: { created_at: "desc" },
     select: {
@@ -131,7 +132,7 @@ export default async function DashboardPage({
   ] = await Promise.all([
     prisma.imoveis.count({ where: { excluido: false, ...whereLojaFiltro(lojasFiltro) } }),
     prisma.transacoes.count({
-      where: { excluido: false, status: STATUS_TRANSACAO_EM_ABERTO, ...whereLojaFiltro(lojasFiltro) }
+      where: { excluido: false, status: STATUS_TRANSACAO_EM_ABERTO, ...whereLojaFiltroObrigatorio(lojasFiltro) }
     }),
     // Base de tudo que é "negócio assinado no período": alimenta VGH/VGV/VGL,
     // a quantidade de Locação sem administração, os distratos e o gráfico de
@@ -140,7 +141,7 @@ export default async function DashboardPage({
       where: {
         excluido: false,
         data_assinatura: { gte: inicio, lt: fimExclusivo },
-        ...whereLojaFiltro(lojasFiltro)
+        ...whereLojaFiltroObrigatorio(lojasFiltro)
       },
       select: {
         tipo: true,
@@ -160,7 +161,7 @@ export default async function DashboardPage({
         tipo: "Locação",
         status: STATUS_TRANSACAO_EM_ABERTO,
         data_vencimento: { gte: hoje, lte: em90Dias },
-        ...whereLojaFiltro(lojasFiltro)
+        ...whereLojaFiltroObrigatorio(lojasFiltro)
       }
     }),
     prisma.transacoes.count({
@@ -169,12 +170,14 @@ export default async function DashboardPage({
         tipo: "Locação",
         status: STATUS_TRANSACAO_EM_ABERTO,
         data_vencimento: { lt: hoje },
-        ...whereLojaFiltro(lojasFiltro)
+        ...whereLojaFiltroObrigatorio(lojasFiltro)
       }
     }),
     // Administrações ativas é sempre "agora" (estado atual), não do período —
     // mesma lógica do "Vencido em aberto" do Financeiro, mais abaixo.
-    prisma.adm_imoveis.count({ where: { status: "Ativo", excluido: false, ...whereLojaFiltro(lojasFiltro) } }),
+    prisma.adm_imoveis.count({
+      where: { status: "Ativo", excluido: false, ...whereLojaFiltroObrigatorio(lojasFiltro) }
+    }),
     prisma.solicitacoes_acesso.count({
       where: {
         status: "pendente",
@@ -204,7 +207,7 @@ export default async function DashboardPage({
       where: {
         excluido: false,
         data_assinatura: { gte: inicio, lt: fimExclusivo },
-        ...whereLojaFiltro(lojasFiltro)
+        ...whereLojaFiltroObrigatorio(lojasFiltro)
       },
       // Antes era 15 e o resto só aparecia clicando em "Ver todas" — agora a
       // tabela rola dentro do card (mesmo padrão das listas da Saúde da
@@ -224,7 +227,7 @@ export default async function DashboardPage({
       where: {
         excluido: false,
         data_assinatura: { gte: inicio, lt: fimExclusivo },
-        ...whereLojaFiltro(lojasFiltro)
+        ...whereLojaFiltroObrigatorio(lojasFiltro)
       },
       select: { valor_administracao: true, data_assinatura: true }
     }),

@@ -5,6 +5,19 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireAdminSession, requireAdm, logAlteracao } from "@/lib/auth";
 import { registrarEJogarErro } from "@/lib/erros";
+import { enviarEmail } from "@/lib/email";
+import {
+  criarUploadAssinadoImagemConsulta,
+  criarLinkImagemConsultaParaEmail,
+  baixarImagemConsulta,
+  apagarImagemConsulta
+} from "@/lib/supabase-admin";
+
+// Mesmo endereço fixo usado em app/portal/avaliacao-cpf/actions.ts pro email
+// de "nova avaliação cadastrada" — usado aqui como Reply-To do email pro
+// corretor, pra quem responder cair no mesmo lugar que recebeu o pedido
+// original (mesmo sem a variável de ambiente configurada).
+const EMAIL_DESTINO_PADRAO = "engimob@remax.com.br";
 
 function texto(formData: FormData, campo: string): string | null {
   const v = formData.get(campo);
@@ -103,10 +116,30 @@ function camposAvaliacao(formData: FormData, clienteId: string | null) {
     valor_fgts: decimal(formData, "valor_fgts"),
     usa_subsidio: booleano(formData, "usa_subsidio"),
     valor_subsidio: decimal(formData, "valor_subsidio"),
-    imagem_consulta_url: texto(formData, "imagem_consulta_url"),
+    // Upload de verdade (bucket privado avaliacoes-imagens) — o
+    // AvaliacaoForm sempre manda o caminho atual (o que já existia, ou o
+    // recém-enviado) nesse campo oculto a cada salvamento, então isso nunca
+    // apaga a imagem sem querer. imagem_consulta_url (link colado à mão,
+    // formato antigo) não é mais editável por aqui.
+    imagem_consulta_caminho: texto(formData, "imagem_consulta_caminho"),
     observacao: texto(formData, "observacao"),
     updated_at: new Date()
   };
+}
+
+// Pedido pelo navegador antes do upload de verdade (ver criarUploadAssinadoImagemConsulta) —
+// mesmo esquema de URL assinada de upload já usado pra imagem de capa das
+// publicações, pra não passar o arquivo pelo corpo da Server Action.
+export async function prepararUploadImagemConsultaAction(
+  nomeArquivo: string
+): Promise<{ ok: true; caminho: string; token: string } | { ok: false; erro: string }> {
+  await requireAdminSession();
+  try {
+    const { caminho, token } = await criarUploadAssinadoImagemConsulta(nomeArquivo);
+    return { ok: true, caminho, token };
+  } catch (erro) {
+    return { ok: false, erro: erro instanceof Error ? erro.message : "Falha ao preparar o upload da imagem." };
+  }
 }
 
 export async function criarAvaliacaoAction(formData: FormData) {
@@ -171,6 +204,12 @@ export async function atualizarAvaliacaoAction(formData: FormData) {
     .update({ where: { id }, data: campos })
     .catch((erro) => registrarEJogarErro({ entidadeTipo: "avaliacoes", entidadeId: id, acao: "editar", erro }));
 
+  // Imagem trocada por uma nova — apaga a antiga do Storage pra não deixar
+  // arquivo órfão (mesmo cuidado de apagarImagemPublicacao em Configurações).
+  if (antes.imagem_consulta_caminho && antes.imagem_consulta_caminho !== campos.imagem_consulta_caminho) {
+    await apagarImagemConsulta(antes.imagem_consulta_caminho);
+  }
+
   await sincronizarCoTitulares(id, formData);
 
   await logAlteracao({
@@ -212,6 +251,80 @@ export async function apagarAvaliacaoAction(formData: FormData) {
 
   revalidatePath("/financiamento");
   redirect("/financiamento?excluido=1");
+}
+
+// Manda a imagem da consulta de CPF pro corretor (parceiro) que pediu a
+// avaliação, como se fosse uma resposta ao pedido — pedido do usuário em
+// 02/08/2026. Botão manual (não automático): o admin decide quando mandar,
+// depois de conferir que a imagem certa foi enviada.
+export async function enviarImagemConsultaCorretorAction(formData: FormData) {
+  await requireAdminSession();
+
+  const avaliacaoId = texto(formData, "avaliacaoId");
+  if (!avaliacaoId) throw new Error("Avaliação inválida.");
+
+  const avaliacao = await prisma.avaliacoes.findUnique({
+    where: { id: avaliacaoId },
+    include: { parceiros: true, clientes: true }
+  });
+  if (!avaliacao) throw new Error("Avaliação não encontrada.");
+  if (!avaliacao.imagem_consulta_caminho) {
+    throw new Error("Envie a imagem da consulta antes de mandar pro corretor.");
+  }
+  if (!avaliacao.parceiros) {
+    throw new Error("Essa avaliação não tem um parceiro responsável vinculado — não dá pra saber pra quem mandar.");
+  }
+  if (!avaliacao.parceiros.email) {
+    throw new Error(
+      `${avaliacao.parceiros.nome} não tem email cadastrado. Atualize o cadastro do parceiro em Parceiros antes de enviar.`
+    );
+  }
+
+  const [conteudo, linkReforco] = await Promise.all([
+    baixarImagemConsulta(avaliacao.imagem_consulta_caminho),
+    criarLinkImagemConsultaParaEmail(avaliacao.imagem_consulta_caminho)
+  ]);
+
+  const clienteNome = avaliacao.clientes?.nome ?? "o cliente";
+  const extensao = avaliacao.imagem_consulta_caminho.split(".").pop() || "jpg";
+
+  const html = `
+    <div style="font-family: sans-serif; font-size: 14px; color: #1f2937;">
+      <p>Olá, ${avaliacao.parceiros.nome}!</p>
+      <p>Segue o resultado da <strong>Consulta de CPF</strong> que você pediu, referente a <strong>${clienteNome}</strong>.</p>
+      ${linkReforco ? `<p><a href="${linkReforco}" target="_blank" rel="noopener noreferrer">Abrir a imagem</a> (link válido por 7 dias)</p>` : ""}
+      <p style="color:#6b7280; font-size:12px;">Qualquer dúvida, é só responder este email.</p>
+    </div>
+  `;
+
+  const resultado = await enviarEmail({
+    to: avaliacao.parceiros.email,
+    subject: `Consulta de CPF — ${clienteNome}`,
+    html,
+    attachments: conteudo ? [{ filename: `consulta-cpf.${extensao}`, content: conteudo }] : undefined,
+    replyTo: process.env.EMAIL_ADM_FINANCIAMENTO || EMAIL_DESTINO_PADRAO
+  });
+
+  if (!resultado.ok) {
+    await registrarEJogarErro({
+      entidadeTipo: "avaliacoes",
+      entidadeId: avaliacaoId,
+      acao: "enviar_imagem_consulta_corretor",
+      erro: new Error(resultado.erro)
+    });
+  }
+
+  await prisma.avaliacoes.update({ where: { id: avaliacaoId }, data: { imagem_consulta_enviada_em: new Date() } });
+
+  await logAlteracao({
+    entidadeTipo: "avaliacoes",
+    entidadeId: avaliacaoId,
+    acao: "enviar_imagem_consulta_corretor",
+    dadosDepois: { enviado_para: avaliacao.parceiros.email }
+  });
+
+  revalidatePath(`/financiamento/${avaliacaoId}`);
+  redirect(`/financiamento/${avaliacaoId}?salvo=1`);
 }
 
 // Análise de crédito muitas vezes é conjunta (cônjuge, por exemplo) — além do

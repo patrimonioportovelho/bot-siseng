@@ -9,7 +9,16 @@ import {
   TABELA_AVALIACAO_OPCOES,
   INDEXADOR_AVALIACAO_OPCOES
 } from "@/lib/financiamento/opcoes";
-import { formatCpf, formatTelefone, formatMoeda, formatDataCalendario, formatValorEditavel } from "@/lib/format";
+import {
+  formatCpf,
+  formatTelefone,
+  formatMoeda,
+  formatDataCalendario,
+  formatDataHora,
+  formatValorEditavel
+} from "@/lib/format";
+import { prepararUploadImagemConsultaAction } from "@/app/financiamento/actions";
+import { supabaseBrowser, BUCKET_AVALIACOES_IMAGENS } from "@/lib/supabase-browser";
 
 type Banco = { id: string; nome: string };
 type Parceiro = { id: string; nome: string };
@@ -39,6 +48,8 @@ type AvaliacaoExistente = {
   usa_subsidio: boolean;
   valor_subsidio: unknown;
   imagem_consulta_url: string | null;
+  imagem_consulta_caminho: string | null;
+  imagem_consulta_enviada_em: Date | null;
   observacao: string | null;
 };
 
@@ -77,18 +88,24 @@ function Ficha({
   cotitulares,
   bancoNome,
   parceiroNome,
+  parceiroEmail,
+  imagemConsultaUrl,
   onEditar,
   actionApagar,
-  podeApagar
+  podeApagar,
+  actionEnviarImagem
 }: {
   avaliacao: AvaliacaoExistente;
   clienteNome: string | null;
   cotitulares: Cliente[];
   bancoNome: string | null;
   parceiroNome: string | null;
+  parceiroEmail: string | null;
+  imagemConsultaUrl: string | null;
   onEditar: () => void;
   actionApagar?: (formData: FormData) => void;
   podeApagar?: boolean;
+  actionEnviarImagem?: (formData: FormData) => void;
 }) {
   const a = avaliacao;
 
@@ -155,11 +172,52 @@ function Ficha({
         </div>
       </Cartao>
 
-      {a.imagem_consulta_url && (
+      {(imagemConsultaUrl || a.imagem_consulta_url) && (
         <Cartao titulo="Imagem da consulta">
-          <a href={a.imagem_consulta_url} target="_blank" rel="noopener noreferrer" className="text-xs text-primary underline">
-            abrir
-          </a>
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center gap-3">
+              {imagemConsultaUrl && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={imagemConsultaUrl}
+                  alt="Print da consulta de CPF"
+                  className="w-20 h-20 rounded-lg object-cover border border-gray-200"
+                />
+              )}
+              <a
+                href={imagemConsultaUrl ?? a.imagem_consulta_url ?? "#"}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-primary underline"
+              >
+                abrir em tamanho real
+              </a>
+            </div>
+            {imagemConsultaUrl && actionEnviarImagem && (
+              <div className="flex items-center gap-3 pt-2 border-t border-gray-100">
+                <form action={actionEnviarImagem}>
+                  <input type="hidden" name="avaliacaoId" value={a.id} />
+                  <button
+                    type="submit"
+                    disabled={!parceiroEmail}
+                    className="text-xs bg-primary text-white rounded-lg px-3 py-1.5 font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {a.imagem_consulta_enviada_em ? "Reenviar ao corretor" : "Enviar ao corretor"}
+                  </button>
+                </form>
+                {!parceiroEmail && (
+                  <span className="text-[11px] text-amber-600">
+                    {parceiroNome ?? "Parceiro"} não tem email cadastrado — não dá pra enviar.
+                  </span>
+                )}
+                {parceiroEmail && a.imagem_consulta_enviada_em && (
+                  <span className="text-[11px] text-gray-400">
+                    Enviado em {formatDataHora(a.imagem_consulta_enviada_em)}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
         </Cartao>
       )}
 
@@ -176,18 +234,24 @@ export function AvaliacaoForm({
   cotitularesIniciais,
   bancos,
   parceiros,
+  parceiroEmail,
+  imagemConsultaUrl,
   action,
   actionApagar,
-  podeApagar
+  podeApagar,
+  actionEnviarImagem
 }: {
   avaliacao: AvaliacaoExistente | null;
   clientes: Cliente[];
   cotitularesIniciais?: Cliente[];
   bancos: Banco[];
   parceiros: Parceiro[];
-  action: (formData: FormData) => void;
+  parceiroEmail?: string | null;
+  imagemConsultaUrl?: string | null;
+  action: (formData: FormData) => void | Promise<void>;
   actionApagar?: (formData: FormData) => void;
   podeApagar?: boolean;
+  actionEnviarImagem?: (formData: FormData) => void;
 }) {
   const a = avaliacao;
   // Cadastro novo já nasce em edição; cadastro existente abre em modo
@@ -215,6 +279,23 @@ export function AvaliacaoForm({
   const [parceiroId, setParceiroId] = useState(a?.parceiro_id ?? "");
   const telefoneRef = useRef<HTMLInputElement>(null);
   const cpfRef = useRef<HTMLInputElement>(null);
+
+  // Imagem da consulta: upload de verdade em vez de link colado (pedido do
+  // usuário em 02/08/2026) — mesmo esquema do PublicacaoForm (Configurações):
+  // o arquivo escolhido só sobe pro Storage no momento de salvar o
+  // formulário (não na hora de escolher o arquivo), pra não deixar upload
+  // órfão se a pessoa desistir e não salvar. Até lá, só guarda uma prévia
+  // local (createObjectURL, sem rede nenhuma) pra já mostrar a imagem
+  // escolhida na tela.
+  const [arquivoImagem, setArquivoImagem] = useState<File | null>(null);
+  const [imagemPreviewUrl, setImagemPreviewUrl] = useState<string | null>(imagemConsultaUrl ?? null);
+  const [enviando, setEnviando] = useState(false);
+  const [erroEnvio, setErroEnvio] = useState<string | null>(null);
+
+  function selecionarImagem(arquivo: File | null) {
+    setArquivoImagem(arquivo);
+    setImagemPreviewUrl(arquivo ? URL.createObjectURL(arquivo) : (imagemConsultaUrl ?? null));
+  }
 
   // Análise de crédito conjunta (cônjuge, por exemplo): além do cliente
   // titular acima, aceita adicionar outros clientes à avaliação — mesmo
@@ -259,15 +340,42 @@ export function AvaliacaoForm({
     if (c.cpf && cpfRef.current) cpfRef.current.value = formatCpf(c.cpf);
   }
 
-  function aoEnviar(e: React.FormEvent<HTMLFormElement>) {
+  async function aoEnviar(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setErroEnvio(null);
+    const form = e.currentTarget;
+
     if (status === "Consulta de CPF") {
-      const cpfDigitado = new FormData(e.currentTarget).get("cpf");
+      const cpfDigitado = new FormData(form).get("cpf");
       const nomeOk = clienteId.length > 0 || buscaCliente.trim().length > 0;
       const cpfOk = typeof cpfDigitado === "string" && cpfDigitado.replace(/\D/g, "").length >= 11;
       if (!nomeOk || !cpfOk) {
-        e.preventDefault();
         alert("Consulta de CPF precisa do nome completo e do CPF preenchidos — é o que vai pro banco de dados ligado ao parceiro.");
+        return;
       }
+    }
+
+    setEnviando(true);
+    try {
+      // Caminho atual da imagem: só troca por um novo se a pessoa escolheu
+      // um arquivo diferente agora — senão mantém o que já estava salvo.
+      let imagemCaminhoFinal = a?.imagem_consulta_caminho ?? "";
+      if (arquivoImagem) {
+        const preparo = await prepararUploadImagemConsultaAction(arquivoImagem.name);
+        if (!preparo.ok) throw new Error(preparo.erro);
+        const { error: erroUpload } = await supabaseBrowser()
+          .storage.from(BUCKET_AVALIACOES_IMAGENS)
+          .uploadToSignedUrl(preparo.caminho, preparo.token, arquivoImagem, { contentType: arquivoImagem.type });
+        if (erroUpload) throw new Error(`Falha ao enviar a imagem: ${erroUpload.message}`);
+        imagemCaminhoFinal = preparo.caminho;
+      }
+
+      const fd = new FormData(form);
+      fd.set("imagem_consulta_caminho", imagemCaminhoFinal);
+      await action(fd);
+    } catch (erro) {
+      setErroEnvio(erro instanceof Error ? erro.message : "Falha ao salvar a avaliação.");
+      setEnviando(false);
     }
   }
 
@@ -279,9 +387,12 @@ export function AvaliacaoForm({
         cotitulares={cotitularesIniciais ?? []}
         bancoNome={bancoAtual?.nome ?? null}
         parceiroNome={parceiroAtual?.nome ?? null}
+        parceiroEmail={parceiroEmail ?? null}
+        imagemConsultaUrl={imagemConsultaUrl ?? null}
         onEditar={() => setModoEdicao(true)}
         actionApagar={actionApagar}
         podeApagar={podeApagar}
+        actionEnviarImagem={actionEnviarImagem}
       />
     );
   }
@@ -289,7 +400,7 @@ export function AvaliacaoForm({
   const consultaCpf = status === "Consulta de CPF";
 
   return (
-    <form action={action} onSubmit={aoEnviar} className="flex flex-col gap-4">
+    <form onSubmit={aoEnviar} className="flex flex-col gap-4">
       {a && <input type="hidden" name="avaliacaoId" value={a.id} />}
       <input type="hidden" name="cliente_id" value={clienteId} />
       <input type="hidden" name="cliente_nome_busca" value={buscaCliente} />
@@ -581,14 +692,28 @@ export function AvaliacaoForm({
         <div className="flex flex-col gap-3">
           <div>
             <label className={LABEL}>
-              Link da imagem da consulta {consultaCpf && <span className="text-[11px] text-gray-400 font-normal">— print do resultado da Consulta de CPF</span>}
+              Imagem da consulta{" "}
+              {consultaCpf && (
+                <span className="text-[11px] text-gray-400 font-normal">— print do resultado da Consulta de CPF</span>
+              )}
             </label>
+            {imagemPreviewUrl && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={imagemPreviewUrl}
+                alt="Print da consulta de CPF"
+                className="w-24 h-24 rounded-lg object-cover border border-gray-200 mb-1.5"
+              />
+            )}
             <input
-              className={CAMPO}
-              name="imagem_consulta_url"
-              placeholder="https://..."
-              defaultValue={a?.imagem_consulta_url ?? ""}
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              onChange={(e) => selecionarImagem(e.target.files?.[0] ?? null)}
+              className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full outline-none focus:border-primary bg-white file:mr-2 file:text-xs file:border-0 file:bg-gray-100 file:rounded file:px-2 file:py-1"
             />
+            <p className="text-[10px] text-gray-400 mt-1">
+              {imagemPreviewUrl ? "Escolha um arquivo pra trocar a imagem atual." : "JPG, PNG ou WEBP — o print da tela do resultado."}
+            </p>
           </div>
           <div>
             <label className={LABEL}>Observação</label>
@@ -596,6 +721,10 @@ export function AvaliacaoForm({
           </div>
         </div>
       </div>
+
+      {erroEnvio && (
+        <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg px-3 py-2">{erroEnvio}</div>
+      )}
 
       <div className="flex justify-end gap-2">
         {a && (
@@ -607,8 +736,12 @@ export function AvaliacaoForm({
             Cancelar
           </button>
         )}
-        <button type="submit" className="bg-primary text-white rounded-lg px-5 py-2 text-sm font-semibold hover:opacity-90">
-          {a ? "Salvar alterações" : "Cadastrar avaliação"}
+        <button
+          type="submit"
+          disabled={enviando}
+          className="bg-primary text-white rounded-lg px-5 py-2 text-sm font-semibold hover:opacity-90 disabled:opacity-60"
+        >
+          {enviando ? "Salvando..." : a ? "Salvar alterações" : "Cadastrar avaliação"}
         </button>
       </div>
     </form>

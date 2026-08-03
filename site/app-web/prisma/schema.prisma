@@ -122,6 +122,16 @@ model avaliacoes {
   usa_subsidio        Boolean      @default(false)
   valor_subsidio      Decimal?     @db.Decimal(14, 2)
   imagem_consulta_url String?
+  // Caminho no bucket privado "avaliacoes-imagens" — pedido do usuário em
+  // 02/08/2026: o campo acima (imagem_consulta_url) era um link colado à mão
+  // sem validação, por isso os cliques quebravam. Novo upload de verdade usa
+  // este campo; imagem_consulta_url segue existindo só pra links antigos que
+  // já tinham sido colados antes dessa mudança.
+  imagem_consulta_caminho    String?
+  // Preenchido quando o admin manda o email com a imagem pro corretor que
+  // pediu a avaliação — controla o botão "Enviar ao corretor" (mostra
+  // "reenviar" em vez de "enviar" e evita mandar em dobro sem querer).
+  imagem_consulta_enviada_em DateTime? @db.Timestamptz(6)
   observacao          String?
   excluido            Boolean      @default(false)
   criado_no_portal    Boolean      @default(false)

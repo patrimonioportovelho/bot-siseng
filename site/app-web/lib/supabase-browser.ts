@@ -33,3 +33,7 @@ export const BUCKET_DOCUMENTOS_PORTAL = "documentos-portal";
 // upload direto da imagem de capa das publicações (Notícias/Editais), pelo
 // mesmo motivo do bucket acima (limite de 4,5MB da Vercel).
 export const BUCKET_PUBLICACOES = "publicacoes";
+
+// Precisa bater com BUCKET_AVALIACOES_IMAGENS em lib/supabase-admin.ts —
+// upload direto da imagem da consulta de CPF (Avaliação, no Financiamento).
+export const BUCKET_AVALIACOES_IMAGENS = "avaliacoes-imagens";

@@ -269,6 +269,97 @@ export async function criarUrlAssinadaDocumentoGerado(caminho: string): Promise<
   return data.signedUrl;
 }
 
+// Imagem da consulta de CPF, anexada na Avaliação (módulo Financiamento) —
+// pedido do usuário em 02/08/2026: antes disso era só um campo de texto onde
+// alguém colava um link à mão (sem validação — por isso os cliques
+// costumavam quebrar). Agora é upload de verdade, bucket privado (mesmo
+// motivo do bucket de documentos gerados: essa imagem pode ter dado pessoal
+// visível), com o mesmo esquema de URL assinada de curta duração pra ver na
+// tela do admin, e uma URL assinada de validade maior (7 dias) só pra ir no
+// corpo do email quando o admin manda a imagem pro corretor que pediu.
+const BUCKET_AVALIACOES_IMAGENS = "avaliacoes-imagens";
+
+async function garantirBucketAvaliacoesImagens(): Promise<void> {
+  const supabase = supabaseAdmin();
+  const { data: buckets, error } = await supabase.storage.listBuckets();
+  if (error) throw new Error(`Não consegui verificar o armazenamento: ${error.message}`);
+  if (buckets?.some((b) => b.name === BUCKET_AVALIACOES_IMAGENS)) return;
+
+  const { error: erroCriar } = await supabase.storage.createBucket(BUCKET_AVALIACOES_IMAGENS, {
+    public: false,
+    fileSizeLimit: "10MB"
+  });
+  // Corrida entre duas requisições criando o bucket ao mesmo tempo não é um
+  // erro de verdade — só a segunda perde a corrida.
+  if (erroCriar && !erroCriar.message.toLowerCase().includes("already exists")) {
+    throw new Error(`Não consegui preparar o armazenamento: ${erroCriar.message}`);
+  }
+}
+
+const EXTENSOES_IMAGEM_CONSULTA_ACEITAS = new Set(["jpg", "jpeg", "png", "webp"]);
+
+export async function criarUploadAssinadoImagemConsulta(
+  nomeArquivo: string
+): Promise<{ caminho: string; token: string }> {
+  const extensaoBruta = extensaoDoNome(nomeArquivo).toLowerCase();
+  const extensao = EXTENSOES_IMAGEM_CONSULTA_ACEITAS.has(extensaoBruta) ? extensaoBruta : null;
+  if (!extensao) {
+    throw new Error("Formato de imagem não suportado. Envie um JPG, PNG ou WEBP (print da tela).");
+  }
+
+  await garantirBucketAvaliacoesImagens();
+  const caminho = `${randomUUID()}.${extensao}`;
+  const supabase = supabaseAdmin();
+  const { data, error } = await supabase.storage.from(BUCKET_AVALIACOES_IMAGENS).createSignedUploadUrl(caminho);
+  if (error || !data) {
+    throw new Error(`Não consegui preparar o upload da imagem: ${error?.message ?? "erro desconhecido"}`);
+  }
+  return { caminho, token: data.token };
+}
+
+// 24h — mesma folga/mesmo motivo de VALIDADE_URL_DOCUMENTO_GERADO_SEGUNDOS,
+// recalculada do zero toda vez que a tela da Avaliação é carregada.
+const VALIDADE_URL_IMAGEM_CONSULTA_SEGUNDOS = 60 * 60 * 24;
+
+export async function criarUrlAssinadaImagemConsulta(caminho: string): Promise<string | null> {
+  const supabase = supabaseAdmin();
+  const { data, error } = await supabase.storage
+    .from(BUCKET_AVALIACOES_IMAGENS)
+    .createSignedUrl(caminho, VALIDADE_URL_IMAGEM_CONSULTA_SEGUNDOS);
+  if (error || !data) return null;
+  return data.signedUrl;
+}
+
+// Link de reforço mandado dentro do email pro corretor (além do anexo de
+// verdade, ver baixarImagemConsulta) — 7 dias de validade, mesmo padrão de
+// criarLinkDownloadDocumento.
+export async function criarLinkImagemConsultaParaEmail(caminho: string): Promise<string | null> {
+  const supabase = supabaseAdmin();
+  const { data, error } = await supabase.storage
+    .from(BUCKET_AVALIACOES_IMAGENS)
+    .createSignedUrl(caminho, 60 * 60 * 24 * 7);
+  if (error || !data) return null;
+  return data.signedUrl;
+}
+
+// Baixa o conteúdo de verdade da imagem (server-side) — usado pra anexar no
+// email pro corretor, mesmo padrão de baixarDocumentoPortal.
+export async function baixarImagemConsulta(caminho: string): Promise<Buffer | null> {
+  const supabase = supabaseAdmin();
+  const { data, error } = await supabase.storage.from(BUCKET_AVALIACOES_IMAGENS).download(caminho);
+  if (error || !data) return null;
+  const arrayBuffer = await data.arrayBuffer();
+  return Buffer.from(arrayBuffer);
+}
+
+// Apaga do Storage a imagem antiga quando o admin troca por uma nova —
+// mesmo cuidado de apagarImagemPublicacao, pra não deixar arquivo órfão.
+export async function apagarImagemConsulta(caminho: string | null | undefined): Promise<void> {
+  if (!caminho) return;
+  const supabase = supabaseAdmin();
+  await supabase.storage.from(BUCKET_AVALIACOES_IMAGENS).remove([caminho]);
+}
+
 // Resolve a URL certa pra abrir um documento gerado, cobrindo os dois
 // formatos que convivem na mesma tabela depois desta mudança: registros
 // NOVOS (têm arquivo_caminho) pedem uma URL assinada fresca, na hora —

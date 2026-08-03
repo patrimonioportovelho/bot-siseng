@@ -353,6 +353,11 @@ CREATE TABLE avaliacoes (
   usa_subsidio          BOOLEAN NOT NULL DEFAULT false,
   valor_subsidio        NUMERIC(14,2),
   imagem_consulta_url   TEXT,
+  -- Caminho no bucket privado "avaliacoes-imagens" (upload de verdade, ver
+  -- lib/supabase-admin.ts) — imagem_consulta_url acima fica só pra links
+  -- antigos colados à mão antes de 02/08/2026.
+  imagem_consulta_caminho    TEXT,
+  imagem_consulta_enviada_em TIMESTAMPTZ,
   observacao            TEXT,
   created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()

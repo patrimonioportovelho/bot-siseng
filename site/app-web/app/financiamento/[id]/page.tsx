@@ -7,13 +7,15 @@ import { AvaliacaoForm } from "@/components/avaliacao-form";
 import { AndamentoForm } from "@/components/andamento-form";
 import { LancamentosLista } from "@/components/lancamentos-lista";
 import { formatDataCalendario } from "@/lib/format";
+import { criarUrlAssinadaImagemConsulta } from "@/lib/supabase-admin";
 import {
   atualizarAvaliacaoAction,
   criarAndamentoAction,
   atualizarAndamentoAction,
   sincronizarLancamentosAction,
   apagarAvaliacaoAction,
-  apagarAndamentoAction
+  apagarAndamentoAction,
+  enviarImagemConsultaCorretorAction
 } from "../actions";
 
 export const dynamic = "force-dynamic";
@@ -43,6 +45,12 @@ export default async function AvaliacaoDetalhePage({
   });
 
   if (!avaliacao || avaliacao.excluido) notFound();
+
+  // URL assinada da imagem da consulta (bucket privado) — recalculada do
+  // zero a cada carregamento da tela, mesmo padrão de resolverUrlDocumentoGerado.
+  const imagemConsultaUrl = avaliacao.imagem_consulta_caminho
+    ? await criarUrlAssinadaImagemConsulta(avaliacao.imagem_consulta_caminho)
+    : null;
 
   const [clientes, bancos, parceiros, avaliadores, imoveis, andamentos] = await Promise.all([
     prisma.clientes.findMany({
@@ -127,9 +135,12 @@ export default async function AvaliacaoDetalhePage({
         cotitularesIniciais={avaliacao.avaliacoes_clientes.map((v) => v.clientes)}
         bancos={bancos}
         parceiros={parceiros}
+        parceiroEmail={avaliacao.parceiros?.email ?? null}
+        imagemConsultaUrl={imagemConsultaUrl}
         action={atualizarAvaliacaoAction}
         actionApagar={apagarAvaliacaoAction}
         podeApagar={!!session?.isAdm}
+        actionEnviarImagem={enviarImagemConsultaCorretorAction}
       />
 
       {/* Andamento só faz sentido depois que o crédito foi Aprovado — é

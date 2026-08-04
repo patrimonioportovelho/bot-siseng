@@ -59,6 +59,27 @@ function inputDate(d: Date | null) {
   return new Date(d).toISOString().slice(0, 10);
 }
 
+// A "imagem da consulta" às vezes é mesmo um PDF (algumas consultas já saem
+// direto em PDF do banco) — usado pra decidir se mostra a miniatura como
+// <img> ou como um selo "PDF" (não dá pra renderizar PDF num <img>).
+function ehArquivoPdf(nomeOuCaminho: string | null | undefined): boolean {
+  return !!nomeOuCaminho && nomeOuCaminho.toLowerCase().endsWith(".pdf");
+}
+
+function MiniaturaArquivo({ url, ehPdf, tamanho = "w-20 h-20" }: { url: string; ehPdf: boolean; tamanho?: string }) {
+  if (ehPdf) {
+    return (
+      <div className={`${tamanho} rounded-lg border border-gray-200 bg-gray-50 flex items-center justify-center text-[10px] text-gray-500 font-bold shrink-0`}>
+        PDF
+      </div>
+    );
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={url} alt="Print da consulta de CPF" className={`${tamanho} rounded-lg object-cover border border-gray-200 shrink-0`} />
+  );
+}
+
 const CAMPO = "text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full outline-none focus:border-primary bg-white";
 const LABEL = "text-xs text-gray-600 block mb-1";
 
@@ -194,12 +215,7 @@ function Ficha({
           <div className="flex flex-col gap-3">
             <div className="flex items-center gap-3">
               {imagemConsultaUrl && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={imagemConsultaUrl}
-                  alt="Print da consulta de CPF"
-                  className="w-20 h-20 rounded-lg object-cover border border-gray-200"
-                />
+                <MiniaturaArquivo url={imagemConsultaUrl} ehPdf={ehArquivoPdf(a.imagem_consulta_caminho)} />
               )}
               <a
                 href={imagemConsultaUrl ?? a.imagem_consulta_url ?? "#"}
@@ -724,21 +740,24 @@ export function AvaliacaoForm({
               )}
             </label>
             {imagemPreviewUrl && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={imagemPreviewUrl}
-                alt="Print da consulta de CPF"
-                className="w-24 h-24 rounded-lg object-cover border border-gray-200 mb-1.5"
-              />
+              <div className="mb-1.5">
+                <MiniaturaArquivo
+                  url={imagemPreviewUrl}
+                  ehPdf={ehArquivoPdf(arquivoImagem?.name ?? a?.imagem_consulta_caminho)}
+                  tamanho="w-24 h-24"
+                />
+              </div>
             )}
             <input
               type="file"
-              accept="image/png,image/jpeg,image/webp"
+              accept="image/png,image/jpeg,image/webp,application/pdf"
               onChange={(e) => selecionarImagem(e.target.files?.[0] ?? null)}
               className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full outline-none focus:border-primary bg-white file:mr-2 file:text-xs file:border-0 file:bg-gray-100 file:rounded file:px-2 file:py-1"
             />
             <p className="text-[10px] text-gray-400 mt-1">
-              {imagemPreviewUrl ? "Escolha um arquivo pra trocar a imagem atual." : "JPG, PNG ou WEBP — o print da tela do resultado."}
+              {imagemPreviewUrl
+                ? "Escolha um arquivo pra trocar a imagem atual."
+                : "JPG, PNG, WEBP ou PDF — o print ou PDF do resultado."}
             </p>
           </div>
           <div>

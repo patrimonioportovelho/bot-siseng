@@ -296,7 +296,11 @@ async function garantirBucketAvaliacoesImagens(): Promise<void> {
   }
 }
 
-const EXTENSOES_IMAGEM_CONSULTA_ACEITAS = new Set(["jpg", "jpeg", "png", "webp"]);
+// Pedido do usuário em 02/08/2026: além do print (imagem), o resultado da
+// consulta às vezes já vem como PDF do próprio banco/consulta — aceita os
+// dois juntos, mesmo critério já usado nos anexos do portal do corretor
+// (EXTENSOES_DOCUMENTO_ACEITAS, mais acima).
+const EXTENSOES_IMAGEM_CONSULTA_ACEITAS = new Set(["jpg", "jpeg", "png", "webp", "pdf"]);
 
 export async function criarUploadAssinadoImagemConsulta(
   nomeArquivo: string
@@ -304,7 +308,7 @@ export async function criarUploadAssinadoImagemConsulta(
   const extensaoBruta = extensaoDoNome(nomeArquivo).toLowerCase();
   const extensao = EXTENSOES_IMAGEM_CONSULTA_ACEITAS.has(extensaoBruta) ? extensaoBruta : null;
   if (!extensao) {
-    throw new Error("Formato de imagem não suportado. Envie um JPG, PNG ou WEBP (print da tela).");
+    throw new Error("Formato não suportado. Envie um JPG, PNG, WEBP ou PDF (print ou PDF do resultado).");
   }
 
   await garantirBucketAvaliacoesImagens();

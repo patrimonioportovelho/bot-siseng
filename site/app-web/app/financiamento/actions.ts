@@ -285,6 +285,25 @@ export async function enviarImagemConsultaCorretorAction(formData: FormData) {
     criarLinkImagemConsultaParaEmail(avaliacao.imagem_consulta_caminho)
   ]);
 
+  // Bug encontrado em 04/08/2026: quando o download do Storage falhava por
+  // qualquer motivo, o código seguia e mandava o email mesmo assim, só sem
+  // o anexo (e ainda marcava como "enviado") — o admin achava que tinha
+  // dado certo, mas o corretor recebia um email sem o arquivo de verdade
+  // (só o link de reforço, quando esse também não falhava). Agora um
+  // download que falha é um erro de verdade, igual qualquer outra falha de
+  // envio: aparece em Configurações > Erros de cadastro e NÃO marca como
+  // enviado, pra dar pra tentar de novo.
+  if (!conteudo) {
+    await registrarEJogarErro({
+      entidadeTipo: "avaliacoes",
+      entidadeId: avaliacaoId,
+      acao: "enviar_imagem_consulta_corretor",
+      erro: new Error(
+        `Não consegui baixar o arquivo da imagem da consulta no Storage (caminho: ${avaliacao.imagem_consulta_caminho}). Tente enviar de novo — se persistir, refaça o upload da imagem.`
+      )
+    });
+  }
+
   const clienteNome = avaliacao.clientes?.nome ?? "o cliente";
   const extensao = avaliacao.imagem_consulta_caminho.split(".").pop() || "jpg";
 

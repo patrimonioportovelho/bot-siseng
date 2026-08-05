@@ -10,6 +10,7 @@ import { enviarEmail, type EmailAnexo } from "@/lib/email";
 import { buscarClienteDuplicado, mensagemClienteDuplicado } from "@/lib/clientes/duplicidade";
 import { validarCpfCnpj } from "@/lib/clientes/validacao";
 import { montarEnderecoPF } from "@/lib/clientes/endereco";
+import { gerarProximoIdCliente } from "@/lib/clientes/id-legado";
 import { criarUploadAssinadoDocumento, criarLinkDownloadDocumento, baixarDocumentoPortal } from "@/lib/supabase-admin";
 
 const EMAIL_DESTINO_PADRAO = "engimob@remax.com.br";
@@ -218,6 +219,7 @@ async function criarClienteCompleto(c: ClienteAvaliacaoDigitado, parceiroId: str
   return prisma.clientes.create({
     data: {
       nome: c.nome,
+      id_legado: await gerarProximoIdCliente(),
       tipo_cliente: c.tipoCliente,
       sexo: !ehCnpj ? c.sexo || null : null,
       cpf: !ehCnpj ? digitos(c.cpf) : null,

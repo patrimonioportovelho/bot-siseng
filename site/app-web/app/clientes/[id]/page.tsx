@@ -87,12 +87,16 @@ export default async function ClienteDetalhePage({
         </div>
       )}
 
-      <div className="text-sm font-bold text-gray-800 mb-1">{cliente.nome}</div>
-      <div className="text-xs text-gray-500 mb-0.5">
+      <div className="flex items-center gap-2 mb-1">
+        <div className="text-sm font-bold text-gray-800">{cliente.nome}</div>
+        <span className="text-[11px] font-semibold text-primary bg-primary/10 rounded-full px-2 py-0.5">
+          Id: {cliente.id_legado ?? cliente.id}
+        </span>
+      </div>
+      <div className="text-xs text-gray-500 mb-4">
         {cliente.tipo_cliente}
         {cliente.parceiros?.nome && <> · Parceiro responsável: {cliente.parceiros.nome}</>}
       </div>
-      <div className="text-xs text-gray-400 mb-4">Id cliente: {cliente.id_legado ?? cliente.id}</div>
 
       <ClienteForm
         cliente={cliente}

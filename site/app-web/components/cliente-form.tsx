@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useMemo, useState } from "react";
+import { useActionState, useMemo, useState, type ReactNode } from "react";
 import {
   ESTADOS_CIVIS,
   ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL,
@@ -10,7 +10,7 @@ import {
   SEXO_OPCOES,
   CAT_PROFISSAO_OPCOES
 } from "@/lib/clientes/opcoes";
-import { formatCpf, formatCnpj, formatTelefone, formatValorEditavel } from "@/lib/format";
+import { formatCpf, formatCnpj, formatTelefone, formatValorEditavel, formatMoeda, formatDataCalendario } from "@/lib/format";
 import { validarCpfCnpj } from "@/lib/clientes/validacao";
 import { buscarCep, UF_PARA_ESTADO } from "@/lib/enderecos";
 import { SocioForm } from "@/components/socio-form";
@@ -76,6 +76,163 @@ function formatCep(v: string): string {
 const CAMPO = "text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full outline-none focus:border-primary bg-white";
 const LABEL = "text-xs text-gray-600 block mb-1";
 
+function Cartao({ titulo, children, acao }: { titulo: string; children: ReactNode; acao?: ReactNode }) {
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl p-4">
+      <div className="flex items-center justify-between mb-3">
+        <div className="text-sm font-bold text-gray-800">{titulo}</div>
+        {acao}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+// Par label/valor lado a lado (estilo AppSheet) — usado na ficha de
+// visualização, somente leitura, mesmo padrão de components/parceiro-form.tsx.
+function Linha({ label, valor }: { label: string; valor: ReactNode }) {
+  return (
+    <div>
+      <div className="text-[11px] text-gray-400">{label}</div>
+      <div className="text-xs text-gray-800 font-medium mt-0.5 break-words">{valor ?? "—"}</div>
+    </div>
+  );
+}
+
+// Ficha de visualização (somente leitura) — pedido do usuário em 05/08/2026:
+// abrir um cliente cadastrado mostrava direto o formulário de edição
+// inteiro, liberado pra mexer em qualquer campo sem querer. Agora abre como
+// ficha, só com um botão "Editar" — mesmo padrão já usado em Parceiro
+// (components/parceiro-form.tsx) e Avaliação (components/avaliacao-form.tsx).
+function Ficha({
+  cliente,
+  lojas,
+  bancos,
+  parceiros,
+  estados,
+  cidades,
+  onEditar
+}: {
+  cliente: ClienteExistente;
+  lojas: Loja[];
+  bancos: Banco[];
+  parceiros: ParceiroOpcao[];
+  estados: EstadoOpcao[];
+  cidades: CidadeOpcao[];
+  onEditar: () => void;
+}) {
+  const c = cliente;
+  const ehPessoaJuridica = c.tipo_cliente === "Pessoa Jurídica";
+  const pedeUniaoEstavel = c.estado_civil ? ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL.includes(c.estado_civil) : false;
+
+  const parceiro = parceiros.find((p) => p.id === c.parceiro_id);
+  const loja = lojas.find((l) => l.id === c.loja_id);
+  const banco = bancos.find((b) => b.id === c.banco_id);
+  const estado = estados.find((e) => e.id === c.estado_id);
+  const cidade = cidades.find((cid) => cid.id === c.cidade_id);
+
+  const BotaoEditar = (
+    <button
+      type="button"
+      onClick={onEditar}
+      className="text-xs border border-gray-300 text-gray-700 rounded-lg px-3 py-1.5 hover:bg-gray-50 font-semibold"
+    >
+      Editar
+    </button>
+  );
+
+  return (
+    <div className="flex flex-col gap-4">
+      <Cartao titulo="Identificação" acao={BotaoEditar}>
+        <div className="grid md:grid-cols-2 gap-3">
+          <Linha label="Tipo de cliente" valor={c.tipo_cliente} />
+          <Linha label={ehPessoaJuridica ? "Razão social" : "Nome completo"} valor={c.nome} />
+          {!ehPessoaJuridica && <Linha label="CPF" valor={c.cpf ? formatCpf(c.cpf) : null} />}
+          {ehPessoaJuridica && <Linha label="CNPJ" valor={c.cnpj ? formatCnpj(c.cnpj) : null} />}
+          {!ehPessoaJuridica && (
+            <>
+              <Linha label="RG" valor={c.rg} />
+              <Linha label="Expedição" valor={c.expedicao} />
+              <Linha label="Sexo" valor={c.sexo} />
+              <Linha label="Estado civil" valor={c.estado_civil} />
+              {pedeUniaoEstavel && (
+                <Linha
+                  label="União estável"
+                  valor={c.uniao_estavel === true ? "Sim" : c.uniao_estavel === false ? "Não" : "Não perguntado ainda"}
+                />
+              )}
+              <Linha label="Data de nascimento" valor={formatDataCalendario(c.data_nascimento)} />
+              <Linha label="Nome da mãe" valor={c.nome_mae} />
+              <Linha label="Nome do pai" valor={c.nome_pai} />
+            </>
+          )}
+        </div>
+      </Cartao>
+
+      <Cartao titulo="Contato">
+        <div className="grid md:grid-cols-2 gap-3">
+          <Linha label="Telefone" valor={c.telefone ? formatTelefone(c.telefone) : null} />
+          <Linha label="E-mail" valor={c.email} />
+        </div>
+      </Cartao>
+
+      <Cartao titulo={ehPessoaJuridica ? "Sede" : "Endereço"}>
+        {ehPessoaJuridica ? (
+          <Linha label="Endereço completo da sede" valor={c.endereco} />
+        ) : (
+          <div className="grid md:grid-cols-2 gap-3">
+            <Linha label="CEP" valor={c.cep} />
+            <Linha label="Logradouro" valor={c.rua} />
+            <Linha label="Número predial" valor={c.n_predial} />
+            <Linha label="Complemento" valor={c.complemento} />
+            <Linha label="Bairro" valor={c.bairro} />
+            <Linha label="Estado" valor={estado?.nome} />
+            <Linha label="Cidade" valor={cidade?.nome} />
+            {!c.rua && c.endereco && (
+              <div className="md:col-span-2">
+                <Linha label="Endereço (cadastro antigo)" valor={c.endereco} />
+              </div>
+            )}
+          </div>
+        )}
+      </Cartao>
+
+      {!ehPessoaJuridica && (
+        <Cartao titulo="Profissional">
+          <div className="grid md:grid-cols-2 gap-3">
+            <Linha label="Profissão" valor={c.profissao} />
+            <Linha label="Categoria de profissão" valor={c.cat_profissao} />
+            <Linha label="Tipo de servidor" valor={c.tipo_servidor} />
+            <Linha label="Renda bruta" valor={formatMoeda(c.renda_bruta)} />
+          </div>
+        </Cartao>
+      )}
+
+      <Cartao titulo="Vínculo">
+        <div className="grid md:grid-cols-2 gap-3">
+          <Linha label="Parceiro responsável" valor={parceiro?.nome} />
+          <Linha label="Loja" valor={loja?.nome} />
+          <div className="md:col-span-2">
+            <Linha label="Observação" valor={c.observacao} />
+          </div>
+        </div>
+      </Cartao>
+
+      <Cartao titulo="Dados bancários">
+        <div className="grid md:grid-cols-2 gap-3">
+          <Linha label="Banco" valor={banco?.nome} />
+          <Linha label="Código do banco" valor={c.codigo_banco} />
+          <Linha label="Agência" valor={c.agencia} />
+          <Linha label="Conta" valor={c.conta} />
+          <Linha label="Tipo de conta" valor={c.tipo_conta} />
+          <Linha label="Tipo de PIX" valor={c.tipo_pix} />
+          <Linha label="Chave PIX" valor={c.pix} />
+        </div>
+      </Cartao>
+    </div>
+  );
+}
+
 export function ClienteForm({
   cliente,
   lojas,
@@ -115,6 +272,10 @@ export function ClienteForm({
 }) {
   const c = cliente;
   const [resultado, formAction] = useActionState(action, undefined);
+  // Cadastro novo já nasce em modo de edição. Cadastro existente abre em
+  // modo visualização (Ficha) — só entra em edição clicando em "Editar",
+  // mesmo padrão de ParceiroForm/AvaliacaoForm.
+  const [modoEdicao, setModoEdicao] = useState(!c);
   const [tipoCliente, setTipoCliente] = useState(c?.tipo_cliente ?? "");
   const ehPessoaJuridica = tipoCliente === "Pessoa Jurídica";
   const ehPessoaFisica = !ehPessoaJuridica;
@@ -273,6 +434,31 @@ export function ClienteForm({
     setBancoId(id);
     const banco = bancos.find((b) => b.id === id);
     if (banco?.codigo) setCodigoBanco(banco.codigo);
+  }
+
+  if (c && !modoEdicao) {
+    return (
+      <div className="flex flex-col gap-5">
+        <Ficha
+          cliente={c}
+          lojas={lojas}
+          bancos={bancos}
+          parceiros={parceiros}
+          estados={estados}
+          cidades={cidades}
+          onEditar={() => setModoEdicao(true)}
+        />
+        {ehPessoaJuridica && adicionarSocioAction && removerSocioAction && (
+          <SocioForm
+            pjClienteId={c.id}
+            sociosAtuais={sociosAtuais ?? []}
+            clientesPfDisponiveis={clientesPfDisponiveis ?? []}
+            adicionarAction={adicionarSocioAction}
+            removerAction={removerSocioAction}
+          />
+        )}
+      </div>
+    );
   }
 
   return (
@@ -835,7 +1021,16 @@ export function ClienteForm({
           </div>
         )}
 
-        <div className="flex justify-end">
+        <div className="flex justify-end gap-2">
+          {c && (
+            <button
+              type="button"
+              onClick={() => setModoEdicao(false)}
+              className="border border-gray-300 text-gray-700 rounded-lg px-5 py-2 text-sm font-semibold hover:bg-gray-50"
+            >
+              Cancelar
+            </button>
+          )}
           <button type="submit" className="bg-primary text-white rounded-lg px-5 py-2 text-sm font-semibold hover:opacity-90">
             {c ? "Salvar alterações" : "Cadastrar cliente"}
           </button>

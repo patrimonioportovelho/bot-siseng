@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAdminSession, requireAdm, logAlteracao } from "@/lib/auth";
 import { registrarEJogarErro } from "@/lib/erros";
 import { enviarEmail } from "@/lib/email";
+import { gerarProximoIdCliente } from "@/lib/clientes/id-legado";
 import {
   criarUploadAssinadoImagemConsulta,
   criarLinkImagemConsultaParaEmail,
@@ -85,6 +86,7 @@ async function resolverClienteId(
     data: {
       tipo_cliente: "Pessoa Física",
       nome: nomeNovo,
+      id_legado: await gerarProximoIdCliente(),
       cpf: dados.cpf,
       telefone: dados.telefone,
       parceiro_id: dados.parceiroId,

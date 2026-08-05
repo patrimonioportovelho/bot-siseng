@@ -12,6 +12,7 @@ import { enviarEmail, type EmailAnexo } from "@/lib/email";
 import { buscarClienteDuplicado, mensagemClienteDuplicado } from "@/lib/clientes/duplicidade";
 import { validarCpfCnpj } from "@/lib/clientes/validacao";
 import { montarEnderecoPF } from "@/lib/clientes/endereco";
+import { gerarProximoIdCliente, criarClientesEmSequencia } from "@/lib/clientes/id-legado";
 import { criarUploadAssinadoDocumento, criarLinkDownloadDocumento, baixarDocumentoPortal } from "@/lib/supabase-admin";
 
 const EMAIL_DESTINO_PADRAO = "engimob@remax.com.br";
@@ -248,6 +249,7 @@ async function criarCliente(c: ClienteDigitado, parceiroId: string) {
   return prisma.clientes.create({
     data: {
       nome: c.nome,
+      id_legado: await gerarProximoIdCliente(),
       tipo_cliente: ehCnpj ? "Pessoa Jurídica" : "Pessoa Física",
       rg: !ehCnpj ? c.rg || null : null,
       cpf: !ehCnpj ? doc : null,
@@ -466,12 +468,17 @@ export async function gerarCompraVendaAction(
       }
     }
 
-    const compradoresCriados = await Promise.all(
-      compradoresForm.filter((c) => !c.clienteId).map((c) => criarCliente(c, session.parceiroId))
+    // Em sequência, não em paralelo — evita duas criações calculando o
+    // mesmo próximo CL-0000 ao mesmo tempo (ver comentário em
+    // lib/clientes/id-legado.ts#criarClientesEmSequencia).
+    const compradoresCriados = await criarClientesEmSequencia(
+      compradoresForm.filter((c) => !c.clienteId),
+      (c) => criarCliente(c, session.parceiroId)
     ).catch((erro) => registrarEJogarErro({ entidadeTipo: "clientes", acao: "criar_comprador_via_portal", erro }));
 
-    const vendedoresCriados = await Promise.all(
-      vendedoresForm.filter((c) => !c.clienteId).map((c) => criarCliente(c, session.parceiroId))
+    const vendedoresCriados = await criarClientesEmSequencia(
+      vendedoresForm.filter((c) => !c.clienteId),
+      (c) => criarCliente(c, session.parceiroId)
     ).catch((erro) => registrarEJogarErro({ entidadeTipo: "clientes", acao: "criar_vendedor_via_portal", erro }));
 
     // Remonta as listas na mesma ordem em que apareceram no formulário

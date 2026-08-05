@@ -9,6 +9,7 @@ import { registrarEJogarErro } from "@/lib/erros";
 import { buscarClienteDuplicado } from "@/lib/clientes/duplicidade";
 import { validarCpfCnpj } from "@/lib/clientes/validacao";
 import { montarEnderecoPF } from "@/lib/clientes/endereco";
+import { gerarProximoIdCliente } from "@/lib/clientes/id-legado";
 
 function texto(formData: FormData, campo: string): string | null {
   const v = formData.get(campo);
@@ -218,6 +219,7 @@ export async function criarClienteAction(_prev: unknown, formData: FormData): Pr
       .create({
         data: {
           nome,
+          id_legado: await gerarProximoIdCliente(),
           ...(await camposEditaveis(formData)),
           tipo_cliente: tipoCliente
         }

@@ -8,6 +8,7 @@ import { registrarEJogarErro } from "@/lib/erros";
 import { buscarClienteDuplicado, mensagemClienteDuplicado } from "@/lib/clientes/duplicidade";
 import { validarCpfCnpj } from "@/lib/clientes/validacao";
 import { montarEnderecoPF } from "@/lib/clientes/endereco";
+import { gerarProximoIdCliente, criarClientesEmSequencia } from "@/lib/clientes/id-legado";
 
 function texto(formData: FormData, campo: string): string | null {
   const v = formData.get(campo);
@@ -251,10 +252,12 @@ export async function gerarContratoAdministracaoAction(
 
     // Cria só os clientes que realmente são novos (sem clienteId); os
     // demais são só reaproveitados do banco, sem alterar nada neles.
-    const clientesCriados = await Promise.all(
-      clientesForm
-        .filter((c) => !c.clienteId)
-        .map(async (c) => {
+    // Em sequência, não em paralelo — evita duas criações calculando o
+    // mesmo próximo CL-0000 ao mesmo tempo (ver comentário em
+    // lib/clientes/id-legado.ts#criarClientesEmSequencia).
+    const clientesCriados = await criarClientesEmSequencia(
+      clientesForm.filter((c) => !c.clienteId),
+      async (c) => {
           const doc = digitos(c.cpfCnpj);
           const ehCnpj = c.tipoCliente === "Pessoa Jurídica" || (!c.tipoCliente && (doc?.length ?? 0) === 14);
 
@@ -272,6 +275,7 @@ export async function gerarContratoAdministracaoAction(
           return prisma.clientes.create({
             data: {
               nome: c.nome,
+              id_legado: await gerarProximoIdCliente(),
               tipo_cliente: ehCnpj ? "Pessoa Jurídica" : "Pessoa Física",
               rg: !ehCnpj ? c.rg || null : null,
               cpf: !ehCnpj ? doc : null,
@@ -302,7 +306,7 @@ export async function gerarContratoAdministracaoAction(
               parceiro_id: session.parceiroId
             }
           });
-        })
+        }
     ).catch((erro) => registrarEJogarErro({ entidadeTipo: "clientes", acao: "criar_via_portal_administracao", erro }));
 
     // Remonta a lista de clientes na mesma ordem em que apareceram no

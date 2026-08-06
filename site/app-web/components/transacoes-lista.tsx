@@ -13,6 +13,7 @@ import {
   STATUS_TRANSACAO_TODOS,
   type Tone
 } from "@/lib/format";
+import { ehNovo, SELO_NOVO_CLASSES, LINHA_NOVA_CLASSES } from "@/lib/novo";
 
 // Elaboração de Contrato de Locação precisa aparecer primeiro no dashboard
 // de Locação (é o que precisa de atenção pra virar contrato) — o resto dos
@@ -230,11 +231,18 @@ export async function TransacoesLista({ tipo, q, novoHref }: { tipo: "Locação"
                       const situacao =
                         somenteLocacao && tone === "ativa" ? situacaoContratoLocacao(t.data_vencimento) : null;
 
+                      // Vencido/alerta tem prioridade sobre o selo "Novo" — se
+                      // já entrou na janela de renovar/cancelar, isso importa
+                      // mais que ter sido cadastrado há pouco tempo.
+                      const nova = !situacao && ehNovo(t.created_at);
+
                       const corLinha =
                         situacao === "vencido"
                           ? "bg-red-50 border border-red-200 hover:bg-red-100"
                           : situacao === "alerta"
                           ? "bg-amber-50 border border-amber-200 hover:bg-amber-100"
+                          : nova
+                          ? LINHA_NOVA_CLASSES
                           : indice % 2 === 1
                           ? "bg-gray-50/70 hover:bg-gray-100"
                           : "hover:bg-gray-50";
@@ -245,7 +253,10 @@ export async function TransacoesLista({ tipo, q, novoHref }: { tipo: "Locação"
                           href={`/transacoes/${t.id}`}
                           className={`grid grid-cols-1 gap-1 ${colunasStatus} md:gap-3 md:items-center px-3 py-2.5 rounded-lg transition-colors ${corLinha}`}
                         >
-                          <span className={`text-xs truncate ${situacao === "vencido" ? "text-red-700" : "text-gray-500"}`}>
+                          <span
+                            className={`text-xs truncate flex items-center gap-1.5 ${situacao === "vencido" ? "text-red-700" : "text-gray-500"}`}
+                          >
+                            {nova && <span className={SELO_NOVO_CLASSES}>Novo</span>}
                             {t.id_legado ?? t.id}
                           </span>
                           {ehImovelEmLocacao && (

@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { FUNCOES_EQUIPE, FUNCOES_EXTERNAS } from "@/lib/parceiros/opcoes";
 import { formatTelefone } from "@/lib/format";
 import { lojasSelecionadas, whereLojaFiltro } from "@/lib/lojas/filtro";
+import { ehNovo, SELO_NOVO_CLASSES, LINHA_NOVA_CLASSES } from "@/lib/novo";
 
 export const dynamic = "force-dynamic";
 
@@ -37,15 +38,19 @@ async function buscarParceiros(termo: string, lojasFiltro: string[]) {
 
 function ParceiroRow({ p }: { p: Parceiro }) {
   const excluido = p.status_funcao === "Excluído";
+  const nova = !excluido && ehNovo(p.created_at);
   return (
     <Link
       href={`/parceiros/${p.id}`}
       className={
-        "grid grid-cols-1 gap-0.5 md:grid-cols-[2fr_1fr_1fr_1fr_1.4fr_auto] md:gap-3 md:items-center px-3 py-2.5 rounded-lg hover:bg-gray-50 transition-colors " +
-        (excluido ? "opacity-50" : "")
+        "grid grid-cols-1 gap-0.5 md:grid-cols-[2fr_1fr_1fr_1fr_1.4fr_auto] md:gap-3 md:items-center px-3 py-2.5 rounded-lg transition-colors " +
+        (excluido ? "opacity-50 hover:bg-gray-50" : nova ? LINHA_NOVA_CLASSES : "hover:bg-gray-50")
       }
     >
-      <span className="text-xs font-medium text-gray-800 truncate">{p.nome}</span>
+      <span className="text-xs font-medium text-gray-800 truncate flex items-center gap-1.5">
+        {nova && <span className={SELO_NOVO_CLASSES}>Novo</span>}
+        {p.nome}
+      </span>
       <span className="text-xs text-gray-500">{p.status_funcao}</span>
       <span className="text-xs text-gray-500 truncate">{p.lojas?.nome ?? "—"}</span>
       <span className="text-xs text-gray-500 truncate">{p.telefone ? formatTelefone(p.telefone) : "—"}</span>

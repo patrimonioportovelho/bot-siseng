@@ -106,6 +106,30 @@ export default async function DashboardPage({
     }
   });
 
+  // Mesma lógica, agora pras Administrações cadastradas pelo corretor via
+  // portal (/portal/administracao) — pedido do usuário em 06/08/2026.
+  // adm_imoveis não tem coluna criado_no_portal (só transacoes/avaliacoes/
+  // gestoes têm), então usa parceiro_id preenchido como sinal de "veio do
+  // portal" — cadastro direto pelo administrativo normalmente não passa por
+  // esse campo (ver app/administracoes/actions.ts x
+  // app/portal/administracao/actions.ts).
+  const novasAdministracoesDesdeReset = await prisma.adm_imoveis.findMany({
+    where: {
+      excluido: false,
+      parceiro_id: { not: null },
+      created_at: { gte: new Date(ultimoResetSessaoMs()) },
+      ...whereLojaFiltroObrigatorio(lojasFiltro)
+    },
+    orderBy: { created_at: "desc" },
+    select: {
+      id: true,
+      id_legado: true,
+      clientes: { select: { nome: true } },
+      imoveis: { select: { endereco: true } },
+      parceiros: { select: { nome: true } }
+    }
+  });
+
   const [
     totalImoveis,
     transacoesAbertas,
@@ -890,6 +914,28 @@ export default async function DashboardPage({
                 {novasAvaliacoesCpfDesdeReset.map((a) => (
                   <li key={a.id}>
                     · {a.id_legado ?? a.id} — {a.clientes?.nome ?? "cliente não identificado"}
+                    {a.parceiros?.nome && <> (parceiro: {a.parceiros.nome})</>}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {novasAdministracoesDesdeReset.length > 0 && (
+            <div className="mt-3 text-xs text-white/80 pt-3 border-t border-white/20">
+              <span className="font-semibold text-white">
+                {novasAdministracoesDesdeReset.length} Administraç{novasAdministracoesDesdeReset.length > 1 ? "ões" : "ão"}{" "}
+                cadastrada{novasAdministracoesDesdeReset.length > 1 ? "s" : ""}
+              </span>{" "}
+              pelo portal do corretor:
+              <ul className="mt-1 flex flex-col gap-0.5">
+                {novasAdministracoesDesdeReset.map((a) => (
+                  <li key={a.id}>
+                    ·{" "}
+                    <Link href={`/administracoes/${a.id}`} className="underline hover:no-underline">
+                      {a.id_legado ?? a.id}
+                    </Link>{" "}
+                    — {a.clientes?.nome ?? "cliente não identificado"}
+                    {a.imoveis?.endereco && <> ({a.imoveis.endereco})</>}
                     {a.parceiros?.nome && <> (parceiro: {a.parceiros.nome})</>}
                   </li>
                 ))}

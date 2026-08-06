@@ -3,18 +3,7 @@ import { Topbar } from "@/components/topbar";
 import { prisma } from "@/lib/prisma";
 import { formatMoeda } from "@/lib/format";
 import { STATUS_ADM, TONE_STATUS_ADM, TONE_STATUS_ADM_PADRAO } from "@/lib/administracoes/opcoes";
-
-// Considera "nova" (badge + destaque na linha) qualquer administração
-// cadastrada nos últimos 3 dias — mesma janela já usada em outros lugares
-// do sistema pra "recente" (ver lib/erros.ts). Cobre o caso mais comum: o
-// corretor cadastrou pelo portal e o administrativo ainda não bateu o olho
-// pra dar sequência. Passado esse prazo o destaque some sozinho, sem
-// precisar de nenhum campo "visualizado" no banco.
-const DIAS_PARA_CONSIDERAR_NOVO = 3;
-function ehNova(criadoEm: Date): boolean {
-  const diffMs = Date.now() - new Date(criadoEm).getTime();
-  return diffMs < DIAS_PARA_CONSIDERAR_NOVO * 24 * 60 * 60 * 1000;
-}
+import { ehNovo, SELO_NOVO_CLASSES, LINHA_NOVA_CLASSES } from "@/lib/novo";
 import { lojasSelecionadas, whereLojaFiltroObrigatorio } from "@/lib/lojas/filtro";
 
 export const dynamic = "force-dynamic";
@@ -155,9 +144,9 @@ export default async function AdministracoesPage({
                     <div className="flex flex-col divide-y divide-gray-100">
                       {doStatus.map((a, indice) => {
                         const qtdProprietarios = a.imoveis?._count.imoveis_proprietarios ?? 0;
-                        const nova = ehNova(a.created_at);
+                        const nova = ehNovo(a.created_at);
                         const corLinha = nova
-                          ? "bg-primary/5 hover:bg-primary/10"
+                          ? LINHA_NOVA_CLASSES
                           : indice % 2 === 1
                           ? "bg-gray-50/70 hover:bg-gray-100"
                           : "hover:bg-gray-50";
@@ -168,11 +157,7 @@ export default async function AdministracoesPage({
                             className={`grid grid-cols-1 gap-0.5 md:grid-cols-[1fr_1.4fr_1.6fr_auto] md:gap-3 md:items-center px-3 py-2.5 rounded-lg transition-colors ${corLinha}`}
                           >
                             <span className="text-xs text-gray-500 truncate flex items-center gap-1.5">
-                              {nova && (
-                                <span className="text-[10px] font-bold uppercase text-white bg-primary rounded-full px-1.5 py-0.5 shrink-0">
-                                  Novo
-                                </span>
-                              )}
+                              {nova && <span className={SELO_NOVO_CLASSES}>Novo</span>}
                               {a.id_legado ?? a.id}
                             </span>
                             <span className="text-xs font-medium text-gray-800 truncate">

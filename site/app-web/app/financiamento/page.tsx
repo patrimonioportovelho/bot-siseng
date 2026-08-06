@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { formatMoeda, formatDataCalendario, diasParaVencimento, situacaoVencimento } from "@/lib/format";
 import { STATUS_AVALIACAO_PRIORIDADE, STATUS_AVALIACAO_ATIVOS, STATUS_AVALIACAO_ENCERRADOS } from "@/lib/financiamento/opcoes";
 import { lojasSelecionadas, whereLojaFiltroParceiro } from "@/lib/lojas/filtro";
+import { ehNovo, SELO_NOVO_CLASSES } from "@/lib/novo";
 
 export const dynamic = "force-dynamic";
 
@@ -246,6 +247,7 @@ export default async function FinanciamentoPage({
                   // — pedido explícito: "consulta nova cadastrada por corretor precisa
                   // mudar a cor para ficar em evidência".
                   const doPortal = a.criado_no_portal === true;
+                  const nova = ehNovo(a.created_at);
                   return (
                     <Link
                       key={a.id}
@@ -261,6 +263,7 @@ export default async function FinanciamentoPage({
                       }`}
                     >
                       <span className="text-xs font-medium text-gray-800 truncate flex items-center gap-1.5">
+                        {nova && <span className={SELO_NOVO_CLASSES}>Novo</span>}
                         {a.clientes?.nome ?? "Cliente sem cadastro"}
                         {doPortal && (
                           <span className="shrink-0 text-[10px] font-semibold bg-fuchsia-100 text-fuchsia-700 rounded-full px-1.5 py-0.5">

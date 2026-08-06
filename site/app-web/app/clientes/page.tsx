@@ -3,6 +3,7 @@ import { Topbar } from "@/components/topbar";
 import { Pagination } from "@/components/pagination";
 import { prisma } from "@/lib/prisma";
 import { lojasSelecionadas, whereLojaFiltro } from "@/lib/lojas/filtro";
+import { ehNovo, SELO_NOVO_CLASSES, LINHA_NOVA_CLASSES } from "@/lib/novo";
 
 export const dynamic = "force-dynamic";
 
@@ -96,18 +97,26 @@ export default async function ClientesPage({
           <span></span>
         </div>
         <div className="flex flex-col">
-          {clientes.map((c) => (
-            <Link
-              key={c.id}
-              href={`/clientes/${c.id}`}
-              className="grid grid-cols-1 gap-0.5 md:grid-cols-[1.2fr_2.4fr_2fr_auto] md:gap-3 md:items-center px-3 py-2.5 rounded-lg hover:bg-gray-50 transition-colors"
-            >
-              <span className="text-xs text-gray-500 truncate">{c.id_legado ?? c.id}</span>
-              <span className="text-xs font-medium text-gray-800 truncate">{c.nome}</span>
-              <span className="text-xs text-gray-500 truncate">{c.parceiros?.nome ?? "—"}</span>
-              <span className="text-gray-300 text-xs">›</span>
-            </Link>
-          ))}
+          {clientes.map((c) => {
+            const nova = ehNovo(c.created_at);
+            return (
+              <Link
+                key={c.id}
+                href={`/clientes/${c.id}`}
+                className={`grid grid-cols-1 gap-0.5 md:grid-cols-[1.2fr_2.4fr_2fr_auto] md:gap-3 md:items-center px-3 py-2.5 rounded-lg transition-colors ${
+                  nova ? LINHA_NOVA_CLASSES : "hover:bg-gray-50"
+                }`}
+              >
+                <span className="text-xs text-gray-500 truncate">{c.id_legado ?? c.id}</span>
+                <span className="text-xs font-medium text-gray-800 truncate flex items-center gap-1.5">
+                  {nova && <span className={SELO_NOVO_CLASSES}>Novo</span>}
+                  {c.nome}
+                </span>
+                <span className="text-xs text-gray-500 truncate">{c.parceiros?.nome ?? "—"}</span>
+                <span className="text-gray-300 text-xs">›</span>
+              </Link>
+            );
+          })}
           {clientes.length === 0 && (
             <div className="py-6 text-center text-gray-400 text-xs">Nenhum cliente encontrado.</div>
           )}

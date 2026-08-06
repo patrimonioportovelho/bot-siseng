@@ -2,7 +2,12 @@ import Link from "next/link";
 import { Topbar } from "@/components/topbar";
 import { prisma } from "@/lib/prisma";
 import { formatMoeda, formatDataCalendario, diasParaVencimento, situacaoVencimento } from "@/lib/format";
-import { STATUS_AVALIACAO_PRIORIDADE, STATUS_AVALIACAO_ATIVOS, STATUS_AVALIACAO_ENCERRADOS } from "@/lib/financiamento/opcoes";
+import {
+  STATUS_AVALIACAO_OPCOES,
+  STATUS_AVALIACAO_PRIORIDADE,
+  STATUS_AVALIACAO_ATIVOS,
+  STATUS_AVALIACAO_ENCERRADOS
+} from "@/lib/financiamento/opcoes";
 import { lojasSelecionadas, whereLojaFiltroParceiro } from "@/lib/lojas/filtro";
 import { ehNovo, SELO_NOVO_CLASSES } from "@/lib/novo";
 
@@ -64,13 +69,31 @@ function Cartao({ titulo, valor, destaque }: { titulo: string; valor: string; de
   );
 }
 
+// "AAAA-MM-DD" vindo do <input type="date"> — só aceita se realmente virar
+// uma data válida, senão ignora (mesmo padrão defensivo usado no resto do
+// sistema pra filtro de data vindo da URL).
+function dataValida(bruto: string | undefined): Date | null {
+  if (!bruto) return null;
+  const d = new Date(`${bruto}T00:00:00`);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
 export default async function FinanciamentoPage({
   searchParams
 }: {
-  searchParams: Promise<{ q?: string; excluido?: string }>;
+  searchParams: Promise<{ q?: string; excluido?: string; status?: string; de?: string; ate?: string }>;
 }) {
-  const { q, excluido } = await searchParams;
+  const { q, excluido, status: statusFiltro, de, ate } = await searchParams;
   const termo = (q ?? "").trim();
+  // Só os dígitos do termo — usado pra bater com CPF (guardado sem
+  // formatação). Fica "" quando o termo é só letras (busca por nome), e
+  // nesse caso a cláusula de CPF abaixo NÃO entra na busca — um
+  // `contains: ""` bateria com QUALQUER cpf preenchido, fazendo a busca por
+  // nome trazer avaliação de gente completamente diferente junto (esse era
+  // o "erro" relatado na busca por nome/CPF).
+  const termoDigitos = termo.replace(/\D/g, "");
+  const dataDe = dataValida(de);
+  const dataAte = dataValida(ate);
   const lojasFiltro = await lojasSelecionadas();
 
   const where = {
@@ -79,13 +102,21 @@ export default async function FinanciamentoPage({
     // registrou a Avaliação (ver whereLojaFiltroParceiro).
     AND: [
       whereLojaFiltroParceiro(lojasFiltro),
+      ...(statusFiltro ? [{ status: statusFiltro }] : []),
+      ...(dataDe ? [{ data_avaliacao: { gte: dataDe } }] : []),
+      ...(dataAte ? [{ data_avaliacao: { lte: dataAte } }] : []),
       ...(termo
         ? [
             {
               OR: [
                 { clientes: { nome: { contains: termo, mode: "insensitive" as const } } },
-                { cpf: { contains: termo.replace(/\D/g, ""), mode: "insensitive" as const } },
-                { id_legado: { contains: termo, mode: "insensitive" as const } }
+                { id_legado: { contains: termo, mode: "insensitive" as const } },
+                ...(termoDigitos
+                  ? [
+                      { cpf: { contains: termoDigitos } },
+                      { clientes: { cpf: { contains: termoDigitos } } }
+                    ]
+                  : [])
               ]
             }
           ]
@@ -204,14 +235,44 @@ export default async function FinanciamentoPage({
       <div className="bg-white border border-gray-200 rounded-xl p-4">
         <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
           <div className="text-sm font-bold text-gray-800">Avaliações ({total})</div>
-          <form className="flex gap-2 flex-wrap">
+          <form className="flex gap-2 flex-wrap items-center">
             <input
               type="text"
               name="q"
               defaultValue={termo}
               placeholder="Buscar por cliente, CPF ou Id..."
-              className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full sm:w-64 outline-none focus:border-primary"
+              className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full sm:w-56 outline-none focus:border-primary"
             />
+            <select
+              name="status"
+              defaultValue={statusFiltro ?? ""}
+              className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 outline-none focus:border-primary"
+            >
+              <option value="">Todos os status</option>
+              {STATUS_AVALIACAO_OPCOES.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+            <label className="flex items-center gap-1 text-[11px] text-gray-500">
+              De
+              <input
+                type="date"
+                name="de"
+                defaultValue={de ?? ""}
+                className="text-xs border border-gray-300 rounded-lg px-2 py-1.5 outline-none focus:border-primary"
+              />
+            </label>
+            <label className="flex items-center gap-1 text-[11px] text-gray-500">
+              até
+              <input
+                type="date"
+                name="ate"
+                defaultValue={ate ?? ""}
+                className="text-xs border border-gray-300 rounded-lg px-2 py-1.5 outline-none focus:border-primary"
+              />
+            </label>
             <button type="submit" className="text-xs bg-white border border-gray-300 text-gray-600 rounded-lg px-3 py-1.5">
               Buscar
             </button>

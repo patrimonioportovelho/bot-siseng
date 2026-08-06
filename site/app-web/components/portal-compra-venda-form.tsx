@@ -18,7 +18,11 @@ import {
 import { validarCpfCnpj } from "@/lib/clientes/validacao";
 import { buscarCep, UF_PARA_ESTADO } from "@/lib/enderecos";
 import type { ImovelBuscaResultado, ClienteBuscaResultado } from "@/lib/transacoes/buscas";
-import { gerarCompraVendaAction, prepararUploadDocumentoAction } from "@/app/portal/compra-venda/actions";
+import {
+  gerarCompraVendaAction,
+  prepararUploadDocumentoAction,
+  buscarClientesDoCorretorAction
+} from "@/app/portal/compra-venda/actions";
 import { supabaseBrowser, BUCKET_DOCUMENTOS_PORTAL } from "@/lib/supabase-browser";
 
 type CondicaoPagamento = {
@@ -352,8 +356,8 @@ function BlocoPessoas({
 
   return (
     <div>
-      <div className="text-sm font-bold text-gray-800 mb-1">{titulo}</div>
-      <p className="text-[11px] text-gray-400 mb-3">{ajuda}</p>
+      {titulo && <div className="text-sm font-bold text-gray-800 mb-1">{titulo}</div>}
+      {ajuda && <p className="text-[11px] text-gray-400 mb-3">{ajuda}</p>}
 
       {pessoas.length > 0 && (
         <div className="flex flex-col gap-3 mb-3">
@@ -726,7 +730,16 @@ export function PortalCompraVendaForm({
   const [porcParceriaTexto, setPorcParceriaTexto] = useState("");
 
   const [corretorProprietarioId, setCorretorProprietarioId] = useState(corretorLogadoId);
-  const [corretorContraparteId, setCorretorContraparteId] = useState("");
+  // Corretor do comprador — pedido do usuário em 06/08/2026: quem cadastra
+  // é sempre o corretor do vendedor, mas o comprador pode ser cliente de OUTRO
+  // corretor da equipe. Começa no próprio corretor logado (caso mais comum,
+  // "sou eu dos dois lados") já com a lista dele disponível sem precisar de
+  // busca extra no servidor; ao trocar pra outro corretor, busca só os
+  // clientes DELE (ver useEffect abaixo). O mesmo estado alimenta o campo
+  // "Corretor do comprador" da seção de Comissionamento — não tem duplicidade.
+  const [corretorContraparteId, setCorretorContraparteId] = useState(corretorLogadoId);
+  const [clientesDoCorretorComprador, setClientesDoCorretorComprador] = useState<ClienteBuscaResultado[] | null>(null);
+  const [carregandoClientesComprador, setCarregandoClientesComprador] = useState(false);
 
   const [historicoData, setHistoricoData] = useState("");
   const [historicoPrazoMeses, setHistoricoPrazoMeses] = useState("");
@@ -798,6 +811,35 @@ export function PortalCompraVendaForm({
       )
       .slice(0, RESULTADOS_MAXIMO);
   }, [buscaImovel, imoveis]);
+
+  // Busca os clientes do corretor do comprador escolhido — só precisa ir ao
+  // servidor quando NÃO é o próprio corretor logado (esse já vem completo no
+  // prop `clientes` desde o carregamento da página, filtrado localmente
+  // abaixo). Troca de corretor cancela a busca anterior se ainda estiver em
+  // andamento, pra não sobrescrever com uma resposta desatualizada.
+  useEffect(() => {
+    if (!corretorContraparteId || corretorContraparteId === corretorLogadoId) {
+      setClientesDoCorretorComprador(null);
+      return;
+    }
+    let cancelado = false;
+    setCarregandoClientesComprador(true);
+    buscarClientesDoCorretorAction(corretorContraparteId)
+      .then((lista) => {
+        if (!cancelado) setClientesDoCorretorComprador(lista);
+      })
+      .finally(() => {
+        if (!cancelado) setCarregandoClientesComprador(false);
+      });
+    return () => {
+      cancelado = true;
+    };
+  }, [corretorContraparteId, corretorLogadoId]);
+
+  const clientesParaComprador = useMemo(() => {
+    if (clientesDoCorretorComprador) return clientesDoCorretorComprador;
+    return clientes.filter((c) => c.parceiroId === corretorContraparteId);
+  }, [clientes, clientesDoCorretorComprador, corretorContraparteId]);
 
   // Ao montar, só AVISA que existe um rascunho salvo — não aplica sozinho
   // (evita sobrescrever o que o corretor já tiver preenchido nesta mesma
@@ -1376,12 +1418,33 @@ export function PortalCompraVendaForm({
       </div>
 
       <div className="bg-white border border-gray-200 rounded-xl p-4">
+        <div className="text-sm font-bold text-gray-800 mb-1">3. Cliente(s) comprador(es)</div>
+        <p className="text-[11px] text-gray-400 mb-3">
+          Quem cadastra a transação é sempre o corretor do vendedor — mas o comprador pode ser cliente de outro
+          corretor da equipe. Escolha de quem é o comprador abaixo pra puxar a lista de clientes certa.
+        </p>
+        <div className="mb-3">
+          <label className={LABEL}>Corretor do comprador</label>
+          <select
+            className={CAMPO}
+            value={corretorContraparteId}
+            onChange={(e) => setCorretorContraparteId(e.target.value)}
+          >
+            {corretores.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.nome}
+                {p.id === corretorLogadoId ? " (você)" : ""}
+              </option>
+            ))}
+          </select>
+          {carregandoClientesComprador && <p className="text-[11px] text-gray-400 mt-1">Buscando clientes desse corretor...</p>}
+        </div>
         <BlocoPessoas
-          titulo="3. Cliente(s) comprador(es)"
-          ajuda="Pode ter mais de um comprador. Se já tem cadastro (de qualquer corretor), busque em vez de digitar de novo."
+          titulo=""
+          ajuda=""
           pessoas={compradores}
           setPessoas={setCompradores}
-          clientesDisponiveis={clientes}
+          clientesDisponiveis={clientesParaComprador}
           busca={buscaComprador}
           setBusca={setBuscaComprador}
           listaAberta={listaCompradorAberta}
@@ -1590,13 +1653,13 @@ export function PortalCompraVendaForm({
           <div>
             <label className={LABEL}>Corretor do comprador</label>
             <select className={CAMPO} value={corretorContraparteId} onChange={(e) => setCorretorContraparteId(e.target.value)}>
-              <option value="">—</option>
               {corretores.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.nome}
                 </option>
               ))}
             </select>
+            <p className="text-[11px] text-gray-400 mt-1">Mesma escolha da seção 3 — mudar aqui também muda lá.</p>
           </div>
           <div>
             <label className={LABEL}>Honorário total (%)</label>

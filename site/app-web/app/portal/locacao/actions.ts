@@ -13,6 +13,7 @@ import { validarCpfCnpj } from "@/lib/clientes/validacao";
 import { montarEnderecoPF } from "@/lib/clientes/endereco";
 import { gerarProximoIdCliente, criarClientesEmSequencia } from "@/lib/clientes/id-legado";
 import { criarUploadAssinadoDocumento, criarLinkDownloadDocumento, baixarDocumentoPortal } from "@/lib/supabase-admin";
+import { buscarClientesPorParceiro, type ClienteBuscaResultado } from "@/lib/transacoes/buscas";
 
 const EMAIL_DESTINO_PADRAO = "engimob@remax.com.br";
 
@@ -31,6 +32,16 @@ export async function prepararUploadDocumentoAction(
   } catch (erro) {
     return { ok: false, erro: erro instanceof Error ? erro.message : String(erro) };
   }
+}
+
+// Pedido pelo formulário ao escolher explicitamente "qual corretor
+// representa o locatário" (ver comentário completo em
+// lib/transacoes/buscas.ts#buscarClientesPorParceiro) — retorna os clientes
+// desse corretor específico, sem redigir cpf/telefone/email.
+export async function buscarClientesDoCorretorAction(parceiroId: string): Promise<ClienteBuscaResultado[]> {
+  await requirePortalSession();
+  if (!parceiroId) return [];
+  return buscarClientesPorParceiro(parceiroId);
 }
 
 type DocumentoEnviado = { caminho: string; nomeOriginal: string };

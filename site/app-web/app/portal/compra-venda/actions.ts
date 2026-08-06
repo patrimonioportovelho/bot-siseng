@@ -7,7 +7,7 @@ import { logAlteracaoPortal } from "@/lib/auth";
 import { valorEditavelParaDecimal, percentualParaDecimal, formatMoeda, formatData } from "@/lib/format";
 import { registrarEJogarErro } from "@/lib/erros";
 import { STATUS_COMPRA_VENDA_OPCOES, ANDAMENTO_COMPRA_VENDA_PADRAO } from "@/lib/transacoes/opcoes";
-import { buscarGestaoPorImovel } from "@/lib/transacoes/buscas";
+import { buscarGestaoPorImovel, buscarClientesPorParceiro, type ClienteBuscaResultado } from "@/lib/transacoes/buscas";
 import { enviarEmail, type EmailAnexo } from "@/lib/email";
 import { buscarClienteDuplicado, mensagemClienteDuplicado } from "@/lib/clientes/duplicidade";
 import { validarCpfCnpj } from "@/lib/clientes/validacao";
@@ -35,6 +35,16 @@ export async function prepararUploadDocumentoAction(
   } catch (erro) {
     return { ok: false, erro: erro instanceof Error ? erro.message : String(erro) };
   }
+}
+
+// Pedido pelo formulário ao escolher explicitamente "qual corretor
+// representa o comprador" (ver comentário completo em
+// lib/transacoes/buscas.ts#buscarClientesPorParceiro) — retorna os clientes
+// desse corretor específico, sem redigir cpf/telefone/email.
+export async function buscarClientesDoCorretorAction(parceiroId: string): Promise<ClienteBuscaResultado[]> {
+  await requirePortalSession();
+  if (!parceiroId) return [];
+  return buscarClientesPorParceiro(parceiroId);
 }
 
 type DocumentoEnviado = { caminho: string; nomeOriginal: string };

@@ -23,7 +23,11 @@ import { validarCpfCnpj } from "@/lib/clientes/validacao";
 import { buscarCep, UF_PARA_ESTADO } from "@/lib/enderecos";
 import { formatInscricao, somarMeses, formatMoeda, valorEditavelParaDecimal } from "@/lib/format";
 import type { ImovelBuscaResultado, ClienteBuscaResultado } from "@/lib/transacoes/buscas";
-import { gerarLocacaoAction, prepararUploadDocumentoAction } from "@/app/portal/locacao/actions";
+import {
+  gerarLocacaoAction,
+  prepararUploadDocumentoAction,
+  buscarClientesDoCorretorAction
+} from "@/app/portal/locacao/actions";
 import { supabaseBrowser, BUCKET_DOCUMENTOS_PORTAL } from "@/lib/supabase-browser";
 
 // Administrações com status "Ativo" — só essas podem virar uma locação em
@@ -339,8 +343,8 @@ function BlocoPessoas({
 
   return (
     <div>
-      <div className="text-sm font-bold text-gray-800 mb-1">{titulo}</div>
-      <p className="text-[11px] text-gray-400 mb-3">{ajuda}</p>
+      {titulo && <div className="text-sm font-bold text-gray-800 mb-1">{titulo}</div>}
+      {ajuda && <p className="text-[11px] text-gray-400 mb-3">{ajuda}</p>}
 
       {pessoas.length > 0 && (
         <div className="flex flex-col gap-3 mb-3">
@@ -752,7 +756,15 @@ export function PortalLocacaoForm({
   const [porcParceriaTexto, setPorcParceriaTexto] = useState("");
 
   const [corretorProprietarioId, setCorretorProprietarioId] = useState(corretorLogadoId);
-  const [corretorContraparteId, setCorretorContraparteId] = useState("");
+  // Corretor do locatário — mesmo raciocínio do Compra e Venda (ver
+  // components/portal-compra-venda-form.tsx): quem cadastra é sempre o
+  // corretor do proprietário, mas o locatário pode ser cliente de outro
+  // corretor da equipe. Começa no próprio corretor logado (lista dele já
+  // disponível sem busca extra); trocando pra outro corretor, busca só os
+  // clientes DELE. Mesmo estado alimenta o campo espelho em Comissionamento.
+  const [corretorContraparteId, setCorretorContraparteId] = useState(corretorLogadoId);
+  const [clientesDoCorretorLocatario, setClientesDoCorretorLocatario] = useState<ClienteBuscaResultado[] | null>(null);
+  const [carregandoClientesLocatario, setCarregandoClientesLocatario] = useState(false);
 
   const [documentos, setDocumentos] = useState<File[]>([]);
   const [erroAnexo, setErroAnexo] = useState("");
@@ -1006,6 +1018,33 @@ export function PortalLocacaoForm({
       .slice(0, RESULTADOS_MAXIMO);
   }, [buscaImovel, imoveis, idsComAdmAtiva]);
 
+  // Busca os clientes do corretor do locatário escolhido — mesmo padrão do
+  // Compra e Venda (ver components/portal-compra-venda-form.tsx). Só vai ao
+  // servidor quando NÃO é o próprio corretor logado.
+  useEffect(() => {
+    if (!corretorContraparteId || corretorContraparteId === corretorLogadoId) {
+      setClientesDoCorretorLocatario(null);
+      return;
+    }
+    let cancelado = false;
+    setCarregandoClientesLocatario(true);
+    buscarClientesDoCorretorAction(corretorContraparteId)
+      .then((lista) => {
+        if (!cancelado) setClientesDoCorretorLocatario(lista);
+      })
+      .finally(() => {
+        if (!cancelado) setCarregandoClientesLocatario(false);
+      });
+    return () => {
+      cancelado = true;
+    };
+  }, [corretorContraparteId, corretorLogadoId]);
+
+  const clientesParaLocatario = useMemo(() => {
+    if (clientesDoCorretorLocatario) return clientesDoCorretorLocatario;
+    return clientes.filter((c) => c.parceiroId === corretorContraparteId);
+  }, [clientes, clientesDoCorretorLocatario, corretorContraparteId]);
+
   // Data de vencimento calculada sozinha (assinatura + prazo em meses),
   // igual ao formulário do admin — mas fica editável, e uma vez que o
   // corretor mexer na mão, para de recalcular sozinha.
@@ -1061,14 +1100,6 @@ export function PortalLocacaoForm({
     setBuscaImovel("");
     setImovelNovo(false);
     cancelarImovelNovo();
-  }
-
-  function adicionarLocatario(c: ClienteBuscaResultado) {
-    const eraOPrimeiro = locatarios.length === 0;
-    setLocatarios((atual) => [...atual, pessoaDeClienteExistente(c)]);
-    setBuscaLocatario("");
-    setListaLocatarioAberta(false);
-    if (eraOPrimeiro && c.parceiroId) setCorretorContraparteId(c.parceiroId);
   }
 
   function toggleEncargo(op: string) {
@@ -1464,12 +1495,33 @@ export function PortalLocacaoForm({
       </div>
 
       <div className="bg-white border border-gray-200 rounded-xl p-4">
+        <div className="text-sm font-bold text-gray-800 mb-1">3. Locatário(s)</div>
+        <p className="text-[11px] text-gray-400 mb-3">
+          Quem cadastra a transação é sempre o corretor do proprietário — mas o locatário pode ser cliente de outro
+          corretor da equipe. Escolha de quem é o locatário abaixo pra puxar a lista de clientes certa.
+        </p>
+        <div className="mb-3">
+          <label className={LABEL}>Corretor do locatário</label>
+          <select
+            className={CAMPO}
+            value={corretorContraparteId}
+            onChange={(e) => setCorretorContraparteId(e.target.value)}
+          >
+            {corretores.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.nome}
+                {p.id === corretorLogadoId ? " (você)" : ""}
+              </option>
+            ))}
+          </select>
+          {carregandoClientesLocatario && <p className="text-[11px] text-gray-400 mt-1">Buscando clientes desse corretor...</p>}
+        </div>
         <BlocoPessoas
-          titulo="3. Locatário(s)"
-          ajuda="Pode ter mais de um locatário. Se já tem cadastro (de qualquer corretor), busque em vez de digitar de novo."
+          titulo=""
+          ajuda=""
           pessoas={locatarios}
           setPessoas={setLocatarios}
-          clientesDisponiveis={clientes}
+          clientesDisponiveis={clientesParaLocatario}
           busca={buscaLocatario}
           setBusca={setBuscaLocatario}
           listaAberta={listaLocatarioAberta}
@@ -1653,13 +1705,13 @@ export function PortalLocacaoForm({
           <div>
             <label className={LABEL}>Corretor do locatário</label>
             <select className={CAMPO} value={corretorContraparteId} onChange={(e) => setCorretorContraparteId(e.target.value)}>
-              <option value="">—</option>
               {corretores.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.nome}
                 </option>
               ))}
             </select>
+            <p className="text-[11px] text-gray-400 mt-1">Mesma escolha da seção 3 — mudar aqui também muda lá.</p>
           </div>
           <div>
             <label className={LABEL}>Honorário total (%)</label>

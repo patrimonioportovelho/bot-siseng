@@ -83,6 +83,34 @@ export async function listarClientesParaCompraVenda(parceiroIdAtual: string): Pr
   });
 }
 
+// Busca ESCOPADA a um corretor específico — usada quando quem cadastra a
+// transação escolhe explicitamente "qual corretor representa o
+// comprador/locatário" (pedido do usuário em 06/08/2026: sempre quem
+// cadastra é o corretor do vendedor/proprietário; do outro lado — comprador
+// ou locatário — precisa dar pra escolher o corretor parceiro e puxar só os
+// clientes dele). Diferente de listarClientesParaCompraVenda acima, aqui os
+// dados vêm SEMPRE completos (sem redigir cpf/telefone/email): é uma escolha
+// deliberada e específica de um corretor, não uma listagem geral aberta pra
+// qualquer um — não faz sentido esconder o contato depois de já ter
+// escolhido explicitamente de quem são os clientes.
+export async function buscarClientesPorParceiro(parceiroId: string): Promise<ClienteBuscaResultado[]> {
+  const clientes = await prisma.clientes.findMany({
+    where: { parceiro_id: parceiroId },
+    orderBy: { nome: "asc" },
+    take: 1000
+  });
+
+  return clientes.map((c) => ({
+    id: c.id,
+    nome: c.nome,
+    parceiroId: c.parceiro_id,
+    deOutroCorretor: false,
+    cpfCnpj: c.cpf ? formatCpf(c.cpf) : c.cnpj ? formatCnpj(c.cnpj) : null,
+    telefone: c.telefone,
+    email: c.email
+  }));
+}
+
 // Gestão (captação) já cadastrada pra esse imóvel, se houver — usada pra
 // auto-vincular a transação de Compra e Venda a ela (gestao_id) e criar uma
 // atividade no quadro dela, sem mexer na coluna/Kanban (isso continua manual,

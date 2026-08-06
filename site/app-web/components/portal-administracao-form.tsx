@@ -13,7 +13,8 @@ import { validarCpfCnpj } from "@/lib/clientes/validacao";
 import { buscarCep, UF_PARA_ESTADO } from "@/lib/enderecos";
 import { AGUA_OPCOES, ENERGIA_OPCOES } from "@/lib/administracoes/opcoes";
 import { CampoLink } from "@/components/campo-link";
-import { gerarContratoAdministracaoAction } from "@/app/portal/administracao/actions";
+import { cadastrarAdministracaoAction, prepararUploadDocumentoAction } from "@/app/portal/administracao/actions";
+import { supabaseBrowser, BUCKET_DOCUMENTOS_PORTAL } from "@/lib/supabase-browser";
 
 type Banco = { id: string; nome: string; codigo: string | null };
 
@@ -127,6 +128,18 @@ function hojeISO(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+const TAMANHO_MAXIMO_TOTAL = 15 * 1024 * 1024;
+const TIPOS_ACEITOS = ["application/pdf", "image/"];
+
+function tipoAceito(arquivo: File): boolean {
+  return TIPOS_ACEITOS.some((t) => arquivo.type.startsWith(t));
+}
+
+function formatarTamanho(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 // Rascunho salvo no navegador (localStorage) — mesmo padrão já usado em
 // Compra e Venda/Locação/Avaliação de CPF: nunca aplica sozinho ao carregar
 // a tela (só avisa que existe), fica disponível pro corretor continuar de
@@ -234,7 +247,11 @@ export function PortalAdministracaoForm({
   const [observacao, setObservacao] = useState("");
   const [pastaUrl, setPastaUrl] = useState("");
 
+  const [documentos, setDocumentos] = useState<File[]>([]);
+  const [erroAnexo, setErroAnexo] = useState("");
+
   const [enviando, setEnviando] = useState(false);
+  const [etapaEnvio, setEtapaEnvio] = useState("");
   const [resultado, setResultado] = useState<{ ok: true; idLegado: string | null } | { ok: false; erro: string } | null>(
     null
   );
@@ -582,10 +599,56 @@ export function PortalAdministracaoForm({
     setInscricao(im.inscricao);
   }
 
+  function adicionarDocumentos(lista: FileList | null) {
+    if (!lista || lista.length === 0) return;
+    setErroAnexo("");
+
+    const novos = Array.from(lista);
+    const invalido = novos.find((f) => !tipoAceito(f));
+    if (invalido) {
+      setErroAnexo(`"${invalido.name}" não é PDF nem imagem — só esses dois tipos são aceitos.`);
+      return;
+    }
+
+    const totalAtual = documentos.reduce((acc, f) => acc + f.size, 0);
+    const totalNovo = novos.reduce((acc, f) => acc + f.size, 0);
+    if (totalAtual + totalNovo > TAMANHO_MAXIMO_TOTAL) {
+      setErroAnexo(`O total dos anexos passaria de ${formatarTamanho(TAMANHO_MAXIMO_TOTAL)} — junte menos arquivos de uma vez ou reduza o tamanho.`);
+      return;
+    }
+
+    setDocumentos((atual) => [...atual, ...novos]);
+  }
+
+  function removerDocumento(indice: number) {
+    setDocumentos((atual) => atual.filter((_, i) => i !== indice));
+  }
+
+  const tamanhoTotalDocumentos = documentos.reduce((acc, f) => acc + f.size, 0);
+
   async function handleCadastrar() {
     setEnviando(true);
+    setEtapaEnvio("");
     setResultado(null);
     try {
+      const documentosEnviados: { caminho: string; nomeOriginal: string }[] = [];
+      for (let i = 0; i < documentos.length; i++) {
+        const arquivo = documentos[i];
+        setEtapaEnvio(`Enviando documento ${i + 1} de ${documentos.length}...`);
+        const preparo = await prepararUploadDocumentoAction(arquivo.name);
+        if (!preparo.ok) {
+          throw new Error(`Falha ao preparar envio de "${arquivo.name}": ${preparo.erro}`);
+        }
+        const { error: erroUpload } = await supabaseBrowser()
+          .storage.from(BUCKET_DOCUMENTOS_PORTAL)
+          .uploadToSignedUrl(preparo.caminho, preparo.token, arquivo, { contentType: arquivo.type });
+        if (erroUpload) {
+          throw new Error(`Falha ao enviar "${arquivo.name}": ${erroUpload.message}`);
+        }
+        documentosEnviados.push({ caminho: preparo.caminho, nomeOriginal: arquivo.name });
+      }
+      setEtapaEnvio("Cadastrando...");
+
       const formData = new FormData();
       formData.set("clientesJson", JSON.stringify(clientes));
       formData.set("loja_id", lojaId);
@@ -619,8 +682,9 @@ export function PortalAdministracaoForm({
       formData.set("arquivo_vistoria_url", arquivoVistoriaUrl);
       formData.set("observacao", observacao);
       formData.set("pasta_url", pastaUrl);
+      formData.set("documentosJson", JSON.stringify(documentosEnviados));
 
-      const r = await gerarContratoAdministracaoAction(formData);
+      const r = await cadastrarAdministracaoAction(formData);
       setResultado(r);
       if (r.ok) {
         try {
@@ -639,6 +703,7 @@ export function PortalAdministracaoForm({
       });
     } finally {
       setEnviando(false);
+      setEtapaEnvio("");
     }
   }
 
@@ -652,6 +717,7 @@ export function PortalAdministracaoForm({
           <span className="text-xs text-amber-800">
             Você tem um rascunho salvo neste navegador em{" "}
             <strong>{formatarDataHoraRascunho(rascunhoEncontrado.salvoEm)}</strong>.
+            {" "}(anexos de documento não ficam salvos — se tinha algum, precisa adicionar de novo).
           </span>
           <div className="flex items-center gap-2">
             <button
@@ -1335,7 +1401,51 @@ export function PortalAdministracaoForm({
       </div>
 
       <div className="bg-white border border-gray-200 rounded-xl p-4">
-        <div className="text-sm font-bold text-gray-800 mb-3">9. Corretor (captador)</div>
+        <div className="text-sm font-bold text-gray-800 mb-1">9. Documentação</div>
+        <p className="text-[11px] text-gray-400 mb-3">
+          PDF ou imagem (matrícula do imóvel, RG dos proprietários, print da vistoria etc.). Vai direto por email pro
+          administrativo junto com o resumo da administração — não fica guardado no sistema. Total até{" "}
+          {formatarTamanho(TAMANHO_MAXIMO_TOTAL)}.
+        </p>
+
+        {documentos.length > 0 && (
+          <div className="flex flex-col gap-1.5 mb-3">
+            {documentos.map((f, i) => (
+              <div
+                key={`${f.name}-${i}`}
+                className="flex items-center justify-between text-xs bg-gray-50 border border-gray-200 rounded-lg px-3 py-2"
+              >
+                <span className="text-gray-700 truncate">
+                  {f.name} <span className="text-gray-400">— {formatarTamanho(f.size)}</span>
+                </span>
+                <button type="button" onClick={() => removerDocumento(i)} className="text-gray-400 hover:text-red-600 ml-2 shrink-0">
+                  remover
+                </button>
+              </div>
+            ))}
+            <div className="text-[11px] text-gray-400">Total: {formatarTamanho(tamanhoTotalDocumentos)}</div>
+          </div>
+        )}
+
+        <label className="inline-block text-xs bg-white border border-gray-300 text-gray-700 rounded-lg px-3 py-1.5 font-semibold cursor-pointer hover:bg-gray-50">
+          + Adicionar documento
+          <input
+            type="file"
+            accept="application/pdf,image/*"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              adicionarDocumentos(e.target.files);
+              e.target.value = "";
+            }}
+          />
+        </label>
+
+        {erroAnexo && <p className="text-xs text-red-600 mt-2">{erroAnexo}</p>}
+      </div>
+
+      <div className="bg-white border border-gray-200 rounded-xl p-4">
+        <div className="text-sm font-bold text-gray-800 mb-3">10. Corretor (captador)</div>
         <div className="grid md:grid-cols-2 gap-3 text-xs text-gray-700">
           <div>
             <span className="text-gray-400">Corretor: </span>
@@ -1358,7 +1468,7 @@ export function PortalAdministracaoForm({
           onClick={handleCadastrar}
           className="bg-primary text-white rounded-lg px-5 py-2 text-sm font-semibold disabled:opacity-40 hover:opacity-90"
         >
-          {enviando ? "Cadastrando..." : "Cadastrar administração"}
+          {enviando ? etapaEnvio || "Cadastrando..." : "Cadastrar administração"}
         </button>
         <button
           type="button"

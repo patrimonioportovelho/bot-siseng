@@ -1,14 +1,83 @@
 "use server";
 
+import { after } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requirePortalSession } from "@/lib/portal-auth";
 import { logAlteracaoPortal } from "@/lib/auth";
-import { valorEditavelParaDecimal, percentualParaDecimal } from "@/lib/format";
+import { valorEditavelParaDecimal, percentualParaDecimal, formatMoeda, formatData } from "@/lib/format";
 import { registrarEJogarErro } from "@/lib/erros";
 import { buscarClienteDuplicado, mensagemClienteDuplicado } from "@/lib/clientes/duplicidade";
 import { validarCpfCnpj } from "@/lib/clientes/validacao";
 import { montarEnderecoPF } from "@/lib/clientes/endereco";
 import { gerarProximoIdCliente, criarClientesEmSequencia } from "@/lib/clientes/id-legado";
+import { enviarEmail, type EmailAnexo } from "@/lib/email";
+import { criarUploadAssinadoDocumento, criarLinkDownloadDocumento, baixarDocumentoPortal } from "@/lib/supabase-admin";
+
+const EMAIL_DESTINO_PADRAO = "engimob@remax.com.br";
+
+// Mesmo motivo do Contrato de Compra e Venda/Locação (ver comentário lá):
+// documento nunca passa pela Server Action de cadastro — a Vercel tem um
+// limite FIXO de 4,5MB por requisição de função. O navegador chama esta
+// action só pra pedir uma URL de upload assinada, sobe o arquivo direto pro
+// Supabase, e manda pra cadastrarAdministracaoAction só o caminho já salvo.
+export async function prepararUploadDocumentoAction(
+  nomeArquivo: string
+): Promise<{ ok: true; caminho: string; token: string } | { ok: false; erro: string }> {
+  await requirePortalSession();
+  try {
+    const { caminho, token } = await criarUploadAssinadoDocumento(nomeArquivo);
+    return { ok: true, caminho, token };
+  } catch (erro) {
+    return { ok: false, erro: erro instanceof Error ? erro.message : String(erro) };
+  }
+}
+
+type DocumentoEnviado = { caminho: string; nomeOriginal: string };
+
+function parseDocumentos(formData: FormData): DocumentoEnviado[] {
+  const bruto = texto(formData, "documentosJson");
+  if (!bruto) return [];
+  try {
+    const lista = JSON.parse(bruto);
+    if (!Array.isArray(lista)) return [];
+    return lista
+      .map((d) => ({
+        caminho: String(d?.caminho ?? "").trim(),
+        nomeOriginal: String(d?.nomeOriginal ?? "").trim() || "documento"
+      }))
+      .filter((d) => d.caminho.length > 0);
+  } catch {
+    return [];
+  }
+}
+
+async function montarLinksDocumentos(documentos: DocumentoEnviado[]): Promise<string> {
+  if (documentos.length === 0) {
+    return "<p>Nenhum documento foi anexado no cadastro — cobrar do corretor se precisar.</p>";
+  }
+  const links = await Promise.all(
+    documentos.map(async (d) => {
+      const url = await criarLinkDownloadDocumento(d.caminho);
+      return url ? `<li><a href="${url}">${d.nomeOriginal}</a></li>` : `<li>${d.nomeOriginal} (link indisponível)</li>`;
+    })
+  );
+  return `<p>${documentos.length} documento(s) anexado(s) — link válido por 7 dias:</p><ul>${links.join("")}</ul>`;
+}
+
+const ORCAMENTO_ANEXOS_BYTES = 18 * 1024 * 1024;
+
+async function montarAnexosDocumentos(documentos: DocumentoEnviado[]): Promise<EmailAnexo[]> {
+  const anexos: EmailAnexo[] = [];
+  let usado = 0;
+  for (const d of documentos) {
+    const conteudo = await baixarDocumentoPortal(d.caminho);
+    if (!conteudo) continue;
+    if (usado + conteudo.length > ORCAMENTO_ANEXOS_BYTES) continue;
+    anexos.push({ filename: d.nomeOriginal, content: conteudo });
+    usado += conteudo.length;
+  }
+  return anexos;
+}
 
 function texto(formData: FormData, campo: string): string | null {
   const v = formData.get(campo);
@@ -168,19 +237,22 @@ async function gerarProximoIdAdm(): Promise<string> {
   return `ADM-${String(maior + 1).padStart(4, "0")}`;
 }
 
-// Cadastra a "Elaboração de Contrato de Administração" a partir do portal do
-// corretor: mesmo padrão do Contrato de Gestão pra cliente(s)/imóvel
-// (reaproveita cadastro existente quando escolhido, cria os que forem
-// realmente novos, com a mesma checagem de duplicidade), mas usando o
-// cadastro de Administração de verdade (adm_imoveis), com os mesmos campos
-// do formulário "Nova administração" do administrativo.
+// Cadastra a Administração a partir do portal do corretor: mesmo padrão do
+// Contrato de Gestão pra cliente(s)/imóvel (reaproveita cadastro existente
+// quando escolhido, cria os que forem realmente novos, com a mesma checagem
+// de duplicidade), mas usando o cadastro de Administração de verdade
+// (adm_imoveis), com os mesmos campos do formulário "Nova administração" do
+// administrativo.
 //
-// Diferente de Compra e Venda e Gestão, aqui o corretor NÃO gera o
-// documento — quem decide status (Ativo/Locado/Encerrado) e gera o contrato
-// pra assinatura é sempre o administrativo. Por isso a administração sempre
-// nasce com status "Captação" (primeira coluna do quadro de Administrações),
-// independente do que o formulário mandar.
-export async function gerarContratoAdministracaoAction(
+// Igual a Compra e Venda e Locação, o corretor NÃO gera o contrato pra
+// assinatura por aqui — só cadastra, sobe os documentos de apoio (RG,
+// matrícula, print de vistoria etc.) e o administrativo recebe um email de
+// aviso com tudo anexado. Quem decide status (Ativo/Locado/Encerrado) e
+// gera o contrato de administração de verdade é sempre o administrativo, em
+// Documentos. Por isso a administração sempre nasce com status "Captação"
+// (primeira coluna do quadro de Administrações), independente do que o
+// formulário mandar.
+export async function cadastrarAdministracaoAction(
   formData: FormData
 ): Promise<{ ok: true; idLegado: string | null } | { ok: false; erro: string }> {
   const session = await requirePortalSession();
@@ -423,8 +495,74 @@ export async function gerarContratoAdministracaoAction(
       parceiroId: session.parceiroId,
       entidadeTipo: "adm_imoveis",
       entidadeId: novaAdministracao.id,
-      acao: "gerar_contrato_administracao",
+      acao: "cadastrar_administracao",
       dadosDepois: { id_legado: novaAdministracao.id_legado, cliente: principal.nome, imovel_id: imovel.id }
+    });
+
+    // Email pro administrativo — movido pra depois da resposta ao corretor
+    // (after(), do Next.js), mesmo achado do Compra e Venda/Locação (ver
+    // comentário completo em app/portal/compra-venda/actions.ts): baixar
+    // anexo do Storage + mandar pelo Gmail (SMTP) no fim da função é que
+    // empurrava o tempo total pra perto do limite e causava "An unexpected
+    // response was received from the server." pro corretor, mesmo com o
+    // cadastro já salvo. Falha no envio agora só aparece em Configurações >
+    // Erros de cadastro, não trava nem assusta o corretor.
+    const documentosEnviados = parseDocumentos(formData);
+
+    after(async () => {
+      try {
+        const lojaInfo = await prisma.lojas.findUnique({ where: { id: lojaId }, select: { nome: true } });
+
+        const linksDocumentosHtml = await montarLinksDocumentos(documentosEnviados);
+        const anexosDocumentos = await montarAnexosDocumentos(documentosEnviados);
+
+        const linhasResumo = [
+          `<strong>Id:</strong> ${novaAdministracao.id_legado ?? novaAdministracao.id}`,
+          `<strong>Loja:</strong> ${lojaInfo?.nome ?? "—"}`,
+          `<strong>Corretor que cadastrou:</strong> ${session.nome}`,
+          `<strong>Imóvel:</strong> ${imovel.endereco ?? "—"}`,
+          `<strong>Proprietário(s):</strong> ${clientesResultado.map((c) => c.nome).join(", ") || "—"}`,
+          `<strong>Valor do aluguel:</strong> ${valorMonetario(formData, "valor_transacao") ? formatMoeda(valorMonetario(formData, "valor_transacao")!) : "—"}`,
+          `<strong>Data de assinatura:</strong> ${
+            data(formData, "data_assinatura") ? formatData(data(formData, "data_assinatura")!) : "—"
+          }`,
+          `<strong>Honorário informado pelo corretor:</strong> ${
+            percentual(formData, "porc_honorario") ? `${(percentual(formData, "porc_honorario")! * 100).toFixed(2)}%` : "—"
+          }`
+        ];
+
+        const html = `
+          <div style="font-family: sans-serif; font-size: 14px; color: #1f2937;">
+            <p>Nova <strong>Administração</strong> cadastrada pelo portal do corretor.</p>
+            <p>${linhasResumo.join("<br/>")}</p>
+            ${linksDocumentosHtml}
+            <p style="color:#6b7280; font-size:12px;">Contrato de administração ainda precisa ser gerado no administrativo (Documentos).</p>
+          </div>
+        `;
+
+        const resultadoEmail = await enviarEmail({
+          to: process.env.EMAIL_ADM_ADMINISTRACAO || EMAIL_DESTINO_PADRAO,
+          subject: `Administração ${novaAdministracao.id_legado ?? ""} — ${imovel.endereco ?? "imóvel sem endereço"}`,
+          html,
+          attachments: anexosDocumentos
+        });
+
+        if (!resultadoEmail.ok) {
+          await registrarEJogarErro({
+            entidadeTipo: "adm_imoveis",
+            entidadeId: novaAdministracao.id,
+            acao: "enviar_email_administracao",
+            erro: new Error(resultadoEmail.erro)
+          }).catch(() => undefined);
+        }
+      } catch (erroEmail) {
+        await registrarEJogarErro({
+          entidadeTipo: "adm_imoveis",
+          entidadeId: novaAdministracao.id,
+          acao: "enviar_email_administracao",
+          erro: erroEmail instanceof Error ? erroEmail : new Error(String(erroEmail))
+        }).catch(() => undefined);
+      }
     });
 
     return { ok: true, idLegado: novaAdministracao.id_legado };

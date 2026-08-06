@@ -478,17 +478,29 @@ export async function gerarCompraVendaAction(
       }
     }
 
+    // Corretor do comprador/vendedor — lido aqui em cima (não só lá embaixo
+    // na criação da transação) porque também decide de quem é o cliente
+    // NOVO que for cadastrado agora: pedido do usuário em 06/08/2026 — "se
+    // meu cliente entrar eu preciso entrar também" — o comprador precisa
+    // ficar vinculado ao corretor que o representa (escolhido no formulário),
+    // não sempre a quem está cadastrando a transação. Vendedor segue o
+    // mesmo raciocínio com corretor_proprietario_id (na prática quase
+    // sempre é o próprio cadastrante, mas usa o campo do formulário do
+    // mesmo jeito, por consistência).
+    const corretorProprietarioIdForm = texto(formData, "corretor_proprietario_id") || session.parceiroId;
+    const corretorContraparteIdForm = texto(formData, "corretor_contraparte_id") || session.parceiroId;
+
     // Em sequência, não em paralelo — evita duas criações calculando o
     // mesmo próximo CL-0000 ao mesmo tempo (ver comentário em
     // lib/clientes/id-legado.ts#criarClientesEmSequencia).
     const compradoresCriados = await criarClientesEmSequencia(
       compradoresForm.filter((c) => !c.clienteId),
-      (c) => criarCliente(c, session.parceiroId)
+      (c) => criarCliente(c, corretorContraparteIdForm)
     ).catch((erro) => registrarEJogarErro({ entidadeTipo: "clientes", acao: "criar_comprador_via_portal", erro }));
 
     const vendedoresCriados = await criarClientesEmSequencia(
       vendedoresForm.filter((c) => !c.clienteId),
-      (c) => criarCliente(c, session.parceiroId)
+      (c) => criarCliente(c, corretorProprietarioIdForm)
     ).catch((erro) => registrarEJogarErro({ entidadeTipo: "clientes", acao: "criar_vendedor_via_portal", erro }));
 
     // Remonta as listas na mesma ordem em que apareceram no formulário
@@ -599,9 +611,6 @@ export async function gerarCompraVendaAction(
     const porcParceriaTxt = texto(formData, "porc_parceria");
     const porcParceria = temParceria && porcParceriaTxt ? percentualParaDecimal(porcParceriaTxt) : null;
 
-    const corretorProprietarioId = texto(formData, "corretor_proprietario_id");
-    const corretorContraparteId = texto(formData, "corretor_contraparte_id");
-
     const idLegado = await gerarProximoIdCV();
 
     const novo = await prisma.transacoes
@@ -626,8 +635,8 @@ export async function gerarCompraVendaAction(
           tem_parceria: temParceria,
           porc_parceria: porcParceria,
           parceiro_externo_id: temParceria ? parceiroExternoId : null,
-          corretor_proprietario_id: corretorProprietarioId,
-          corretor_contraparte_id: corretorContraparteId,
+          corretor_proprietario_id: corretorProprietarioIdForm,
+          corretor_contraparte_id: corretorContraparteIdForm,
           gestao_id: gestaoId,
           compra_sem_gestao: compraSemGestao,
           historico_gestao_data_assinatura: historicoData,

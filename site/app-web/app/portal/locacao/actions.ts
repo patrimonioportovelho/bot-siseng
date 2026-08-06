@@ -407,17 +407,26 @@ export async function gerarLocacaoAction(
       }
     }
 
+    // Corretor do locatário/proprietário — lido aqui em cima (não só lá
+    // embaixo na criação da transação) porque também decide de quem é o
+    // cliente NOVO cadastrado agora: pedido do usuário em 06/08/2026 — "se
+    // meu cliente entrar eu preciso entrar também" — o locatário precisa
+    // ficar vinculado ao corretor que o representa (escolhido no
+    // formulário), não sempre a quem está cadastrando a transação.
+    const corretorProprietarioIdForm = texto(formData, "corretor_proprietario_id") || session.parceiroId;
+    const corretorContraparteIdForm = texto(formData, "corretor_contraparte_id") || session.parceiroId;
+
     // Em sequência, não em paralelo — evita duas criações calculando o
     // mesmo próximo CL-0000 ao mesmo tempo (ver comentário em
     // lib/clientes/id-legado.ts#criarClientesEmSequencia).
     const locatariosCriados = await criarClientesEmSequencia(
       locatariosForm.filter((c) => !c.clienteId),
-      (c) => criarCliente(c, session.parceiroId)
+      (c) => criarCliente(c, corretorContraparteIdForm)
     ).catch((erro) => registrarEJogarErro({ entidadeTipo: "clientes", acao: "criar_locatario_via_portal", erro }));
 
     const proprietariosCriados = await criarClientesEmSequencia(
       proprietariosForm.filter((c) => !c.clienteId),
-      (c) => criarCliente(c, session.parceiroId)
+      (c) => criarCliente(c, corretorProprietarioIdForm)
     ).catch((erro) => registrarEJogarErro({ entidadeTipo: "clientes", acao: "criar_proprietario_via_portal", erro }));
 
     function remontar(lista: ClienteDigitado[], criados: typeof locatariosCriados) {
@@ -559,8 +568,14 @@ export async function gerarLocacaoAction(
     const porcParceriaTxt = texto(formData, "porc_parceria");
     const porcParceria = temParceria && porcParceriaTxt ? percentualParaDecimal(porcParceriaTxt) : null;
 
-    const corretorProprietarioId = texto(formData, "corretor_proprietario_id") ?? corretorProprietarioAuto;
-    const corretorContraparteId = texto(formData, "corretor_contraparte_id");
+    // corretorProprietarioAuto (derivado da Administração/imóvel já
+    // existente, ver acima) tem prioridade sobre o que veio do formulário —
+    // é o dono de verdade da captação; session.parceiroId só entra como
+    // último fallback (não deveria faltar, os três ramos que definem
+    // corretorProprietarioAuto são exaustivos, mas por garantia).
+    const corretorProprietarioId =
+      texto(formData, "corretor_proprietario_id") ?? corretorProprietarioAuto ?? session.parceiroId;
+    const corretorContraparteId = corretorContraparteIdForm;
 
     const idLegado = await gerarProximoIdLocacao();
 

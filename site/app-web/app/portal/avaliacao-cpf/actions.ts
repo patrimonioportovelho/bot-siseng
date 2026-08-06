@@ -11,6 +11,7 @@ import { buscarClienteDuplicado, mensagemClienteDuplicado } from "@/lib/clientes
 import { validarCpfCnpj } from "@/lib/clientes/validacao";
 import { montarEnderecoPF } from "@/lib/clientes/endereco";
 import { gerarProximoIdCliente } from "@/lib/clientes/id-legado";
+import { gerarProximoIdAvaliacao } from "@/lib/avaliacoes/id-legado";
 import { criarUploadAssinadoDocumento, criarLinkDownloadDocumento, baixarDocumentoPortal } from "@/lib/supabase-admin";
 
 const EMAIL_DESTINO_PADRAO = "engimob@remax.com.br";
@@ -316,9 +317,12 @@ export async function criarAvaliacaoCpfAction(
       clienteCpf = criado.cpf;
     }
 
+    const idLegado = await gerarProximoIdAvaliacao();
+
     const novaAvaliacao = await prisma.avaliacoes
       .create({
         data: {
+          id_legado: idLegado,
           status: "Consulta de CPF",
           data_avaliacao: data(formData, "data_avaliacao") ?? new Date(),
           cliente_id: clienteId,

@@ -7,6 +7,7 @@ import { requireAdminSession, requireAdm, logAlteracao } from "@/lib/auth";
 import { registrarEJogarErro } from "@/lib/erros";
 import { enviarEmail } from "@/lib/email";
 import { gerarProximoIdCliente } from "@/lib/clientes/id-legado";
+import { gerarProximoIdAvaliacao } from "@/lib/avaliacoes/id-legado";
 import {
   criarUploadAssinadoImagemConsulta,
   criarLinkImagemConsultaParaEmail,
@@ -163,8 +164,10 @@ export async function criarAvaliacaoAction(formData: FormData) {
     throw new Error("Selecione o cliente ou informe ao menos o CPF pra identificar a avaliação.");
   }
 
+  const idLegado = await gerarProximoIdAvaliacao();
+
   const novo = await prisma.avaliacoes
-    .create({ data: { ...campos, status: campos.status ?? "Montagem de processo" } })
+    .create({ data: { ...campos, id_legado: idLegado, status: campos.status ?? "Montagem de processo" } })
     .catch((erro) => registrarEJogarErro({ entidadeTipo: "avaliacoes", acao: "criar", erro }));
 
   await sincronizarCoTitulares(novo.id, formData);

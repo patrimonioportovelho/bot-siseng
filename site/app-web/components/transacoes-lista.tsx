@@ -216,8 +216,12 @@ export async function TransacoesLista({ tipo, q, novoHref }: { tipo: "Locação"
                     {somenteLocacao && <span>Prazo do contrato</span>}
                     <span className="text-right">Valor</span>
                   </div>
-                  <div className="flex flex-col">
-                    {doStatus.map((t) => {
+                  {/* divide-y + zebra (linha par com fundo cinza clarinho) — antes
+                      as linhas eram todas brancas sem nenhuma borda entre elas,
+                      ficava tudo colado/difícil de acompanhar numa tabela larga
+                      com várias colunas (pedido do usuário em 06/08/2026). */}
+                  <div className="flex flex-col divide-y divide-gray-100">
+                    {doStatus.map((t, indice) => {
                       const proprietarios = t.imoveis?.imoveis_proprietarios.map((v) => v.clientes) ?? [];
                       const interessados = t.transacoes_contrapartes.map((v) => v.clientes);
 
@@ -231,6 +235,8 @@ export async function TransacoesLista({ tipo, q, novoHref }: { tipo: "Locação"
                           ? "bg-red-50 border border-red-200 hover:bg-red-100"
                           : situacao === "alerta"
                           ? "bg-amber-50 border border-amber-200 hover:bg-amber-100"
+                          : indice % 2 === 1
+                          ? "bg-gray-50/70 hover:bg-gray-100"
                           : "hover:bg-gray-50";
 
                       return (

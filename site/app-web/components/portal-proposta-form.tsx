@@ -115,6 +115,7 @@ type RascunhoProposta = {
   salvoEm: number;
   cliente: ClienteLinha;
   descricao: string;
+  cep: string;
   rua: string;
   numero: string;
   complemento: string;
@@ -150,6 +151,7 @@ export function PortalPropostaForm({
   const [cliente, setCliente] = useState<ClienteLinha>(clienteVazio());
 
   const [descricao, setDescricao] = useState("");
+  const [cep, setCep] = useState("");
   const [rua, setRua] = useState("");
   const [numero, setNumero] = useState("");
   const [complemento, setComplemento] = useState("");
@@ -184,6 +186,7 @@ export function PortalPropostaForm({
       salvoEm: Date.now(),
       cliente,
       descricao,
+      cep,
       rua,
       numero,
       complemento,
@@ -205,13 +208,14 @@ export function PortalPropostaForm({
       // localStorage indisponível — segue sem rascunho
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cliente, descricao, rua, numero, complemento, bairro, cidade, estado, valorProposta, dataFechamento, condicoes]);
+  }, [cliente, descricao, cep, rua, numero, complemento, bairro, cidade, estado, valorProposta, dataFechamento, condicoes]);
 
   function restaurarRascunho() {
     if (!rascunhoEncontrado) return;
     const r = rascunhoEncontrado;
     setCliente(r.cliente);
     setDescricao(r.descricao);
+    setCep(r.cep ?? "");
     setRua(r.rua);
     setNumero(r.numero);
     setComplemento(r.complemento);
@@ -292,6 +296,21 @@ export function PortalPropostaForm({
       estadoId: estadoEncontrado?.id ?? atual.estadoId,
       cidadeId: cidadeEncontrada?.id ?? ""
     }));
+  }
+
+  // Busca automática de CEP (ViaCEP) pro imóvel da proposta — mesmo serviço
+  // usado no resto do sistema (lib/enderecos.ts), mas aqui Cidade/Estado são
+  // texto livre (o imóvel não é cadastrado no sistema, só entra no texto da
+  // proposta), diferente do padrão com select por estadoId/cidadeId usado em
+  // Compra e Venda/Locação/Administração/Gestão.
+  async function buscarEnderecoImovelPorCep() {
+    const encontrado = await buscarCep(cep);
+    if (!encontrado) return;
+
+    setRua((atual) => encontrado.logradouro || atual);
+    setBairro((atual) => encontrado.bairro || atual);
+    setCidade((atual) => encontrado.localidade || atual);
+    setEstado((atual) => UF_PARA_ESTADO[encontrado.uf] ?? encontrado.uf ?? atual);
   }
 
   function adicionarCondicao() {
@@ -637,12 +656,22 @@ export function PortalPropostaForm({
             <input className={CAMPO} value={descricao} onChange={(e) => setDescricao(e.target.value)} />
           </div>
           <div>
-            <label className={LABEL}>Rua</label>
-            <input className={CAMPO} value={rua} onChange={(e) => setRua(e.target.value)} />
+            <label className={LABEL}>CEP</label>
+            <input
+              className={CAMPO}
+              value={cep}
+              onChange={(e) => setCep(e.target.value)}
+              onBlur={buscarEnderecoImovelPorCep}
+              placeholder="00000-000"
+            />
           </div>
           <div>
             <label className={LABEL}>Número</label>
             <input className={CAMPO} value={numero} onChange={(e) => setNumero(e.target.value)} />
+          </div>
+          <div className="md:col-span-2">
+            <label className={LABEL}>Rua</label>
+            <input className={CAMPO} value={rua} onChange={(e) => setRua(e.target.value)} />
           </div>
           <div>
             <label className={LABEL}>Complemento</label>

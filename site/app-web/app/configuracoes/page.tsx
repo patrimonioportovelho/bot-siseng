@@ -15,6 +15,7 @@ import {
   marcarErroVistoAction
 } from "./actions";
 import { limparErrosAntigos } from "@/lib/erros";
+import { limparNoticiasAntigas } from "@/lib/publicacoes/limpeza";
 import { lojasSelecionadas } from "@/lib/lojas/filtro";
 
 export const dynamic = "force-dynamic";
@@ -69,7 +70,10 @@ export default async function ConfiguracoesPage({
 
   // Erros de cadastro com mais de 3 dias somem sozinhos toda vez que essa
   // página é aberta — dá tempo de revisar sem deixar a tabela crescendo.
-  await limparErrosAntigos();
+  // Notícias com mais de 30 dias seguem o mesmo padrão (ver
+  // lib/publicacoes/limpeza.ts) — Edital e Checklist ficam de fora dessa
+  // limpeza automática, só saem quando alguém desativa ou exclui na mão.
+  await Promise.all([limparErrosAntigos(), limparNoticiasAntigas()]);
   const lojasFiltro = await lojasSelecionadas();
 
   const [pendentes, parceirosAtivos, lojas, acessos, alteracoes, publicacoes, mensagensSac, errosCadastro] = await Promise.all([
@@ -102,7 +106,12 @@ export default async function ConfiguracoesPage({
       take: 20,
       include: { parceiros: true }
     }),
-    prisma.publicacoes_site.findMany({ orderBy: { publicado_em: "desc" } }),
+    // Notícia velha já sai sozinha (limparNoticiasAntigas, acima), mas
+    // Edital e Checklist são permanentes — esse take é só um teto de
+    // segurança pra não crescer sem limite; a lista some visualmente com
+    // scroll depois de umas 5 (ver max-h-64 abaixo, mesmo padrão do resto
+    // desta página).
+    prisma.publicacoes_site.findMany({ orderBy: { publicado_em: "desc" }, take: 50 }),
     prisma.mensagens_sac.findMany({ orderBy: { criado_em: "desc" }, take: 100 }),
     prisma.logs_erro.findMany({
       orderBy: { criado_em: "desc" },
@@ -320,7 +329,7 @@ export default async function ConfiguracoesPage({
         {publicacoes.length === 0 ? (
           <p className="text-xs text-gray-400">Nenhuma publicação cadastrada ainda.</p>
         ) : (
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-2 max-h-64 overflow-auto pr-1">
             {publicacoes.map((p) => (
               <details key={p.id} className="border border-gray-200 rounded-lg">
                 <summary className="flex items-center justify-between gap-2 px-3 py-2 cursor-pointer text-xs">

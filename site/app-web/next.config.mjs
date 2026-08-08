@@ -30,12 +30,20 @@ const nextConfig = {
   // ambiente real — fica como melhoria futura, testada com calma. Os
   // headers abaixo são de baixo risco (não dependem de saber toda origem
   // externa usada pelo site).
+  //
+  // X-Frame-Options era "DENY" até 08/08/2026, mas isso também bloqueava o
+  // próprio painel lateral (components/painel-lateral.tsx) — o "abrir
+  // cliente/imóvel sem sair da tela" carrega a ficha num iframe com
+  // ?embed=1 DO MESMO domínio, e "DENY" barra até isso (aparecia como
+  // ícone de conteúdo quebrado no painel). "SAMEORIGIN" mantém a proteção
+  // contra clickjacking de outros sites, só permitindo iframe de dentro do
+  // próprio sistema.
   async headers() {
     return [
       {
         source: "/:path*",
         headers: [
-          { key: "X-Frame-Options", value: "DENY" },
+          { key: "X-Frame-Options", value: "SAMEORIGIN" },
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" }

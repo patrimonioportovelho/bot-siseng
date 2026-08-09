@@ -50,12 +50,18 @@ export default async function PortalAgendaPage({
   const fimMes = new Date(ano, mesIndice + 1, 1);
 
   const [atividadesMarketing, atividadesGestao, atividadesManutencao, solicitacoes] = await Promise.all([
-    // Editorial do Marketing já confirmado — nada ainda em
-    // Recebido/Aguardando briefing (não tem data de verdade pra mostrar).
+    // Editorial do Marketing — qualquer marketing_atividades já É um
+    // compromisso com data real (é uma atividade explicitamente agendada,
+    // não um prazo solto). Antes isso excluía coluna "recebido"/"aguardando
+    // briefing" achando que essas etapas nunca tinham atividade de verdade
+    // — só que confirmarSolicitacaoAgendaAction (pedido do corretor pela
+    // Agenda) cria a Ordem direto em "recebido" JÁ com uma atividade de
+    // captação agendada, e esse filtro escondia exatamente esse caso
+    // (bug relatado pelo usuário em 09/08/2026 — "calendário não atualiza").
     prisma.marketing_atividades.findMany({
       where: {
         data: { gte: inicioMes, lt: fimMes },
-        marketing_ordens: { excluido: false, coluna: { notIn: ["recebido", "aguardando_briefing"] } }
+        marketing_ordens: { excluido: false }
       },
       include: { marketing_ordens: { select: { titulo: true } } }
     }),

@@ -343,6 +343,11 @@ export async function criarAtividadeAction(formData: FormData) {
   revalidatePath(`/marketing/${ordemId}`);
   revalidatePath("/manutencao/calendario");
   revalidatePath("/manutencao/painel");
+  // Qualquer atividade de Marketing pode aparecer no calendário do portal
+  // do corretor também (editorial company-wide, ver app/portal/agenda) —
+  // sem isso, criar/marcar/remover uma atividade pela ficha da Ordem só
+  // refletia lá depois de o corretor sair e voltar na página.
+  revalidatePath("/portal/agenda");
 }
 
 export async function marcarAtividadeFeitaAction(id: string, ordemId: string) {
@@ -358,6 +363,11 @@ export async function marcarAtividadeFeitaAction(id: string, ordemId: string) {
   revalidatePath(`/marketing/${ordemId}`);
   revalidatePath("/manutencao/calendario");
   revalidatePath("/manutencao/painel");
+  // Qualquer atividade de Marketing pode aparecer no calendário do portal
+  // do corretor também (editorial company-wide, ver app/portal/agenda) —
+  // sem isso, criar/marcar/remover uma atividade pela ficha da Ordem só
+  // refletia lá depois de o corretor sair e voltar na página.
+  revalidatePath("/portal/agenda");
 }
 
 export async function removerAtividadeAction(id: string, ordemId: string) {
@@ -370,6 +380,11 @@ export async function removerAtividadeAction(id: string, ordemId: string) {
   revalidatePath(`/marketing/${ordemId}`);
   revalidatePath("/manutencao/calendario");
   revalidatePath("/manutencao/painel");
+  // Qualquer atividade de Marketing pode aparecer no calendário do portal
+  // do corretor também (editorial company-wide, ver app/portal/agenda) —
+  // sem isso, criar/marcar/remover uma atividade pela ficha da Ordem só
+  // refletia lá depois de o corretor sair e voltar na página.
+  revalidatePath("/portal/agenda");
 }
 
 // --- Produção (pipeline peça a peça — Fase 5c, 09/08/2026) — 1 Ordem pode
@@ -510,6 +525,24 @@ export async function confirmarSolicitacaoAgendaAction(formData: FormData) {
     })
     .catch((erro) => registrarEJogarErro({ entidadeTipo: "marketing_ordens", acao: "criar_de_solicitacao", erro }));
 
+  // BUG encontrado em 09/08/2026 ("os calendários não se atualizaram"): esta
+  // action gravava data_captacao na Ordem, mas nenhum dos calendários
+  // (/manutencao/calendario, /portal/agenda) lê esse campo — os dois só
+  // mostram marketing_atividades. Sem essa linha, o horário confirmado não
+  // aparecia em lugar nenhum, só dentro da própria ficha da Ordem. Cria a
+  // atividade que representa esse compromisso já agendado.
+  await prisma.marketing_atividades
+    .create({
+      data: {
+        marketing_ordem_id: ordemCriada.id,
+        tipo: "captacao",
+        titulo: solicitacao.titulo,
+        data: dataConfirmada,
+        notas: solicitacao.descricao
+      }
+    })
+    .catch((erro) => registrarEJogarErro({ entidadeTipo: "marketing_atividades", entidadeId: ordemCriada.id, acao: "criar_de_solicitacao", erro }));
+
   const depois = await prisma.solicitacoes_agenda
     .update({
       where: { id },
@@ -535,6 +568,14 @@ export async function confirmarSolicitacaoAgendaAction(formData: FormData) {
 
   revalidatePath("/marketing/agenda");
   revalidatePath("/marketing");
+  revalidatePath(`/marketing/${ordemCriada.id}`);
+  // Os dois calendários que dependem de marketing_atividades — sem isso o
+  // corretor só veria o compromisso novo depois de sair e voltar na Agenda
+  // (o Next só invalida o cache das rotas listadas aqui).
+  revalidatePath("/manutencao/calendario");
+  revalidatePath("/manutencao/painel");
+  revalidatePath("/portal/agenda");
+  revalidatePath("/portal");
 }
 
 export async function recusarSolicitacaoAgendaAction(formData: FormData) {
@@ -568,4 +609,6 @@ export async function recusarSolicitacaoAgendaAction(formData: FormData) {
   });
 
   revalidatePath("/marketing/agenda");
+  revalidatePath("/portal/agenda");
+  revalidatePath("/portal");
 }

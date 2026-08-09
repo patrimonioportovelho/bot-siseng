@@ -1,13 +1,14 @@
 import Link from "next/link";
 
-// Navegação compartilhada de Atividades: Manutenção e Gestões têm quadros
-// (Kanban) separados, mas Calendário e Painel mostram os dois módulos juntos
-// — por isso só existe uma rota de Calendário e uma de Painel (dentro de
-// /manutencao por herança histórica, mas já trazem atividades de Gestões
-// também).
+// Navegação compartilhada de Atividades: Manutenção, Gestões e Marketing têm
+// quadros (Kanban) separados, mas Calendário e Painel mostram os três
+// módulos juntos — por isso só existe uma rota de Calendário e uma de Painel
+// (dentro de /manutencao por herança histórica, mas já trazem atividades de
+// Gestões e Marketing também).
 const TABS = [
   { href: "/manutencao", label: "Quadro · Manutenção" },
   { href: "/gestoes", label: "Quadro · Gestões" },
+  { href: "/marketing", label: "Quadro · Marketing" },
   { href: "/manutencao/calendario", label: "Calendário" },
   { href: "/manutencao/painel", label: "Painel" }
 ];

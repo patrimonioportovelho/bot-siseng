@@ -11,6 +11,7 @@ import {
   iconeTipoServico
 } from "@/lib/manutencao/opcoes";
 import { CHAVE_POSSE_LABEL as CHAVE_POSSE_LABEL_GESTAO, labelColuna as labelColunaGestao } from "@/lib/gestoes/opcoes";
+import { labelColuna as labelColunaMarketing } from "@/lib/marketing/opcoes";
 import { lojasSelecionadas } from "@/lib/lojas/filtro";
 
 export const dynamic = "force-dynamic";
@@ -41,7 +42,10 @@ export default async function ManutencaoPainelPage() {
     gestoesAbertas,
     chavesForaGestao,
     atividadesAtrasadasGestao,
-    atividadesProximasGestao
+    atividadesProximasGestao,
+    ordensMarketingAbertas,
+    atividadesAtrasadasMarketing,
+    atividadesProximasMarketing
   ] = await Promise.all([
     prisma.manutencoes.findMany({
       where: { excluido: false, coluna: { not: "pago" }, imoveis: filtroLojaImovel },
@@ -88,6 +92,22 @@ export default async function ManutencaoPainelPage() {
         data: { gte: hoje, lt: em7dias },
         gestoes: { excluido: false, imoveis: filtroLojaImovel }
       }
+    }),
+    // Marketing não tem loja própria — aparece pra todo mundo, sem o filtro
+    // de loja dos outros dois módulos, e sem "chaves fora" (não se aplica).
+    prisma.marketing_ordens.findMany({
+      where: { excluido: false, coluna: { notIn: ["publicado", "resultados"] } },
+      orderBy: { created_at: "desc" },
+      include: {
+        parceiros_marketing_ordens_solicitante_parceiro_idToparceiros: { select: { nome: true } },
+        parceiros_marketing_ordens_responsavel_atual_idToparceiros: { select: { nome: true } }
+      }
+    }),
+    prisma.marketing_atividades.count({
+      where: { feito: false, data: { lt: hoje }, marketing_ordens: { excluido: false } }
+    }),
+    prisma.marketing_atividades.count({
+      where: { feito: false, data: { gte: hoje, lt: em7dias }, marketing_ordens: { excluido: false } }
     })
   ]);
 
@@ -95,8 +115,8 @@ export default async function ManutencaoPainelPage() {
     (a, b) => (ORDEM_URGENCIA[a.urgencia] ?? 9) - (ORDEM_URGENCIA[b.urgencia] ?? 9)
   );
 
-  const atividadesAtrasadas = atividadesAtrasadasManutencao + atividadesAtrasadasGestao;
-  const atividadesProximas = atividadesProximasManutencao + atividadesProximasGestao;
+  const atividadesAtrasadas = atividadesAtrasadasManutencao + atividadesAtrasadasGestao + atividadesAtrasadasMarketing;
+  const atividadesProximas = atividadesProximasManutencao + atividadesProximasGestao + atividadesProximasMarketing;
   const chavesFora = chavesForaManutencao.length + chavesForaGestao.length;
 
   return (
@@ -104,7 +124,7 @@ export default async function ManutencaoPainelPage() {
       <Topbar />
 
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-        <div className="text-sm font-bold text-gray-800">Atividades · Manutenção &amp; Gestões</div>
+        <div className="text-sm font-bold text-gray-800">Atividades · Manutenção, Gestões &amp; Marketing</div>
         <AtividadesTabs ativo="/manutencao/painel" />
       </div>
 
@@ -127,7 +147,7 @@ export default async function ManutencaoPainelPage() {
         </div>
       </div>
 
-      <div className="grid md:grid-cols-2 gap-4 mb-4">
+      <div className="grid md:grid-cols-3 gap-4 mb-4">
         <div className="bg-white border border-gray-200 rounded-xl p-4">
           <div className="text-sm font-bold text-gray-800 mb-3">Manutenções em aberto</div>
           <div className="flex flex-col gap-2">
@@ -181,6 +201,31 @@ export default async function ManutencaoPainelPage() {
               </Link>
             ))}
             {gestoesAbertas.length === 0 && <p className="text-xs text-gray-400">Nenhuma gestão em andamento.</p>}
+          </div>
+        </div>
+
+        <div className="bg-white border border-gray-200 rounded-xl p-4">
+          <div className="text-sm font-bold text-gray-800 mb-3">Ordens de Marketing em aberto</div>
+          <div className="flex flex-col gap-2">
+            {ordensMarketingAbertas.map((o) => (
+              <Link
+                key={o.id}
+                href={`/marketing/${o.id}`}
+                className="border border-gray-100 rounded-lg px-3 py-2 flex items-center justify-between gap-2 hover:bg-gray-50"
+              >
+                <div className="min-w-0">
+                  <div className="text-xs font-medium text-gray-800 truncate">{o.titulo}</div>
+                  <div className="text-[11px] text-gray-400 truncate">
+                    {labelColunaMarketing(o.coluna)}
+                    {o.parceiros_marketing_ordens_responsavel_atual_idToparceiros?.nome
+                      ? ` · ${o.parceiros_marketing_ordens_responsavel_atual_idToparceiros.nome}`
+                      : ""}
+                  </div>
+                </div>
+                <span className="text-[10px] text-gray-400 shrink-0">{o.id_legado ?? ""}</span>
+              </Link>
+            ))}
+            {ordensMarketingAbertas.length === 0 && <p className="text-xs text-gray-400">Nenhuma ordem em aberto.</p>}
           </div>
         </div>
       </div>

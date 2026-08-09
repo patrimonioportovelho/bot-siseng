@@ -857,6 +857,10 @@ model parceiros {
   mensagens_sac                                                              mensagens_sac[]
   logs_erro                                                                  logs_erro[]
   manutencoes                                                                manutencoes[]
+  marketing_ordens_marketing_ordens_solicitante_parceiro_idToparceiros       marketing_ordens[]        @relation("marketing_ordens_solicitante_parceiro_idToparceiros")
+  marketing_ordens_marketing_ordens_responsavel_atual_idToparceiros          marketing_ordens[]        @relation("marketing_ordens_responsavel_atual_idToparceiros")
+  solicitacoes_agenda_solicitacoes_agenda_parceiro_idToparceiros             solicitacoes_agenda[]     @relation("solicitacoes_agenda_parceiro_idToparceiros")
+  solicitacoes_agenda_respondido_solicitacoes_agenda_idToparceiros           solicitacoes_agenda[]     @relation("solicitacoes_agenda_respondido_por_parceiro_idToparceiros")
   bancos                                                                      bancos?                   @relation(fields: [banco_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   lojas                                                                       lojas?                    @relation(fields: [loja_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   estados                                                                     estados?                  @relation(fields: [estado_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -1328,4 +1332,139 @@ model manutencao_notas {
   manutencoes   manutencoes @relation(fields: [manutencao_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@index([manutencao_id], map: "idx_manut_notas_manutencao")
+}
+
+/// Módulo Marketing (Kanban) — pedido do usuário em 09/08/2026, baseado no
+/// Manual Operacional de Marketing (Método IMPACTO). Mesmo padrão de
+/// gestoes/manutencoes: tabela principal com "coluna" (etapa do quadro),
+/// soft-delete via "excluido", e três tabelas satélite (checklist, notas,
+/// atividades). marketing_atividades entra como 3ª fonte do calendário
+/// compartilhado já existente (app/manutencao/calendario, hoje só
+/// manutencao_atividades + gestao_atividades) — é assim que "todos os
+/// calendários ficam ligados": não são calendários sincronizados, é o MESMO
+/// calendário lendo de mais uma tabela.
+model marketing_ordens {
+  id                       String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  // Numeração automática OM-0001, OM-0002... (mesmo mecanismo de AVL-0001 em
+  // avaliacoes — ver lib/marketing/id-legado.ts).
+  id_legado                String?   @unique
+  titulo                   String
+  // Corretor que pediu a demanda (pode ser nulo pra demanda institucional,
+  // sem solicitante — ex.: campanha da própria imobiliária).
+  solicitante_parceiro_id  String?   @db.Uuid
+  tipo                     String?
+  // Os 5 modelos de briefing do Manual (venda, locação, empreendimento,
+  // autoridade do corretor, evento institucional) têm campos bem diferentes
+  // entre si — em vez de dezenas de colunas quase sempre vazias, guarda o
+  // tipo escolhido + os campos daquele tipo num JSON (ver
+  // lib/marketing/opcoes.ts pros templates). A tela renderiza o formulário
+  // certo a partir de briefing_tipo.
+  briefing_tipo            String?
+  briefing_dados           Json?
+  // Regra de ouro do Manual: "o agendamento reserva o horário; o briefing
+  // autoriza a produção" — só true quando todos os campos obrigatórios
+  // daquele tipo de briefing estiverem preenchidos (checado na Server Action,
+  // não é só um campo solto).
+  briefing_completo        Boolean   @default(false)
+  objetivo                 String?
+  prioridade               String    @default("Normal")
+  coluna                   String    @default("recebido")
+  data_captacao            DateTime? @db.Timestamptz(6)
+  prazo_roteiro            DateTime? @db.Date
+  prazo_entrega            DateTime? @db.Date
+  data_publicacao          DateTime? @db.Date
+  // Quem precisa agir agora — qualquer Parceiro função Administrativo e
+  // Ativo (regra do usuário, aplicada na consulta que popula o <select>, não
+  // trava por permissão no card em si).
+  responsavel_atual_id     String?   @db.Uuid
+  bloqueio                 String?
+  link_arquivos            String?
+  aprovacao_status         String?
+  // Métricas finais (alcance, directs, leads, visitas) — registro manual, o
+  // sistema não tem integração com Instagram/Meta.
+  resultados               Json?
+  resultados_texto         String?
+  excluido                 Boolean   @default(false)
+  created_at               DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at               DateTime  @default(now()) @db.Timestamptz(6)
+  checklist_itens          marketing_checklist_itens[]
+  atividades               marketing_atividades[]
+  notas                    marketing_notas[]
+  solicitacoes_agenda      solicitacoes_agenda[]
+  parceiros_marketing_ordens_solicitante_parceiro_idToparceiros parceiros? @relation("marketing_ordens_solicitante_parceiro_idToparceiros", fields: [solicitante_parceiro_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  parceiros_marketing_ordens_responsavel_atual_idToparceiros    parceiros? @relation("marketing_ordens_responsavel_atual_idToparceiros", fields: [responsavel_atual_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([coluna], map: "idx_marketing_ordens_coluna")
+  @@index([solicitante_parceiro_id], map: "idx_marketing_ordens_solicitante")
+  @@index([excluido], map: "idx_marketing_ordens_excluido")
+}
+
+model marketing_atividades {
+  id                 String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  marketing_ordem_id String           @db.Uuid
+  tipo               String
+  titulo             String
+  data               DateTime         @db.Date
+  feito              Boolean          @default(false)
+  notas              String?
+  created_at         DateTime         @default(now()) @db.Timestamptz(6)
+  marketing_ordens   marketing_ordens @relation(fields: [marketing_ordem_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([marketing_ordem_id], map: "idx_marketing_atividades_ordem")
+  @@index([data], map: "idx_marketing_atividades_data")
+}
+
+model marketing_notas {
+  id                 String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  marketing_ordem_id String           @db.Uuid
+  texto              String
+  criado_em          DateTime         @default(now()) @db.Timestamptz(6)
+  marketing_ordens   marketing_ordens @relation(fields: [marketing_ordem_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([marketing_ordem_id], map: "idx_marketing_notas_ordem")
+}
+
+model marketing_checklist_itens {
+  id                 String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  marketing_ordem_id String           @db.Uuid
+  label              String
+  done               Boolean          @default(false)
+  ordem              Int              @default(0) @db.SmallInt
+  created_at         DateTime         @default(now()) @db.Timestamptz(6)
+  marketing_ordens   marketing_ordens @relation(fields: [marketing_ordem_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([marketing_ordem_id], map: "idx_marketing_checklist_ordem")
+}
+
+/// Pedido do corretor pela aba "Agenda" do portal — sugere data/horário pra
+/// um setor (só "marketing" selecionável por enquanto; campo já genérico pra
+/// ligar outros setores depois sem mudar o schema). Quando o setor responde
+/// e confirma, normalmente vira uma marketing_ordens (marketing_ordem_id
+/// preenchido) — o pedido do corretor "é" o agendamento, ele não precisa
+/// reagendar em outro lugar. visto_pelo_corretor controla a notificação
+/// dentro do portal (fica false assim que alguém responde, volta a true
+/// quando o corretor abre a Agenda).
+model solicitacoes_agenda {
+  id                          String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  parceiro_id                 String            @db.Uuid
+  setor                       String            @default("marketing")
+  titulo                      String
+  descricao                   String?
+  tipo                        String?
+  data_hora_sugerida          DateTime          @db.Timestamptz(6)
+  status                      String            @default("pendente")
+  resposta_texto              String?
+  data_hora_confirmada        DateTime?         @db.Timestamptz(6)
+  respondido_por_parceiro_id  String?           @db.Uuid
+  respondido_em               DateTime?         @db.Timestamptz(6)
+  visto_pelo_corretor         Boolean           @default(true)
+  marketing_ordem_id          String?           @db.Uuid
+  excluido                    Boolean           @default(false)
+  created_at                  DateTime          @default(now()) @db.Timestamptz(6)
+  marketing_ordens            marketing_ordens? @relation(fields: [marketing_ordem_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  parceiros_solicitacoes_agenda_parceiro_idToparceiros                 parceiros  @relation("solicitacoes_agenda_parceiro_idToparceiros", fields: [parceiro_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  parceiros_solicitacoes_agenda_respondido_por_parceiro_idToparceiros  parceiros? @relation("solicitacoes_agenda_respondido_por_parceiro_idToparceiros", fields: [respondido_por_parceiro_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([parceiro_id], map: "idx_solicitacoes_agenda_parceiro")
+  @@index([status], map: "idx_solicitacoes_agenda_status")
 }

@@ -6,6 +6,7 @@ import { AtividadesTabs } from "@/components/atividades-tabs";
 import { hojePortoVelho } from "@/lib/format";
 import { TIPO_ATIVIDADE_LABEL as TIPO_ATIVIDADE_LABEL_MANUTENCAO } from "@/lib/manutencao/opcoes";
 import { TIPO_ATIVIDADE_LABEL as TIPO_ATIVIDADE_LABEL_GESTAO } from "@/lib/gestoes/opcoes";
+import { TIPO_ATIVIDADE_LABEL as TIPO_ATIVIDADE_LABEL_MARKETING } from "@/lib/marketing/opcoes";
 import { lojasSelecionadas } from "@/lib/lojas/filtro";
 
 export const dynamic = "force-dynamic";
@@ -38,7 +39,7 @@ export default async function ManutencaoCalendarioPage({
   const lojasFiltro = await lojasSelecionadas();
   const filtroLojaImovel = { OR: [{ loja_id: { in: lojasFiltro } }, { loja_id: null }] };
 
-  const [atividadesManutencao, atividadesGestao] = await Promise.all([
+  const [atividadesManutencao, atividadesGestao, atividadesMarketing] = await Promise.all([
     prisma.manutencao_atividades.findMany({
       where: {
         data: { gte: inicioMes, lt: fimMes },
@@ -62,6 +63,18 @@ export default async function ManutencaoCalendarioPage({
           select: { id: true, imoveis: { select: { endereco: true, id_legado: true } } }
         }
       }
+    }),
+    // Marketing não tem loja própria (não é vinculado a um imóvel por FK) —
+    // aparece pra todo mundo, sem o filtro de loja dos outros dois módulos.
+    prisma.marketing_atividades.findMany({
+      where: {
+        data: { gte: inicioMes, lt: fimMes },
+        marketing_ordens: { excluido: false }
+      },
+      orderBy: { data: "asc" },
+      include: {
+        marketing_ordens: { select: { id: true, titulo: true } }
+      }
     })
   ]);
 
@@ -83,6 +96,15 @@ export default async function ManutencaoCalendarioPage({
       feito: a.feito,
       href: `/gestoes/${a.gestoes.id}`,
       contexto: a.gestoes.imoveis.endereco ?? a.gestoes.imoveis.id_legado ?? "Gestão"
+    })),
+    ...atividadesMarketing.map((a) => ({
+      id: `marketing-${a.id}`,
+      tipoLabel: TIPO_ATIVIDADE_LABEL_MARKETING[a.tipo] ?? a.tipo,
+      titulo: a.titulo,
+      data: a.data,
+      feito: a.feito,
+      href: `/marketing/${a.marketing_ordens.id}`,
+      contexto: a.marketing_ordens.titulo
     }))
   ].sort((a, b) => a.data.getTime() - b.data.getTime());
 
@@ -98,7 +120,7 @@ export default async function ManutencaoCalendarioPage({
       <Topbar />
 
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-        <div className="text-sm font-bold text-gray-800">Atividades · Manutenção &amp; Gestões</div>
+        <div className="text-sm font-bold text-gray-800">Atividades · Manutenção, Gestões &amp; Marketing</div>
         <AtividadesTabs ativo="/manutencao/calendario" />
       </div>
 

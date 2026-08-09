@@ -1,5 +1,7 @@
 "use client";
 
+import { BotaoSubmit } from "@/components/botao-submit";
+
 type ParceiroOpcao = { id: string; nome: string };
 
 type PerfilExistente = {
@@ -96,9 +98,9 @@ export function MarketingCorretorPerfilForm({
       </div>
 
       <div className="flex justify-end">
-        <button type="submit" className="text-xs bg-primary text-white rounded-lg px-5 py-2 font-semibold">
+        <BotaoSubmit className="text-xs bg-primary text-white rounded-lg px-5 py-2 font-semibold" carregandoTexto="Salvando...">
           Salvar perfil
-        </button>
+        </BotaoSubmit>
       </div>
     </form>
   );

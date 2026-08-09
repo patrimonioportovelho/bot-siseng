@@ -3,6 +3,7 @@
 import { useRef, useTransition } from "react";
 import { formatDataCalendario, hojeInputDate, hojePortoVelho } from "@/lib/format";
 import { TIPOS_ATIVIDADE, TIPO_ATIVIDADE_LABEL } from "@/lib/marketing/opcoes";
+import { BotaoSubmit } from "@/components/botao-submit";
 
 type Atividade = { id: string; tipo: string; titulo: string; data: Date | string; feito: boolean; notas: string | null };
 
@@ -32,8 +33,8 @@ export function MarketingAtividades({
 
       <form
         ref={formRef}
-        action={(formData) => {
-          adicionar(formData);
+        action={async (formData) => {
+          await adicionar(formData);
           formRef.current?.reset();
         }}
         className="grid md:grid-cols-4 gap-2 mb-4"
@@ -61,9 +62,9 @@ export function MarketingAtividades({
           placeholder="Notas (opcional)"
           className="text-xs border border-gray-300 rounded-lg px-2 py-1.5 outline-none focus:border-primary md:col-span-3"
         />
-        <button type="submit" className="text-xs bg-primary text-white rounded-lg px-3 py-1.5 font-semibold whitespace-nowrap">
+        <BotaoSubmit className="text-xs bg-primary text-white rounded-lg px-3 py-1.5 font-semibold whitespace-nowrap" carregandoTexto="Agendando...">
           + Agendar
-        </button>
+        </BotaoSubmit>
       </form>
 
       <div className="flex flex-col gap-1.5">

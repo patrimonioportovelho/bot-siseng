@@ -596,6 +596,13 @@ model imoveis {
   parceiros             parceiros?              @relation(fields: [parceiro_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   lojas                 lojas?                  @relation(fields: [loja_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   transacoes            transacoes[]
+  // Vínculo opcional com uma Ordem de Marketing / pedido da Agenda —
+  // "cadastro inteligente" da OM (09/08/2026): quando o corretor pede uma
+  // atividade pra um imóvel que já tem cadastro (contrato de gestão ou de
+  // administração), a Ordem puxa endereço/valor daqui em vez de digitar de
+  // novo (ver marketing_ordens.imovel_id e solicitacoes_agenda.imovel_id).
+  marketing_ordens      marketing_ordens[]
+  solicitacoes_agenda   solicitacoes_agenda[]
 
   @@index([endereco], map: "idx_imoveis_endereco")
   @@index([parceiro_id], map: "idx_imoveis_parceiro")
@@ -1382,6 +1389,14 @@ model marketing_ordens {
   // fonte de verdade pra exibição; "empreendimento" (texto livre, acima)
   // continua servindo pra quem não tem cadastro, sem quebrar Ordens antigas.
   empreendimento_id        String?   @db.Uuid
+  // Imóvel cadastrado vinculado (opcional) — "cadastro inteligente" da OM,
+  // 09/08/2026. Só puxa dados existentes (endereco/valor_venda) pra
+  // preencher o briefing sozinho; não cria imóvel novo por aqui (isso já
+  // existe nos fluxos de Gestão/Administração do portal — ver
+  // app/portal/gestao/actions.ts). Vem preenchido automaticamente quando a
+  // Ordem nasce de um pedido da Agenda que já linkou um imóvel
+  // (confirmarSolicitacaoAgendaAction propaga de solicitacoes_agenda).
+  imovel_id                String?   @db.Uuid
   canal                    String?
   prioridade               String    @default("Normal")
   coluna                   String    @default("recebido")
@@ -1422,10 +1437,12 @@ model marketing_ordens {
   parceiros_marketing_ordens_responsavel_atual_idToparceiros    parceiros? @relation("marketing_ordens_responsavel_atual_idToparceiros", fields: [responsavel_atual_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   parceiros_marketing_ordens_responsavel_aprovacao_idToparceiros parceiros? @relation("marketing_ordens_responsavel_aprovacao_idToparceiros", fields: [responsavel_aprovacao_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   marketing_empreendimentos marketing_empreendimentos? @relation(fields: [empreendimento_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  imoveis                   imoveis?                   @relation(fields: [imovel_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([coluna], map: "idx_marketing_ordens_coluna")
   @@index([solicitante_parceiro_id], map: "idx_marketing_ordens_solicitante")
   @@index([excluido], map: "idx_marketing_ordens_excluido")
+  @@index([imovel_id], map: "idx_marketing_ordens_imovel")
 }
 
 // Cadastro completo de Empreendimento (Fase 5a, 09/08/2026) — Notion
@@ -1562,12 +1579,19 @@ model solicitacoes_agenda {
   respondido_em               DateTime?         @db.Timestamptz(6)
   visto_pelo_corretor         Boolean           @default(true)
   marketing_ordem_id          String?           @db.Uuid
+  // Imóvel do próprio corretor (parceiro_id = imoveis.parceiro_id) que ele
+  // escolheu ao pedir a atividade — "cadastro inteligente" da OM,
+  // 09/08/2026. Propagado pra marketing_ordens.imovel_id quando o pedido é
+  // confirmado (confirmarSolicitacaoAgendaAction).
+  imovel_id                   String?           @db.Uuid
   excluido                    Boolean           @default(false)
   created_at                  DateTime          @default(now()) @db.Timestamptz(6)
   marketing_ordens            marketing_ordens? @relation(fields: [marketing_ordem_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  imoveis                     imoveis?          @relation(fields: [imovel_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   parceiros_solicitacoes_agenda_parceiro_idToparceiros                 parceiros  @relation("solicitacoes_agenda_parceiro_idToparceiros", fields: [parceiro_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   parceiros_solicitacoes_agenda_respondido_por_parceiro_idToparceiros  parceiros? @relation("solicitacoes_agenda_respondido_por_parceiro_idToparceiros", fields: [respondido_por_parceiro_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([parceiro_id], map: "idx_solicitacoes_agenda_parceiro")
   @@index([status], map: "idx_solicitacoes_agenda_status")
+  @@index([imovel_id], map: "idx_solicitacoes_agenda_imovel")
 }

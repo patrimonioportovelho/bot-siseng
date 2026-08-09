@@ -33,6 +33,11 @@ export async function criarSolicitacaoAgendaAction(formData: FormData) {
   const dataHora = dataHoraPortoVelho(dataSugerida, horarioSugerido ?? "09:00");
   if (Number.isNaN(dataHora.getTime())) throw new Error("Data sugerida inválida.");
 
+  // Imóvel próprio (opcional) — "cadastro inteligente" da OM, 09/08/2026: o
+  // corretor escolhe entre os imóveis já vinculados a ele (parceiro_id),
+  // sem precisar cadastrar de novo nem digitar endereço/valor à mão.
+  const imovelId = texto(formData, "imovel_id");
+
   const criada = await prisma.solicitacoes_agenda
     .create({
       data: {
@@ -42,6 +47,7 @@ export async function criarSolicitacaoAgendaAction(formData: FormData) {
         descricao: texto(formData, "descricao"),
         tipo: texto(formData, "tipo"),
         data_hora_sugerida: dataHora,
+        imovel_id: imovelId,
         status: "pendente"
       }
     })

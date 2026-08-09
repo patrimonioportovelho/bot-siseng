@@ -7,6 +7,7 @@ import { formatDataHora, hojeInputDate, hojePortoVelho } from "@/lib/format";
 import { TIPO_ATIVIDADE_LABEL as TIPO_ATIVIDADE_LABEL_MANUTENCAO } from "@/lib/manutencao/opcoes";
 import { TIPO_ATIVIDADE_LABEL as TIPO_ATIVIDADE_LABEL_GESTAO } from "@/lib/gestoes/opcoes";
 import { TIPO_ATIVIDADE_LABEL as TIPO_ATIVIDADE_LABEL_MARKETING, TIPOS_MATERIAL } from "@/lib/marketing/opcoes";
+import { BotaoSubmit } from "@/components/botao-submit";
 import { criarSolicitacaoAgendaAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -49,7 +50,7 @@ export default async function PortalAgendaPage({
   const inicioMes = new Date(ano, mesIndice, 1);
   const fimMes = new Date(ano, mesIndice + 1, 1);
 
-  const [atividadesMarketing, atividadesGestao, atividadesManutencao, solicitacoes] = await Promise.all([
+  const [atividadesMarketing, atividadesGestao, atividadesManutencao, solicitacoes, meusImoveis] = await Promise.all([
     // Editorial do Marketing — qualquer marketing_atividades já É um
     // compromisso com data real (é uma atividade explicitamente agendada,
     // não um prazo solto). Antes isso excluía coluna "recebido"/"aguardando
@@ -80,6 +81,14 @@ export default async function PortalAgendaPage({
       where: { parceiro_id: session.parceiroId, excluido: false },
       orderBy: { created_at: "desc" },
       take: 20
+    }),
+    // Imóveis já cadastrados em nome do corretor (contrato de gestão ou de
+    // administração) — "cadastro inteligente" da OM, 09/08/2026: ele escolhe
+    // um em vez de digitar endereço/valor de novo no pedido.
+    prisma.imoveis.findMany({
+      where: { parceiro_id: session.parceiroId, excluido: false },
+      orderBy: { endereco: "asc" },
+      select: { id: true, endereco: true, id_legado: true }
     })
   ]);
 
@@ -183,6 +192,21 @@ export default async function PortalAgendaPage({
                 </select>
               </div>
               <div>
+                <label className="text-xs text-gray-600 block mb-1">Imóvel (se já tiver cadastro)</label>
+                <select
+                  name="imovel_id"
+                  className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full outline-none focus:border-primary bg-white"
+                  defaultValue=""
+                >
+                  <option value="">— nenhum / imóvel ainda não cadastrado —</option>
+                  {meusImoveis.map((im) => (
+                    <option key={im.id} value={im.id}>
+                      {im.endereco ?? im.id_legado ?? "Imóvel sem endereço"}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
                 <label className="text-xs text-gray-600 block mb-1">Título</label>
                 <input
                   name="titulo"
@@ -220,9 +244,9 @@ export default async function PortalAgendaPage({
                   />
                 </div>
               </div>
-              <button type="submit" className="text-xs bg-primary text-white rounded-lg px-3 py-1.5 font-semibold mt-1">
+              <BotaoSubmit className="text-xs bg-primary text-white rounded-lg px-3 py-1.5 font-semibold mt-1" carregandoTexto="Enviando...">
                 Enviar pedido
-              </button>
+              </BotaoSubmit>
             </form>
           </div>
 

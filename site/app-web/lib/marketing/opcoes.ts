@@ -139,7 +139,14 @@ export const CHECKLIST_POR_PILAR: Record<string, string[]> = {
 export type CampoBriefing = {
   key: string;
   label: string;
-  tipo?: "text" | "textarea" | "date";
+  // "select" = lista fechada genérica (opcoes obrigatório nesse caso).
+  // "corretor" = caso especial de select — lista de Parceiros função
+  // Corretor, valor gravado é o id (pedido do usuário, 09/08/2026: "corretor
+  // responsável preciso de uma lista e se for um corretor quem solicitou lá
+  // portal dele já pode puxar automaticamente"); a tela injeta as opções e o
+  // valor padrão (ver components/marketing-briefing-form.tsx).
+  tipo?: "text" | "textarea" | "date" | "select" | "corretor";
+  opcoes?: string[];
 };
 
 export type TipoBriefing = {
@@ -153,10 +160,16 @@ export const BRIEFING_TIPOS: TipoBriefing[] = [
     id: "imovel_venda",
     label: "Imóvel para venda",
     campos: [
-      { key: "corretor", label: "Corretor responsável" },
+      { key: "corretor", label: "Corretor responsável", tipo: "corretor" },
       { key: "data_horario", label: "Data e horário da captação" },
-      { key: "tipo_material", label: "Tipo de material (foto/vídeo/ambos)" },
+      { key: "tipo_material", label: "Tipo de material (foto/vídeo/ambos)", tipo: "select", opcoes: TIPOS_MATERIAL },
       { key: "tipo_imovel", label: "Tipo de imóvel" },
+      // endereco/valor viram só-leitura quando a Ordem está vinculada a um
+      // imóvel cadastrado (ordem.imovel_id) — puxados automaticamente do
+      // cadastro em vez de digitados de novo (pedido do usuário, 09/08/2026:
+      // "Endereço e valor pode ser puxado conforme o cadastro do imóvel").
+      // Sem vínculo, continuam texto livre normal — ver
+      // components/marketing-briefing-form.tsx.
       { key: "endereco", label: "Endereço" },
       { key: "valor", label: "Valor" },
       { key: "publico", label: "Público-alvo" },

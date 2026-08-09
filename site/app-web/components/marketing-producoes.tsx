@@ -3,6 +3,7 @@
 import { useRef, useState, useTransition } from "react";
 import { formatDataCalendario } from "@/lib/format";
 import { PECA_TIPOS_SUGESTOES, STATUS_PRODUCAO_OPCOES } from "@/lib/marketing/opcoes";
+import { BotaoSubmit } from "@/components/botao-submit";
 
 type ParceiroOpcao = { id: string; nome: string };
 
@@ -65,25 +66,26 @@ export function MarketingProducoes({
 
       <form
         ref={formRef}
-        action={(formData) => {
-          criar(formData);
+        action={async (formData) => {
+          await criar(formData);
           formRef.current?.reset();
         }}
         className="grid md:grid-cols-4 gap-2 mb-4"
       >
         <input type="hidden" name="ordemId" value={ordemId} />
-        <input
-          name="peca"
-          placeholder="Peça (ex.: Vídeo, Story...)"
-          list="peca-tipos-sugestoes"
-          className={CAMPO}
-          required
-        />
-        <datalist id="peca-tipos-sugestoes">
+        {/* Lista fechada em vez de texto+sugestão (pedido do usuário,
+            09/08/2026: "Em produção é melhor colocar uma lista definida,
+            fica mais fácil") — "Outro" já cobre o caso fora da lista. */}
+        <select className={CAMPO} name="peca" defaultValue="" required>
+          <option value="" disabled>
+            Peça...
+          </option>
           {PECA_TIPOS_SUGESTOES.map((t) => (
-            <option key={t} value={t} />
+            <option key={t} value={t}>
+              {t}
+            </option>
           ))}
-        </datalist>
+        </select>
         <select className={CAMPO} name="responsavel_parceiro_id" defaultValue="">
           <option value="">Responsável...</option>
           {administrativos.map((p) => (
@@ -97,9 +99,9 @@ export function MarketingProducoes({
         <input name="local" placeholder="Local (opcional)" className={CAMPO} />
         <input name="referencia" placeholder="Referência/inspiração (opcional)" className={CAMPO} />
         <input name="roteiro" placeholder="Roteiro (opcional)" className={CAMPO + " md:col-span-2"} />
-        <button type="submit" className="text-xs bg-primary text-white rounded-lg px-3 py-1.5 font-semibold whitespace-nowrap md:col-span-4">
+        <BotaoSubmit className="text-xs bg-primary text-white rounded-lg px-3 py-1.5 font-semibold whitespace-nowrap md:col-span-4" carregandoTexto="Adicionando...">
           + Adicionar peça
-        </button>
+        </BotaoSubmit>
       </form>
 
       <div className="flex flex-col gap-2">
@@ -174,9 +176,9 @@ export function MarketingProducoes({
                   defaultValue={p.arquivo_final_url ?? ""}
                   className={CAMPO}
                 />
-                <button type="submit" className="text-xs bg-primary text-white rounded-lg px-3 py-1.5 font-semibold md:col-span-3">
+                <BotaoSubmit className="text-xs bg-primary text-white rounded-lg px-3 py-1.5 font-semibold md:col-span-3" carregandoTexto="Salvando...">
                   Salvar links
-                </button>
+                </BotaoSubmit>
               </form>
             )}
           </div>

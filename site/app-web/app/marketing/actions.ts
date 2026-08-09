@@ -529,6 +529,11 @@ export async function confirmarSolicitacaoAgendaAction(formData: FormData) {
         tipo: solicitacao.tipo,
         objetivo: solicitacao.descricao,
         solicitante_parceiro_id: solicitacao.parceiro_id,
+        // Imóvel que o corretor já linkou no pedido — "cadastro inteligente"
+        // da OM (09/08/2026): a Ordem nasce puxando endereço/valor daqui em
+        // vez de exigir digitar tudo de novo no briefing (ver
+        // components/marketing-briefing-form.tsx).
+        imovel_id: solicitacao.imovel_id,
         coluna: "recebido",
         data_captacao: dataConfirmada
       }

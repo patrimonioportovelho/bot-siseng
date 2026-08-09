@@ -7,6 +7,7 @@ import { MarketingChecklist } from "@/components/marketing-checklist";
 import { MarketingAtividades } from "@/components/marketing-atividades";
 import { MarketingProducoes } from "@/components/marketing-producoes";
 import { MarketingBriefingForm } from "@/components/marketing-briefing-form";
+import { BotaoSubmit } from "@/components/botao-submit";
 import { listarParceirosAdministrativos } from "@/lib/parceiros/administrativos";
 import { labelColuna, pilarImpactoDaColuna, PILAR_IMPACTO_COR, slaDaOrdem } from "@/lib/marketing/opcoes";
 import { formatData } from "@/lib/format";
@@ -57,7 +58,7 @@ export default async function MarketingDetalhePage({
   const pilar = pilarImpactoDaColuna(ordem.coluna);
   const sla = slaDaOrdem(ordem.coluna, ordem.tipo, ordem.coluna_atualizada_em);
 
-  const [corretores, administrativos, empreendimentos] = await Promise.all([
+  const [corretores, administrativos, empreendimentos, imovel] = await Promise.all([
     prisma.parceiros.findMany({
       where: { funcao: "Corretor", status_funcao: "Ativo" },
       orderBy: { nome: "asc" },
@@ -68,8 +69,28 @@ export default async function MarketingDetalhePage({
       where: { excluido: false, status: "Ativo" },
       orderBy: { nome: "asc" },
       select: { id: true, nome: true }
-    })
+    }),
+    // Imóvel vinculado (Ordem "cadastro inteligente", 09/08/2026) — puxa
+    // endereço/valor prontos pro briefing quando existe (ver
+    // components/marketing-briefing-form.tsx).
+    ordem.imovel_id
+      ? prisma.imoveis.findUnique({
+          where: { id: ordem.imovel_id },
+          select: { endereco: true, valor_venda: true, valor_avaliacao: true }
+        })
+      : null
   ]);
+
+  const imovelVinculado = imovel
+    ? {
+        endereco: imovel.endereco,
+        valor: imovel.valor_venda != null
+          ? imovel.valor_venda.toString()
+          : imovel.valor_avaliacao != null
+            ? imovel.valor_avaliacao.toString()
+            : null
+      }
+    : null;
 
   return (
     <div>
@@ -143,6 +164,9 @@ export default async function MarketingDetalhePage({
           briefingTipoAtual={ordem.briefing_tipo}
           briefingDadosAtuais={ordem.briefing_dados as Record<string, unknown> | null}
           briefingCompleto={ordem.briefing_completo}
+          corretores={corretores}
+          solicitanteCorretorId={ordem.solicitante_parceiro_id}
+          imovelVinculado={imovelVinculado}
           action={salvarBriefingAction}
         />
 
@@ -185,9 +209,9 @@ export default async function MarketingDetalhePage({
               className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 flex-1 outline-none focus:border-primary"
               required
             />
-            <button type="submit" className="text-xs bg-primary text-white rounded-lg px-3 py-1.5 font-semibold whitespace-nowrap">
+            <BotaoSubmit className="text-xs bg-primary text-white rounded-lg px-3 py-1.5 font-semibold whitespace-nowrap" carregandoTexto="Adicionando...">
               + Adicionar nota
-            </button>
+            </BotaoSubmit>
           </form>
           <div className="flex flex-col gap-2">
             {ordem.notas.map((n) => (

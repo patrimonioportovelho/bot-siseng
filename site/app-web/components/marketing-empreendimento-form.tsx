@@ -1,6 +1,7 @@
 "use client";
 
 import { STATUS_EMPREENDIMENTO_OPCOES } from "@/lib/marketing/opcoes";
+import { BotaoSubmit } from "@/components/botao-submit";
 
 type ParceiroOpcao = { id: string; nome: string };
 
@@ -131,9 +132,12 @@ export function MarketingEmpreendimentoForm({
       </div>
 
       <div className="flex justify-end">
-        <button type="submit" className="text-xs bg-primary text-white rounded-lg px-5 py-2 font-semibold">
+        <BotaoSubmit
+          className="text-xs bg-primary text-white rounded-lg px-5 py-2 font-semibold"
+          carregandoTexto={e ? "Salvando..." : "Cadastrando..."}
+        >
           {e ? "Salvar alterações" : "Cadastrar empreendimento"}
-        </button>
+        </BotaoSubmit>
       </div>
     </form>
   );

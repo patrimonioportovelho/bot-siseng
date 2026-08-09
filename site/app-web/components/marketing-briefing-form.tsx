@@ -2,6 +2,9 @@
 
 import { useState } from "react";
 import { BRIEFING_TIPOS, campoBriefing } from "@/lib/marketing/opcoes";
+import { BotaoSubmit } from "@/components/botao-submit";
+
+type ParceiroOpcao = { id: string; nome: string };
 
 const CAMPO = "text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full outline-none focus:border-primary bg-white";
 const LABEL = "text-xs text-gray-600 block mb-1";
@@ -16,12 +19,25 @@ export function MarketingBriefingForm({
   briefingTipoAtual,
   briefingDadosAtuais,
   briefingCompleto,
+  corretores,
+  solicitanteCorretorId,
+  imovelVinculado,
   action
 }: {
   ordemId: string;
   briefingTipoAtual: string | null;
   briefingDadosAtuais: Record<string, unknown> | null;
   briefingCompleto: boolean;
+  // Lista pro campo tipo "corretor" + o id do solicitante, quando ele mesmo
+  // é um corretor — pré-seleciona o campo sozinho (pedido do usuário,
+  // 09/08/2026: "se for um corretor quem solicitou lá portal dele já pode
+  // puxar automaticamente").
+  corretores: ParceiroOpcao[];
+  solicitanteCorretorId?: string | null;
+  // Endereço/valor do imóvel vinculado à Ordem (marketing_ordens.imovel_id)
+  // — quando existe, esses dois campos do briefing viram só-leitura e
+  // mostram o dado do cadastro em vez de digitado de novo.
+  imovelVinculado?: { endereco: string | null; valor: string | null } | null;
   action: (formData: FormData) => void;
 }) {
   const [tipoSelecionado, setTipoSelecionado] = useState(briefingTipoAtual ?? "");
@@ -68,13 +84,46 @@ export function MarketingBriefingForm({
         {tipo && (
           <div className="grid md:grid-cols-2 gap-3">
             {tipo.campos.map((campo) => {
-              const valorAtual = (dadosParaExibir?.[campo.key] as string | undefined) ?? "";
+              const valorSalvo = dadosParaExibir?.[campo.key] as string | undefined;
               const full = campo.tipo === "textarea";
+              // endereco/valor puxados do imóvel vinculado (Fase "cadastro
+              // inteligente", 09/08/2026) — mostram o dado do cadastro e
+              // ficam só-leitura; sem vínculo, continuam texto livre normal.
+              const doImovel =
+                imovelVinculado && (campo.key === "endereco" || campo.key === "valor")
+                  ? campo.key === "endereco"
+                    ? imovelVinculado.endereco
+                    : imovelVinculado.valor
+                  : null;
+              const valorAtual = doImovel ?? valorSalvo ?? "";
               return (
                 <div key={campo.key} className={full ? "md:col-span-2" : undefined}>
-                  <label className={LABEL}>{campo.label}</label>
-                  {campo.tipo === "textarea" ? (
+                  <label className={LABEL}>
+                    {campo.label}
+                    {doImovel !== null && <span className="text-primary font-normal"> · do imóvel cadastrado</span>}
+                  </label>
+                  {doImovel !== null ? (
+                    <input className={`${CAMPO} bg-gray-50 text-gray-500`} name={campo.key} value={valorAtual} readOnly />
+                  ) : campo.tipo === "textarea" ? (
                     <textarea className={CAMPO} name={campo.key} defaultValue={valorAtual} rows={2} />
+                  ) : campo.tipo === "select" ? (
+                    <select className={CAMPO} name={campo.key} defaultValue={valorAtual}>
+                      <option value="">—</option>
+                      {(campo.opcoes ?? []).map((o) => (
+                        <option key={o} value={o}>
+                          {o}
+                        </option>
+                      ))}
+                    </select>
+                  ) : campo.tipo === "corretor" ? (
+                    <select className={CAMPO} name={campo.key} defaultValue={valorAtual || solicitanteCorretorId || ""}>
+                      <option value="">—</option>
+                      {corretores.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.nome}
+                        </option>
+                      ))}
+                    </select>
                   ) : (
                     <input
                       type={campo.tipo === "date" ? "date" : "text"}
@@ -91,9 +140,9 @@ export function MarketingBriefingForm({
 
         {tipo && (
           <div className="flex justify-end">
-            <button type="submit" className="text-xs bg-primary text-white rounded-lg px-5 py-2 font-semibold">
+            <BotaoSubmit className="text-xs bg-primary text-white rounded-lg px-5 py-2 font-semibold" carregandoTexto="Salvando...">
               Salvar briefing
-            </button>
+            </BotaoSubmit>
           </div>
         )}
       </form>

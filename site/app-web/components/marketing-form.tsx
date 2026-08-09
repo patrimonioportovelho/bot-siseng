@@ -1,6 +1,7 @@
 "use client";
 
 import { TIPOS_MATERIAL, PRIORIDADE_OPCOES } from "@/lib/marketing/opcoes";
+import { BotaoSubmit } from "@/components/botao-submit";
 
 type ParceiroOpcao = { id: string; nome: string };
 type EmpreendimentoOpcao = { id: string; nome: string };
@@ -124,9 +125,9 @@ export function MarketingForm({
       </div>
 
       <div className="flex justify-end">
-        <button type="submit" className="text-xs bg-primary text-white rounded-lg px-5 py-2 font-semibold">
+        <BotaoSubmit className="text-xs bg-primary text-white rounded-lg px-5 py-2 font-semibold" carregandoTexto="Criando...">
           Criar ordem
-        </button>
+        </BotaoSubmit>
       </div>
     </form>
   );

@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useTransition } from "react";
+import { BotaoSubmit } from "@/components/botao-submit";
 
 type ChecklistItem = { id: string; label: string; done: boolean };
 
@@ -37,9 +38,9 @@ export function MarketingChecklist({
         <div className="text-sm font-bold text-gray-800">Checklist</div>
         <form action={adicionarPadrao}>
           <input type="hidden" name="ordemId" value={ordemId} />
-          <button type="submit" className="text-[11px] text-primary font-semibold hover:underline">
+          <BotaoSubmit className="text-[11px] text-primary font-semibold hover:underline" carregandoTexto="Adicionando..." variante="secundario">
             + Checklist do pilar atual ({pilarAtualLabel})
-          </button>
+          </BotaoSubmit>
         </form>
       </div>
 
@@ -69,8 +70,8 @@ export function MarketingChecklist({
 
       <form
         ref={formRef}
-        action={(formData) => {
-          adicionar(formData);
+        action={async (formData) => {
+          await adicionar(formData);
           formRef.current?.reset();
         }}
         className="flex gap-2"
@@ -82,9 +83,9 @@ export function MarketingChecklist({
           className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 flex-1 outline-none focus:border-primary"
           required
         />
-        <button type="submit" className="text-xs bg-primary text-white rounded-lg px-3 py-1.5 font-semibold whitespace-nowrap">
+        <BotaoSubmit className="text-xs bg-primary text-white rounded-lg px-3 py-1.5 font-semibold whitespace-nowrap" carregandoTexto="Adicionando...">
           + Adicionar
-        </button>
+        </BotaoSubmit>
       </form>
     </div>
   );

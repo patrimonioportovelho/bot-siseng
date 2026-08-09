@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { AtividadesTabs } from "@/components/atividades-tabs";
 import { formatDataHora } from "@/lib/format";
 import { confirmarSolicitacaoAgendaAction, recusarSolicitacaoAgendaAction } from "../actions";
+import { BotaoSubmit } from "@/components/botao-submit";
 
 export const dynamic = "force-dynamic";
 
@@ -89,9 +90,9 @@ export default async function MarketingAgendaPage() {
                     placeholder="Observação pro corretor (opcional)"
                     className="text-xs border border-gray-300 rounded-lg px-2 py-1 outline-none focus:border-primary bg-white"
                   />
-                  <button type="submit" className="text-xs bg-primary text-white rounded-lg px-3 py-1.5 font-semibold">
+                  <BotaoSubmit className="text-xs bg-primary text-white rounded-lg px-3 py-1.5 font-semibold" carregandoTexto="Confirmando...">
                     Confirmar e criar Ordem
-                  </button>
+                  </BotaoSubmit>
                 </form>
 
                 <form action={recusarSolicitacaoAgendaAction} className="flex flex-col gap-2 border border-red-100 bg-red-50/40 rounded-lg p-2.5">
@@ -102,9 +103,13 @@ export default async function MarketingAgendaPage() {
                     placeholder="Motivo (aparece pro corretor)"
                     className="text-xs border border-gray-300 rounded-lg px-2 py-1 outline-none focus:border-primary bg-white"
                   />
-                  <button type="submit" className="text-xs border border-red-300 text-red-600 rounded-lg px-3 py-1.5 font-semibold hover:bg-red-50">
+                  <BotaoSubmit
+                    className="text-xs border border-red-300 text-red-600 rounded-lg px-3 py-1.5 font-semibold hover:bg-red-50"
+                    carregandoTexto="Recusando..."
+                    variante="perigo"
+                  >
                     Recusar pedido
-                  </button>
+                  </BotaoSubmit>
                 </form>
               </div>
             </div>

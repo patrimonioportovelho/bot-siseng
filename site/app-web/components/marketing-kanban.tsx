@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { formatData } from "@/lib/format";
-import { COLUNAS_KANBAN, pilarImpactoDaColuna, PILAR_IMPACTO_COR } from "@/lib/marketing/opcoes";
+import { COLUNAS_KANBAN, pilarImpactoDaColuna, PILAR_IMPACTO_COR, slaDaOrdem } from "@/lib/marketing/opcoes";
 
 type OrdemKanban = {
   id: string;
@@ -13,6 +13,7 @@ type OrdemKanban = {
   tipo: string | null;
   prioridade: string;
   prazo_entrega: Date | string | null;
+  coluna_atualizada_em: Date | string | null;
   parceiros_marketing_ordens_solicitante_parceiro_idToparceiros: { nome: string } | null;
   parceiros_marketing_ordens_responsavel_atual_idToparceiros: { nome: string } | null;
 };
@@ -98,7 +99,9 @@ export function MarketingKanban({
             </div>
 
             <div className="flex flex-col gap-2 md:max-h-[65vh] md:overflow-y-auto">
-              {ordensColuna.map((o) => (
+              {ordensColuna.map((o) => {
+                const sla = slaDaOrdem(o.coluna, o.tipo, o.coluna_atualizada_em);
+                return (
                 <Link
                   key={o.id}
                   href={`/marketing/${o.id}`}
@@ -108,11 +111,23 @@ export function MarketingKanban({
                     setArrastandoId(null);
                     setColunaAlvo(null);
                   }}
-                  className="bg-white border border-gray-200 rounded-lg p-3 flex flex-col gap-1.5 hover:border-primary/40 hover:shadow-sm transition-shadow cursor-grab active:cursor-grabbing"
+                  className={`bg-white border rounded-lg p-3 flex flex-col gap-1.5 hover:shadow-sm transition-shadow cursor-grab active:cursor-grabbing ${
+                    sla?.atrasado ? "border-red-300 hover:border-red-400" : "border-gray-200 hover:border-primary/40"
+                  }`}
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-[10px] font-mono text-gray-400">{o.id_legado ?? "—"}</span>
-                    {o.tipo && <span className="text-[10px] text-gray-400">{o.tipo}</span>}
+                    <div className="flex items-center gap-1">
+                      {o.tipo && <span className="text-[10px] text-gray-400">{o.tipo}</span>}
+                      {sla?.atrasado && (
+                        <span
+                          className="text-[9px] font-bold rounded-full px-1.5 py-0.5 bg-red-50 text-red-600 border border-red-200"
+                          title="Etapa passou do prazo (SLA)"
+                        >
+                          Atrasado
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <div className="text-xs font-semibold text-gray-800 leading-snug truncate">{o.titulo}</div>
                   {o.parceiros_marketing_ordens_solicitante_parceiro_idToparceiros?.nome && (
@@ -136,7 +151,8 @@ export function MarketingKanban({
                     )}
                   </div>
                 </Link>
-              ))}
+                );
+              })}
               {ordensColuna.length === 0 && (
                 <div className="text-[11px] text-gray-300 text-center py-4">Nenhuma ordem aqui.</div>
               )}

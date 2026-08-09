@@ -174,7 +174,14 @@ export async function moverColunaAction(id: string, novaColuna: string) {
   }
 
   await prisma.marketing_ordens
-    .update({ where: { id }, data: { coluna: novaColuna, updated_at: new Date() } })
+    .update({
+      where: { id },
+      // coluna_atualizada_em reinicia o relógio do SLA (lib/marketing/opcoes.ts,
+      // slaDaOrdem) — só acontece aqui, nunca em atualizarOrdemAction ou
+      // salvarBriefingAction, senão editar um campo qualquer "escondia" um
+      // atraso real.
+      data: { coluna: novaColuna, coluna_atualizada_em: new Date(), updated_at: new Date() }
+    })
     .catch((erro) => registrarEJogarErro({ entidadeTipo: "marketing_ordens", entidadeId: id, acao: "mover_coluna", erro }));
 
   await logAlteracao({

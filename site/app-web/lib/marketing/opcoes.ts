@@ -233,3 +233,66 @@ export const BRIEFING_TIPOS: TipoBriefing[] = [
 export function campoBriefing(tipoId: string): TipoBriefing | undefined {
   return BRIEFING_TIPOS.find((t) => t.id === tipoId);
 }
+
+// SLA de prazo por etapa (Fase 4, 09/08/2026) — reconciliação de 2 fontes:
+// o Manual PDF original (prazos em HORAS, por etapa: "Briefing sem resposta:
+// 48h", "Roteiro sem entrega: 24h após briefing validado", "Edição sem
+// entrega: 3 dias úteis após a captação", "Aprovação sem retorno: 24h",
+// "Publicação sem sair: 72h após aprovação") e a tabela "SLA sugerido" do
+// Notion/Configurações (prazos em DIAS ÚTEIS, por tipo de peça: "Triagem da
+// demanda: até 1 dia útil", "Briefing e planejamento: 1 a 3 dias úteis",
+// "Arte ou conteúdo simples: 2 a 4 dias úteis", "Vídeo com captação: 5 a 10
+// dias úteis", "Aprovação interna: até 1 dia útil"). O sistema não tem
+// calendário de dia útil, então tudo abaixo está em HORAS corridas — mais
+// preciso que arredondar em dias, e é a unidade que o Manual PDF já usa
+// nativamente. Onde as 2 fontes convergem (aprovação: 24h = 1 dia útil), os
+// números batem; onde só uma fala (roteiro, aguardando corretor), usei o
+// Manual PDF; gravação/edição usam o teto do Notion quando o tipo é
+// Vídeo/Ambos (produção mais longa), senão o teto de "conteúdo simples".
+const SLA_HORAS_POR_COLUNA: Record<string, number> = {
+  recebido: 24, // Notion: triagem da demanda até 1 dia útil
+  aguardando_briefing: 48, // Manual: briefing sem resposta 48h
+  validacao: 24,
+  roteiro: 24, // Manual: roteiro sem entrega 24h após briefing validado
+  aguardando_corretor: 72, // aguardando terceiro — mais tolerante
+  gravacao: 96, // Notion: arte/conteúdo simples até 4 dias úteis (ajustado abaixo p/ vídeo)
+  triagem: 48,
+  edicao: 72, // Manual: edição sem entrega 3 dias úteis após a captação (ajustado abaixo p/ vídeo)
+  aprovacao: 24, // Manual + Notion batem: 24h / 1 dia útil
+  agendado: 72 // Manual: publicação sem sair 72h após aprovação
+};
+
+// Etapas finais — não faz sentido falar em "atraso" depois de publicado.
+const COLUNAS_SEM_SLA = new Set(["publicado", "resultados"]);
+
+// gravacao/edicao ficam mais longas quando o material é Vídeo (ou Ambos) —
+// teto do Notion pra "Vídeo com captação: 5 a 10 dias úteis" (240h).
+function limiteHorasSLA(coluna: string, tipo: string | null): number | null {
+  if (COLUNAS_SEM_SLA.has(coluna)) return null;
+  const base = SLA_HORAS_POR_COLUNA[coluna];
+  if (base === undefined) return null;
+  const ehVideo = tipo === "Vídeo" || tipo === "Ambos";
+  if (coluna === "gravacao" && ehVideo) return 240;
+  if (coluna === "edicao" && ehVideo) return 144;
+  return base;
+}
+
+export type SlaOrdem = {
+  atrasado: boolean;
+  horasNaEtapa: number;
+  limiteHoras: number;
+};
+
+// Calcula o SLA de UMA Ordem a partir da coluna atual, do tipo de material
+// e de quando ela entrou nessa coluna (marketing_ordens.coluna_atualizada_em
+// — só muda em moverColunaAction, nunca em edições soltas). Devolve null
+// quando a etapa não tem SLA (publicado/resultados) ou quando ainda não há
+// coluna_atualizada_em gravado.
+export function slaDaOrdem(coluna: string, tipo: string | null, colunaAtualizadaEm: Date | string | null): SlaOrdem | null {
+  const limite = limiteHorasSLA(coluna, tipo);
+  if (limite === null || !colunaAtualizadaEm) return null;
+  const inicio = new Date(colunaAtualizadaEm).getTime();
+  if (Number.isNaN(inicio)) return null;
+  const horasNaEtapa = (Date.now() - inicio) / (1000 * 60 * 60);
+  return { atrasado: horasNaEtapa > limite, horasNaEtapa, limiteHoras: limite };
+}

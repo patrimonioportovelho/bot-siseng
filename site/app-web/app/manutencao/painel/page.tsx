@@ -11,7 +11,7 @@ import {
   iconeTipoServico
 } from "@/lib/manutencao/opcoes";
 import { CHAVE_POSSE_LABEL as CHAVE_POSSE_LABEL_GESTAO, labelColuna as labelColunaGestao } from "@/lib/gestoes/opcoes";
-import { labelColuna as labelColunaMarketing } from "@/lib/marketing/opcoes";
+import { labelColuna as labelColunaMarketing, COLUNAS_KANBAN, slaDaOrdem } from "@/lib/marketing/opcoes";
 import { lojasSelecionadas } from "@/lib/lojas/filtro";
 
 export const dynamic = "force-dynamic";
@@ -45,7 +45,8 @@ export default async function ManutencaoPainelPage() {
     atividadesProximasGestao,
     ordensMarketingAbertas,
     atividadesAtrasadasMarketing,
-    atividadesProximasMarketing
+    atividadesProximasMarketing,
+    todasOrdensMarketing
   ] = await Promise.all([
     prisma.manutencoes.findMany({
       where: { excluido: false, coluna: { not: "pago" }, imoveis: filtroLojaImovel },
@@ -108,8 +109,34 @@ export default async function ManutencaoPainelPage() {
     }),
     prisma.marketing_atividades.count({
       where: { feito: false, data: { gte: hoje, lt: em7dias }, marketing_ordens: { excluido: false } }
+    }),
+    // Base pros KPIs de Marketing (Fase 4, 09/08/2026, Manual seção 11) —
+    // busca TODAS as Ordens (inclusive publicado/resultados, que entram no
+    // "OMs por etapa" e no tempo médio de produção, mesmo não tendo SLA).
+    prisma.marketing_ordens.findMany({
+      where: { excluido: false },
+      select: { coluna: true, tipo: true, briefing_completo: true, data_captacao: true, data_publicacao: true, coluna_atualizada_em: true }
     })
   ]);
+
+  const omsEmAtraso = todasOrdensMarketing.filter(
+    (o) => slaDaOrdem(o.coluna, o.tipo, o.coluna_atualizada_em)?.atrasado
+  ).length;
+  const omsAguardandoBriefing = todasOrdensMarketing.filter((o) => o.coluna === "aguardando_briefing");
+  const briefingsCompletos = omsAguardandoBriefing.filter((o) => o.briefing_completo).length;
+  const briefingsIncompletos = omsAguardandoBriefing.length - briefingsCompletos;
+  const omsComProducaoCompleta = todasOrdensMarketing.filter((o) => o.data_captacao && o.data_publicacao);
+  const tempoMedioProducaoDias =
+    omsComProducaoCompleta.length > 0
+      ? Math.round(
+          omsComProducaoCompleta.reduce(
+            (soma, o) => soma + (new Date(o.data_publicacao!).getTime() - new Date(o.data_captacao!).getTime()) / 86400000,
+            0
+          ) / omsComProducaoCompleta.length
+        )
+      : null;
+  const omsPorColuna: Record<string, number> = {};
+  for (const o of todasOrdensMarketing) omsPorColuna[o.coluna] = (omsPorColuna[o.coluna] ?? 0) + 1;
 
   const emAbertoOrdenado = [...emAberto].sort(
     (a, b) => (ORDEM_URGENCIA[a.urgencia] ?? 9) - (ORDEM_URGENCIA[b.urgencia] ?? 9)
@@ -227,6 +254,47 @@ export default async function ManutencaoPainelPage() {
             ))}
             {ordensMarketingAbertas.length === 0 && <p className="text-xs text-gray-400">Nenhuma ordem em aberto.</p>}
           </div>
+        </div>
+      </div>
+
+      {/* Indicadores de Marketing (Fase 4, 09/08/2026, Manual seção 11) — só
+          o que o sistema tem dado real pra calcular: OMs em atraso (SLA por
+          etapa), briefings completos/incompletos, tempo médio de produção e
+          OMs por etapa. Regravações/rodadas de alteração do Manual original
+          ficaram de fora — o sistema não registra esses eventos hoje. */}
+      <div className="grid md:grid-cols-3 gap-4 mb-4">
+        <div className="bg-white border border-gray-200 rounded-xl p-4">
+          <div className="text-xs text-gray-500 mb-2">Marketing atrasado (SLA)</div>
+          <div className={`text-lg font-bold ${omsEmAtraso > 0 ? "text-red-600" : "text-gray-900"}`}>{omsEmAtraso}</div>
+          <div className="text-[11px] text-gray-400 mt-0.5">de {todasOrdensMarketing.length} Ordens ativas</div>
+        </div>
+        <div className="bg-white border border-gray-200 rounded-xl p-4">
+          <div className="text-xs text-gray-500 mb-2">Briefings — Aguardando briefing</div>
+          <div className="text-lg font-bold text-gray-900">
+            {briefingsCompletos} completos <span className="text-gray-300">/</span>{" "}
+            <span className={briefingsIncompletos > 0 ? "text-[#A9822E]" : "text-gray-900"}>{briefingsIncompletos} incompletos</span>
+          </div>
+        </div>
+        <div className="bg-white border border-gray-200 rounded-xl p-4">
+          <div className="text-xs text-gray-500 mb-2">Tempo médio de produção</div>
+          <div className="text-lg font-bold text-gray-900">
+            {tempoMedioProducaoDias !== null ? `${tempoMedioProducaoDias} dias` : "—"}
+          </div>
+          <div className="text-[11px] text-gray-400 mt-0.5">captação → publicação, {omsComProducaoCompleta.length} OMs</div>
+        </div>
+      </div>
+
+      <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4">
+        <div className="text-sm font-bold text-gray-800 mb-3">Ordens de Marketing por etapa</div>
+        <div className="flex flex-wrap gap-2">
+          {COLUNAS_KANBAN.map((c) => (
+            <span
+              key={c.id}
+              className="text-[11px] bg-gray-50 border border-gray-200 text-gray-600 rounded-full px-2.5 py-1"
+            >
+              {c.label}: <span className="font-semibold text-gray-800">{omsPorColuna[c.id] ?? 0}</span>
+            </span>
+          ))}
         </div>
       </div>
 

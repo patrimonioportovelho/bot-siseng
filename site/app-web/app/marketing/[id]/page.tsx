@@ -7,7 +7,7 @@ import { MarketingChecklist } from "@/components/marketing-checklist";
 import { MarketingAtividades } from "@/components/marketing-atividades";
 import { MarketingBriefingForm } from "@/components/marketing-briefing-form";
 import { listarParceirosAdministrativos } from "@/lib/parceiros/administrativos";
-import { labelColuna, pilarImpactoDaColuna, PILAR_IMPACTO_COR } from "@/lib/marketing/opcoes";
+import { labelColuna, pilarImpactoDaColuna, PILAR_IMPACTO_COR, slaDaOrdem } from "@/lib/marketing/opcoes";
 import { formatData } from "@/lib/format";
 import {
   atualizarOrdemAction,
@@ -48,6 +48,7 @@ export default async function MarketingDetalhePage({
   if (!ordem) notFound();
 
   const pilar = pilarImpactoDaColuna(ordem.coluna);
+  const sla = slaDaOrdem(ordem.coluna, ordem.tipo, ordem.coluna_atualizada_em);
 
   const [corretores, administrativos] = await Promise.all([
     prisma.parceiros.findMany({
@@ -95,6 +96,14 @@ export default async function MarketingDetalhePage({
             <span className="text-xs bg-primary/10 text-primary font-semibold rounded-full px-2.5 py-1">
               {labelColuna(ordem.coluna)}
             </span>
+            {sla?.atrasado && (
+              <span
+                className="text-[11px] font-bold rounded-full px-2.5 py-1 bg-red-50 text-red-600 border border-red-200"
+                title="Etapa passou do prazo (SLA)"
+              >
+                Atrasado
+              </span>
+            )}
           </div>
         </div>
         <div className="text-xs text-gray-400">

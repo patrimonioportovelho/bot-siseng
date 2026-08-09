@@ -1399,6 +1399,12 @@ model marketing_ordens {
   excluido                 Boolean   @default(false)
   created_at               DateTime  @default(now()) @db.Timestamptz(6)
   updated_at               DateTime  @default(now()) @db.Timestamptz(6)
+  // Quando a Ordem entrou na etapa (coluna) atual — só mexido em
+  // moverColunaAction, nunca em atualizarOrdemAction/salvarBriefingAction.
+  // É a base do SLA de prazo (Fase 4, 09/08/2026): editar um campo qualquer
+  // da Ordem não pode "resetar o relógio" do atraso, senão o alerta nunca
+  // dispara pra card que segue sendo mexido mas não avança de etapa.
+  coluna_atualizada_em     DateTime? @default(now()) @db.Timestamptz(6)
   checklist_itens          marketing_checklist_itens[]
   atividades               marketing_atividades[]
   notas                    marketing_notas[]

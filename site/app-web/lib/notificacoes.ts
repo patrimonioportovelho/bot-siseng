@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { situacaoVencimento } from "@/lib/format";
 import { STATUS_AVALIACAO_ATIVOS } from "@/lib/financiamento/opcoes";
+import { slaDaOrdem, labelColuna as labelColunaMarketing } from "@/lib/marketing/opcoes";
 
 // Sino de notificações do administrativo (Topbar) — pedido do usuário em
 // 08/08/2026. Junta tudo que precisa de atenção em um lugar só, sem
@@ -41,7 +42,7 @@ export async function obterNotificacoes(isAdm: boolean): Promise<Notificacao[]> 
     data_validade: { not: null }
   };
 
-  const [sac, acessos, avaliacoes, transacoes, administracoes] = await Promise.all([
+  const [sac, acessos, avaliacoes, transacoes, administracoes, ordensMarketing] = await Promise.all([
     // Mensagens do SAC e solicitações de acesso só entram pra quem também
     // vê essas seções em Configurações (isAdm) — senão o sino levaria pra
     // um link que a pessoa não consegue ver.
@@ -84,7 +85,19 @@ export async function obterNotificacoes(isAdm: boolean): Promise<Notificacao[]> 
       orderBy: { created_at: "desc" },
       take: LIMITE_POR_GRUPO,
       include: { imoveis: { select: { endereco: true } } }
-    })
+    }),
+    // Marketing atrasado (Fase 4, 09/08/2026) — mesma regra do SAC/acessos
+    // (só entra pra quem vê o módulo). Traz todas as Ordens ainda em
+    // produção (fora publicado/resultados, que não têm SLA); o filtro por
+    // atraso de verdade (slaDaOrdem) é feito depois em JS, porque depende do
+    // tipo de material + coluna_atualizada_em juntos, não dá pra expressar
+    // num único where do Prisma.
+    isAdm
+      ? prisma.marketing_ordens.findMany({
+          where: { excluido: false, coluna: { notIn: ["publicado", "resultados"] } },
+          select: { id: true, id_legado: true, titulo: true, coluna: true, tipo: true, coluna_atualizada_em: true }
+        })
+      : Promise.resolve([])
   ]);
 
   const itens: Notificacao[] = [];
@@ -144,6 +157,23 @@ export async function obterNotificacoes(isAdm: boolean): Promise<Notificacao[]> 
       data: ad.created_at,
       urgente: false
     });
+  }
+
+  // Marketing atrasado — 5ª categoria (Fase 4, 09/08/2026). Só entra pra
+  // quem também vê o módulo (isAdm), mesma regra do SAC/acessos.
+  if (isAdm) {
+    for (const o of ordensMarketing) {
+      const sla = slaDaOrdem(o.coluna, o.tipo, o.coluna_atualizada_em);
+      if (!sla?.atrasado || !o.coluna_atualizada_em) continue;
+      itens.push({
+        id: `marketing-${o.id}`,
+        titulo: `Marketing atrasado — ${o.titulo}`,
+        detalhe: `${labelColunaMarketing(o.coluna)} · ${o.id_legado ?? ""}`,
+        href: `/marketing/${o.id}`,
+        data: o.coluna_atualizada_em,
+        urgente: true
+      });
+    }
   }
 
   // Urgente primeiro (precisa de ação), depois mais recente — mesma régua

@@ -231,6 +231,12 @@ export async function apagarOrdemAction(formData: FormData) {
   await logAlteracao({ entidadeTipo: "marketing_ordens", entidadeId: id, acao: "apagar" });
 
   revalidatePath("/marketing");
+  // Apagar a Ordem também some com qualquer atividade dela nos calendários
+  // (o filtro excluido:false já cuida disso no banco — falta só invalidar
+  // as páginas que tinham cache com o item ainda visível).
+  revalidatePath("/manutencao/calendario");
+  revalidatePath("/manutencao/painel");
+  revalidatePath("/portal/agenda");
   redirect("/marketing");
 }
 

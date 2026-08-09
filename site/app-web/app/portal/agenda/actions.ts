@@ -52,4 +52,9 @@ export async function criarSolicitacaoAgendaAction(formData: FormData) {
   });
 
   revalidatePath("/portal/agenda");
+  // Pro pedido novo já aparecer pro administrativo sem precisar de um
+  // segundo carregamento — /marketing mostra o selo de pendentes no botão
+  // "Pedidos da Agenda", /marketing/agenda lista o pedido em si.
+  revalidatePath("/marketing/agenda");
+  revalidatePath("/marketing");
 }

@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { MarketingEditarForm } from "@/components/marketing-editar-form";
 import { MarketingChecklist } from "@/components/marketing-checklist";
 import { MarketingAtividades } from "@/components/marketing-atividades";
+import { MarketingProducoes } from "@/components/marketing-producoes";
 import { MarketingBriefingForm } from "@/components/marketing-briefing-form";
 import { listarParceirosAdministrativos } from "@/lib/parceiros/administrativos";
 import { labelColuna, pilarImpactoDaColuna, PILAR_IMPACTO_COR, slaDaOrdem } from "@/lib/marketing/opcoes";
@@ -20,6 +21,11 @@ import {
   criarAtividadeAction,
   marcarAtividadeFeitaAction,
   removerAtividadeAction,
+  criarProducaoAction,
+  atualizarProducaoLinksAction,
+  atualizarProducaoStatusAction,
+  incrementarRevisaoProducaoAction,
+  removerProducaoAction,
   adicionarNotaAction
 } from "../actions";
 
@@ -42,6 +48,7 @@ export default async function MarketingDetalhePage({
       parceiros_marketing_ordens_responsavel_atual_idToparceiros: { select: { nome: true } },
       checklist_itens: { orderBy: { ordem: "asc" } },
       atividades: { orderBy: { data: "asc" } },
+      producoes: { where: { excluido: false }, orderBy: { created_at: "asc" } },
       notas: { orderBy: { criado_em: "desc" } }
     }
   });
@@ -50,13 +57,18 @@ export default async function MarketingDetalhePage({
   const pilar = pilarImpactoDaColuna(ordem.coluna);
   const sla = slaDaOrdem(ordem.coluna, ordem.tipo, ordem.coluna_atualizada_em);
 
-  const [corretores, administrativos] = await Promise.all([
+  const [corretores, administrativos, empreendimentos] = await Promise.all([
     prisma.parceiros.findMany({
       where: { funcao: "Corretor", status_funcao: "Ativo" },
       orderBy: { nome: "asc" },
       select: { id: true, nome: true }
     }),
-    listarParceirosAdministrativos()
+    listarParceirosAdministrativos(),
+    prisma.marketing_empreendimentos.findMany({
+      where: { excluido: false, status: "Ativo" },
+      orderBy: { nome: "asc" },
+      select: { id: true, nome: true }
+    })
   ]);
 
   return (
@@ -118,7 +130,13 @@ export default async function MarketingDetalhePage({
       </div>
 
       <div className="flex flex-col gap-5">
-        <MarketingEditarForm ordem={ordem} corretores={corretores} administrativos={administrativos} action={atualizarOrdemAction} />
+        <MarketingEditarForm
+          ordem={ordem}
+          corretores={corretores}
+          administrativos={administrativos}
+          empreendimentos={empreendimentos}
+          action={atualizarOrdemAction}
+        />
 
         <MarketingBriefingForm
           ordemId={ordem.id}
@@ -144,6 +162,17 @@ export default async function MarketingDetalhePage({
           adicionar={criarAtividadeAction}
           marcarFeita={marcarAtividadeFeitaAction}
           remover={removerAtividadeAction}
+        />
+
+        <MarketingProducoes
+          ordemId={ordem.id}
+          producoes={ordem.producoes}
+          administrativos={administrativos}
+          criar={criarProducaoAction}
+          atualizarLinks={atualizarProducaoLinksAction}
+          atualizarStatus={atualizarProducaoStatusAction}
+          incrementarRevisao={incrementarRevisaoProducaoAction}
+          remover={removerProducaoAction}
         />
 
         <div className="bg-white border border-gray-200 rounded-xl p-4">

@@ -3,6 +3,7 @@
 import { TIPOS_MATERIAL, PRIORIDADE_OPCOES, APROVACAO_STATUS_OPCOES } from "@/lib/marketing/opcoes";
 
 type ParceiroOpcao = { id: string; nome: string };
+type EmpreendimentoOpcao = { id: string; nome: string };
 
 type OrdemExistente = {
   id: string;
@@ -12,6 +13,7 @@ type OrdemExistente = {
   objetivo: string | null;
   publico: string | null;
   empreendimento: string | null;
+  empreendimento_id: string | null;
   canal: string | null;
   prioridade: string;
   prazo_roteiro: Date | null;
@@ -23,7 +25,14 @@ type OrdemExistente = {
   link_arquivos: string | null;
   aprovacao_status: string | null;
   resultados_texto: string | null;
+  resultados: unknown;
 };
+
+function numeroResultado(resultados: unknown, chave: string): string {
+  if (!resultados || typeof resultados !== "object") return "";
+  const v = (resultados as Record<string, unknown>)[chave];
+  return v === null || v === undefined ? "" : String(v);
+}
 
 function inputDate(d: Date | null) {
   if (!d) return "";
@@ -43,11 +52,13 @@ export function MarketingEditarForm({
   ordem,
   corretores,
   administrativos,
+  empreendimentos,
   action
 }: {
   ordem: OrdemExistente;
   corretores: ParceiroOpcao[];
   administrativos: ParceiroOpcao[];
+  empreendimentos: EmpreendimentoOpcao[];
   action: (formData: FormData) => void;
 }) {
   const o = ordem;
@@ -118,8 +129,19 @@ export function MarketingEditarForm({
             </select>
           </div>
           <div>
-            <label className={LABEL}>Empreendimento</label>
-            <input className={CAMPO} name="empreendimento" defaultValue={o.empreendimento ?? ""} placeholder="Nome do empreendimento (se houver)" />
+            <label className={LABEL}>Empreendimento cadastrado</label>
+            <select className={CAMPO} name="empreendimento_id" defaultValue={o.empreendimento_id ?? ""}>
+              <option value="">— nenhum / usar texto livre abaixo —</option>
+              {empreendimentos.map((emp) => (
+                <option key={emp.id} value={emp.id}>
+                  {emp.nome}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className={LABEL}>Empreendimento (texto livre)</label>
+            <input className={CAMPO} name="empreendimento" defaultValue={o.empreendimento ?? ""} placeholder="Se não tiver cadastro" />
           </div>
           <div>
             <label className={LABEL}>Canal</label>
@@ -176,8 +198,20 @@ export function MarketingEditarForm({
               ))}
             </select>
           </div>
+          <div>
+            <label className={LABEL}>Alcance</label>
+            <input type="number" min="0" className={CAMPO} name="resultados_alcance" defaultValue={numeroResultado(o.resultados, "alcance")} />
+          </div>
+          <div>
+            <label className={LABEL}>Leads</label>
+            <input type="number" min="0" className={CAMPO} name="resultados_leads" defaultValue={numeroResultado(o.resultados, "leads")} />
+          </div>
+          <div>
+            <label className={LABEL}>Engajamento (curtidas, comentários, directs)</label>
+            <input type="number" min="0" className={CAMPO} name="resultados_engajamento" defaultValue={numeroResultado(o.resultados, "engajamento")} />
+          </div>
           <div className="md:col-span-2">
-            <label className={LABEL}>Resultados (métricas, observações)</label>
+            <label className={LABEL}>Resultados — observações</label>
             <input className={CAMPO} name="resultados_texto" defaultValue={o.resultados_texto ?? ""} />
           </div>
         </div>

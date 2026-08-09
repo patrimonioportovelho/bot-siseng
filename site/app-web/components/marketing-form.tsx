@@ -3,6 +3,7 @@
 import { TIPOS_MATERIAL, PRIORIDADE_OPCOES } from "@/lib/marketing/opcoes";
 
 type ParceiroOpcao = { id: string; nome: string };
+type EmpreendimentoOpcao = { id: string; nome: string };
 
 const CAMPO = "text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full outline-none focus:border-primary bg-white";
 const LABEL = "text-xs text-gray-600 block mb-1";
@@ -14,10 +15,12 @@ const LABEL = "text-xs text-gray-600 block mb-1";
 export function MarketingForm({
   corretores,
   administrativos,
+  empreendimentos,
   action
 }: {
   corretores: ParceiroOpcao[];
   administrativos: ParceiroOpcao[];
+  empreendimentos: EmpreendimentoOpcao[];
   action: (formData: FormData) => void;
 }) {
   return (
@@ -83,8 +86,19 @@ export function MarketingForm({
             </select>
           </div>
           <div>
-            <label className={LABEL}>Empreendimento</label>
-            <input className={CAMPO} name="empreendimento" placeholder="Nome do empreendimento (se houver)" />
+            <label className={LABEL}>Empreendimento cadastrado</label>
+            <select className={CAMPO} name="empreendimento_id" defaultValue="">
+              <option value="">— nenhum / usar texto livre abaixo —</option>
+              {empreendimentos.map((emp) => (
+                <option key={emp.id} value={emp.id}>
+                  {emp.nome}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className={LABEL}>Empreendimento (texto livre)</label>
+            <input className={CAMPO} name="empreendimento" placeholder="Se não tiver cadastro" />
           </div>
           <div>
             <label className={LABEL}>Canal</label>

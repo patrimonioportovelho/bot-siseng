@@ -862,6 +862,10 @@ model parceiros {
   marketing_ordens_marketing_ordens_responsavel_aprovacao_idToparceiros      marketing_ordens[]        @relation("marketing_ordens_responsavel_aprovacao_idToparceiros")
   solicitacoes_agenda_solicitacoes_agenda_parceiro_idToparceiros             solicitacoes_agenda[]     @relation("solicitacoes_agenda_parceiro_idToparceiros")
   solicitacoes_agenda_respondido_solicitacoes_agenda_idToparceiros           solicitacoes_agenda[]     @relation("solicitacoes_agenda_respondido_por_parceiro_idToparceiros")
+  marketing_empreendimentos                                                  marketing_empreendimentos[]
+  marketing_corretores_marketing_corretores_parceiro_idToparceiros           marketing_corretores?     @relation("marketing_corretores_parceiro_idToparceiros")
+  marketing_corretores_marketing_corretores_responsavel_marketing_idToparceiros marketing_corretores[]  @relation("marketing_corretores_responsavel_marketing_idToparceiros")
+  marketing_producoes                                                        marketing_producoes[]
   bancos                                                                      bancos?                   @relation(fields: [banco_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   lojas                                                                       lojas?                    @relation(fields: [loja_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   estados                                                                     estados?                  @relation(fields: [estado_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -1374,6 +1378,10 @@ model marketing_ordens {
   // decisão do usuário), canal de publicação.
   publico                  String?
   empreendimento           String?
+  // Cadastro completo opcional (Fase 5, 09/08/2026) — quando existe, é a
+  // fonte de verdade pra exibição; "empreendimento" (texto livre, acima)
+  // continua servindo pra quem não tem cadastro, sem quebrar Ordens antigas.
+  empreendimento_id        String?   @db.Uuid
   canal                    String?
   prioridade               String    @default("Normal")
   coluna                   String    @default("recebido")
@@ -1409,13 +1417,89 @@ model marketing_ordens {
   atividades               marketing_atividades[]
   notas                    marketing_notas[]
   solicitacoes_agenda      solicitacoes_agenda[]
+  producoes                marketing_producoes[]
   parceiros_marketing_ordens_solicitante_parceiro_idToparceiros parceiros? @relation("marketing_ordens_solicitante_parceiro_idToparceiros", fields: [solicitante_parceiro_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   parceiros_marketing_ordens_responsavel_atual_idToparceiros    parceiros? @relation("marketing_ordens_responsavel_atual_idToparceiros", fields: [responsavel_atual_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   parceiros_marketing_ordens_responsavel_aprovacao_idToparceiros parceiros? @relation("marketing_ordens_responsavel_aprovacao_idToparceiros", fields: [responsavel_aprovacao_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  marketing_empreendimentos marketing_empreendimentos? @relation(fields: [empreendimento_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([coluna], map: "idx_marketing_ordens_coluna")
   @@index([solicitante_parceiro_id], map: "idx_marketing_ordens_solicitante")
   @@index([excluido], map: "idx_marketing_ordens_excluido")
+}
+
+// Cadastro completo de Empreendimento (Fase 5a, 09/08/2026) — Notion
+// "Empreendimentos". Opcional: uma Ordem pode continuar usando só o campo
+// de texto livre (marketing_ordens.empreendimento) quando não há cadastro.
+model marketing_empreendimentos {
+  id                      String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nome                    String
+  construtora             String?
+  categoria               String?
+  diferenciais            String?
+  publico_alvo            String?
+  faixa_preco             String?
+  localizacao             String?
+  data_lancamento         DateTime?          @db.Date
+  cta_principal           String?
+  objecoes_principais     String?
+  promessa_central        String?
+  link_materiais          String?
+  responsavel_parceiro_id String?            @db.Uuid
+  status                  String             @default("Ativo")
+  excluido                Boolean            @default(false)
+  created_at              DateTime           @default(now()) @db.Timestamptz(6)
+  updated_at              DateTime           @default(now()) @db.Timestamptz(6)
+  marketing_ordens        marketing_ordens[]
+  parceiros               parceiros?         @relation(fields: [responsavel_parceiro_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+// Perfil de marca pessoal do corretor (Fase 5b, 09/08/2026) — Notion
+// "Corretores". 1 registro por Parceiro, vínculo opcional (nem todo
+// corretor precisa ter perfil preenchido) — por isso parceiro_id é @unique
+// em vez de ser a própria chave primária.
+model marketing_corretores {
+  id                                 String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  parceiro_id                        String     @unique @db.Uuid
+  instagram                          String?
+  tom_voz                            String?
+  posicionamento                     String?
+  pilares_conteudo                   String?
+  publico_prioritario                String?
+  regiao                             String?
+  especialidade                      String?
+  meta_mensal_leads                  Int?
+  responsavel_marketing_parceiro_id  String?    @db.Uuid
+  status                             String     @default("Ativo")
+  created_at                         DateTime   @default(now()) @db.Timestamptz(6)
+  updated_at                         DateTime   @default(now()) @db.Timestamptz(6)
+  parceiros_marketing_corretores_parceiro_idToparceiros           parceiros  @relation("marketing_corretores_parceiro_idToparceiros", fields: [parceiro_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  parceiros_marketing_corretores_responsavel_marketing_idToparceiros parceiros? @relation("marketing_corretores_responsavel_marketing_idToparceiros", fields: [responsavel_marketing_parceiro_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+// Pipeline peça a peça dentro de UMA Ordem (Fase 5c, 09/08/2026) — Notion
+// "Produção". 1 Ordem pode virar várias peças (1 vídeo + 3 stories + 1
+// carrossel, por exemplo), cada uma com seu próprio prazo/arquivo/revisões.
+model marketing_producoes {
+  id                       String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  marketing_ordem_id       String            @db.Uuid
+  peca                     String
+  roteiro                  String?
+  arquivos_brutos_url      String?
+  versao_aprovacao_url     String?
+  arquivo_final_url        String?
+  revisoes                 Int               @default(0)
+  responsavel_parceiro_id  String?           @db.Uuid
+  prazo_entrega            DateTime?         @db.Date
+  data_captacao            DateTime?         @db.Date
+  local                    String?
+  referencia               String?
+  status                   String            @default("Pendente")
+  excluido                 Boolean           @default(false)
+  created_at               DateTime          @default(now()) @db.Timestamptz(6)
+  updated_at               DateTime          @default(now()) @db.Timestamptz(6)
+  marketing_ordens         marketing_ordens  @relation(fields: [marketing_ordem_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  parceiros                parceiros?        @relation(fields: [responsavel_parceiro_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 }
 
 model marketing_atividades {

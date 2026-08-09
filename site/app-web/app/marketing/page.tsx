@@ -51,6 +51,18 @@ export default async function MarketingPage({
         </form>
         <div className="flex items-center gap-2">
           <Link
+            href="/marketing/empreendimentos"
+            className="text-xs border border-gray-300 bg-white rounded-lg px-3 py-1.5 font-semibold whitespace-nowrap"
+          >
+            Empreendimentos
+          </Link>
+          <Link
+            href="/marketing/corretores"
+            className="text-xs border border-gray-300 bg-white rounded-lg px-3 py-1.5 font-semibold whitespace-nowrap"
+          >
+            Corretores
+          </Link>
+          <Link
             href="/marketing/agenda"
             className="text-xs border border-gray-300 bg-white rounded-lg px-3 py-1.5 font-semibold whitespace-nowrap flex items-center gap-1.5"
           >

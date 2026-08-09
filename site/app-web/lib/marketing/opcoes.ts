@@ -296,3 +296,17 @@ export function slaDaOrdem(coluna: string, tipo: string | null, colunaAtualizada
   const horasNaEtapa = (Date.now() - inicio) / (1000 * 60 * 60);
   return { atrasado: horasNaEtapa > limite, horasNaEtapa, limiteHoras: limite };
 }
+
+// --- Fase 5 (09/08/2026) — Empreendimentos, Corretores (perfil de
+// marketing) e Produção (pipeline peça a peça). Escopo do backlog
+// "Plano - Marketing Fase 5", sem a parte de CRM/leads (usuário pediu pra
+// deixar de fora por enquanto).
+
+export const STATUS_EMPREENDIMENTO_OPCOES = ["Ativo", "Pausado", "Encerrado"];
+
+// Peças de produção (Notion "Produção") — tipos mais comuns; o campo aceita
+// texto livre também (é um <input list=...>, não um <select> fechado), pra
+// não travar em algo fora dessa lista.
+export const PECA_TIPOS_SUGESTOES = ["Vídeo", "Reels", "Story", "Carrossel", "Foto única", "Post estático", "Outro"];
+
+export const STATUS_PRODUCAO_OPCOES = ["Pendente", "Em produção", "Em revisão", "Aprovado", "Entregue"];

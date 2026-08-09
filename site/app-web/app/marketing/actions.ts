@@ -21,6 +21,13 @@ function data(formData: FormData, campo: string): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+function numerico(formData: FormData, campo: string): number | null {
+  const t = texto(formData, campo);
+  if (t === null) return null;
+  const n = Number(t);
+  return Number.isFinite(n) ? n : null;
+}
+
 // Cadastro de uma nova Ordem de Marketing (card do quadro). Sem trava de
 // função pra quem pode criar/mexer (pedido do usuário — "todo mundo do
 // administrativo, sem trava por enquanto"). O responsável atual, quando
@@ -46,6 +53,7 @@ export async function criarOrdemAction(formData: FormData) {
         objetivo: texto(formData, "objetivo"),
         publico: texto(formData, "publico"),
         empreendimento: texto(formData, "empreendimento"),
+        empreendimento_id: texto(formData, "empreendimento_id"),
         canal: texto(formData, "canal"),
         prioridade: texto(formData, "prioridade") ?? "Normal",
         coluna: "recebido",
@@ -83,6 +91,7 @@ export async function atualizarOrdemAction(formData: FormData) {
         objetivo: texto(formData, "objetivo"),
         publico: texto(formData, "publico"),
         empreendimento: texto(formData, "empreendimento"),
+        empreendimento_id: texto(formData, "empreendimento_id"),
         canal: texto(formData, "canal"),
         prioridade: texto(formData, "prioridade") ?? "Normal",
         prazo_roteiro: data(formData, "prazo_roteiro"),
@@ -94,6 +103,19 @@ export async function atualizarOrdemAction(formData: FormData) {
         link_arquivos: texto(formData, "link_arquivos"),
         aprovacao_status: texto(formData, "aprovacao_status"),
         resultados_texto: texto(formData, "resultados_texto"),
+        // Métricas manuais estruturadas (Fase 5d, 09/08/2026) — alimentam o
+        // card de "resultados de Marketing" no Dashboard geral. Só grava o
+        // objeto se pelo menos um número foi preenchido; nunca é
+        // integração automática (o sistema não conecta com Instagram/Meta).
+        resultados: numerico(formData, "resultados_alcance") !== null ||
+        numerico(formData, "resultados_leads") !== null ||
+        numerico(formData, "resultados_engajamento") !== null
+          ? {
+              alcance: numerico(formData, "resultados_alcance"),
+              leads: numerico(formData, "resultados_leads"),
+              engajamento: numerico(formData, "resultados_engajamento")
+            }
+          : undefined,
         updated_at: new Date()
       }
     })
@@ -348,6 +370,92 @@ export async function removerAtividadeAction(id: string, ordemId: string) {
   revalidatePath(`/marketing/${ordemId}`);
   revalidatePath("/manutencao/calendario");
   revalidatePath("/manutencao/painel");
+}
+
+// --- Produção (pipeline peça a peça — Fase 5c, 09/08/2026) — 1 Ordem pode
+//     virar várias peças (1 vídeo + 3 stories, por exemplo), cada uma com
+//     seu próprio prazo/arquivo/nº de revisões. ---
+
+export async function criarProducaoAction(formData: FormData) {
+  await requireAdminSession();
+
+  const ordemId = texto(formData, "ordemId");
+  const peca = texto(formData, "peca");
+  if (!ordemId || !peca) throw new Error("Informe a peça de produção.");
+
+  await prisma.marketing_producoes
+    .create({
+      data: {
+        marketing_ordem_id: ordemId,
+        peca,
+        roteiro: texto(formData, "roteiro"),
+        local: texto(formData, "local"),
+        referencia: texto(formData, "referencia"),
+        responsavel_parceiro_id: texto(formData, "responsavel_parceiro_id"),
+        data_captacao: data(formData, "data_captacao"),
+        prazo_entrega: data(formData, "prazo_entrega")
+      }
+    })
+    .catch((erro) => registrarEJogarErro({ entidadeTipo: "marketing_producoes", entidadeId: ordemId, acao: "criar", erro }));
+
+  revalidatePath(`/marketing/${ordemId}`);
+}
+
+// Links dos arquivos (brutos, versão pra aprovação, final) — preenchidos
+// progressivamente conforme a peça avança, por isso é uma action separada
+// da criação (formulário próprio, menor, dentro de cada linha da lista).
+export async function atualizarProducaoLinksAction(formData: FormData) {
+  await requireAdminSession();
+
+  const id = texto(formData, "producaoId");
+  const ordemId = texto(formData, "ordemId");
+  if (!id || !ordemId) throw new Error("Peça de produção inválida.");
+
+  await prisma.marketing_producoes
+    .update({
+      where: { id },
+      data: {
+        arquivos_brutos_url: texto(formData, "arquivos_brutos_url"),
+        versao_aprovacao_url: texto(formData, "versao_aprovacao_url"),
+        arquivo_final_url: texto(formData, "arquivo_final_url"),
+        updated_at: new Date()
+      }
+    })
+    .catch((erro) => registrarEJogarErro({ entidadeTipo: "marketing_producoes", entidadeId: id, acao: "atualizar_links", erro }));
+
+  revalidatePath(`/marketing/${ordemId}`);
+}
+
+export async function atualizarProducaoStatusAction(id: string, ordemId: string, status: string) {
+  await requireAdminSession();
+
+  await prisma.marketing_producoes
+    .update({ where: { id }, data: { status, updated_at: new Date() } })
+    .catch((erro) => registrarEJogarErro({ entidadeTipo: "marketing_producoes", entidadeId: id, acao: "mudar_status", erro }));
+
+  revalidatePath(`/marketing/${ordemId}`);
+}
+
+// Botão "+1 revisão" — conta quantas rodadas de ajuste a peça já teve (o
+// Manual seção 11 lista "rodadas de alteração" como um dos KPIs).
+export async function incrementarRevisaoProducaoAction(id: string, ordemId: string) {
+  await requireAdminSession();
+
+  await prisma.marketing_producoes
+    .update({ where: { id }, data: { revisoes: { increment: 1 }, updated_at: new Date() } })
+    .catch((erro) => registrarEJogarErro({ entidadeTipo: "marketing_producoes", entidadeId: id, acao: "incrementar_revisao", erro }));
+
+  revalidatePath(`/marketing/${ordemId}`);
+}
+
+export async function removerProducaoAction(id: string, ordemId: string) {
+  await requireAdminSession();
+
+  await prisma.marketing_producoes
+    .delete({ where: { id } })
+    .catch((erro) => registrarEJogarErro({ entidadeTipo: "marketing_producoes", entidadeId: id, acao: "remover", erro }));
+
+  revalidatePath(`/marketing/${ordemId}`);
 }
 
 // --- Notas (histórico, timestamp automático, ordem cronológica reversa) ---

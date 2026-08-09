@@ -8,13 +8,18 @@ import { criarOrdemAction } from "../actions";
 export const dynamic = "force-dynamic";
 
 export default async function NovaOrdemMarketingPage() {
-  const [corretores, administrativos] = await Promise.all([
+  const [corretores, administrativos, empreendimentos] = await Promise.all([
     prisma.parceiros.findMany({
       where: { funcao: "Corretor", status_funcao: "Ativo" },
       orderBy: { nome: "asc" },
       select: { id: true, nome: true }
     }),
-    listarParceirosAdministrativos()
+    listarParceirosAdministrativos(),
+    prisma.marketing_empreendimentos.findMany({
+      where: { excluido: false, status: "Ativo" },
+      orderBy: { nome: "asc" },
+      select: { id: true, nome: true }
+    })
   ]);
 
   return (
@@ -27,7 +32,7 @@ export default async function NovaOrdemMarketingPage() {
 
       <div className="text-sm font-bold text-gray-800 mb-4">Nova ordem de Marketing</div>
 
-      <MarketingForm corretores={corretores} administrativos={administrativos} action={criarOrdemAction} />
+      <MarketingForm corretores={corretores} administrativos={administrativos} empreendimentos={empreendimentos} action={criarOrdemAction} />
     </div>
   );
 }

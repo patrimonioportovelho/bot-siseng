@@ -17,6 +17,7 @@ import {
   saudacaoPortoVelho
 } from "@/lib/format";
 import { FUNCOES_CORRETOR } from "@/lib/transacoes/opcoes";
+import { COLUNAS_KANBAN as COLUNAS_MARKETING, labelColuna as labelColunaMarketing, slaDaOrdem, STATUS_PRODUCAO_OPCOES } from "@/lib/marketing/opcoes";
 import { getAdminSession } from "@/lib/auth";
 import { ultimoResetSessaoMs } from "@/lib/session";
 import {
@@ -775,6 +776,79 @@ export default async function DashboardPage({
       ? await prisma.parceiros.findMany({ where: { id: { in: idsParceirosPerfil } }, select: { id: true, nome: true } })
       : [];
   const nomeParceiroPerfil = new Map(parceirosPerfilNomes.map((p) => [p.id, p.nome]));
+
+  // Seção "Marketing" (Fase 5d, 09/08/2026) — pedido do usuário: cards de
+  // Marketing juntos com o Dashboard geral, sem poluir a página do módulo
+  // em si. Deliberadamente NÃO filtrado pelo período do dashboard, mesmo
+  // critério já usado em "Perfil de Clientes e Imóveis" acima — é uma foto
+  // do estado atual do pipeline, não faz sentido "só do mês".
+  const [todasOrdensMarketing, producoesMarketing, empreendimentosAtivosQtd, corretoresComPerfilQtd] = await Promise.all([
+    prisma.marketing_ordens.findMany({
+      where: { excluido: false },
+      select: {
+        coluna: true,
+        tipo: true,
+        briefing_completo: true,
+        data_captacao: true,
+        data_publicacao: true,
+        coluna_atualizada_em: true,
+        resultados: true
+      }
+    }),
+    prisma.marketing_producoes.findMany({ where: { excluido: false }, select: { status: true, revisoes: true } }),
+    prisma.marketing_empreendimentos.count({ where: { excluido: false, status: "Ativo" } }),
+    prisma.marketing_corretores.count()
+  ]);
+
+  const omsEmAtrasoMarketing = todasOrdensMarketing.filter(
+    (o) => slaDaOrdem(o.coluna, o.tipo, o.coluna_atualizada_em)?.atrasado
+  ).length;
+  const omsPorColunaMarketing: Record<string, number> = {};
+  for (const o of todasOrdensMarketing) omsPorColunaMarketing[o.coluna] = (omsPorColunaMarketing[o.coluna] ?? 0) + 1;
+  const omsComProducaoCompletaMarketing = todasOrdensMarketing.filter((o) => o.data_captacao && o.data_publicacao);
+  const tempoMedioProducaoDiasMarketing =
+    omsComProducaoCompletaMarketing.length > 0
+      ? Math.round(
+          omsComProducaoCompletaMarketing.reduce(
+            (soma, o) => soma + (new Date(o.data_publicacao!).getTime() - new Date(o.data_captacao!).getTime()) / 86400000,
+            0
+          ) / omsComProducaoCompletaMarketing.length
+        )
+      : null;
+
+  // Resultados manuais (alcance/leads/engajamento) — preenchidos na ficha da
+  // Ordem, seção "Andamento" (ver components/marketing-editar-form.tsx).
+  // Registro manual: o sistema não integra com Instagram/Meta.
+  let somaAlcanceMarketing = 0;
+  let somaLeadsMarketing = 0;
+  let somaEngajamentoMarketing = 0;
+  let ordensComResultadoMarketing = 0;
+  for (const o of todasOrdensMarketing) {
+    const r = o.resultados as { alcance?: number; leads?: number; engajamento?: number } | null;
+    if (!r || typeof r !== "object") continue;
+    let teveNumero = false;
+    if (typeof r.alcance === "number") {
+      somaAlcanceMarketing += r.alcance;
+      teveNumero = true;
+    }
+    if (typeof r.leads === "number") {
+      somaLeadsMarketing += r.leads;
+      teveNumero = true;
+    }
+    if (typeof r.engajamento === "number") {
+      somaEngajamentoMarketing += r.engajamento;
+      teveNumero = true;
+    }
+    if (teveNumero) ordensComResultadoMarketing += 1;
+  }
+
+  const producoesPorStatusMarketing = new Map(STATUS_PRODUCAO_OPCOES.map((s) => [s, 0]));
+  let revisoesTotaisMarketing = 0;
+  for (const p of producoesMarketing) {
+    producoesPorStatusMarketing.set(p.status, (producoesPorStatusMarketing.get(p.status) ?? 0) + 1);
+    revisoesTotaisMarketing += p.revisoes;
+  }
+  const pecasEntreguesMarketing = producoesPorStatusMarketing.get("Entregue") ?? 0;
 
   const hojeParaIdade = hojePortoVelho();
   function idadeAnos(nascimento: Date): number {
@@ -1539,6 +1613,83 @@ export default async function DashboardPage({
                 <li className="text-xs text-gray-400">Nenhum imóvel vinculado a um parceiro.</li>
               )}
             </ul>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white border border-gray-200 rounded-xl p-4 mt-5">
+        <div className="flex items-center justify-between mb-1 flex-wrap gap-2">
+          <div className="text-sm font-bold text-gray-800">Marketing</div>
+          <Link href="/marketing" className="text-xs text-primary font-semibold hover:underline">
+            Ir para o quadro →
+          </Link>
+        </div>
+        <p className="text-[11px] text-gray-400 mb-4">
+          Foto do pipeline agora — {todasOrdensMarketing.length} Ordem(ns) ativa(s). Não é filtrado pelo período
+          selecionado acima (mesmo critério do "Perfil de Clientes e Imóveis").
+        </p>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+          <div className="bg-gray-50 border border-gray-100 rounded-xl p-3">
+            <div className="text-xs text-gray-500">Ordens em atraso (SLA)</div>
+            <div className={`text-lg font-bold mt-1 ${omsEmAtrasoMarketing > 0 ? "text-red-600" : "text-gray-900"}`}>
+              {omsEmAtrasoMarketing}
+            </div>
+          </div>
+          <div className="bg-gray-50 border border-gray-100 rounded-xl p-3">
+            <div className="text-xs text-gray-500">Tempo médio de produção</div>
+            <div className="text-lg font-bold mt-1 text-gray-900">
+              {tempoMedioProducaoDiasMarketing !== null ? `${tempoMedioProducaoDiasMarketing} dias` : "—"}
+            </div>
+          </div>
+          <div className="bg-gray-50 border border-gray-100 rounded-xl p-3">
+            <div className="text-xs text-gray-500">Peças entregues</div>
+            <div className="text-lg font-bold mt-1 text-gray-900">
+              {pecasEntreguesMarketing} <span className="text-xs font-normal text-gray-400">de {producoesMarketing.length}</span>
+            </div>
+            <div className="text-[11px] text-gray-400">{revisoesTotaisMarketing} rodada(s) de revisão no total</div>
+          </div>
+          <div className="bg-gray-50 border border-gray-100 rounded-xl p-3">
+            <div className="text-xs text-gray-500">Empreendimentos ativos</div>
+            <div className="text-lg font-bold mt-1 text-gray-900">{empreendimentosAtivosQtd}</div>
+            <div className="text-[11px] text-gray-400">{corretoresComPerfilQtd} corretor(es) com perfil de marca</div>
+          </div>
+        </div>
+
+        <div className="grid md:grid-cols-2 gap-4">
+          <div>
+            <div className="text-xs font-semibold text-gray-600 mb-2">Ordens por etapa</div>
+            <ul className="flex flex-col gap-1">
+              {COLUNAS_MARKETING.filter((c) => (omsPorColunaMarketing[c.id] ?? 0) > 0).map((c) => (
+                <li key={c.id} className="flex justify-between gap-2 text-xs text-gray-600 border-b border-gray-50 py-1">
+                  <span className="truncate">{labelColunaMarketing(c.id)}</span>
+                  <span className="text-gray-400 whitespace-nowrap">{omsPorColunaMarketing[c.id]}</span>
+                </li>
+              ))}
+              {todasOrdensMarketing.length === 0 && <li className="text-xs text-gray-400">Nenhuma Ordem cadastrada.</li>}
+            </ul>
+          </div>
+          <div>
+            <div className="text-xs font-semibold text-gray-600 mb-2">
+              Resultados manuais (soma) — {ordensComResultadoMarketing} Ordem(ns) com métrica preenchida
+            </div>
+            <ul className="flex flex-col gap-1">
+              <li className="flex justify-between gap-2 text-xs text-gray-600 border-b border-gray-50 py-1">
+                <span>Alcance</span>
+                <span className="text-gray-400 whitespace-nowrap">{somaAlcanceMarketing.toLocaleString("pt-BR")}</span>
+              </li>
+              <li className="flex justify-between gap-2 text-xs text-gray-600 border-b border-gray-50 py-1">
+                <span>Leads</span>
+                <span className="text-gray-400 whitespace-nowrap">{somaLeadsMarketing.toLocaleString("pt-BR")}</span>
+              </li>
+              <li className="flex justify-between gap-2 text-xs text-gray-600 border-b border-gray-50 py-1">
+                <span>Engajamento</span>
+                <span className="text-gray-400 whitespace-nowrap">{somaEngajamentoMarketing.toLocaleString("pt-BR")}</span>
+              </li>
+            </ul>
+            <p className="text-[11px] text-gray-400 mt-2">
+              Preenchido manualmente na ficha da Ordem — o sistema não integra com Instagram/Meta.
+            </p>
           </div>
         </div>
       </div>

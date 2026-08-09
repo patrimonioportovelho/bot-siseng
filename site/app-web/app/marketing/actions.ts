@@ -358,3 +358,99 @@ export async function adicionarNotaAction(formData: FormData) {
 
   revalidatePath(`/marketing/${ordemId}`);
 }
+
+// --- Agenda (pedidos que o corretor manda pela Agenda do portal) ---
+
+// Confirma o pedido — com a mesma data sugerida ou reagendando (campos
+// nova_data/nova_hora opcionais) — e isso já vira uma Ordem de Marketing na
+// coluna "Recebido" sozinho: o pedido do corretor "é" o agendamento, ele
+// não precisa reagendar em outro lugar (pedido do usuário, 09/08/2026).
+// visto_pelo_corretor volta a false pra acender a notificação no portal.
+export async function confirmarSolicitacaoAgendaAction(formData: FormData) {
+  const admin = await requireAdminSession();
+
+  const id = texto(formData, "solicitacaoId");
+  if (!id) throw new Error("Solicitação inválida.");
+
+  const solicitacao = await prisma.solicitacoes_agenda.findUnique({ where: { id } });
+  if (!solicitacao) throw new Error("Solicitação não encontrada.");
+
+  const novaData = texto(formData, "nova_data");
+  const novaHora = texto(formData, "nova_hora");
+  const dataConfirmada = novaData ? new Date(`${novaData}T${novaHora || "09:00"}:00`) : solicitacao.data_hora_sugerida;
+
+  const idLegado = await gerarProximoIdOrdemMarketing();
+
+  const ordemCriada = await prisma.marketing_ordens
+    .create({
+      data: {
+        id_legado: idLegado,
+        titulo: solicitacao.titulo,
+        tipo: solicitacao.tipo,
+        objetivo: solicitacao.descricao,
+        solicitante_parceiro_id: solicitacao.parceiro_id,
+        coluna: "recebido",
+        data_captacao: dataConfirmada
+      }
+    })
+    .catch((erro) => registrarEJogarErro({ entidadeTipo: "marketing_ordens", acao: "criar_de_solicitacao", erro }));
+
+  const depois = await prisma.solicitacoes_agenda
+    .update({
+      where: { id },
+      data: {
+        status: "confirmada",
+        data_hora_confirmada: dataConfirmada,
+        resposta_texto: texto(formData, "resposta_texto"),
+        respondido_por_parceiro_id: admin.parceiroId,
+        respondido_em: new Date(),
+        visto_pelo_corretor: false,
+        marketing_ordem_id: ordemCriada.id
+      }
+    })
+    .catch((erro) => registrarEJogarErro({ entidadeTipo: "solicitacoes_agenda", entidadeId: id, acao: "confirmar", erro }));
+
+  await logAlteracao({
+    entidadeTipo: "solicitacoes_agenda",
+    entidadeId: id,
+    acao: "editar",
+    dadosAntes: { status: solicitacao.status },
+    dadosDepois: { status: depois.status, marketing_ordem_id: depois.marketing_ordem_id }
+  });
+
+  revalidatePath("/marketing/agenda");
+  revalidatePath("/marketing");
+}
+
+export async function recusarSolicitacaoAgendaAction(formData: FormData) {
+  const admin = await requireAdminSession();
+
+  const id = texto(formData, "solicitacaoId");
+  if (!id) throw new Error("Solicitação inválida.");
+
+  const solicitacao = await prisma.solicitacoes_agenda.findUnique({ where: { id } });
+  if (!solicitacao) throw new Error("Solicitação não encontrada.");
+
+  await prisma.solicitacoes_agenda
+    .update({
+      where: { id },
+      data: {
+        status: "recusada",
+        resposta_texto: texto(formData, "resposta_texto"),
+        respondido_por_parceiro_id: admin.parceiroId,
+        respondido_em: new Date(),
+        visto_pelo_corretor: false
+      }
+    })
+    .catch((erro) => registrarEJogarErro({ entidadeTipo: "solicitacoes_agenda", entidadeId: id, acao: "recusar", erro }));
+
+  await logAlteracao({
+    entidadeTipo: "solicitacoes_agenda",
+    entidadeId: id,
+    acao: "editar",
+    dadosAntes: { status: solicitacao.status },
+    dadosDepois: { status: "recusada" }
+  });
+
+  revalidatePath("/marketing/agenda");
+}

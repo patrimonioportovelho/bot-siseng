@@ -97,6 +97,7 @@ export default async function PortalPage() {
   const inicioGrafico = new Date(hoje.getFullYear(), hoje.getMonth() - (MESES_GRAFICO - 1), 1);
 
   const [
+    pedidosAgendaRespondidos,
     metasAtivas,
     noticias,
     checklists,
@@ -118,6 +119,13 @@ export default async function PortalPage() {
     transacoesGrafico,
     administracoesGrafico
   ] = await Promise.all([
+    // Pedidos de Agenda que o setor já respondeu e o corretor ainda não
+    // abriu — vira o banner de notificação abaixo (some sozinho assim que
+    // ele visita /portal/agenda, ver app/portal/agenda/page.tsx).
+    prisma.solicitacoes_agenda.findMany({
+      where: { parceiro_id: pid, excluido: false, status: { not: "pendente" }, visto_pelo_corretor: false },
+      orderBy: { respondido_em: "desc" }
+    }),
     // Metas ativas AGORA (o período já começou e ainda não terminou) que
     // valem pra este corretor: individuais dele (parceiro_id = pid) ou
     // Gerais (parceiro_id null, soma de todo mundo). Ordenada pela mais
@@ -290,6 +298,20 @@ export default async function PortalPage() {
           Um resumo rápido de tudo que está no seu nome: clientes, imóveis, negócios em andamento, avaliações de
           crédito e honorários. As ações pra criar um novo cadastro ficaram no menu ao lado.
         </p>
+
+        {pedidosAgendaRespondidos.length > 0 && (
+          <Link
+            href="/portal/agenda"
+            className="block bg-primary/5 border border-primary/30 text-primary text-xs rounded-xl px-4 py-3 mb-4 hover:bg-primary/10"
+          >
+            <span className="font-semibold">
+              {pedidosAgendaRespondidos.length === 1
+                ? "Seu pedido na Agenda foi respondido."
+                : `${pedidosAgendaRespondidos.length} pedidos seus na Agenda foram respondidos.`}
+            </span>{" "}
+            Toque pra ver →
+          </Link>
+        )}
 
         <PortalMetasPainel metas={metasComProgresso} />
 

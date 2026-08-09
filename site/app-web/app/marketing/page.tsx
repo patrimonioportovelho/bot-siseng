@@ -15,17 +15,20 @@ export default async function MarketingPage({
   const { q } = await searchParams;
   const termo = (q ?? "").trim();
 
-  const ordens = await prisma.marketing_ordens.findMany({
-    where: {
-      excluido: false,
-      ...(termo ? { titulo: { contains: termo, mode: "insensitive" as const } } : {})
-    },
-    orderBy: { created_at: "desc" },
-    include: {
-      parceiros_marketing_ordens_solicitante_parceiro_idToparceiros: { select: { nome: true } },
-      parceiros_marketing_ordens_responsavel_atual_idToparceiros: { select: { nome: true } }
-    }
-  });
+  const [ordens, pedidosPendentesQtd] = await Promise.all([
+    prisma.marketing_ordens.findMany({
+      where: {
+        excluido: false,
+        ...(termo ? { titulo: { contains: termo, mode: "insensitive" as const } } : {})
+      },
+      orderBy: { created_at: "desc" },
+      include: {
+        parceiros_marketing_ordens_solicitante_parceiro_idToparceiros: { select: { nome: true } },
+        parceiros_marketing_ordens_responsavel_atual_idToparceiros: { select: { nome: true } }
+      }
+    }),
+    prisma.solicitacoes_agenda.count({ where: { excluido: false, status: "pendente" } })
+  ]);
 
   return (
     <div>
@@ -46,12 +49,25 @@ export default async function MarketingPage({
             className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full outline-none focus:border-primary bg-white"
           />
         </form>
-        <Link
-          href="/marketing/novo"
-          className="text-xs bg-primary text-white rounded-lg px-3 py-1.5 font-semibold whitespace-nowrap"
-        >
-          + Nova ordem
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/marketing/agenda"
+            className="text-xs border border-gray-300 bg-white rounded-lg px-3 py-1.5 font-semibold whitespace-nowrap flex items-center gap-1.5"
+          >
+            Pedidos da Agenda
+            {pedidosPendentesQtd > 0 && (
+              <span className="bg-[#A9822E] text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
+                {pedidosPendentesQtd}
+              </span>
+            )}
+          </Link>
+          <Link
+            href="/marketing/novo"
+            className="text-xs bg-primary text-white rounded-lg px-3 py-1.5 font-semibold whitespace-nowrap"
+          >
+            + Nova ordem
+          </Link>
+        </div>
       </div>
 
       <MarketingKanban ordens={ordens} moverColuna={moverColunaAction} />

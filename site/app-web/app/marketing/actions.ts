@@ -44,11 +44,15 @@ export async function criarOrdemAction(formData: FormData) {
         solicitante_parceiro_id: texto(formData, "solicitante_parceiro_id"),
         tipo: texto(formData, "tipo"),
         objetivo: texto(formData, "objetivo"),
+        publico: texto(formData, "publico"),
+        empreendimento: texto(formData, "empreendimento"),
+        canal: texto(formData, "canal"),
         prioridade: texto(formData, "prioridade") ?? "Normal",
         coluna: "recebido",
         prazo_roteiro: data(formData, "prazo_roteiro"),
         prazo_entrega: data(formData, "prazo_entrega"),
-        responsavel_atual_id: texto(formData, "responsavel_atual_id")
+        responsavel_atual_id: texto(formData, "responsavel_atual_id"),
+        responsavel_aprovacao_id: texto(formData, "responsavel_aprovacao_id")
       }
     })
     .catch((erro) => registrarEJogarErro({ entidadeTipo: "marketing_ordens", acao: "criar", erro }));
@@ -77,11 +81,15 @@ export async function atualizarOrdemAction(formData: FormData) {
         solicitante_parceiro_id: texto(formData, "solicitante_parceiro_id"),
         tipo: texto(formData, "tipo"),
         objetivo: texto(formData, "objetivo"),
+        publico: texto(formData, "publico"),
+        empreendimento: texto(formData, "empreendimento"),
+        canal: texto(formData, "canal"),
         prioridade: texto(formData, "prioridade") ?? "Normal",
         prazo_roteiro: data(formData, "prazo_roteiro"),
         prazo_entrega: data(formData, "prazo_entrega"),
         data_publicacao: data(formData, "data_publicacao"),
         responsavel_atual_id: texto(formData, "responsavel_atual_id"),
+        responsavel_aprovacao_id: texto(formData, "responsavel_aprovacao_id"),
         bloqueio: texto(formData, "bloqueio"),
         link_arquivos: texto(formData, "link_arquivos"),
         aprovacao_status: texto(formData, "aprovacao_status"),
@@ -98,6 +106,57 @@ export async function atualizarOrdemAction(formData: FormData) {
   redirect(`/marketing/${id}?salvo=1`);
 }
 
+// Ficha do briefing (formulário dinâmico, um por tipo — ver
+// lib/marketing/opcoes.ts BRIEFING_TIPOS). Recalcula briefing_completo toda
+// vez que salva: só true quando TODOS os campos daquele tipo estão
+// preenchidos — é essa flag que a regra de negócio em moverColunaAction usa
+// pra decidir se a Ordem pode sair de "Aguardando briefing".
+export async function salvarBriefingAction(formData: FormData) {
+  await requireAdminSession();
+
+  const id = texto(formData, "ordemId");
+  const briefingTipo = texto(formData, "briefing_tipo");
+  if (!id) throw new Error("Ordem de Marketing inválida.");
+  if (!briefingTipo) throw new Error("Escolha o tipo de briefing.");
+
+  const { campoBriefing } = await import("@/lib/marketing/opcoes");
+  const tipo = campoBriefing(briefingTipo);
+  if (!tipo) throw new Error("Tipo de briefing desconhecido.");
+
+  const dados: Record<string, string> = {};
+  let completo = true;
+  for (const campo of tipo.campos) {
+    const valor = texto(formData, campo.key);
+    if (valor) dados[campo.key] = valor;
+    else completo = false;
+  }
+
+  const antes = await prisma.marketing_ordens.findUnique({ where: { id } });
+  if (!antes) throw new Error("Ordem de Marketing não encontrada.");
+
+  const depois = await prisma.marketing_ordens
+    .update({
+      where: { id },
+      data: {
+        briefing_tipo: briefingTipo,
+        briefing_dados: dados,
+        briefing_completo: completo,
+        updated_at: new Date()
+      }
+    })
+    .catch((erro) => registrarEJogarErro({ entidadeTipo: "marketing_ordens", entidadeId: id, acao: "salvar_briefing", erro }));
+
+  await logAlteracao({
+    entidadeTipo: "marketing_ordens",
+    entidadeId: id,
+    acao: "editar",
+    dadosAntes: { briefing_dados: antes.briefing_dados, briefing_completo: antes.briefing_completo },
+    dadosDepois: { briefing_dados: depois.briefing_dados, briefing_completo: depois.briefing_completo }
+  });
+
+  revalidatePath(`/marketing/${id}`);
+}
+
 // Chamada direto do arrastar-e-soltar do Kanban — mesmo padrão de
 // app/gestoes/actions.ts e app/manutencao/actions.ts.
 export async function moverColunaAction(id: string, novaColuna: string) {
@@ -105,6 +164,14 @@ export async function moverColunaAction(id: string, novaColuna: string) {
 
   const antes = await prisma.marketing_ordens.findUnique({ where: { id } });
   if (!antes) throw new Error("Ordem de Marketing não encontrada.");
+
+  // Regra de ouro do Manual: "o agendamento reserva o horário; o briefing
+  // autoriza a produção" — uma Ordem só sai de Aguardando briefing com o
+  // briefing completo. Voltar pra Recebido continua liberado (é um
+  // "desistir"/reiniciar, não um avanço).
+  if (antes.coluna === "aguardando_briefing" && novaColuna !== "aguardando_briefing" && novaColuna !== "recebido" && !antes.briefing_completo) {
+    throw new Error("Briefing incompleto — preencha todos os campos do briefing antes de avançar.");
+  }
 
   await prisma.marketing_ordens
     .update({ where: { id }, data: { coluna: novaColuna, updated_at: new Date() } })
@@ -161,15 +228,22 @@ export async function adicionarChecklistItemAction(formData: FormData) {
   revalidatePath(`/marketing/${ordemId}`);
 }
 
-// Insere de uma vez os itens padrão do Manual (seção 14) — botão
-// "+ Checklist padrão" na ficha do card.
+// Insere de uma vez os itens do Manual IMPACTO pro pilar em que a Ordem
+// está AGORA (derivado da coluna atual — ver pilarImpactoDaColuna) — botão
+// "+ Checklist do pilar atual" na ficha do card. Muda de conteúdo conforme o
+// card avança de coluna, em vez de ser uma lista única despejada no início.
 export async function adicionarChecklistPadraoAction(formData: FormData) {
   await requireAdminSession();
 
   const ordemId = texto(formData, "ordemId");
   if (!ordemId) throw new Error("Ordem de Marketing inválida.");
 
-  const { CHECKLIST_PADRAO } = await import("@/lib/marketing/opcoes");
+  const ordemAtual = await prisma.marketing_ordens.findUnique({ where: { id: ordemId }, select: { coluna: true } });
+  if (!ordemAtual) throw new Error("Ordem de Marketing não encontrada.");
+
+  const { CHECKLIST_POR_PILAR, pilarImpactoDaColuna } = await import("@/lib/marketing/opcoes");
+  const pilar = pilarImpactoDaColuna(ordemAtual.coluna);
+  const itens = CHECKLIST_POR_PILAR[pilar.id] ?? [];
 
   const ultimo = await prisma.marketing_checklist_itens.findFirst({
     where: { marketing_ordem_id: ordemId },
@@ -180,7 +254,7 @@ export async function adicionarChecklistPadraoAction(formData: FormData) {
 
   await prisma.marketing_checklist_itens
     .createMany({
-      data: CHECKLIST_PADRAO.map((label) => ({ marketing_ordem_id: ordemId, label, ordem: ordem++ }))
+      data: itens.map((label) => ({ marketing_ordem_id: ordemId, label, ordem: ordem++ }))
     })
     .catch((erro) => registrarEJogarErro({ entidadeTipo: "marketing_checklist_itens", entidadeId: ordemId, acao: "criar_padrao", erro }));
 

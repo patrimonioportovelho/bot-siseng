@@ -6,12 +6,15 @@ type ChecklistItem = { id: string; label: string; done: boolean };
 
 // Mesmo componente de Gestões/Manutenção (components/gestao-checklist.tsx),
 // só trocando o nome do id (ordemId em vez de gestaoId) e acrescentando o
-// botão "+ Checklist padrão", que insere de uma vez os itens dos 3
-// checklists do Manual (Antes da captação / Durante a captação / Antes da
-// publicação — lib/marketing/opcoes.ts CHECKLIST_PADRAO).
+// botão "+ Checklist do pilar atual", que insere os itens do Manual IMPACTO
+// referentes ao pilar em que a Ordem está agora (derivado da coluna do
+// Kanban — ver lib/marketing/opcoes.ts CHECKLIST_POR_PILAR). Fica sempre
+// disponível (não só quando a lista está vazia) porque o card muda de pilar
+// ao longo do tempo e cada mudança pode trazer um checklist novo.
 export function MarketingChecklist({
   ordemId,
   itens,
+  pilarAtualLabel,
   adicionar,
   adicionarPadrao,
   marcar,
@@ -19,6 +22,7 @@ export function MarketingChecklist({
 }: {
   ordemId: string;
   itens: ChecklistItem[];
+  pilarAtualLabel: string;
   adicionar: (formData: FormData) => void;
   adicionarPadrao: (formData: FormData) => void;
   marcar: (id: string, ordemId: string) => Promise<void>;
@@ -31,14 +35,12 @@ export function MarketingChecklist({
     <div className="bg-white border border-gray-200 rounded-xl p-4">
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
         <div className="text-sm font-bold text-gray-800">Checklist</div>
-        {itens.length === 0 && (
-          <form action={adicionarPadrao}>
-            <input type="hidden" name="ordemId" value={ordemId} />
-            <button type="submit" className="text-[11px] text-primary font-semibold hover:underline">
-              + Checklist padrão
-            </button>
-          </form>
-        )}
+        <form action={adicionarPadrao}>
+          <input type="hidden" name="ordemId" value={ordemId} />
+          <button type="submit" className="text-[11px] text-primary font-semibold hover:underline">
+            + Checklist do pilar atual ({pilarAtualLabel})
+          </button>
+        </form>
       </div>
 
       <div className="flex flex-col gap-1.5 mb-3">

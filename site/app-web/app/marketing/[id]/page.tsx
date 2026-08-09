@@ -5,12 +5,14 @@ import { prisma } from "@/lib/prisma";
 import { MarketingEditarForm } from "@/components/marketing-editar-form";
 import { MarketingChecklist } from "@/components/marketing-checklist";
 import { MarketingAtividades } from "@/components/marketing-atividades";
+import { MarketingBriefingForm } from "@/components/marketing-briefing-form";
 import { listarParceirosAdministrativos } from "@/lib/parceiros/administrativos";
-import { labelColuna } from "@/lib/marketing/opcoes";
+import { labelColuna, pilarImpactoDaColuna, PILAR_IMPACTO_COR } from "@/lib/marketing/opcoes";
 import { formatData } from "@/lib/format";
 import {
   atualizarOrdemAction,
   apagarOrdemAction,
+  salvarBriefingAction,
   adicionarChecklistItemAction,
   adicionarChecklistPadraoAction,
   marcarChecklistItemAction,
@@ -44,6 +46,8 @@ export default async function MarketingDetalhePage({
     }
   });
   if (!ordem) notFound();
+
+  const pilar = pilarImpactoDaColuna(ordem.coluna);
 
   const [corretores, administrativos] = await Promise.all([
     prisma.parceiros.findMany({
@@ -81,9 +85,17 @@ export default async function MarketingDetalhePage({
       <div className="bg-white border border-gray-200 rounded-xl p-4 mb-5">
         <div className="flex items-center justify-between mb-1 flex-wrap gap-2">
           <div className="text-sm font-bold text-gray-800">{ordem.titulo}</div>
-          <span className="text-xs bg-primary/10 text-primary font-semibold rounded-full px-2.5 py-1">
-            {labelColuna(ordem.coluna)}
-          </span>
+          <div className="flex items-center gap-2">
+            <span
+              className={`text-[11px] font-bold rounded-full px-2.5 py-1 border ${PILAR_IMPACTO_COR[pilar.id]}`}
+              title="Pilar IMPACTO — nível de andamento da metodologia, calculado a partir da etapa"
+            >
+              {pilar.letra} · {pilar.label}
+            </span>
+            <span className="text-xs bg-primary/10 text-primary font-semibold rounded-full px-2.5 py-1">
+              {labelColuna(ordem.coluna)}
+            </span>
+          </div>
         </div>
         <div className="text-xs text-gray-400">
           {ordem.id_legado ?? ordem.id}
@@ -99,9 +111,18 @@ export default async function MarketingDetalhePage({
       <div className="flex flex-col gap-5">
         <MarketingEditarForm ordem={ordem} corretores={corretores} administrativos={administrativos} action={atualizarOrdemAction} />
 
+        <MarketingBriefingForm
+          ordemId={ordem.id}
+          briefingTipoAtual={ordem.briefing_tipo}
+          briefingDadosAtuais={ordem.briefing_dados as Record<string, unknown> | null}
+          briefingCompleto={ordem.briefing_completo}
+          action={salvarBriefingAction}
+        />
+
         <MarketingChecklist
           ordemId={ordem.id}
           itens={ordem.checklist_itens}
+          pilarAtualLabel={pilar.label}
           adicionar={adicionarChecklistItemAction}
           adicionarPadrao={adicionarChecklistPadraoAction}
           marcar={marcarChecklistItemAction}

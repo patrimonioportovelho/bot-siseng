@@ -10,11 +10,15 @@ type OrdemExistente = {
   solicitante_parceiro_id: string | null;
   tipo: string | null;
   objetivo: string | null;
+  publico: string | null;
+  empreendimento: string | null;
+  canal: string | null;
   prioridade: string;
   prazo_roteiro: Date | null;
   prazo_entrega: Date | null;
   data_publicacao: Date | null;
   responsavel_atual_id: string | null;
+  responsavel_aprovacao_id: string | null;
   bloqueio: string | null;
   link_arquivos: string | null;
   aprovacao_status: string | null;
@@ -101,6 +105,29 @@ export function MarketingEditarForm({
                 </option>
               ))}
             </select>
+          </div>
+          <div>
+            <label className={LABEL}>Responsável pela aprovação</label>
+            <select className={CAMPO} name="responsavel_aprovacao_id" defaultValue={o.responsavel_aprovacao_id ?? ""}>
+              <option value="">—</option>
+              {administrativos.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.nome}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className={LABEL}>Empreendimento</label>
+            <input className={CAMPO} name="empreendimento" defaultValue={o.empreendimento ?? ""} placeholder="Nome do empreendimento (se houver)" />
+          </div>
+          <div>
+            <label className={LABEL}>Canal</label>
+            <input className={CAMPO} name="canal" defaultValue={o.canal ?? ""} placeholder="Instagram, site, WhatsApp..." />
+          </div>
+          <div className="md:col-span-2">
+            <label className={LABEL}>Público-alvo</label>
+            <input className={CAMPO} name="publico" defaultValue={o.publico ?? ""} />
           </div>
           <div className="md:col-span-2">
             <label className={LABEL}>Objetivo</label>

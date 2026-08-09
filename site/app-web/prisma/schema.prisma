@@ -859,6 +859,7 @@ model parceiros {
   manutencoes                                                                manutencoes[]
   marketing_ordens_marketing_ordens_solicitante_parceiro_idToparceiros       marketing_ordens[]        @relation("marketing_ordens_solicitante_parceiro_idToparceiros")
   marketing_ordens_marketing_ordens_responsavel_atual_idToparceiros          marketing_ordens[]        @relation("marketing_ordens_responsavel_atual_idToparceiros")
+  marketing_ordens_marketing_ordens_responsavel_aprovacao_idToparceiros      marketing_ordens[]        @relation("marketing_ordens_responsavel_aprovacao_idToparceiros")
   solicitacoes_agenda_solicitacoes_agenda_parceiro_idToparceiros             solicitacoes_agenda[]     @relation("solicitacoes_agenda_parceiro_idToparceiros")
   solicitacoes_agenda_respondido_solicitacoes_agenda_idToparceiros           solicitacoes_agenda[]     @relation("solicitacoes_agenda_respondido_por_parceiro_idToparceiros")
   bancos                                                                      bancos?                   @relation(fields: [banco_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -1367,6 +1368,13 @@ model marketing_ordens {
   // não é só um campo solto).
   briefing_completo        Boolean   @default(false)
   objetivo                 String?
+  // Campos que espelham o "Modelo de Ordem de Marketing" do Manual IMPACTO
+  // (workspace Notion que o usuário trouxe em 09/08/2026) — público-alvo da
+  // peça, empreendimento (texto livre por enquanto — sem cadastro à parte,
+  // decisão do usuário), canal de publicação.
+  publico                  String?
+  empreendimento           String?
+  canal                    String?
   prioridade               String    @default("Normal")
   coluna                   String    @default("recebido")
   data_captacao            DateTime? @db.Timestamptz(6)
@@ -1377,6 +1385,10 @@ model marketing_ordens {
   // Ativo (regra do usuário, aplicada na consulta que popula o <select>, não
   // trava por permissão no card em si).
   responsavel_atual_id     String?   @db.Uuid
+  // Quem aprova o material antes de publicar — distinto do responsável
+  // atual (que pode ser quem está produzindo). Mesma regra do usuário:
+  // só Parceiro Administrativo + Ativo (lib/parceiros/administrativos.ts).
+  responsavel_aprovacao_id String?   @db.Uuid
   bloqueio                 String?
   link_arquivos            String?
   aprovacao_status         String?
@@ -1393,6 +1405,7 @@ model marketing_ordens {
   solicitacoes_agenda      solicitacoes_agenda[]
   parceiros_marketing_ordens_solicitante_parceiro_idToparceiros parceiros? @relation("marketing_ordens_solicitante_parceiro_idToparceiros", fields: [solicitante_parceiro_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   parceiros_marketing_ordens_responsavel_atual_idToparceiros    parceiros? @relation("marketing_ordens_responsavel_atual_idToparceiros", fields: [responsavel_atual_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  parceiros_marketing_ordens_responsavel_aprovacao_idToparceiros parceiros? @relation("marketing_ordens_responsavel_aprovacao_idToparceiros", fields: [responsavel_aprovacao_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([coluna], map: "idx_marketing_ordens_coluna")
   @@index([solicitante_parceiro_id], map: "idx_marketing_ordens_solicitante")

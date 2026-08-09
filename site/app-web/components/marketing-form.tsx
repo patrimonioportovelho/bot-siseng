@@ -71,6 +71,29 @@ export function MarketingForm({
               ))}
             </select>
           </div>
+          <div>
+            <label className={LABEL}>Responsável pela aprovação</label>
+            <select className={CAMPO} name="responsavel_aprovacao_id" defaultValue="">
+              <option value="">—</option>
+              {administrativos.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.nome}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className={LABEL}>Empreendimento</label>
+            <input className={CAMPO} name="empreendimento" placeholder="Nome do empreendimento (se houver)" />
+          </div>
+          <div>
+            <label className={LABEL}>Canal</label>
+            <input className={CAMPO} name="canal" placeholder="Instagram, site, WhatsApp..." />
+          </div>
+          <div className="md:col-span-2">
+            <label className={LABEL}>Público-alvo</label>
+            <input className={CAMPO} name="publico" />
+          </div>
           <div className="md:col-span-2">
             <label className={LABEL}>Objetivo</label>
             <input className={CAMPO} name="objetivo" placeholder="Ex.: gerar leads pra visita" />

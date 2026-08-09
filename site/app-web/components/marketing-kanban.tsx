@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { formatData } from "@/lib/format";
-import { COLUNAS_KANBAN } from "@/lib/marketing/opcoes";
+import { COLUNAS_KANBAN, pilarImpactoDaColuna, PILAR_IMPACTO_COR } from "@/lib/marketing/opcoes";
 
 type OrdemKanban = {
   id: string;
@@ -36,6 +36,7 @@ export function MarketingKanban({
 }) {
   const [arrastandoId, setArrastandoId] = useState<string | null>(null);
   const [colunaAlvo, setColunaAlvo] = useState<string | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
   const [, startTransition] = useTransition();
 
   function onDrop(coluna: string) {
@@ -44,14 +45,30 @@ export function MarketingKanban({
     const id = arrastandoId;
     setArrastandoId(null);
     if (ordens.find((o) => o.id === id)?.coluna === coluna) return;
+    setErro(null);
     startTransition(() => {
-      moverColuna(id, coluna);
+      // moverColuna pode recusar a troca (ex.: regra "sem briefing completo
+      // não sai de Aguardando briefing") — sem <form> aqui, então o erro só
+      // chega como rejeição da promise; mostramos numa faixa acima do
+      // quadro pra não deixar o usuário sem saber por que o card voltou.
+      moverColuna(id, coluna).catch((e: unknown) => {
+        setErro(e instanceof Error ? e.message : "Não foi possível mover o card.");
+      });
     });
   }
 
   return (
-    <div className="flex flex-col md:flex-row gap-3 md:overflow-x-auto pb-2">
-      {COLUNAS_KANBAN.map((coluna) => {
+    <div className="flex flex-col gap-3">
+      {erro && (
+        <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg px-3 py-2 flex items-center justify-between gap-2">
+          <span>{erro}</span>
+          <button type="button" onClick={() => setErro(null)} className="text-red-400 hover:text-red-600">
+            ×
+          </button>
+        </div>
+      )}
+      <div className="flex flex-col md:flex-row gap-3 md:overflow-x-auto pb-2">
+        {COLUNAS_KANBAN.map((coluna) => {
         const ordensColuna = ordens.filter((o) => o.coluna === coluna.id);
         const emDestaque = colunaAlvo === coluna.id;
         return (
@@ -67,9 +84,17 @@ export function MarketingKanban({
               emDestaque ? "bg-primary/5 border-primary/40" : "bg-gray-50 border-gray-200"
             }`}
           >
-            <div className="flex items-center justify-between px-1">
-              <span className="text-xs font-bold text-gray-700">{coluna.label}</span>
-              <span className="text-[11px] text-gray-400">{ordensColuna.length}</span>
+            <div className="flex items-center justify-between px-1 gap-2">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="text-xs font-bold text-gray-700 truncate">{coluna.label}</span>
+                <span
+                  className={`text-[9px] font-bold rounded-full px-1.5 py-0.5 border shrink-0 ${PILAR_IMPACTO_COR[pilarImpactoDaColuna(coluna.id).id]}`}
+                  title={`Pilar IMPACTO: ${pilarImpactoDaColuna(coluna.id).label}`}
+                >
+                  {pilarImpactoDaColuna(coluna.id).letra}
+                </span>
+              </div>
+              <span className="text-[11px] text-gray-400 shrink-0">{ordensColuna.length}</span>
             </div>
 
             <div className="flex flex-col gap-2 md:max-h-[65vh] md:overflow-y-auto">
@@ -118,7 +143,8 @@ export function MarketingKanban({
             </div>
           </div>
         );
-      })}
+        })}
+      </div>
     </div>
   );
 }

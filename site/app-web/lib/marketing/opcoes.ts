@@ -30,6 +30,68 @@ export function labelColuna(value: string): string {
   return COLUNAS_KANBAN.find((c) => c.id === value)?.label ?? value;
 }
 
+// Metodologia IMPACTO (versão operacional do Manual IMPACTO da REMAX, que o
+// usuário trouxe de um workspace Notion em 09/08/2026 — pedido: "etiquetas
+// bem dinâmico, o próprio sistema pode ter um nível de andamentamento da
+// metodologia"). É um 2º acrônimo IMPACTO, diferente do usado na Fase 1
+// (aquele é o funil de conteúdo da empresa toda; este é o ciclo de vida de
+// UMA demanda — Identificar, Mapear, Planejar, Acompanhar, Controlar,
+// Transformar, Otimizar) e é o que faz sentido etiquetar por card.
+//
+// A etiqueta é sempre CALCULADA a partir da coluna do Kanban (nunca um campo
+// solto que alguém escolhe à mão) — assim ela nunca fica dessincronizada do
+// card: mover a coluna já avança o pilar sozinho, exatamente o "nível de
+// andamento" que o usuário pediu.
+export type PilarImpacto = {
+  id: string;
+  letra: string;
+  label: string;
+};
+
+export const PILARES_IMPACTO: PilarImpacto[] = [
+  { id: "identificar", letra: "I", label: "Identificar" },
+  { id: "mapear", letra: "M", label: "Mapear" },
+  { id: "planejar", letra: "P", label: "Planejar" },
+  { id: "acompanhar", letra: "A", label: "Acompanhar" },
+  { id: "controlar", letra: "C", label: "Controlar" },
+  { id: "transformar", letra: "T", label: "Transformar" },
+  { id: "otimizar", letra: "O", label: "Otimizar" }
+];
+
+// Cada coluna do quadro pertence a exatamente um pilar — mapeamento fixo,
+// não editável pelo usuário (é estrutural, igual às próprias colunas).
+const COLUNA_PARA_PILAR: Record<string, string> = {
+  recebido: "identificar",
+  aguardando_briefing: "mapear",
+  validacao: "mapear",
+  roteiro: "planejar",
+  aguardando_corretor: "planejar",
+  gravacao: "acompanhar",
+  triagem: "acompanhar",
+  edicao: "controlar",
+  aprovacao: "controlar",
+  agendado: "transformar",
+  publicado: "transformar",
+  resultados: "otimizar"
+};
+
+export function pilarImpactoDaColuna(coluna: string): PilarImpacto {
+  const id = COLUNA_PARA_PILAR[coluna] ?? "identificar";
+  return PILARES_IMPACTO.find((p) => p.id === id) ?? PILARES_IMPACTO[0];
+}
+
+// Cor da etiqueta por pilar — mesma paleta de "urgência"/"prioridade" já
+// usada no resto do sistema (tons discretos, sem novas cores no design).
+export const PILAR_IMPACTO_COR: Record<string, string> = {
+  identificar: "bg-gray-100 text-gray-600 border-gray-200",
+  mapear: "bg-[#33587F]/10 text-[#33587F] border-[#33587F]/30",
+  planejar: "bg-[#33587F]/10 text-[#33587F] border-[#33587F]/30",
+  acompanhar: "bg-[#A9822E]/10 text-[#A9822E] border-[#A9822E]/30",
+  controlar: "bg-[#A9822E]/10 text-[#A9822E] border-[#A9822E]/30",
+  transformar: "bg-primary/10 text-primary border-primary/30",
+  otimizar: "bg-green-100 text-green-700 border-green-200"
+};
+
 // Tipo de material do card (Manual, seção 9.1).
 export const TIPOS_MATERIAL = ["Foto", "Vídeo", "Ambos"];
 
@@ -55,24 +117,21 @@ export const TIPO_ATIVIDADE_LABEL: Record<string, string> = {
   outro: "Outro"
 };
 
-// Os 3 checklists padrão do Manual (seção 14) — o botão "+ Checklist padrão"
-// (Fase 2) insere de uma vez os itens de todas as 3 fases.
-export const CHECKLIST_PADRAO: string[] = [
-  // Antes da captação
-  "Briefing completo e validado",
-  "Data e horário confirmados com o corretor",
-  "Endereço e ponto de referência conferidos",
-  "Chave/acesso ao imóvel garantido",
-  // Durante a captação
-  "Ambientes principais fotografados/filmados",
-  "Diferenciais do imóvel destacados no material",
-  "Corretor gravado (quando aplicável)",
-  // Antes da publicação
-  "Material editado revisado",
-  "Aprovação do corretor/gestor obtida",
-  "Legenda e CTA definidos",
-  "Data de publicação agendada"
-];
+// Checklist por pilar IMPACTO — itens exatos do Manual IMPACTO (Notion, "Os
+// sete pilares" → cada um com seu "Checklist"). Substitui o CHECKLIST_PADRAO
+// genérico da Fase 1: agora o botão na ficha do card insere só os itens do
+// pilar em que a Ordem está AGORA (derivado da coluna — ver
+// pilarImpactoDaColuna), então o checklist muda junto com o andamento real
+// em vez de ser uma lista única despejada de uma vez no início.
+export const CHECKLIST_POR_PILAR: Record<string, string[]> = {
+  identificar: ["Demanda registrada", "Objetivo definido", "Responsável inicial definido"],
+  mapear: ["Briefing completo", "Materiais anexados", "Persona definida", "Aprovador identificado"],
+  planejar: ["Cronograma criado", "Equipe informada", "Datas confirmadas", "Responsáveis definidos"],
+  acompanhar: ["Quadro atualizado", "Bloqueios resolvidos", "Prazos mantidos ou reprogramados"],
+  controlar: ["Conteúdo aprovado", "Sem erros", "Dentro do prazo", "Orçamento conferido"],
+  transformar: ["Conteúdo publicado", "Comercial acionado", "Campanha ativa", "Leads encaminhados e registrados"],
+  otimizar: ["KPIs analisados", "Lições registradas", "Melhorias definidas"]
+};
 
 // Os 5 modelos de briefing (Manual, seção 7) — guardados em
 // marketing_ordens.briefing_dados (Json), escolhidos por briefing_tipo.

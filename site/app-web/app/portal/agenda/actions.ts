@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { requirePortalSession } from "@/lib/portal-auth";
 import { logAlteracaoPortal } from "@/lib/auth";
 import { registrarEJogarErro } from "@/lib/erros";
+import { dataHoraPortoVelho } from "@/lib/format";
 
 function texto(formData: FormData, campo: string): string | null {
   const v = formData.get(campo);
@@ -26,7 +27,10 @@ export async function criarSolicitacaoAgendaAction(formData: FormData) {
   const horarioSugerido = texto(formData, "horario_sugerido");
   if (!titulo || !dataSugerida) throw new Error("Título e data sugerida são obrigatórios.");
 
-  const dataHora = new Date(`${dataSugerida}T${horarioSugerido || "09:00"}:00`);
+  // dataHoraPortoVelho — não trocar por `new Date(...)` puro sem fuso: o
+  // corretor está digitando no horário dele (Porto Velho), não no do
+  // servidor (ver lib/format.ts pro bug que isso já causou).
+  const dataHora = dataHoraPortoVelho(dataSugerida, horarioSugerido ?? "09:00");
   if (Number.isNaN(dataHora.getTime())) throw new Error("Data sugerida inválida.");
 
   const criada = await prisma.solicitacoes_agenda

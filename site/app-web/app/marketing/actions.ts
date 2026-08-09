@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAdminSession, logAlteracao } from "@/lib/auth";
 import { registrarEJogarErro } from "@/lib/erros";
 import { gerarProximoIdOrdemMarketing } from "@/lib/marketing/id-legado";
+import { dataHoraPortoVelho } from "@/lib/format";
 
 function texto(formData: FormData, campo: string): string | null {
   const v = formData.get(campo);
@@ -513,7 +514,10 @@ export async function confirmarSolicitacaoAgendaAction(formData: FormData) {
 
   const novaData = texto(formData, "nova_data");
   const novaHora = texto(formData, "nova_hora");
-  const dataConfirmada = novaData ? new Date(`${novaData}T${novaHora || "09:00"}:00`) : solicitacao.data_hora_sugerida;
+  // dataHoraPortoVelho — mesmo cuidado de fuso do pedido do corretor: o
+  // administrativo também está digitando um horário local de Porto Velho,
+  // não do servidor.
+  const dataConfirmada = novaData ? dataHoraPortoVelho(novaData, novaHora ?? "09:00") : solicitacao.data_hora_sugerida;
 
   const idLegado = await gerarProximoIdOrdemMarketing();
 

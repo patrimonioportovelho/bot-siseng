@@ -118,6 +118,28 @@ export function hojeInputDate(): string {
   return `${ano}-${String(mes).padStart(2, "0")}-${String(dia).padStart(2, "0")}`;
 }
 
+// Porto Velho/RO é UTC-4 o ano inteiro — o Brasil aboliu o horário de verão
+// em 2019, e mesmo antes disso Rondônia já não seguia as trocas de horário
+// do sudeste. Por isso dá pra tratar como offset fixo aqui, diferente de
+// hojePortoVelho()/partesHojePortoVelho() (que usam Intl porque só
+// precisam do dia, não fazem conta de fuso nenhuma).
+const OFFSET_PORTO_VELHO = "-04:00";
+
+// Junta uma data (yyyy-mm-dd, de um <input type="date">) com um horário
+// (HH:mm, de um <input type="time">) tratando os dois como horário LOCAL de
+// Porto Velho, e devolve o instante certo pra gravar num campo timestamptz.
+// NUNCA usar `new Date(\`${data}T${hora}:00\`)` sem esse offset explícito —
+// sem ele, o JavaScript interpreta a string como horário do SERVIDOR (UTC,
+// em produção na Vercel), não de Porto Velho: um corretor pedindo "09:00"
+// ficava gravado como 09:00 UTC, que ao reler com formatDataHora (essa sim
+// já aplica timeZone "America/Porto_Velho") mostrava 05:00 da manhã — 4h
+// adiantado do horário que a pessoa realmente escolheu. Bug relatado pelo
+// usuário em 09/08/2026 (app/portal/agenda/actions.ts e
+// confirmarSolicitacaoAgendaAction em app/marketing/actions.ts).
+export function dataHoraPortoVelho(dataYYYYMMDD: string, horaHHMM: string): Date {
+  return new Date(`${dataYYYYMMDD}T${horaHHMM || "09:00"}:00${OFFSET_PORTO_VELHO}`);
+}
+
 // Presets de período usados nos filtros de dashboard (Este mês / Este ano /
 // Personalizado).
 export type PeriodoPreset = "mes" | "ano" | "personalizado";

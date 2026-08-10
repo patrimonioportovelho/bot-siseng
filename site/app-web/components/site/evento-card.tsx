@@ -40,8 +40,12 @@ export function EventoCard({
   return (
     <article className="bg-white border border-gray-200 rounded-xl overflow-hidden h-full flex flex-col">
       {e.imagem_url && (
+        // Capa do evento é sempre quadrada (1080x1080, ver evento-form.tsx)
+        // — aspect-square em vez de aspect-video (16:9), senão o object-cover
+        // corta as bordas de cima/baixo da imagem (bug relatado 10/08/2026:
+        // o texto do flyer aparecia cortado no mural do Portal do Corretor).
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={e.imagem_url} alt={e.nome} className="w-full aspect-video object-cover" />
+        <img src={e.imagem_url} alt={e.nome} className="w-full aspect-square object-cover" />
       )}
       <div className="p-4 flex-1 flex flex-col min-h-0">
         <div className="flex items-start justify-between gap-2 flex-wrap">

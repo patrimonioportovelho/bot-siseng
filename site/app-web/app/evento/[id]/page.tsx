@@ -64,7 +64,7 @@ export async function generateMetadata({
       siteName: "RE/MAX Engimob",
       type: "article",
       locale: "pt_BR",
-      images: evento.imagem_url ? [{ url: evento.imagem_url, width: 1200, height: 630 }] : undefined
+      images: evento.imagem_url ? [{ url: evento.imagem_url, width: 1080, height: 1080 }] : undefined
     },
     twitter: {
       card: evento.imagem_url ? "summary_large_image" : "summary",
@@ -99,8 +99,11 @@ export default async function EventoPublicoPage({ params }: { params: Promise<{ 
       <main className="max-w-3xl mx-auto px-4 py-8">
         <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
           {evento.imagem_url && (
+            // Capa é sempre quadrada (1080x1080) — aspect-square em vez de
+            // max-h-[420px], senão o object-cover corta boa parte de cima/
+            // baixo da imagem num container largo (bug relatado 10/08/2026).
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={evento.imagem_url} alt={evento.nome} className="w-full max-h-[420px] object-cover" />
+            <img src={evento.imagem_url} alt={evento.nome} className="w-full aspect-square object-cover" />
           )}
           <div className="p-6">
             <div className="flex items-start justify-between gap-2 mb-3 flex-wrap">

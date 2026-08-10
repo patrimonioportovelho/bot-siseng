@@ -1,10 +1,17 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import { TIPOS_MATERIAL, PRIORIDADE_OPCOES, APROVACAO_STATUS_OPCOES } from "@/lib/marketing/opcoes";
 import { BotaoSubmit } from "@/components/botao-submit";
 
 type ParceiroOpcao = { id: string; nome: string };
 type EmpreendimentoOpcao = { id: string; nome: string };
+type ImovelOpcao = { id: string; id_legado: string | null; endereco: string | null };
+
+function labelImovel(i: ImovelOpcao): string {
+  const partes = [i.id_legado ?? i.id.slice(0, 8), i.endereco].filter(Boolean);
+  return partes.join(" — ");
+}
 
 type OrdemExistente = {
   id: string;
@@ -15,6 +22,7 @@ type OrdemExistente = {
   publico: string | null;
   empreendimento: string | null;
   empreendimento_id: string | null;
+  imovel_id: string | null;
   canal: string | null;
   prioridade: string;
   prazo_roteiro: Date | null;
@@ -54,19 +62,39 @@ export function MarketingEditarForm({
   corretores,
   administrativos,
   empreendimentos,
+  imoveis,
   action
 }: {
   ordem: OrdemExistente;
   corretores: ParceiroOpcao[];
   administrativos: ParceiroOpcao[];
   empreendimentos: EmpreendimentoOpcao[];
+  imoveis: ImovelOpcao[];
   action: (formData: FormData) => void;
 }) {
   const o = ordem;
 
+  // Vínculo opcional com um imóvel cadastrado — pedido do usuário
+  // (09/08/2026): "essas questões de marketing que implementamos ir para os
+  // imóveis como relatório". Autocomplete por Id/endereço, mesmo padrão de
+  // components/manutencao-form.tsx; aqui já vem preenchido se a Ordem já
+  // tiver vínculo (seja de cadastro manual ou de um pedido da Agenda
+  // confirmado).
+  const imovelInicial = o.imovel_id ? imoveis.find((i) => i.id === o.imovel_id) ?? null : null;
+  const [imovelId, setImovelId] = useState(imovelInicial?.id ?? "");
+  const [buscaImovel, setBuscaImovel] = useState(imovelInicial ? labelImovel(imovelInicial) : "");
+  const [listaImovelAberta, setListaImovelAberta] = useState(false);
+
+  const imoveisFiltrados = useMemo(() => {
+    const t = buscaImovel.trim().toLowerCase();
+    if (!t) return imoveis.slice(0, 30);
+    return imoveis.filter((i) => labelImovel(i).toLowerCase().includes(t)).slice(0, 30);
+  }, [buscaImovel, imoveis]);
+
   return (
     <form action={action} className="flex flex-col gap-5">
       <input type="hidden" name="ordemId" value={o.id} />
+      <input type="hidden" name="imovel_id" value={imovelId} />
 
       <div className="bg-white border border-gray-200 rounded-xl p-4">
         <div className="text-sm font-bold text-gray-800 mb-3">Demanda</div>
@@ -85,6 +113,40 @@ export function MarketingEditarForm({
                 </option>
               ))}
             </select>
+          </div>
+          <div className="relative">
+            <label className={LABEL}>Imóvel vinculado (opcional)</label>
+            <input
+              className={CAMPO}
+              placeholder="Buscar por Id ou endereço..."
+              value={buscaImovel}
+              onChange={(e) => {
+                setBuscaImovel(e.target.value);
+                setImovelId("");
+                setListaImovelAberta(true);
+              }}
+              onFocus={() => setListaImovelAberta(true)}
+              onBlur={() => setTimeout(() => setListaImovelAberta(false), 150)}
+            />
+            {listaImovelAberta && (
+              <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-lg max-h-56 overflow-auto shadow-lg">
+                {imoveisFiltrados.length === 0 && <p className="text-xs text-gray-400 p-3">Nenhum imóvel encontrado.</p>}
+                {imoveisFiltrados.map((i) => (
+                  <button
+                    key={i.id}
+                    type="button"
+                    onMouseDown={() => {
+                      setImovelId(i.id);
+                      setBuscaImovel(labelImovel(i));
+                      setListaImovelAberta(false);
+                    }}
+                    className="block w-full text-left text-xs px-3 py-2 border-b border-gray-50 last:border-0 hover:bg-gray-50 text-gray-700"
+                  >
+                    {labelImovel(i)}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           <div>
             <label className={LABEL}>Tipo de material</label>

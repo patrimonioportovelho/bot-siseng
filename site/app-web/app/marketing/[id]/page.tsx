@@ -58,7 +58,7 @@ export default async function MarketingDetalhePage({
   const pilar = pilarImpactoDaColuna(ordem.coluna);
   const sla = slaDaOrdem(ordem.coluna, ordem.tipo, ordem.coluna_atualizada_em);
 
-  const [corretores, administrativos, empreendimentos, imovel] = await Promise.all([
+  const [corretores, administrativos, empreendimentos, imovel, imoveis] = await Promise.all([
     prisma.parceiros.findMany({
       where: { funcao: "Corretor", status_funcao: "Ativo" },
       orderBy: { nome: "asc" },
@@ -78,7 +78,16 @@ export default async function MarketingDetalhePage({
           where: { id: ordem.imovel_id },
           select: { endereco: true, valor_venda: true, valor_avaliacao: true }
         })
-      : null
+      : null,
+    // Lista completa pro autocomplete de "Imóvel vinculado" na ficha (pedido
+    // do usuário, 09/08/2026 — "marketing ir para os imóveis como
+    // relatório"): permite linkar/trocar o imóvel de qualquer Ordem, não só
+    // as que nasceram de um pedido da Agenda.
+    prisma.imoveis.findMany({
+      where: { excluido: false },
+      orderBy: { created_at: "desc" },
+      select: { id: true, id_legado: true, endereco: true }
+    })
   ]);
 
   const imovelVinculado = imovel
@@ -156,6 +165,7 @@ export default async function MarketingDetalhePage({
           corretores={corretores}
           administrativos={administrativos}
           empreendimentos={empreendimentos}
+          imoveis={imoveis}
           action={atualizarOrdemAction}
         />
 

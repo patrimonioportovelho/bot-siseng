@@ -55,6 +55,11 @@ export async function criarOrdemAction(formData: FormData) {
         publico: texto(formData, "publico"),
         empreendimento: texto(formData, "empreendimento"),
         empreendimento_id: texto(formData, "empreendimento_id"),
+        // Vínculo manual com um imóvel cadastrado (pedido do usuário,
+        // 09/08/2026 — "essas questões de marketing... ir para os imóveis
+        // como relatório"): antes só chegava aqui via pedido confirmado da
+        // Agenda; agora o cadastro direto no quadro também pode linkar.
+        imovel_id: texto(formData, "imovel_id"),
         canal: texto(formData, "canal"),
         prioridade: texto(formData, "prioridade") ?? "Normal",
         coluna: "recebido",
@@ -93,6 +98,9 @@ export async function atualizarOrdemAction(formData: FormData) {
         publico: texto(formData, "publico"),
         empreendimento: texto(formData, "empreendimento"),
         empreendimento_id: texto(formData, "empreendimento_id"),
+        // Mesmo vínculo opcional do cadastro (ver criarOrdemAction) — dá pra
+        // linkar ou trocar o imóvel numa Ordem já existente também.
+        imovel_id: texto(formData, "imovel_id"),
         canal: texto(formData, "canal"),
         prioridade: texto(formData, "prioridade") ?? "Normal",
         prazo_roteiro: data(formData, "prazo_roteiro"),

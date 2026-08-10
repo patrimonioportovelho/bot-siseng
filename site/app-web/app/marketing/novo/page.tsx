@@ -7,8 +7,14 @@ import { criarOrdemAction } from "../actions";
 
 export const dynamic = "force-dynamic";
 
-export default async function NovaOrdemMarketingPage() {
-  const [corretores, administrativos, empreendimentos] = await Promise.all([
+export default async function NovaOrdemMarketingPage({
+  searchParams
+}: {
+  searchParams: Promise<{ imovel_id?: string }>;
+}) {
+  const { imovel_id: imovelIdInicial } = await searchParams;
+
+  const [corretores, administrativos, empreendimentos, imoveis] = await Promise.all([
     prisma.parceiros.findMany({
       where: { funcao: "Corretor", status_funcao: "Ativo" },
       orderBy: { nome: "asc" },
@@ -19,6 +25,14 @@ export default async function NovaOrdemMarketingPage() {
       where: { excluido: false, status: "Ativo" },
       orderBy: { nome: "asc" },
       select: { id: true, nome: true }
+    }),
+    // Pra permitir vincular a Ordem a um imóvel cadastrado já na criação
+    // manual (pedido do usuário, 09/08/2026 — "marketing ir para os imóveis
+    // como relatório"), mesmo padrão de app/manutencao/novo/page.tsx.
+    prisma.imoveis.findMany({
+      where: { excluido: false },
+      orderBy: { created_at: "desc" },
+      select: { id: true, id_legado: true, endereco: true }
     })
   ]);
 
@@ -32,7 +46,14 @@ export default async function NovaOrdemMarketingPage() {
 
       <div className="text-sm font-bold text-gray-800 mb-4">Nova ordem de Marketing</div>
 
-      <MarketingForm corretores={corretores} administrativos={administrativos} empreendimentos={empreendimentos} action={criarOrdemAction} />
+      <MarketingForm
+        corretores={corretores}
+        administrativos={administrativos}
+        empreendimentos={empreendimentos}
+        imoveis={imoveis}
+        imovelIdInicial={imovelIdInicial ?? null}
+        action={criarOrdemAction}
+      />
     </div>
   );
 }

@@ -78,7 +78,11 @@ function camposFormulario(formData: FormData) {
     valor_desconto: decimal(formData, "valor_desconto"),
     desconto_prazo: data(formData, "desconto_prazo"),
     organizador_parceiro_id: texto(formData, "organizador_parceiro_id"),
-    publicado_em: publicadoEm(formData)
+    publicado_em: publicadoEm(formData),
+    // Fase 3 (10/08/2026) — "" no <select> vira null (nenhum formulário
+    // ativo), mesmo padrão de campo opcional usado no resto do formulário.
+    formulario_inscricao: texto(formData, "formulario_inscricao"),
+    formulario_interno: booleano(formData, "formulario_interno")
   };
 }
 
@@ -123,6 +127,8 @@ function dadosParaSalvar(c: ReturnType<typeof camposFormulario>) {
     desconto_prazo: c.tem_desconto ? c.desconto_prazo : null,
     organizador_parceiro_id: c.organizador_parceiro_id,
     publicado_em: c.publicado_em,
+    formulario_inscricao: c.formulario_inscricao,
+    formulario_interno: c.formulario_interno,
     updated_at: new Date()
   };
 }

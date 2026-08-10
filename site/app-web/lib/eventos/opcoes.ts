@@ -65,3 +65,16 @@ export function podeVerEvento(visibilidade: string, funcaoDoParceiro: string | n
 
 export const STATUS_CONFIRMACAO_OPCOES = ["Pendente", "Confirmado", "Recusado"] as const;
 export type StatusConfirmacao = (typeof STATUS_CONFIRMACAO_OPCOES)[number];
+
+// Fase 3 (pedido do usuário, 10/08/2026) — qual formulário de inscrição
+// pública fica aberto na página do evento pra convidado externo (sem
+// login). "" = nenhum (não mostra formulário nenhum). O Completo pede mais
+// campos que o Básico — ver eventos_inscricoes no schema.
+export const FORMULARIO_INSCRICAO_OPCOES = ["", "Basico", "Completo"] as const;
+export type FormularioInscricao = (typeof FORMULARIO_INSCRICAO_OPCOES)[number];
+
+export function formularioInscricaoLabel(f: string | null): string {
+  if (f === "Basico") return "Formulário básico";
+  if (f === "Completo") return "Formulário completo";
+  return "Nenhum";
+}

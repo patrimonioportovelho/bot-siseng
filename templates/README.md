@@ -24,6 +24,7 @@ sistema troca pelos dados reais.
 | `repasse_primeira_locacao.docx` | Movimentação |
 | `contrato_gestao.docx` | Gestão |
 | `PROPOSTA DE COMPRA E VENDA.docx` | Proposta (portal do corretor) |
+| `ata_reuniao.docx` | Evento (Ata de Reunião — gerada na hora, não fica salva no sistema) |
 
 O sistema escolhe automaticamente entre os dois contratos de corretor
 conforme a função do parceiro (Corretor ou Corretor Estagiário). Os dois já

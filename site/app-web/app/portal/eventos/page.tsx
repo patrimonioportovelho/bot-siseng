@@ -44,13 +44,29 @@ export default async function PortalEventosPage() {
 
   const eventos = eventosBrutos
     .filter((ev) => podeVerEvento(ev.visibilidade, parceiro?.funcao ?? null))
-    .map((ev) => ({
-      ev,
-      proxima: proximaOcorrencia(ev.data_inicio, ev.recorrencia, ev.recorrencia_ate, agora),
-      status: ev.eventos_confirmacoes[0]?.status ?? "Pendente"
-    }))
+    .map((ev) => {
+      const confirmacao = ev.eventos_confirmacoes[0];
+      return {
+        ev,
+        proxima: proximaOcorrencia(ev.data_inicio, ev.recorrencia, ev.recorrencia_ate, agora),
+        status: confirmacao?.status ?? "Pendente",
+        levaConvidado: confirmacao?.leva_convidado ?? null,
+        quantidadePessoas: confirmacao?.quantidade_pessoas ?? null,
+        observacoes: confirmacao?.observacoes ?? null
+      };
+    })
     .filter((x) => x.proxima !== null)
     .sort((a, b) => a.proxima!.getTime() - b.proxima!.getTime());
+
+  // Texto do resumo do formulário interno, depois de já confirmado — só
+  // monta se tiver algo além do "Presença confirmada" padrão do badge.
+  function detalheFormularioInterno(levaConvidado: boolean | null, quantidadePessoas: number | null, observacoes: string | null): string | null {
+    const partes: string[] = [];
+    if (levaConvidado) partes.push(`Vai levar convidado${quantidadePessoas ? ` (${quantidadePessoas} pessoa${quantidadePessoas > 1 ? "s" : ""})` : ""}.`);
+    else if (levaConvidado === false) partes.push("Não vai levar convidado.");
+    if (observacoes) partes.push(observacoes);
+    return partes.length > 0 ? partes.join(" ") : null;
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -70,7 +86,7 @@ export default async function PortalEventosPage() {
         )}
 
         <div className="flex flex-col gap-3">
-          {eventos.map(({ ev, proxima, status }) => (
+          {eventos.map(({ ev, proxima, status, levaConvidado, quantidadePessoas, observacoes }) => (
             <div key={ev.id} className="bg-white border border-gray-200 rounded-xl p-4 flex gap-3">
               {ev.imagem_url && (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -95,8 +111,53 @@ export default async function PortalEventosPage() {
                   {ev.recorrencia !== "Nenhuma" && <span>· {recorrenciaLabel(ev.recorrencia)}</span>}
                 </div>
                 {ev.descricao && <p className="text-xs text-gray-600 mb-2 whitespace-pre-line">{ev.descricao}</p>}
+
+                {/* Formulário interno (Fase 3, 10/08/2026): campos extras só
+                    quando o evento pede — vão junto com "Confirmar presença"
+                    no mesmo envio (ver responder() em ./actions.ts). */}
+                {ev.formulario_interno && status !== "Confirmado" && (
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-2.5 mb-2 flex flex-col gap-1.5">
+                    <div className="text-[11px] font-semibold text-gray-600">Vai levar convidado?</div>
+                    <div className="flex items-center gap-3 text-xs text-gray-600">
+                      <label className="flex items-center gap-1">
+                        <input type="radio" name="leva_convidado" value="sim" form={`form-confirmar-${ev.id}`} /> Sim
+                      </label>
+                      <label className="flex items-center gap-1">
+                        <input
+                          type="radio"
+                          name="leva_convidado"
+                          value="nao"
+                          form={`form-confirmar-${ev.id}`}
+                          defaultChecked
+                        />{" "}
+                        Não
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        placeholder="Quantas pessoas"
+                        name="quantidade_pessoas"
+                        form={`form-confirmar-${ev.id}`}
+                        className="text-xs border border-gray-300 rounded-lg px-2 py-1 w-28 outline-none focus:border-primary bg-white"
+                      />
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="Observações (opcional)"
+                      name="observacoes"
+                      form={`form-confirmar-${ev.id}`}
+                      className="text-xs border border-gray-300 rounded-lg px-2 py-1 w-full outline-none focus:border-primary bg-white"
+                    />
+                  </div>
+                )}
+
                 <div className="flex gap-1.5">
-                  <form action={confirmarPresencaEventoAction}>
+                  {/* leva_convidado/quantidade_pessoas/observacoes acima ficam
+                      fora deste <form> (pra caber no layout do card) mas
+                      apontam pra cá via atributo form= — mesmo "dono" de
+                      formulário, então entram no FormData desta submissão
+                      normalmente (ver responder() em ./actions.ts). */}
+                  <form id={`form-confirmar-${ev.id}`} action={confirmarPresencaEventoAction}>
                     <input type="hidden" name="eventoId" value={ev.id} />
                     <button
                       type="submit"
@@ -117,6 +178,13 @@ export default async function PortalEventosPage() {
                     </button>
                   </form>
                 </div>
+                {ev.formulario_interno &&
+                  status === "Confirmado" &&
+                  detalheFormularioInterno(levaConvidado, quantidadePessoas, observacoes) && (
+                    <p className="text-[11px] text-gray-400 mt-1">
+                      {detalheFormularioInterno(levaConvidado, quantidadePessoas, observacoes)}
+                    </p>
+                  )}
               </div>
             </div>
           ))}

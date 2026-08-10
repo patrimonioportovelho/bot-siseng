@@ -4,7 +4,14 @@ import { useRef, useState } from "react";
 import { prepararUploadImagemEventoAction } from "@/app/eventos/actions";
 import { supabaseBrowser, BUCKET_EVENTOS } from "@/lib/supabase-browser";
 import { formatValorEditavel } from "@/lib/format";
-import { TIPOS_EVENTO, RECORRENCIA_OPCOES, VISIBILIDADE_OPCOES, visibilidadeLabel } from "@/lib/eventos/opcoes";
+import {
+  TIPOS_EVENTO,
+  RECORRENCIA_OPCOES,
+  VISIBILIDADE_OPCOES,
+  visibilidadeLabel,
+  FORMULARIO_INSCRICAO_OPCOES,
+  formularioInscricaoLabel
+} from "@/lib/eventos/opcoes";
 
 const CAMPO =
   "text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full outline-none focus:border-primary bg-white";
@@ -32,6 +39,8 @@ type EventoExistente = {
   desconto_prazo: Date | string | null;
   organizador_parceiro_id: string | null;
   publicado_em: Date | string | null;
+  formulario_inscricao: string | null;
+  formulario_interno: boolean;
 };
 
 function paraInputDate(d: Date | string | null | undefined): string {
@@ -368,6 +377,33 @@ export function EventoForm({
         <input type="checkbox" name="portal_corretor" defaultChecked={ev?.portal_corretor ?? false} /> Mostrar também
         no perfil/portal do corretor
       </label>
+
+      <div className="border border-gray-200 rounded-lg p-3 flex flex-col gap-2">
+        <div className="text-xs font-semibold text-gray-700">Formulários (opcional)</div>
+        <div>
+          <label className={LABEL}>Inscrição pública (na página do evento)</label>
+          <select
+            name="formulario_inscricao"
+            defaultValue={ev?.formulario_inscricao ?? ""}
+            className={CAMPO}
+          >
+            {FORMULARIO_INSCRICAO_OPCOES.map((f) => (
+              <option key={f} value={f}>
+                {formularioInscricaoLabel(f)}
+              </option>
+            ))}
+          </select>
+          <p className="text-[10px] text-gray-400 mt-1">
+            Quando ativo, qualquer pessoa que abrir o link público do evento pode se inscrever preenchendo o
+            formulário — nome, e-mail, telefone e quem convidou (o completo pede também endereço, profissão e
+            especialidade).
+          </p>
+        </div>
+        <label className="flex items-center gap-2 text-xs text-gray-600">
+          <input type="checkbox" name="formulario_interno" defaultChecked={ev?.formulario_interno ?? false} /> Ativar
+          formulário interno (leva convidado / quantas pessoas / observações no Portal)
+        </label>
+      </div>
 
       {erro && <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg px-3 py-2">{erro}</div>}
 

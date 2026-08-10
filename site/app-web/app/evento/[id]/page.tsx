@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import type { Metadata } from "next";
 import { prisma } from "@/lib/prisma";
 import { ShareButton } from "@/components/site/share-button";
+import { InscricaoEventoForm } from "@/components/inscricao-evento-form";
 import { recorrenciaLabel } from "@/lib/eventos/opcoes";
 
 export const dynamic = "force-dynamic";
@@ -81,6 +82,17 @@ export default async function EventoPublicoPage({ params }: { params: Promise<{ 
   if (!evento) notFound();
 
   const baseUrl = await baseUrlAtual();
+
+  // "Quem te convidou" (Formulário Básico/Completo, Fase 3) — só busca a
+  // lista quando o formulário está ativo, pra não gastar query à toa nos
+  // eventos sem inscrição pública.
+  const convidadoPor = evento.formulario_inscricao
+    ? await prisma.parceiros.findMany({
+        where: { status_funcao: "Ativo", funcao: { in: ["Administrativo", "Corretor", "Corretor Estagiário"] } },
+        orderBy: { nome: "asc" },
+        select: { id: true, nome: true }
+      })
+    : [];
 
   return (
     <div className="min-h-screen bg-appbg">
@@ -165,6 +177,16 @@ export default async function EventoPublicoPage({ params }: { params: Promise<{ 
             )}
           </div>
         </div>
+
+        {evento.formulario_inscricao && (
+          <div className="mt-4">
+            <InscricaoEventoForm
+              eventoId={evento.id}
+              completo={evento.formulario_inscricao === "Completo"}
+              convidadoPor={convidadoPor}
+            />
+          </div>
+        )}
       </main>
 
       <footer className="max-w-3xl mx-auto px-4 pb-8 text-center text-gray-400 text-[11px]">

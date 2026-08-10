@@ -4,6 +4,7 @@ import { Topbar } from "@/components/topbar";
 import { prisma } from "@/lib/prisma";
 import { getAdminSession } from "@/lib/auth";
 import { EventoForm } from "@/components/evento-form";
+import { AtaForm } from "@/components/ata-form";
 import { listarParceirosAdministrativos } from "@/lib/parceiros/administrativos";
 import { FUNCOES_EQUIPE } from "@/lib/parceiros/opcoes";
 import { funcoesPermitidas } from "@/lib/eventos/opcoes";
@@ -34,14 +35,30 @@ export default async function EventoDetalhePage({
   // "Pendente" não é uma linha salva (ver app/portal/eventos/actions.ts):
   // é calculado aqui, por diferença entre quem É elegível (pela visibilidade)
   // e quem já respondeu.
-  let confirmacoes: { id: string; status: string; respondido_em: Date | null; parceiro_id: string; nome: string }[] = [];
+  let confirmacoes: {
+    id: string;
+    status: string;
+    respondido_em: Date | null;
+    parceiro_id: string;
+    nome: string;
+    leva_convidado: boolean | null;
+    quantidade_pessoas: number | null;
+  }[] = [];
   let pendentes: { id: string; nome: string }[] = [];
   if (evento.portal_corretor) {
     const funcoes = funcoesPermitidas(evento.visibilidade) ?? FUNCOES_EQUIPE;
     const [confirmacoesEvento, elegiveis] = await Promise.all([
       prisma.eventos_confirmacoes.findMany({
         where: { evento_id: id },
-        select: { id: true, status: true, respondido_em: true, parceiro_id: true, parceiros: { select: { nome: true } } },
+        select: {
+          id: true,
+          status: true,
+          respondido_em: true,
+          parceiro_id: true,
+          leva_convidado: true,
+          quantidade_pessoas: true,
+          parceiros: { select: { nome: true } }
+        },
         orderBy: { respondido_em: "desc" }
       }),
       prisma.parceiros.findMany({
@@ -55,13 +72,25 @@ export default async function EventoDetalhePage({
       status: c.status,
       respondido_em: c.respondido_em,
       parceiro_id: c.parceiro_id,
-      nome: c.parceiros.nome
+      nome: c.parceiros.nome,
+      leva_convidado: c.leva_convidado,
+      quantidade_pessoas: c.quantidade_pessoas
     }));
     const responderamIds = new Set(confirmacoesEvento.map((c) => c.parceiro_id));
     pendentes = elegiveis.filter((p) => !responderamIds.has(p.id));
   }
   const confirmados = confirmacoes.filter((c) => c.status === "Confirmado");
   const recusados = confirmacoes.filter((c) => c.status === "Recusado");
+
+  // Inscrições do Formulário Básico/Completo (Fase 3, 10/08/2026) — só
+  // busca quando o evento chegou a ter o formulário ativo em algum momento
+  // (se já tiver resposta salva, mostra mesmo que o admin tenha desativado
+  // depois — não faz sentido esconder quem já se inscreveu).
+  const inscricoes = await prisma.eventos_inscricoes.findMany({
+    where: { evento_id: id },
+    orderBy: { created_at: "desc" },
+    include: { parceiros: { select: { nome: true } } }
+  });
 
   return (
     <div>
@@ -129,12 +158,46 @@ export default async function EventoDetalhePage({
                   }`}
                 >
                   {c.nome}
+                  {c.status === "Confirmado" && c.leva_convidado && (
+                    <> · +{c.quantidade_pessoas ?? "?"} convidado{(c.quantidade_pessoas ?? 0) > 1 ? "s" : ""}</>
+                  )}
                 </span>
               ))}
             </div>
           )}
         </div>
       )}
+
+      {(evento.formulario_inscricao || inscricoes.length > 0) && (
+        <div className="bg-white border border-gray-200 rounded-xl p-4 mb-5">
+          <div className="text-sm font-bold text-gray-800 mb-1">
+            Inscrições ({inscricoes.length})
+          </div>
+          <p className="text-xs text-gray-500 mb-3">Respostas do formulário de inscrição pública na página do evento.</p>
+          {inscricoes.length === 0 ? (
+            <p className="text-xs text-gray-400">Ninguém se inscreveu ainda.</p>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {inscricoes.map((i) => (
+                <div key={i.id} className="border border-gray-100 rounded-lg p-2.5 text-xs text-gray-600">
+                  <div className="font-semibold text-gray-800">{i.nome}</div>
+                  <div>
+                    {i.email} · {i.telefone}
+                  </div>
+                  {(i.endereco || i.profissao || i.especialidade) && (
+                    <div className="text-gray-500">
+                      {[i.endereco, i.profissao, i.especialidade].filter(Boolean).join(" · ")}
+                    </div>
+                  )}
+                  {i.parceiros && <div className="text-gray-400">Convidado(a) por {i.parceiros.nome}</div>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {evento.tipo === "Reunião" && <AtaForm eventoId={evento.id} />}
 
       <EventoForm evento={evento} organizadores={organizadores} action={atualizarEventoAction} />
     </div>

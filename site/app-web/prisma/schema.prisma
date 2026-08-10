@@ -875,6 +875,8 @@ model parceiros {
   marketing_producoes                                                        marketing_producoes[]
   eventos                                                                     eventos[]
   eventos_confirmacoes                                                       eventos_confirmacoes[]
+  eventos_inscricoes                                                         eventos_inscricoes[]
+  eventos_atas_geradas                                                       eventos_atas_geradas[]
   bancos                                                                      bancos?                   @relation(fields: [banco_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   lojas                                                                       lojas?                    @relation(fields: [loja_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   estados                                                                     estados?                  @relation(fields: [estado_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -1648,10 +1650,22 @@ model eventos {
   desconto_prazo          DateTime?              @db.Date
   organizador_parceiro_id String?                @db.Uuid
   excluido                Boolean                @default(false)
+  // Fase 3 (pedido do usuário, 10/08/2026): "Formulário básico"/"Formulário
+  // completo" — inscrição pública de convidado externo (sem login), na
+  // página pública do evento. null = nenhum formulário ativo. Ver
+  // lib/eventos/opcoes.ts#FORMULARIO_INSCRICAO_OPCOES e eventos_inscricoes.
+  formulario_inscricao    String?
+  // "Formulário interno" — quando true, a tela de confirmação de presença no
+  // Portal (app/portal/eventos) ganha os campos extras (leva convidado,
+  // quantas pessoas, observações) além de confirmar/recusar — ver
+  // eventos_confirmacoes.leva_convidado/quantidade_pessoas/observacoes.
+  formulario_interno      Boolean                @default(false)
   created_at              DateTime               @default(now()) @db.Timestamptz(6)
   updated_at              DateTime               @default(now()) @db.Timestamptz(6)
   parceiros               parceiros?             @relation(fields: [organizador_parceiro_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   eventos_confirmacoes    eventos_confirmacoes[]
+  eventos_inscricoes      eventos_inscricoes[]
+  eventos_atas_geradas    eventos_atas_geradas[]
 
   @@index([ativo, data_inicio], map: "idx_eventos_ativo")
   @@index([visibilidade, ativo], map: "idx_eventos_visibilidade")
@@ -1669,6 +1683,13 @@ model eventos_confirmacoes {
   evento_id     String    @db.Uuid
   parceiro_id   String    @db.Uuid
   status        String    @default("Pendente")
+  // "Formulário interno" (Fase 3, pedido do usuário 10/08/2026) — só
+  // preenchido quando eventos.formulario_interno = true e o parceiro
+  // confirma presença; leva_convidado null enquanto não respondido (mesmo
+  // espírito de status "Pendente": ausência de resposta, não "não vai levar").
+  leva_convidado      Boolean?
+  quantidade_pessoas  Int?
+  observacoes         String?
   respondido_em DateTime? @db.Timestamptz(6)
   created_at    DateTime  @default(now()) @db.Timestamptz(6)
   eventos       eventos   @relation(fields: [evento_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
@@ -1676,4 +1697,48 @@ model eventos_confirmacoes {
 
   @@unique([evento_id, parceiro_id])
   @@index([parceiro_id], map: "idx_eventos_confirmacoes_parceiro")
+}
+
+// Respostas do "Formulário básico"/"Formulário completo" (Fase 3, pedido do
+// usuário 10/08/2026) — inscrição de convidado externo (sem login), aberta
+// na página pública do evento quando eventos.formulario_inscricao != null.
+// tipo_formulario grava qual dos dois foi respondido (o completo pede mais
+// campos); os campos exclusivos do completo (endereco/profissao/
+// especialidade) ficam NULL numa resposta do básico.
+model eventos_inscricoes {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  evento_id        String    @db.Uuid
+  tipo_formulario  String
+  nome             String
+  email            String
+  telefone         String
+  endereco         String?
+  profissao        String?
+  especialidade    String?
+  // "Quem convidou" — parceiro (Administrativo, Corretor ou Corretor
+  // Estagiário) escolhido pelo convidado numa lista, não texto livre (ver
+  // lib/eventos/opcoes.ts#funcoesPermitidas, mesma lista de funções já usada
+  // na visibilidade do evento).
+  convidado_por_id String?   @db.Uuid
+  created_at       DateTime  @default(now()) @db.Timestamptz(6)
+  eventos          eventos   @relation(fields: [evento_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  parceiros        parceiros? @relation(fields: [convidado_por_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([evento_id], map: "idx_eventos_inscricoes_evento")
+}
+
+// Log de geração da Ata de Reunião (Fase 3, pedido do usuário 10/08/2026:
+// "gerador de ata para que o responsável faça no dia do evento"). Só
+// registra QUE a ata foi gerada (quem, quando) — o conteúdo preenchido
+// (seções/itens/presentes) não fica salvo no sistema, só no .docx baixado
+// na hora, por decisão explícita do usuário.
+model eventos_atas_geradas {
+  id                     String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  evento_id              String    @db.Uuid
+  gerado_por_parceiro_id String    @db.Uuid
+  gerado_em              DateTime  @default(now()) @db.Timestamptz(6)
+  eventos                eventos   @relation(fields: [evento_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  parceiros              parceiros @relation(fields: [gerado_por_parceiro_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([evento_id], map: "idx_eventos_atas_evento")
 }

@@ -1557,25 +1557,29 @@ export default async function DashboardPage({
               mensagemVazia="Sem tipo de imóvel cadastrado."
             />
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
+          {/* grid-cols-2 sem md: aqui forçava 2 colunas até no celular —
+              com nome de bairro/cidade comprido (e o truncate quebrado, ver
+              abaixo) isso empurrava a página inteira de lado. Corrigido
+              10/08/2026 (mesma leva da "Saúde da operação"). */}
+          <div className="grid md:grid-cols-2 gap-4">
+            <div className="min-w-0">
               <div className="text-xs font-semibold text-gray-600 mb-2">Top bairros</div>
               <ul className="flex flex-col gap-1">
                 {topBairros.map((b) => (
                   <li key={b.label} className="flex justify-between gap-2 text-xs text-gray-600 border-b border-gray-50 py-1">
-                    <span className="truncate">{b.label}</span>
+                    <span className="truncate flex-1 min-w-0">{b.label}</span>
                     <span className="text-gray-400 whitespace-nowrap">{b.valor}</span>
                   </li>
                 ))}
                 {topBairros.length === 0 && <li className="text-xs text-gray-400">Sem bairro cadastrado.</li>}
               </ul>
             </div>
-            <div>
+            <div className="min-w-0">
               <div className="text-xs font-semibold text-gray-600 mb-2">Top cidades</div>
               <ul className="flex flex-col gap-1">
                 {topCidades.map((c) => (
                   <li key={c.label} className="flex justify-between gap-2 text-xs text-gray-600 border-b border-gray-50 py-1">
-                    <span className="truncate">{c.label}</span>
+                    <span className="truncate flex-1 min-w-0">{c.label}</span>
                     <span className="text-gray-400 whitespace-nowrap">{c.valor}</span>
                   </li>
                 ))}
@@ -1586,12 +1590,12 @@ export default async function DashboardPage({
         </div>
 
         <div className="grid md:grid-cols-2 gap-4">
-          <div>
+          <div className="min-w-0">
             <div className="text-xs font-semibold text-gray-600 mb-2">Parceiros com mais clientes</div>
             <ul className="flex flex-col gap-1">
               {topParceirosClientes.map((p) => (
                 <li key={p.parceiro_id} className="flex justify-between gap-2 text-xs text-gray-600 border-b border-gray-50 py-1">
-                  <span className="truncate">{p.parceiro_id ? nomeParceiroPerfil.get(p.parceiro_id) ?? "—" : "—"}</span>
+                  <span className="truncate flex-1 min-w-0">{p.parceiro_id ? nomeParceiroPerfil.get(p.parceiro_id) ?? "—" : "—"}</span>
                   <span className="text-gray-400 whitespace-nowrap">{p._count._all} cliente(s)</span>
                 </li>
               ))}
@@ -1600,12 +1604,12 @@ export default async function DashboardPage({
               )}
             </ul>
           </div>
-          <div>
+          <div className="min-w-0">
             <div className="text-xs font-semibold text-gray-600 mb-2">Parceiros com mais imóveis captados</div>
             <ul className="flex flex-col gap-1">
               {topParceirosImoveisCaptados.map((p) => (
                 <li key={p.parceiro_id} className="flex justify-between gap-2 text-xs text-gray-600 border-b border-gray-50 py-1">
-                  <span className="truncate">{p.parceiro_id ? nomeParceiroPerfil.get(p.parceiro_id) ?? "—" : "—"}</span>
+                  <span className="truncate flex-1 min-w-0">{p.parceiro_id ? nomeParceiroPerfil.get(p.parceiro_id) ?? "—" : "—"}</span>
                   <span className="text-gray-400 whitespace-nowrap">{p._count._all} imóvel(is)</span>
                 </li>
               ))}
@@ -1657,19 +1661,19 @@ export default async function DashboardPage({
         </div>
 
         <div className="grid md:grid-cols-2 gap-4">
-          <div>
+          <div className="min-w-0">
             <div className="text-xs font-semibold text-gray-600 mb-2">Ordens por etapa</div>
             <ul className="flex flex-col gap-1">
               {COLUNAS_MARKETING.filter((c) => (omsPorColunaMarketing[c.id] ?? 0) > 0).map((c) => (
                 <li key={c.id} className="flex justify-between gap-2 text-xs text-gray-600 border-b border-gray-50 py-1">
-                  <span className="truncate">{labelColunaMarketing(c.id)}</span>
+                  <span className="truncate flex-1 min-w-0">{labelColunaMarketing(c.id)}</span>
                   <span className="text-gray-400 whitespace-nowrap">{omsPorColunaMarketing[c.id]}</span>
                 </li>
               ))}
               {todasOrdensMarketing.length === 0 && <li className="text-xs text-gray-400">Nenhuma Ordem cadastrada.</li>}
             </ul>
           </div>
-          <div>
+          <div className="min-w-0">
             <div className="text-xs font-semibold text-gray-600 mb-2">
               Resultados manuais (soma) — {ordensComResultadoMarketing} Ordem(ns) com métrica preenchida
             </div>

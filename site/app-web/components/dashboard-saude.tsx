@@ -261,7 +261,7 @@ export async function DashboardSaude() {
 
       <div className="grid md:grid-cols-2 gap-4">
         {/* Inadimplência */}
-        <div className="border border-red-100 rounded-xl p-3">
+        <div className="min-w-0 border border-red-100 rounded-xl p-3">
           <div className="flex items-center justify-between mb-2 flex-wrap gap-1.5">
             <div className="text-xs font-bold text-red-700">Inadimplência (vencido e não pago)</div>
             <Link href="/financeiro?situacao=vencidas" className="text-[11px] text-primary font-semibold hover:underline">
@@ -296,7 +296,7 @@ export async function DashboardSaude() {
                   href={`/financeiro/${m.id}`}
                   className="flex items-center justify-between text-[11px] text-gray-700 hover:bg-gray-50 rounded px-1.5 py-1"
                 >
-                  <span className="truncate">
+                  <span className="truncate flex-1 min-w-0">
                     {(m.cliente_interessado_id && nomeCliente.get(m.cliente_interessado_id)) || m.descricao || m.tipo}
                   </span>
                   <span className="font-semibold text-red-700 shrink-0 ml-2">{formatMoeda(m.valor)}</span>
@@ -307,7 +307,7 @@ export async function DashboardSaude() {
         </div>
 
         {/* Locações sem cobrança */}
-        <div className="border border-amber-100 rounded-xl p-3">
+        <div className="min-w-0 border border-amber-100 rounded-xl p-3">
           <div className="flex items-center justify-between mb-2 flex-wrap gap-1.5">
             <div className="text-xs font-bold text-amber-700">Locações ativas sem a próxima cobrança lançada</div>
             <Link href="/transacoes/locacao" className="text-[11px] text-primary font-semibold hover:underline">
@@ -332,7 +332,7 @@ export async function DashboardSaude() {
                 <span className="shrink-0 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 whitespace-nowrap">
                   {t.id_legado ?? "sem código"}
                 </span>
-                <span className="text-[11px] leading-snug text-gray-700 truncate">
+                <span className="text-[11px] leading-snug text-gray-700 truncate flex-1 min-w-0">
                   {t.imoveis?.endereco ?? "imóvel sem endereço"}
                 </span>
               </Link>
@@ -346,7 +346,7 @@ export async function DashboardSaude() {
         </div>
 
         {/* Consistência de contratos */}
-        <div className="border border-gray-200 rounded-xl p-3">
+        <div className="min-w-0 border border-gray-200 rounded-xl p-3">
           <div className="text-xs font-bold text-gray-800 mb-2">Consistência de contratos</div>
           <div className="grid grid-cols-2 gap-2 mb-2">
             <div className={`rounded-lg p-2 ${cvsForaDoValor.length > 0 ? "bg-amber-50" : "bg-green-50"}`}>
@@ -368,7 +368,7 @@ export async function DashboardSaude() {
                 <span className="shrink-0 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 whitespace-nowrap">
                   {t.id_legado ?? "sem código"}
                 </span>
-                <span className="text-[11px] leading-snug text-gray-700 truncate">
+                <span className="text-[11px] leading-snug text-gray-700 truncate flex-1 min-w-0">
                   condições não fecham {formatMoeda(t.valor_transacao)}
                 </span>
               </Link>
@@ -378,7 +378,7 @@ export async function DashboardSaude() {
                 <span className="shrink-0 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5 whitespace-nowrap">
                   {t.id_legado ?? "sem código"}
                 </span>
-                <span className="text-[11px] leading-snug text-gray-700 truncate">{t.tipo} — divisão de comissão incompleta</span>
+                <span className="text-[11px] leading-snug text-gray-700 truncate flex-1 min-w-0">{t.tipo} — divisão de comissão incompleta</span>
               </Link>
             ))}
             {cvsForaDoValor.length + comissaoNaoFecha.length > 8 && (
@@ -390,7 +390,7 @@ export async function DashboardSaude() {
         </div>
 
         {/* Funil do Financiamento + qualidade da base */}
-        <div className="border border-gray-200 rounded-xl p-3">
+        <div className="min-w-0 border border-gray-200 rounded-xl p-3">
           <div className="flex items-center justify-between mb-2 flex-wrap gap-1.5">
             <div className="text-xs font-bold text-gray-800">Funil do Financiamento (carteira atual)</div>
             <Link href="/financiamento" className="text-[11px] text-primary font-semibold hover:underline">
@@ -440,7 +440,7 @@ export async function DashboardSaude() {
         </div>
 
         {/* Previsão de honorários por período */}
-        <div className="border border-gray-200 rounded-xl p-3 md:col-span-2">
+        <div className="min-w-0 border border-gray-200 rounded-xl p-3 md:col-span-2">
           <div className="flex items-center justify-between mb-2 flex-wrap gap-1.5">
             <div className="text-xs font-bold text-gray-800">Previsão de honorários a receber</div>
             <span className="text-[11px] text-gray-500">
@@ -473,7 +473,7 @@ export async function DashboardSaude() {
                         <span className="shrink-0 text-[10px] font-bold text-primary bg-primary/10 rounded px-1.5 py-0.5 whitespace-nowrap">
                           {p.idLegado ?? "sem código"}
                         </span>
-                        <span className="text-[11px] leading-snug text-gray-700 truncate flex-1">
+                        <span className="text-[11px] leading-snug text-gray-700 truncate flex-1 min-w-0">
                           {p.tipoTransacao} · {p.tipo ?? "condição"}
                         </span>
                         <span className="text-[11px] font-semibold text-gray-800 shrink-0">{formatMoeda(p.valorPrevisto)}</span>

@@ -8,6 +8,8 @@ import { valorEditavelParaDecimal, dataHoraPortoVelho } from "@/lib/format";
 import { registrarEJogarErro } from "@/lib/erros";
 import { gerarProximoIdEvento } from "@/lib/eventos/id-legado";
 import { RECORRENCIA_OPCOES } from "@/lib/eventos/opcoes";
+import { FUNCOES_EQUIPE } from "@/lib/parceiros/opcoes";
+import { enviarEmail } from "@/lib/email";
 import {
   criarUploadAssinadoImagemEvento,
   publicUrlImagemEvento,
@@ -36,6 +38,17 @@ function decimal(formData: FormData, campo: string): number | null {
 
 function booleano(formData: FormData, campo: string): boolean {
   return formData.get(campo) === "on" || formData.get(campo) === "true";
+}
+
+// Lista de <input type="hidden" name="lembretes_dias_antes"> montada pelo
+// EventoForm (um por "chip" adicionado) — getAll pega todos com o mesmo
+// nome. Filtra qualquer coisa que não seja um inteiro positivo, por
+// segurança (formulário nunca deveria mandar isso, mas não custa validar).
+function listaInteirosPositivos(formData: FormData, campo: string): number[] {
+  return formData
+    .getAll(campo)
+    .map((v) => Number(v))
+    .filter((n) => Number.isInteger(n) && n > 0);
 }
 
 // Campo <input type="datetime-local"> vem como "2026-08-10T14:30", sem fuso
@@ -82,7 +95,8 @@ function camposFormulario(formData: FormData) {
     // Fase 3 (10/08/2026) — "" no <select> vira null (nenhum formulário
     // ativo), mesmo padrão de campo opcional usado no resto do formulário.
     formulario_inscricao: texto(formData, "formulario_inscricao"),
-    formulario_interno: booleano(formData, "formulario_interno")
+    formulario_interno: booleano(formData, "formulario_interno"),
+    lembretes_dias_antes: listaInteirosPositivos(formData, "lembretes_dias_antes")
   };
 }
 
@@ -129,6 +143,10 @@ function dadosParaSalvar(c: ReturnType<typeof camposFormulario>) {
     publicado_em: c.publicado_em,
     formulario_inscricao: c.formulario_inscricao,
     formulario_interno: c.formulario_interno,
+    // Evento Público não tem lista de destinatários definida (pedido do
+    // usuário 10/08/2026) — zera mesmo se alguém tentar mandar isso preenchido
+    // direto no POST, a UI já esconde o campo pra visibilidade Publico.
+    lembretes_dias_antes: c.visibilidade === "Publico" ? [] : c.lembretes_dias_antes,
     updated_at: new Date()
   };
 }
@@ -276,4 +294,72 @@ export async function apagarEventoAction(formData: FormData) {
 
   revalidatePath("/eventos");
   redirect("/eventos?excluido=1");
+}
+
+// Disparo de e-mail por categoria (Fase 4, pedido do usuário 10/08/2026:
+// "gerador de email, disparo selecionar qual categoria quero enviar
+// (Administrativo, Corretor ou Corretor Estagiario) ou todos"). Mesmo
+// mecanismo (enviarEmail) já usado nas Elaborações do portal (Compra e
+// Venda, Locação, Administração, Avaliação de CPF) — só que aqui quem
+// dispara é o admin, escolhendo a categoria, e o corpo já vem pronto com os
+// dados do evento + lembrete de confirmar presença no painel (Portal).
+const CATEGORIAS_EMAIL_EVENTO = [...FUNCOES_EQUIPE, "Todos"];
+
+export async function enviarEmailEventoAction(formData: FormData) {
+  const admin = await requireAdminSession();
+
+  const id = texto(formData, "eventoId");
+  const categoria = texto(formData, "categoria") ?? "Todos";
+  if (!id) redirect("/eventos");
+  if (!CATEGORIAS_EMAIL_EVENTO.includes(categoria)) {
+    redirect(`/eventos/${id}?erro=${encodeURIComponent("Categoria inválida.")}`);
+  }
+
+  const evento = await prisma.eventos.findUnique({ where: { id } });
+  if (!evento || evento.excluido) redirect("/eventos");
+
+  const funcoes = categoria === "Todos" ? FUNCOES_EQUIPE : [categoria];
+  const destinatarios = await prisma.parceiros.findMany({
+    where: { funcao: { in: funcoes }, status_funcao: "Ativo", email: { not: null } },
+    select: { nome: true, email: true }
+  });
+
+  if (destinatarios.length === 0) {
+    redirect(`/eventos/${id}?erro=${encodeURIComponent("Nenhum parceiro ativo com e-mail cadastrado nessa categoria.")}`);
+  }
+
+  const dataTexto = evento.data_inicio.toLocaleDateString("pt-BR", { timeZone: "UTC" });
+  const horarioTexto = [evento.horario_inicio, evento.horario_fim].filter(Boolean).join(" às ");
+
+  const html = `
+    <div style="font-family: sans-serif; font-size: 14px; color: #1f2937;">
+      <p>Você foi convidado(a) para o evento <strong>${evento.nome}</strong>.</p>
+      <p>
+        <strong>Data:</strong> ${dataTexto}<br/>
+        ${horarioTexto ? `<strong>Horário:</strong> ${horarioTexto}<br/>` : ""}
+        ${evento.local ? `<strong>Local:</strong> ${evento.local}<br/>` : ""}
+      </p>
+      ${evento.descricao ? `<p>${evento.descricao}</p>` : ""}
+      <p style="color:#6b7280; font-size:13px;">Por favor, confirme sua presença no painel — acesse o Portal do Corretor e vá em "Eventos".</p>
+    </div>
+  `;
+
+  // Um envio por destinatário (não um "to" único com todo mundo junto) pra
+  // ninguém ver o e-mail dos colegas no cabeçalho — mesmo raciocínio de
+  // privacidade já aplicado em qualquer disparo em massa.
+  const resultados = await Promise.all(
+    destinatarios.map((p) => enviarEmail({ to: p.email as string, subject: `Convite: ${evento.nome}`, html }))
+  );
+  const enviados = resultados.filter((r) => r.ok).length;
+  const falharam = resultados.length - enviados;
+
+  await logAlteracao({
+    entidadeTipo: "eventos",
+    entidadeId: id,
+    acao: "enviar_email",
+    dadosDepois: { categoria, enviados, falharam, enviado_por: admin.nome }
+  });
+
+  revalidatePath(`/eventos/${id}`);
+  redirect(`/eventos/${id}?emailEnviados=${enviados}&emailFalharam=${falharam}`);
 }

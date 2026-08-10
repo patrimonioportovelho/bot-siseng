@@ -41,6 +41,7 @@ type EventoExistente = {
   publicado_em: Date | string | null;
   formulario_inscricao: string | null;
   formulario_interno: boolean;
+  lembretes_dias_antes: number[];
 };
 
 function paraInputDate(d: Date | string | null | undefined): string {
@@ -120,6 +121,20 @@ export function EventoForm({
   const [recorrencia, setRecorrencia] = useState(ev?.recorrencia ?? "Nenhuma");
   const [pago, setPago] = useState(ev?.pago ?? false);
   const [temDesconto, setTemDesconto] = useState(ev?.tem_desconto ?? false);
+  const [visibilidade, setVisibilidade] = useState(ev?.visibilidade ?? "Publico");
+  const [lembretes, setLembretes] = useState<number[]>(ev?.lembretes_dias_antes ?? []);
+  const [novoLembrete, setNovoLembrete] = useState("");
+
+  function adicionarLembrete() {
+    const n = Number(novoLembrete);
+    if (!Number.isInteger(n) || n <= 0 || lembretes.includes(n)) return;
+    setLembretes((atual) => [...atual, n].sort((a, b) => a - b));
+    setNovoLembrete("");
+  }
+
+  function removerLembrete(n: number) {
+    setLembretes((atual) => atual.filter((x) => x !== n));
+  }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -256,7 +271,12 @@ export function EventoForm({
       <div className="grid md:grid-cols-2 gap-2">
         <div>
           <label className={LABEL}>Visibilidade</label>
-          <select name="visibilidade" defaultValue={ev?.visibilidade ?? "Publico"} className={CAMPO}>
+          <select
+            name="visibilidade"
+            value={visibilidade}
+            onChange={(e) => setVisibilidade(e.target.value)}
+            className={CAMPO}
+          >
             {VISIBILIDADE_OPCOES.map((v) => (
               <option key={v} value={v}>
                 {visibilidadeLabel(v)}
@@ -276,6 +296,48 @@ export function EventoForm({
           </select>
         </div>
       </div>
+
+      {visibilidade !== "Publico" && (
+        <div className="border border-gray-200 rounded-lg p-3">
+          <label className={LABEL}>Lembretes no sino (dias antes do evento)</label>
+          <p className="text-[10px] text-gray-400 mb-2">
+            Aparece no sino do administrativo e no do Portal (pra quem pode ver este evento) a partir de cada dia
+            configurado, até o evento acontecer. Adicione quantos quiser — ex.: 5 e 2.
+          </p>
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {lembretes.map((n) => (
+              <span
+                key={n}
+                className="text-[11px] bg-gray-100 text-gray-700 rounded-full px-2 py-0.5 flex items-center gap-1"
+              >
+                {n} dia{n > 1 ? "s" : ""} antes
+                <button type="button" onClick={() => removerLembrete(n)} className="text-gray-400 hover:text-red-600">
+                  ×
+                </button>
+                <input type="hidden" name="lembretes_dias_antes" value={n} />
+              </span>
+            ))}
+            {lembretes.length === 0 && <span className="text-[11px] text-gray-400">Nenhum lembrete configurado.</span>}
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min={1}
+              value={novoLembrete}
+              onChange={(e) => setNovoLembrete(e.target.value)}
+              placeholder="Ex.: 5"
+              className={CAMPO + " w-24"}
+            />
+            <button
+              type="button"
+              onClick={adicionarLembrete}
+              className="text-xs text-primary font-semibold whitespace-nowrap"
+            >
+              + adicionar
+            </button>
+          </div>
+        </div>
+      )}
 
       <div>
         <label className={LABEL}>Agendar publicação para</label>

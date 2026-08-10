@@ -1,7 +1,9 @@
 import { prisma } from "@/lib/prisma";
-import { situacaoVencimento } from "@/lib/format";
+import { situacaoVencimento, hojePortoVelho } from "@/lib/format";
 import { STATUS_AVALIACAO_ATIVOS } from "@/lib/financiamento/opcoes";
 import { slaDaOrdem, labelColuna as labelColunaMarketing } from "@/lib/marketing/opcoes";
+import { proximaOcorrencia } from "@/lib/eventos/ocorrencias";
+import { podeVerEvento } from "@/lib/eventos/opcoes";
 
 // Sino de notificações do administrativo (Topbar) — pedido do usuário em
 // 08/08/2026. Junta tudo que precisa de atenção em um lugar só, sem
@@ -34,6 +36,51 @@ export type Notificacao = {
   urgente: boolean;
 };
 
+type EventoParaLembrete = {
+  id: string;
+  nome: string;
+  local: string | null;
+  horario_inicio: string | null;
+  data_inicio: Date;
+  recorrencia: string;
+  recorrencia_ate: Date | null;
+  lembretes_dias_antes: number[];
+};
+
+// Lembrete de evento no sino (Fase 4, pedido do usuário 10/08/2026: "quero
+// criar notificações pra lembrar eles, por exemplo 5 dias antes ou 2 dias
+// antes, quantas vezes eu quiser"). Continua aparecendo em qualquer dia
+// dentro da janela (do maior "dias antes" configurado até o dia do evento)
+// em vez de só no dia exato — ninguém perde o aviso por não abrir o sistema
+// naquele dia específico. Fica vermelho (urgente) a partir do MENOR "dias
+// antes" configurado (ex.: [5, 2] — aviso normal a partir de 5 dias, vira
+// urgente a partir de 2). Evento recorrente usa a PRÓXIMA ocorrência
+// (proximaOcorrencia), não a data_inicio original.
+function lembreteDeEvento(ev: EventoParaLembrete, hoje: Date): Notificacao | null {
+  if (ev.lembretes_dias_antes.length === 0) return null;
+  const proxima = proximaOcorrencia(ev.data_inicio, ev.recorrencia, ev.recorrencia_ate, hoje);
+  if (!proxima) return null;
+
+  const diasParaEvento = Math.round((proxima.getTime() - hoje.getTime()) / 86400000);
+  const maiorLimite = Math.max(...ev.lembretes_dias_antes);
+  if (diasParaEvento < 0 || diasParaEvento > maiorLimite) return null;
+
+  const menorLimite = Math.min(...ev.lembretes_dias_antes);
+  const dataTexto = proxima.toLocaleDateString("pt-BR", { timeZone: "UTC", day: "2-digit", month: "2-digit" });
+
+  return {
+    id: `evento-${ev.id}-${proxima.toISOString().slice(0, 10)}`,
+    titulo:
+      diasParaEvento === 0
+        ? `Evento hoje — ${ev.nome}`
+        : `Evento em ${diasParaEvento} dia${diasParaEvento > 1 ? "s" : ""} — ${ev.nome}`,
+    detalhe: [dataTexto, ev.horario_inicio, ev.local].filter(Boolean).join(" · "),
+    href: `/eventos/${ev.id}`,
+    data: proxima,
+    urgente: diasParaEvento <= menorLimite
+  };
+}
+
 export async function obterNotificacoes(isAdm: boolean): Promise<Notificacao[]> {
   const desde = new Date(Date.now() - DIAS_PARA_NOTIFICAR_CADASTRO * 24 * 60 * 60 * 1000);
   const whereAvaliacoesAtivas = {
@@ -42,7 +89,7 @@ export async function obterNotificacoes(isAdm: boolean): Promise<Notificacao[]> 
     data_validade: { not: null }
   };
 
-  const [sac, acessos, avaliacoes, transacoes, administracoes, ordensMarketing] = await Promise.all([
+  const [sac, acessos, avaliacoes, transacoes, administracoes, ordensMarketing, eventosComLembrete] = await Promise.all([
     // Mensagens do SAC e solicitações de acesso só entram pra quem também
     // vê essas seções em Configurações (isAdm) — senão o sino levaria pra
     // um link que a pessoa não consegue ver.
@@ -96,6 +143,27 @@ export async function obterNotificacoes(isAdm: boolean): Promise<Notificacao[]> 
       ? prisma.marketing_ordens.findMany({
           where: { excluido: false, coluna: { notIn: ["publicado", "resultados"] } },
           select: { id: true, id_legado: true, titulo: true, coluna: true, tipo: true, coluna_atualizada_em: true }
+        })
+      : Promise.resolve([]),
+    // Lembrete de evento (Fase 4, 10/08/2026) — admin vê de TODOS os eventos
+    // ativos com lembrete configurado, não só os abertos ao Portal (o admin
+    // administra o evento inteiro, independente de quem mais o vê). O filtro
+    // por "tem lembrete configurado" é feito em JS (lembreteDeEvento), não
+    // dá pra expressar "array não vazio" de forma portátil no where.
+    isAdm
+      ? prisma.eventos.findMany({
+          where: { excluido: false, ativo: true },
+          select: {
+            id: true,
+            nome: true,
+            local: true,
+            horario_inicio: true,
+            data_inicio: true,
+            recorrencia: true,
+            recorrencia_ate: true,
+            lembretes_dias_antes: true
+          },
+          take: LIMITE_POR_GRUPO
         })
       : Promise.resolve([])
   ]);
@@ -176,8 +244,57 @@ export async function obterNotificacoes(isAdm: boolean): Promise<Notificacao[]> 
     }
   }
 
+  // Lembrete de evento — 6ª categoria (Fase 4, 10/08/2026). Só entra pra
+  // quem também administra eventos (isAdm), mesma regra das demais
+  // categorias exclusivas do admin.
+  if (isAdm) {
+    const hoje = hojePortoVelho();
+    for (const ev of eventosComLembrete) {
+      const item = lembreteDeEvento(ev, hoje);
+      if (item) itens.push(item);
+    }
+  }
+
   // Urgente primeiro (precisa de ação), depois mais recente — mesma régua
   // de prioridade usada no card "Aprovados vencendo em 30d" do Financiamento.
+  itens.sort((x, y) => {
+    if (x.urgente !== y.urgente) return x.urgente ? -1 : 1;
+    return y.data.getTime() - x.data.getTime();
+  });
+
+  return itens;
+}
+
+// Mesmo cálculo de lembrete de evento (ver lembreteDeEvento acima), mas pro
+// Portal do Corretor — pedido do usuário 10/08/2026: "que ative o sino no
+// sistema do corretor". Só considera evento aberto ao Portal
+// (portal_corretor) e que esse corretor específico pode ver (mesma regra de
+// elegibilidade de app/portal/eventos/page.tsx — podeVerEvento).
+export async function obterNotificacoesPortal(funcaoDoParceiro: string | null): Promise<Notificacao[]> {
+  const eventos = await prisma.eventos.findMany({
+    where: { excluido: false, ativo: true, portal_corretor: true },
+    select: {
+      id: true,
+      nome: true,
+      local: true,
+      horario_inicio: true,
+      data_inicio: true,
+      recorrencia: true,
+      recorrencia_ate: true,
+      lembretes_dias_antes: true,
+      visibilidade: true
+    },
+    take: 100
+  });
+
+  const hoje = hojePortoVelho();
+  const itens: Notificacao[] = [];
+  for (const ev of eventos) {
+    if (!podeVerEvento(ev.visibilidade, funcaoDoParceiro)) continue;
+    const item = lembreteDeEvento(ev, hoje);
+    if (item) itens.push({ ...item, href: "/portal/eventos" });
+  }
+
   itens.sort((x, y) => {
     if (x.urgente !== y.urgente) return x.urgente ? -1 : 1;
     return y.data.getTime() - x.data.getTime();

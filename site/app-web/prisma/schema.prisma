@@ -1660,6 +1660,14 @@ model eventos {
   // quantas pessoas, observações) além de confirmar/recusar — ver
   // eventos_confirmacoes.leva_convidado/quantidade_pessoas/observacoes.
   formulario_interno      Boolean                @default(false)
+  // Lembretes no sino (Fase 4, pedido do usuário 10/08/2026): "quantas vezes
+  // eu quiser" — lista livre de "dias antes" (ex.: [5, 2]). Só faz sentido
+  // pra evento com público definido (visibilidade != "Publico" — Público não
+  // tem lista de destinatários pra avisar); a UI só mostra esse campo nesse
+  // caso, mas o array vazio já resolve sozinho pros eventos públicos (sem
+  // lembrete configurado, nunca aparece nada no sino). Ver
+  // lib/notificacoes.ts.
+  lembretes_dias_antes    Int[]                  @default([])
   created_at              DateTime               @default(now()) @db.Timestamptz(6)
   updated_at              DateTime               @default(now()) @db.Timestamptz(6)
   parceiros               parceiros?             @relation(fields: [organizador_parceiro_id], references: [id], onDelete: NoAction, onUpdate: NoAction)

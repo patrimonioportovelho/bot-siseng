@@ -873,6 +873,8 @@ model parceiros {
   marketing_corretores_marketing_corretores_parceiro_idToparceiros           marketing_corretores?     @relation("marketing_corretores_parceiro_idToparceiros")
   marketing_corretores_marketing_corretores_responsavel_marketing_idToparceiros marketing_corretores[]  @relation("marketing_corretores_responsavel_marketing_idToparceiros")
   marketing_producoes                                                        marketing_producoes[]
+  eventos                                                                     eventos[]
+  eventos_confirmacoes                                                       eventos_confirmacoes[]
   bancos                                                                      bancos?                   @relation(fields: [banco_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   lojas                                                                       lojas?                    @relation(fields: [loja_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   estados                                                                     estados?                  @relation(fields: [estado_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -1594,4 +1596,84 @@ model solicitacoes_agenda {
   @@index([parceiro_id], map: "idx_solicitacoes_agenda_parceiro")
   @@index([status], map: "idx_solicitacoes_agenda_status")
   @@index([imovel_id], map: "idx_solicitacoes_agenda_imovel")
+}
+
+// ====================================================================
+// Eventos — pedido do usuário, 10/08/2026 ("gerenciador de evento [...]
+// eventos publicados [...] pode ser recorrente [...] Evento público,
+// fechado a administrativo, fechado a corretores ou interno"). Módulo novo,
+// entregue em fases: Fase 1 é só o cadastro completo (este model) + tela
+// "Eventos publicados"; calendário (admin/portal), página pública e mural
+// do corretor entram na Fase 2, reaproveitando este mesmo model.
+//
+// `recorrencia`/`visibilidade`/`tipo` são texto livre validado em TS (ver
+// lib/eventos/opcoes.ts), mesmo padrão de todo o resto do sistema — o
+// schema não usa enum em lugar nenhum. `data_inicio` é sempre a primeira
+// ocorrência; pra um evento recorrente, as ocorrências seguintes são
+// calculadas em memória a partir de recorrencia/recorrencia_ate (não ficam
+// materializadas em linhas próprias) — ver lib/eventos/ocorrencias.ts.
+// `pago`/`valor`/`tem_desconto`/`valor_desconto`/`desconto_prazo` são só
+// campos informativos por enquanto — cobrança de verdade (Mercado Pago)
+// fica pra depois, o usuário foi explícito sobre isso.
+model eventos {
+  id                      String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id_legado               String?                @unique
+  nome                    String
+  tipo                    String?
+  descricao               String?
+  local                   String?
+  imagem_url              String?
+  data_inicio             DateTime               @db.Date
+  // Só usado quando recorrencia != "Nenhuma" — data até quando o evento se
+  // repete (ex.: "toda sexta até 20/12/2026"). Sem isso, um evento recorrente
+  // nunca teria fim.
+  recorrencia_ate         DateTime?              @db.Date
+  horario_inicio          String?
+  horario_fim             String?
+  recorrencia             String                 @default("Nenhuma")
+  visibilidade            String                 @default("Publico")
+  // Mesmo campo/mesma ideia de publicacoes_site.portal_corretor — mostra
+  // também no mural/perfil do corretor dentro do Portal, além da área
+  // pública (quando visibilidade permitir).
+  portal_corretor         Boolean                @default(false)
+  ativo                   Boolean                @default(true)
+  // Publicação agendada (Fase 2 do pedido do usuário: "agendamento das
+  // datas da publicação") — evento só aparece nas áreas públicas/portal
+  // quando publicado_em <= agora, mesmo com ativo = true.
+  publicado_em            DateTime               @default(now()) @db.Timestamptz(6)
+  pago                    Boolean                @default(false)
+  valor                   Decimal?               @db.Decimal(10, 2)
+  tem_desconto            Boolean                @default(false)
+  valor_desconto          Decimal?               @db.Decimal(10, 2)
+  desconto_prazo          DateTime?              @db.Date
+  organizador_parceiro_id String?                @db.Uuid
+  excluido                Boolean                @default(false)
+  created_at              DateTime               @default(now()) @db.Timestamptz(6)
+  updated_at              DateTime               @default(now()) @db.Timestamptz(6)
+  parceiros               parceiros?             @relation(fields: [organizador_parceiro_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  eventos_confirmacoes    eventos_confirmacoes[]
+
+  @@index([ativo, data_inicio], map: "idx_eventos_ativo")
+  @@index([visibilidade, ativo], map: "idx_eventos_visibilidade")
+  @@index([portal_corretor, ativo], map: "idx_eventos_portal")
+}
+
+// Controle de presença/ausência por evento (pedido do usuário, 10/08/2026)
+// — um registro por parceiro elegível (função permitida pela visibilidade
+// do evento), criado sob demanda quando o corretor/administrativo abre o
+// evento no Portal pela primeira vez (não em massa na criação do evento).
+// status: "Pendente" | "Confirmado" | "Recusado". Tela de confirmação fica
+// pra Fase 2, junto com o resto da integração no Portal.
+model eventos_confirmacoes {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  evento_id     String    @db.Uuid
+  parceiro_id   String    @db.Uuid
+  status        String    @default("Pendente")
+  respondido_em DateTime? @db.Timestamptz(6)
+  created_at    DateTime  @default(now()) @db.Timestamptz(6)
+  eventos       eventos   @relation(fields: [evento_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  parceiros     parceiros @relation(fields: [parceiro_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([evento_id, parceiro_id])
+  @@index([parceiro_id], map: "idx_eventos_confirmacoes_parceiro")
 }

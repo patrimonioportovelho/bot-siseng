@@ -37,3 +37,7 @@ export const BUCKET_PUBLICACOES = "publicacoes";
 // Precisa bater com BUCKET_AVALIACOES_IMAGENS em lib/supabase-admin.ts —
 // upload direto da imagem da consulta de CPF (Avaliação, no Financiamento).
 export const BUCKET_AVALIACOES_IMAGENS = "avaliacoes-imagens";
+
+// Precisa bater com BUCKET_EVENTOS em lib/supabase-admin.ts — upload direto
+// da imagem de capa dos Eventos.
+export const BUCKET_EVENTOS = "eventos";

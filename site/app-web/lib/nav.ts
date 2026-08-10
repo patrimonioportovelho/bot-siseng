@@ -21,6 +21,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Financiamento", href: "/financiamento" },
   { label: "Financeiro", href: "/financeiro" },
   { label: "Metas", href: "/metas" },
+  { label: "Eventos", href: "/eventos" },
   { label: "Relatórios", href: "/relatorios" },
   { label: "Documentos", href: "/documentos" },
   { label: "Configurações", href: "/configuracoes" }

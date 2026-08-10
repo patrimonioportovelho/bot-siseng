@@ -88,3 +88,34 @@ export function validarCpfCnpj(valor: string | null | undefined): string | null 
   if (d.length === 14 && !cnpjValido(d)) return "CNPJ inválido — confira os números digitados.";
   return null;
 }
+
+// Campos obrigatórios em TODO cadastro de cliente, seja pelo admin
+// (Central de Clientes) ou por qualquer formulário do portal do corretor
+// (Gestão, Administração, Locação, Compra e Venda, Avaliação de CPF,
+// Financiamento). Pessoa Jurídica exige CNPJ em vez de CPF/Sexo, mesmo
+// padrão já usado em `camposEditaveis` de app/clientes/actions.ts.
+//
+// Mora aqui (não em app/clientes/actions.ts) porque aquele arquivo tem
+// "use server" no topo — toda função exportada de um arquivo "use server"
+// vira Server Action e PRECISA ser async, senão o build de produção quebra
+// com "Server Actions must be async functions" (foi exatamente isso que
+// travou o deploy até 10/08/2026: essa função ficou lá dentro como sync).
+export function validarClienteObrigatorio(input: {
+  tipoCliente: string | null;
+  nome: string | null;
+  cpf: string | null;
+  cnpj: string | null;
+  sexo: string | null;
+  telefone: string | null;
+}): string | null {
+  if (!input.tipoCliente) return "Tipo de cliente é obrigatório.";
+  if (!input.nome) return "Nome é obrigatório.";
+  if (input.tipoCliente === "Pessoa Jurídica") {
+    if (!input.cnpj) return "CNPJ é obrigatório.";
+  } else {
+    if (!input.cpf) return "CPF é obrigatório.";
+    if (!input.sexo) return "Sexo é obrigatório.";
+  }
+  if (!input.telefone) return "Telefone é obrigatório.";
+  return null;
+}

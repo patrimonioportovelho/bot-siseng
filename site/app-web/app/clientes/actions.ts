@@ -7,7 +7,7 @@ import { requireAdminSession, requireAdm, logAlteracao } from "@/lib/auth";
 import { valorEditavelParaDecimal } from "@/lib/format";
 import { registrarEJogarErro } from "@/lib/erros";
 import { buscarClienteDuplicado } from "@/lib/clientes/duplicidade";
-import { validarCpfCnpj } from "@/lib/clientes/validacao";
+import { validarCpfCnpj, validarClienteObrigatorio } from "@/lib/clientes/validacao";
 import { montarEnderecoPF } from "@/lib/clientes/endereco";
 import { gerarProximoIdCliente } from "@/lib/clientes/id-legado";
 
@@ -153,29 +153,8 @@ function mensagemDe(erro: unknown): string {
 // Nome, CPF, sexo e Telefone precisam ser obrigatórios em todos os
 // formulários dos clientes"): admin (este arquivo), e os 6 formulários do
 // portal do corretor (Gestão, Administração, Locação, Compra e Venda,
-// Avaliação de CPF, Financiamento). Pessoa Jurídica exige CNPJ em vez de
-// CPF/Sexo, mesmo padrão já usado em `camposEditaveis` acima. Exportada pra
-// ser reaproveitada pelas actions do portal, em vez de duplicar a regra em
-// cada arquivo.
-export function validarClienteObrigatorio(input: {
-  tipoCliente: string | null;
-  nome: string | null;
-  cpf: string | null;
-  cnpj: string | null;
-  sexo: string | null;
-  telefone: string | null;
-}): string | null {
-  if (!input.tipoCliente) return "Tipo de cliente é obrigatório.";
-  if (!input.nome) return "Nome é obrigatório.";
-  if (input.tipoCliente === "Pessoa Jurídica") {
-    if (!input.cnpj) return "CNPJ é obrigatório.";
-  } else {
-    if (!input.cpf) return "CPF é obrigatório.";
-    if (!input.sexo) return "Sexo é obrigatório.";
-  }
-  if (!input.telefone) return "Telefone é obrigatório.";
-  return null;
-}
+// Avaliação de CPF, Financiamento). Movida pra lib/clientes/validacao.ts —
+// ver comentário lá do porquê (não pode ficar sync num arquivo "use server").
 
 export async function criarClienteAction(_prev: unknown, formData: FormData): Promise<ResultadoFormulario> {
   await requireAdminSession();

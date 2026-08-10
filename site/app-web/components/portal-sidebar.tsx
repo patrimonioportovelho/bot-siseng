@@ -45,8 +45,10 @@ export function PortalSidebar() {
 
   return (
     <>
-      {/* Barra mobile: só aparece abaixo de md */}
-      <div className="md:hidden flex items-center justify-between bg-primary text-white px-4 py-3">
+      {/* Barra mobile: só aparece abaixo de md — sticky pra não sumir com o
+          scroll da página (pedido do usuário: "vai lá pra baixo o menu fica
+          em cima e depois precisa voltar pra selecionar"). */}
+      <div className="md:hidden sticky top-0 z-40 flex items-center justify-between bg-primary text-white px-4 py-3">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/logo-192.png" alt="SisEng" className="h-8 w-8" />
         <button
@@ -86,8 +88,11 @@ export function PortalSidebar() {
         </div>
       )}
 
-      {/* Menu fixo, só aparece em telas md+ */}
-      <aside className="hidden md:flex md:w-60 md:shrink-0 bg-primary text-white flex-col gap-1 p-4">
+      {/* Menu fixo, só aparece em telas md+ — sticky no topo da viewport e
+          com a própria rolagem interna, então acompanha o scroll da página
+          em vez de sumir quando o conteúdo é mais alto que a tela (pedido
+          do usuário, 10/08/2026). */}
+      <aside className="hidden md:flex md:w-60 md:shrink-0 md:sticky md:top-0 md:h-screen md:overflow-y-auto bg-primary text-white flex-col gap-1 p-4">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/logo-192.png" alt="SisEng" className="h-10 w-10 mb-4" />
         <Links />

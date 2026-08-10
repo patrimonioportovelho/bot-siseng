@@ -22,6 +22,7 @@ import { SEXO_OPCOES } from "@/lib/clientes/opcoes";
 import { buscarCep, UF_PARA_ESTADO } from "@/lib/enderecos";
 import { prepararUploadImagemConsultaAction } from "@/app/financiamento/actions";
 import { supabaseBrowser, BUCKET_AVALIACOES_IMAGENS } from "@/lib/supabase-browser";
+import { PainelLateral } from "@/components/painel-lateral";
 
 type Banco = { id: string; nome: string };
 type Parceiro = { id: string; nome: string };
@@ -156,6 +157,16 @@ function Ficha({
 }) {
   const a = avaliacao;
 
+  // Painel lateral com a ficha do cliente, aberto ao clicar no nome — mesmo
+  // padrão já usado em Compra e Venda/Locação (ver components/transacao-detalhe.tsx),
+  // pedido do usuário (09/08/2026): "quando clicamos em clientes [...] abre
+  // uma tela ao lado [...] gostaria de implementar essa tela no financiamento
+  // nos clientes".
+  const [painel, setPainel] = useState<{ href: string; titulo: string } | null>(null);
+  function abrirPainel(href: string, titulo: string) {
+    setPainel({ href: `${href}${href.includes("?") ? "&" : "?"}embed=1`, titulo });
+  }
+
   const BotaoEditar = (
     <div className="flex items-center gap-2">
       <button
@@ -183,9 +194,42 @@ function Ficha({
     <div className="flex flex-col gap-4">
       <Cartao titulo="Cliente e parceiro" acao={BotaoEditar}>
         <div className="grid md:grid-cols-2 gap-3">
-          <Linha label="Cliente" valor={clienteNome} />
+          <Linha
+            label="Cliente"
+            valor={
+              a.cliente_id && clienteNome ? (
+                <button
+                  type="button"
+                  onClick={() => abrirPainel(`/clientes/${a.cliente_id}`, `Cliente — ${clienteNome}`)}
+                  className="text-primary font-semibold hover:underline text-left"
+                >
+                  {clienteNome}
+                </button>
+              ) : (
+                clienteNome
+              )
+            }
+          />
           {cotitulares.length > 0 && (
-            <Linha label="Co-titulares (cônjuge / análise conjunta)" valor={cotitulares.map((c) => c.nome).join(", ")} />
+            <Linha
+              label="Co-titulares (cônjuge / análise conjunta)"
+              valor={
+                <div className="flex flex-wrap gap-x-1.5">
+                  {cotitulares.map((c, i) => (
+                    <span key={c.id}>
+                      <button
+                        type="button"
+                        onClick={() => abrirPainel(`/clientes/${c.id}`, `Cliente — ${c.nome}`)}
+                        className="text-primary font-semibold hover:underline"
+                      >
+                        {c.nome}
+                      </button>
+                      {i < cotitulares.length - 1 && <span className="text-gray-400">,</span>}
+                    </span>
+                  ))}
+                </div>
+              }
+            />
           )}
           <Linha label="Parceiro responsável" valor={parceiroNome} />
           <Linha label="Telefone" valor={a.telefone ? formatTelefone(a.telefone) : null} />
@@ -260,6 +304,13 @@ function Ficha({
       <Cartao titulo="Observações">
         <p className="text-xs text-gray-700 whitespace-pre-wrap">{a.observacao || "—"}</p>
       </Cartao>
+
+      <PainelLateral
+        aberto={painel !== null}
+        href={painel?.href ?? null}
+        titulo={painel?.titulo ?? ""}
+        onFechar={() => setPainel(null)}
+      />
     </div>
   );
 }

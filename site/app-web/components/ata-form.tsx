@@ -175,9 +175,11 @@ export function AtaForm({ eventoId }: { eventoId: string }) {
         ))}
       </div>
 
-      <button type="button" onClick={adicionarSecao} className="text-xs text-primary font-semibold mb-3">
-        + seção
-      </button>
+      <div className="mb-3">
+        <button type="button" onClick={adicionarSecao} className="text-xs text-primary font-semibold">
+          + seção
+        </button>
+      </div>
 
       {erro && <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg px-3 py-2 mb-3">{erro}</div>}
       {geradoEm && !erro && (

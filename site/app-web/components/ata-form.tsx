@@ -87,6 +87,16 @@ export function AtaForm({ eventoId }: { eventoId: string }) {
       setGeradoEm(
         new Date().toLocaleTimeString("pt-BR", { timeZone: "America/Porto_Velho", hour: "2-digit", minute: "2-digit" })
       );
+
+      // Fase 5 (pedido do usuário, 10/08/2026: "depois que acontecer vai
+      // limpar as atas pra gerar novas pra próxima?") — nada aqui fica salvo
+      // no sistema mesmo (ver comentário no topo do arquivo), então já
+      // limpa o formulário na hora depois de gerar. Sem isso, quem deixasse
+      // a aba aberta de uma reunião pra outra veria os campos da reunião
+      // anterior ainda preenchidos.
+      setPresentes("");
+      setObservacao("");
+      setSecoes([secaoVazia()]);
     } catch (erroGeracao) {
       setErro(erroGeracao instanceof Error ? erroGeracao.message : "Falha ao gerar a ata.");
     } finally {

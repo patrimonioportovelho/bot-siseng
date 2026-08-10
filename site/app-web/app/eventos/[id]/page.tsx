@@ -9,7 +9,12 @@ import { EmailEventoForm } from "@/components/email-evento-form";
 import { listarParceirosAdministrativos } from "@/lib/parceiros/administrativos";
 import { FUNCOES_EQUIPE } from "@/lib/parceiros/opcoes";
 import { funcoesPermitidas } from "@/lib/eventos/opcoes";
+import { proximaOcorrencia } from "@/lib/eventos/ocorrencias";
 import { atualizarEventoAction, apagarEventoAction } from "../actions";
+
+function formatDataCurta(d: Date) {
+  return new Date(d).toLocaleDateString("pt-BR", { timeZone: "UTC", day: "2-digit", month: "2-digit", year: "numeric" });
+}
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +41,15 @@ export default async function EventoDetalhePage({
   // "Pendente" não é uma linha salva (ver app/portal/eventos/actions.ts):
   // é calculado aqui, por diferença entre quem É elegível (pela visibilidade)
   // e quem já respondeu.
+  //
+  // Fase 5 (10/08/2026): confirmação é por ocorrência (evento recorrente
+  // pede "vai/não vai" de novo a cada vez) — o resumo aqui mostra sempre a
+  // PRÓXIMA ocorrência (a que ainda está em aberto pra responder). Se não
+  // houver mais nenhuma (recorrência encerrada), cai pra data_inicio como
+  // referência, só pra não ficar sem nenhum rótulo de data no card.
+  const ocorrenciaAlvo =
+    proximaOcorrencia(evento.data_inicio, evento.recorrencia, evento.recorrencia_ate, new Date()) ?? evento.data_inicio;
+
   let confirmacoes: {
     id: string;
     status: string;
@@ -50,7 +64,7 @@ export default async function EventoDetalhePage({
     const funcoes = funcoesPermitidas(evento.visibilidade) ?? FUNCOES_EQUIPE;
     const [confirmacoesEvento, elegiveis] = await Promise.all([
       prisma.eventos_confirmacoes.findMany({
-        where: { evento_id: id },
+        where: { evento_id: id, ocorrencia_data: ocorrenciaAlvo },
         select: {
           id: true,
           status: true,
@@ -134,10 +148,17 @@ export default async function EventoDetalhePage({
 
       {evento.portal_corretor && (
         <div className="bg-white border border-gray-200 rounded-xl p-4 mb-5">
-          <div className="text-sm font-bold text-gray-800 mb-1">Presença/ausência</div>
+          <div className="text-sm font-bold text-gray-800 mb-1">
+            Presença/ausência
+            {evento.recorrencia !== "Nenhuma" && (
+              <span className="text-gray-400 font-normal"> — ocorrência de {formatDataCurta(ocorrenciaAlvo)}</span>
+            )}
+          </div>
           <p className="text-xs text-gray-500 mb-3">
             Respostas de quem viu este evento no Portal do Corretor. Quem ainda não abriu o Portal ou não respondeu
             conta como "não respondeu".
+            {evento.recorrencia !== "Nenhuma" &&
+              " Evento recorrente: cada ocorrência pede confirmação de novo — isto é só a de cima."}
           </p>
           <div className="grid grid-cols-3 gap-2 mb-3">
             <div className="bg-green-50 border border-green-100 rounded-lg p-2.5 text-center">

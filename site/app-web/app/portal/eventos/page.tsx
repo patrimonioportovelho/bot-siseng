@@ -23,6 +23,13 @@ function formatData(data: Date) {
   return new Date(data).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric", timeZone: "America/Porto_Velho" });
 }
 
+// Compara só a data (ignora hora) — usado pra achar, entre as confirmações
+// desse parceiro pra esse evento (pode ter uma por ocorrência passada, ver
+// Fase 5, 10/08/2026), a que é da ocorrência que está sendo exibida agora.
+function mesmaData(a: Date, b: Date): boolean {
+  return a.toISOString().slice(0, 10) === b.toISOString().slice(0, 10);
+}
+
 // Eventos abertos a este corretor (portal_corretor marcado + visibilidade
 // bate com a função dele) — com botão de confirmar/recusar presença
 // (eventos_confirmacoes, criada só quando ele responde, ver ./actions.ts).
@@ -45,10 +52,18 @@ export default async function PortalEventosPage() {
   const eventos = eventosBrutos
     .filter((ev) => podeVerEvento(ev.visibilidade, parceiro?.funcao ?? null))
     .map((ev) => {
-      const confirmacao = ev.eventos_confirmacoes[0];
+      const proxima = proximaOcorrencia(ev.data_inicio, ev.recorrencia, ev.recorrencia_ate, agora);
+      // Fase 5 (10/08/2026): confirmação é por ocorrência — entre as linhas
+      // desse parceiro pra esse evento (pode haver mais de uma, uma por
+      // ocorrência já respondida), acha a que bate com a ocorrência atual.
+      // Sem isso, ter confirmado a reunião de uma semana atrás mostraria
+      // "Confirmado" pra sempre nas seguintes.
+      const confirmacao = proxima
+        ? ev.eventos_confirmacoes.find((c) => c.ocorrencia_data && mesmaData(c.ocorrencia_data, proxima))
+        : undefined;
       return {
         ev,
-        proxima: proximaOcorrencia(ev.data_inicio, ev.recorrencia, ev.recorrencia_ate, agora),
+        proxima,
         status: confirmacao?.status ?? "Pendente",
         levaConvidado: confirmacao?.leva_convidado ?? null,
         quantidadePessoas: confirmacao?.quantidade_pessoas ?? null,

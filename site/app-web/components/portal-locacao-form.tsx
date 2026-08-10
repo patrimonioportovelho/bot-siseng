@@ -17,7 +17,8 @@ import {
   ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL,
   TIPOS_CONTA,
   TIPOS_PIX,
-  TIPOS_CLIENTE
+  TIPOS_CLIENTE,
+  SEXO_OPCOES
 } from "@/lib/clientes/opcoes";
 import { validarCpfCnpj } from "@/lib/clientes/validacao";
 import { buscarCep, UF_PARA_ESTADO } from "@/lib/enderecos";
@@ -147,6 +148,10 @@ type PessoaLinha = {
   nome: string;
   rg: string;
   cpfCnpj: string;
+  // Só perguntado quando Pessoa Física — pedido do usuário (09/08/2026,
+  // "alinhamento do cadastro de cliente"): Sexo obrigatório em todo
+  // formulário, não só no cadastro administrativo.
+  sexo: string;
   // Endereço de Pessoa Física é dividido (CEP/logradouro/número/complemento/
   // bairro/cidade/estado); Pessoa Jurídica usa "endereco" como Sede em texto
   // livre solto.
@@ -183,6 +188,7 @@ function pessoaVazia(): PessoaLinha {
     nome: "",
     rg: "",
     cpfCnpj: "",
+    sexo: "",
     endereco: "",
     cep: "",
     rua: "",
@@ -216,6 +222,7 @@ function pessoaDeClienteExistente(c: ClienteBuscaResultado): PessoaLinha {
     nome: c.nome,
     rg: "",
     cpfCnpj: c.cpfCnpj ?? "",
+    sexo: "",
     endereco: "",
     cep: "",
     rua: "",
@@ -367,7 +374,7 @@ function BlocoPessoas({
               ) : (
                 <div className="grid md:grid-cols-2 gap-3">
                   <div>
-                    <label className={LABEL}>Tipo de cliente</label>
+                    <label className={LABEL}>Tipo de cliente *</label>
                     <select
                       className={CAMPO}
                       value={p.tipoCliente}
@@ -384,7 +391,7 @@ function BlocoPessoas({
                     </select>
                   </div>
                   <div>
-                    <label className={LABEL}>{p.tipoCliente === "Pessoa Jurídica" ? "Razão social" : "Nome completo"}</label>
+                    <label className={LABEL}>{p.tipoCliente === "Pessoa Jurídica" ? "Razão social *" : "Nome completo *"}</label>
                     <input className={CAMPO} value={p.nome} onChange={(e) => atualizar(index, "nome", e.target.value)} />
                   </div>
                   {p.tipoCliente !== "Pessoa Jurídica" && (
@@ -394,7 +401,7 @@ function BlocoPessoas({
                     </div>
                   )}
                   <div>
-                    <label className={LABEL}>{p.tipoCliente === "Pessoa Jurídica" ? "CNPJ" : "CPF"}</label>
+                    <label className={LABEL}>{p.tipoCliente === "Pessoa Jurídica" ? "CNPJ *" : "CPF *"}</label>
                     <input
                       className={CAMPO}
                       value={p.cpfCnpj}
@@ -481,6 +488,17 @@ function BlocoPessoas({
                   {p.tipoCliente !== "Pessoa Jurídica" && (
                     <>
                       <div>
+                        <label className={LABEL}>Sexo *</label>
+                        <select className={CAMPO} value={p.sexo} onChange={(e) => atualizar(index, "sexo", e.target.value)}>
+                          <option value="">Selecione...</option>
+                          {SEXO_OPCOES.map((s) => (
+                            <option key={s} value={s}>
+                              {s}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
                         <label className={LABEL}>Nome da mãe</label>
                         <input className={CAMPO} value={p.nomeMae} onChange={(e) => atualizar(index, "nomeMae", e.target.value)} />
                       </div>
@@ -543,7 +561,7 @@ function BlocoPessoas({
                     <input className={CAMPO} value={p.email} onChange={(e) => atualizar(index, "email", e.target.value)} />
                   </div>
                   <div>
-                    <label className={LABEL}>Telefone</label>
+                    <label className={LABEL}>Telefone *</label>
                     <input className={CAMPO} value={p.telefone} onChange={(e) => atualizar(index, "telefone", e.target.value)} />
                   </div>
                 </div>
@@ -1218,6 +1236,26 @@ export function PortalLocacaoForm({
     }
   }
 
+  // Tipo de cliente, Nome, CPF/CNPJ, Sexo (PF) e Telefone obrigatórios em
+  // todo cliente novo digitado aqui (proprietário ou locatário) — pedido do
+  // usuário (09/08/2026, "alinhamento do cadastro de cliente"). Ver mesmo
+  // comentário em components/portal-gestao-form.tsx.
+  function erroPessoaObrigatoria(pessoas: PessoaLinha[]): string | null {
+    for (const p of pessoas) {
+      if (p.clienteId) continue;
+      if (!p.nome.trim()) continue;
+      if (!p.tipoCliente) return "Selecione o tipo de cliente (Pessoa Física/Jurídica) de todos os clientes.";
+      if (!p.cpfCnpj.trim()) return `Informe o ${p.tipoCliente === "Pessoa Jurídica" ? "CNPJ" : "CPF"} de ${p.nome}.`;
+      if (p.tipoCliente !== "Pessoa Jurídica" && !p.sexo) return `Informe o sexo de ${p.nome}.`;
+      if (!p.telefone.trim()) return `Informe o telefone de ${p.nome}.`;
+    }
+    return null;
+  }
+  const erroCadastroCliente = useMemo(
+    () => erroPessoaObrigatoria(locatarios) ?? erroPessoaObrigatoria(proprietarios),
+    [locatarios, proprietarios]
+  );
+
   const podeGerar =
     lojaId.length > 0 &&
     (viaAdministracao
@@ -1226,6 +1264,7 @@ export function PortalLocacaoForm({
       ? tipoImovelNovo.length > 0 && ruaNovo.trim().length > 0 && proprietarios.length > 0
       : imovelId.length > 0) &&
     locatarios.length > 0 &&
+    !erroCadastroCliente &&
     valorTransacaoTexto.trim().length > 0;
 
   return (
@@ -1802,6 +1841,7 @@ export function PortalLocacaoForm({
           Salvar rascunho
         </button>
         {rascunhoSalvoAgora && <span className="text-xs text-green-700 font-semibold">Rascunho salvo neste navegador.</span>}
+        {erroCadastroCliente && <span className="text-xs text-red-600">{erroCadastroCliente}</span>}
         {resultado?.ok && (
           <span className="text-xs text-green-700 font-semibold">
             Cadastrado com sucesso{resultado.idLegado ? ` — ${resultado.idLegado}` : ""}. O administrativo vai dar

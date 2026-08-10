@@ -471,7 +471,7 @@ export function ClienteForm({
           <div className="text-sm font-bold text-gray-800 mb-3">Identificação</div>
           <div className="grid md:grid-cols-2 gap-3">
             <div>
-              <label className={LABEL}>Tipo de cliente</label>
+              <label className={LABEL}>Tipo de cliente *</label>
               {c ? (
                 <input className={CAMPO} value={c.tipo_cliente} disabled />
               ) : (
@@ -495,7 +495,7 @@ export function ClienteForm({
               {c && <input type="hidden" name="tipo_cliente" value={c.tipo_cliente} />}
             </div>
             <div>
-              <label className={LABEL}>{ehPessoaJuridica ? "Razão social" : "Nome completo"}</label>
+              <label className={LABEL}>{ehPessoaJuridica ? "Razão social *" : "Nome completo *"}</label>
               {c ? (
                 <input className={CAMPO} value={c.nome} disabled />
               ) : (
@@ -515,12 +515,13 @@ export function ClienteForm({
             )}
             {ehPessoaFisica && (
               <div>
-                <label className={LABEL}>CPF</label>
+                <label className={LABEL}>CPF *</label>
                 <input
                   className={CAMPO}
                   name="cpf"
                   placeholder="000.000.000-00"
                   value={docTexto}
+                  required
                   onChange={(e) => {
                     setDocTexto(formatCpf(e.target.value.replace(/\D/g, "")) || e.target.value);
                     setDocErro(null);
@@ -559,9 +560,9 @@ export function ClienteForm({
                   <input className={CAMPO} name="expedicao" defaultValue={c?.expedicao ?? ""} />
                 </div>
                 <div>
-                  <label className={LABEL}>Sexo</label>
-                  <select className={CAMPO} name="sexo" defaultValue={c?.sexo ?? ""}>
-                    <option value="">—</option>
+                  <label className={LABEL}>Sexo *</label>
+                  <select className={CAMPO} name="sexo" defaultValue={c?.sexo ?? ""} required>
+                    <option value="">Selecione...</option>
                     {SEXO_OPCOES.map((s) => (
                       <option key={s} value={s}>
                         {s}
@@ -629,12 +630,13 @@ export function ClienteForm({
           <div className="text-sm font-bold text-gray-800 mb-3">Contato</div>
           <div className="grid md:grid-cols-2 gap-3">
             <div>
-              <label className={LABEL}>Telefone</label>
+              <label className={LABEL}>Telefone *</label>
               <input
                 className={CAMPO}
                 name="telefone"
                 placeholder="(69) 99999-9999"
                 defaultValue={c?.telefone ? formatTelefone(c.telefone) : ""}
+                required
               />
             </div>
             <div>

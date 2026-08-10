@@ -7,7 +7,8 @@ import {
   ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL,
   TIPOS_CONTA,
   TIPOS_PIX,
-  TIPOS_CLIENTE
+  TIPOS_CLIENTE,
+  SEXO_OPCOES
 } from "@/lib/clientes/opcoes";
 import { validarCpfCnpj } from "@/lib/clientes/validacao";
 import { buscarCep, UF_PARA_ESTADO } from "@/lib/enderecos";
@@ -32,6 +33,10 @@ type ClienteLinha = {
   nome: string;
   rg: string;
   cpfCnpj: string;
+  // Só perguntado quando Pessoa Física — pedido do usuário (09/08/2026,
+  // "alinhamento do cadastro de cliente"): Sexo obrigatório em todo
+  // formulário, não só no cadastro administrativo.
+  sexo: string;
   // Endereço de Pessoa Física é dividido (CEP/logradouro/número/complemento/
   // bairro/cidade/estado); Pessoa Jurídica usa "endereco" como Sede em texto
   // livre solto.
@@ -98,6 +103,7 @@ function clienteVazio(): ClienteLinha {
     nome: "",
     rg: "",
     cpfCnpj: "",
+    sexo: "",
     endereco: "",
     cep: "",
     rua: "",
@@ -519,6 +525,7 @@ export function PortalAdministracaoForm({
               nome: encontrado.nome,
               rg: encontrado.rg,
               cpfCnpj: encontrado.cpfCnpj,
+              sexo: "",
               endereco: encontrado.endereco,
               cep: "",
               rua: "",
@@ -707,8 +714,28 @@ export function PortalAdministracaoForm({
     }
   }
 
+  // Tipo de cliente, Nome, CPF/CNPJ, Sexo (PF) e Telefone obrigatórios em
+  // todo cliente novo digitado aqui — pedido do usuário (09/08/2026,
+  // "alinhamento do cadastro de cliente"). Ver mesmo comentário em
+  // components/portal-gestao-form.tsx.
+  const erroCadastroCliente = useMemo(() => {
+    for (const c of clientes) {
+      if (c.clienteId) continue;
+      if (!c.nome.trim()) continue;
+      if (!c.tipoCliente) return "Selecione o tipo de cliente (Pessoa Física/Jurídica) de todos os clientes.";
+      if (!c.cpfCnpj.trim()) return `Informe o ${c.tipoCliente === "Pessoa Jurídica" ? "CNPJ" : "CPF"} de ${c.nome}.`;
+      if (c.tipoCliente !== "Pessoa Jurídica" && !c.sexo) return `Informe o sexo de ${c.nome}.`;
+      if (!c.telefone.trim()) return `Informe o telefone de ${c.nome}.`;
+    }
+    return null;
+  }, [clientes]);
+
   const podeCadastrar =
-    Boolean(lojaId) && clientes.some((c) => c.nome.trim().length > 0) && Boolean(tipoImovel) && rua.trim().length > 0;
+    Boolean(lojaId) &&
+    clientes.some((c) => c.nome.trim().length > 0) &&
+    !erroCadastroCliente &&
+    Boolean(tipoImovel) &&
+    rua.trim().length > 0;
 
   return (
     <div className="flex flex-col gap-5">
@@ -800,7 +827,7 @@ export function PortalAdministracaoForm({
               ) : (
                 <div className="grid md:grid-cols-2 gap-3">
                   <div>
-                    <label className={LABEL}>Tipo de cliente</label>
+                    <label className={LABEL}>Tipo de cliente *</label>
                     <select
                       className={CAMPO}
                       value={c.tipoCliente}
@@ -817,7 +844,7 @@ export function PortalAdministracaoForm({
                     </select>
                   </div>
                   <div>
-                    <label className={LABEL}>{c.tipoCliente === "Pessoa Jurídica" ? "Razão social" : "Nome completo"}</label>
+                    <label className={LABEL}>{c.tipoCliente === "Pessoa Jurídica" ? "Razão social *" : "Nome completo *"}</label>
                     <input className={CAMPO} value={c.nome} onChange={(e) => atualizarCliente(index, "nome", e.target.value)} />
                   </div>
                   {c.tipoCliente !== "Pessoa Jurídica" && (
@@ -827,7 +854,7 @@ export function PortalAdministracaoForm({
                     </div>
                   )}
                   <div>
-                    <label className={LABEL}>{c.tipoCliente === "Pessoa Jurídica" ? "CNPJ" : "CPF"}</label>
+                    <label className={LABEL}>{c.tipoCliente === "Pessoa Jurídica" ? "CNPJ *" : "CPF *"}</label>
                     <input
                       className={CAMPO}
                       value={c.cpfCnpj}
@@ -918,6 +945,21 @@ export function PortalAdministracaoForm({
                   {c.tipoCliente !== "Pessoa Jurídica" && (
                     <>
                       <div>
+                        <label className={LABEL}>Sexo *</label>
+                        <select
+                          className={CAMPO}
+                          value={c.sexo}
+                          onChange={(e) => atualizarCliente(index, "sexo", e.target.value)}
+                        >
+                          <option value="">Selecione...</option>
+                          {SEXO_OPCOES.map((s) => (
+                            <option key={s} value={s}>
+                              {s}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
                         <label className={LABEL}>Nome da mãe</label>
                         <input className={CAMPO} value={c.nomeMae} onChange={(e) => atualizarCliente(index, "nomeMae", e.target.value)} />
                       </div>
@@ -980,7 +1022,7 @@ export function PortalAdministracaoForm({
                     <input className={CAMPO} value={c.email} onChange={(e) => atualizarCliente(index, "email", e.target.value)} />
                   </div>
                   <div>
-                    <label className={LABEL}>Telefone</label>
+                    <label className={LABEL}>Telefone *</label>
                     <input className={CAMPO} value={c.telefone} onChange={(e) => atualizarCliente(index, "telefone", e.target.value)} />
                   </div>
                 </div>
@@ -1478,6 +1520,7 @@ export function PortalAdministracaoForm({
           Salvar rascunho
         </button>
         {rascunhoSalvoAgora && <span className="text-xs text-green-700">Rascunho salvo.</span>}
+        {erroCadastroCliente && <span className="text-xs text-red-600">{erroCadastroCliente}</span>}
         {resultado?.ok && (
           <span className="text-xs text-green-700 font-semibold">
             Administração {resultado.idLegado} cadastrada com sucesso. O administrativo vai dar sequência.

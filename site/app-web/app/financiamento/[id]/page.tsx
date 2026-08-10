@@ -52,7 +52,7 @@ export default async function AvaliacaoDetalhePage({
     ? await criarUrlAssinadaImagemConsulta(avaliacao.imagem_consulta_caminho)
     : null;
 
-  const [clientes, bancos, parceiros, avaliadores, imoveis, andamentos] = await Promise.all([
+  const [clientes, bancos, parceiros, avaliadores, imoveis, andamentos, estados, cidades] = await Promise.all([
     prisma.clientes.findMany({
       where: { OR: [{ status_cadastro: null }, { status_cadastro: { not: "Arquivado" } }] },
       orderBy: { nome: "asc" },
@@ -85,7 +85,12 @@ export default async function AvaliacaoDetalhePage({
       where: { avaliacao_id: id, excluido: false },
       orderBy: { created_at: "desc" },
       include: { lancamentos_financiamento: { orderBy: { created_at: "asc" } } }
-    })
+    }),
+    // Pro cadastro completo do cliente novo direto aqui (Sexo, Endereço,
+    // Nome da mãe/pai) — pedido do usuário, 09/08/2026: "alinhamento do
+    // cadastro de cliente em todos os pontos de entrada".
+    prisma.estados.findMany({ orderBy: { nome: "asc" } }),
+    prisma.cidades.findMany({ orderBy: { nome: "asc" }, select: { id: true, nome: true, estado_id: true } })
   ]);
 
   // Cliente vendedor e Imóvel andam juntos no Andamento (mesmo padrão do
@@ -135,6 +140,8 @@ export default async function AvaliacaoDetalhePage({
         cotitularesIniciais={avaliacao.avaliacoes_clientes.map((v) => v.clientes)}
         bancos={bancos}
         parceiros={parceiros}
+        estados={estados}
+        cidades={cidades}
         parceiroEmail={avaliacao.parceiros?.email ?? null}
         imagemConsultaUrl={imagemConsultaUrl}
         action={atualizarAvaliacaoAction}

@@ -42,6 +42,7 @@ type ClienteDigitado = {
   nome: string;
   rg: string;
   cpfCnpj: string;
+  sexo: string;
   endereco: string;
   cep: string;
   rua: string;
@@ -88,6 +89,7 @@ function parseClientes(formData: FormData): ClienteDigitado[] {
         nome: String(c?.nome ?? "").trim(),
         rg: String(c?.rg ?? "").trim(),
         cpfCnpj: String(c?.cpfCnpj ?? "").trim(),
+        sexo: String(c?.sexo ?? "").trim(),
         endereco: String(c?.endereco ?? "").trim(),
         cep: String(c?.cep ?? "").trim(),
         rua: String(c?.rua ?? "").trim(),
@@ -125,6 +127,22 @@ function validarDocumentos(clientesNovos: ClienteDigitado[]): string | null {
     if (!c.cpfCnpj) continue;
     const erro = validarCpfCnpj(c.cpfCnpj);
     if (erro) return `${c.nome || "Cliente"}: ${erro}`;
+  }
+  return null;
+}
+
+// Tipo de cliente, Nome, CPF/CNPJ, Sexo (PF) e Telefone obrigatórios em todo
+// cliente novo (pedido do usuário, 09/08/2026 — "alinhamento do cadastro de
+// cliente em todos os pontos de entrada"). Espelha a validação já feita no
+// navegador (ver components/portal-gestao-form.tsx) — reforçada aqui porque
+// o formulário é montado na mão (FormData/JSON), não um <form> nativo com
+// `required` funcionando sozinho.
+function validarCamposObrigatorios(clientesNovos: ClienteDigitado[]): string | null {
+  for (const c of clientesNovos) {
+    if (!c.tipoCliente) return `${c.nome || "Cliente"}: tipo de cliente é obrigatório.`;
+    if (!c.cpfCnpj) return `${c.nome}: ${c.tipoCliente === "Pessoa Jurídica" ? "CNPJ" : "CPF"} é obrigatório.`;
+    if (c.tipoCliente !== "Pessoa Jurídica" && !c.sexo) return `${c.nome}: sexo é obrigatório.`;
+    if (!c.telefone) return `${c.nome}: telefone é obrigatório.`;
   }
   return null;
 }
@@ -207,6 +225,9 @@ export async function gerarContratoGestaoAction(
     // clientes do próprio corretor, então sem essa checagem seria fácil
     // duplicar sem querer o cadastro que outro corretor já fez. Só o
     // administrativo decide se transfere o cliente existente.
+    const erroObrigatorio = validarCamposObrigatorios(clientesForm.filter((c) => !c.clienteId));
+    if (erroObrigatorio) return { ok: false, erro: erroObrigatorio };
+
     const erroDocumento = validarDocumentos(clientesForm.filter((c) => !c.clienteId));
     if (erroDocumento) return { ok: false, erro: erroDocumento };
 
@@ -252,6 +273,7 @@ export async function gerarContratoGestaoAction(
               rg: !ehCnpj ? c.rg || null : null,
               cpf: !ehCnpj ? doc : null,
               cnpj: ehCnpj ? doc : null,
+              sexo: !ehCnpj ? c.sexo || null : null,
               nome_mae: !ehCnpj ? c.nomeMae || null : null,
               nome_pai: !ehCnpj ? c.nomePai || null : null,
               cep: !ehCnpj ? digitos(c.cep) : null,

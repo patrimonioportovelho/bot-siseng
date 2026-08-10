@@ -7,14 +7,19 @@ import { criarAvaliacaoAction } from "../actions";
 export const dynamic = "force-dynamic";
 
 export default async function NovaAvaliacaoPage() {
-  const [clientes, bancos, parceiros] = await Promise.all([
+  const [clientes, bancos, parceiros, estados, cidades] = await Promise.all([
     prisma.clientes.findMany({
       where: { OR: [{ status_cadastro: null }, { status_cadastro: { not: "Arquivado" } }] },
       orderBy: { nome: "asc" },
       select: { id: true, nome: true, cpf: true, telefone: true, parceiro_id: true }
     }),
     prisma.bancos.findMany({ orderBy: { nome: "asc" } }),
-    prisma.parceiros.findMany({ orderBy: { nome: "asc" }, select: { id: true, nome: true } })
+    prisma.parceiros.findMany({ orderBy: { nome: "asc" }, select: { id: true, nome: true } }),
+    // Pro cadastro completo do cliente novo direto aqui (Sexo, Endereço,
+    // Nome da mãe/pai) — pedido do usuário, 09/08/2026: "alinhamento do
+    // cadastro de cliente em todos os pontos de entrada".
+    prisma.estados.findMany({ orderBy: { nome: "asc" } }),
+    prisma.cidades.findMany({ orderBy: { nome: "asc" }, select: { id: true, nome: true, estado_id: true } })
   ]);
 
   return (
@@ -29,7 +34,15 @@ export default async function NovaAvaliacaoPage() {
 
       <div className="text-sm font-bold text-gray-800 mb-4">Nova avaliação</div>
 
-      <AvaliacaoForm avaliacao={null} clientes={clientes} bancos={bancos} parceiros={parceiros} action={criarAvaliacaoAction} />
+      <AvaliacaoForm
+        avaliacao={null}
+        clientes={clientes}
+        bancos={bancos}
+        parceiros={parceiros}
+        estados={estados}
+        cidades={cidades}
+        action={criarAvaliacaoAction}
+      />
     </div>
   );
 }

@@ -306,7 +306,29 @@ export function PortalAvaliacaoCpfForm({
 
   const tamanhoTotalDocumentos = documentos.reduce((acc, f) => acc + f.size, 0);
 
-  const podeEnviar = cliente.clienteId ? true : cliente.nome.trim().length > 0 && (mostrarCpf ? cliente.cpf.trim().length > 0 : cliente.cnpj.trim().length > 0);
+  // Tipo de cliente, Nome, CPF/CNPJ, Sexo (PF) e Telefone obrigatórios —
+  // pedido do usuário (09/08/2026, "alinhamento do cadastro de cliente").
+  // Cliente já cadastrado (clienteId) não passa por essa checagem de novo,
+  // só é reaproveitado.
+  const erroCadastroCliente = cliente.clienteId
+    ? null
+    : !cliente.nome.trim()
+      ? null
+      : mostrarCpf && !cliente.cpf.trim()
+        ? "Informe o CPF."
+        : !mostrarCpf && !cliente.cnpj.trim()
+          ? "Informe o CNPJ."
+          : mostrarCpf && !cliente.sexo
+            ? "Informe o sexo."
+            : !cliente.telefone.trim()
+              ? "Informe o telefone."
+              : null;
+
+  const podeEnviar = cliente.clienteId
+    ? true
+    : cliente.nome.trim().length > 0 &&
+      (mostrarCpf ? cliente.cpf.trim().length > 0 : cliente.cnpj.trim().length > 0) &&
+      !erroCadastroCliente;
 
   async function handleEnviar() {
     setEnviando(true);
@@ -492,9 +514,9 @@ export function PortalAvaliacaoCpfForm({
                 )}
                 {mostrarCpf && (
                   <div>
-                    <label className={LABEL}>Sexo</label>
+                    <label className={LABEL}>Sexo *</label>
                     <select className={CAMPO} value={cliente.sexo} onChange={(e) => atualizar("sexo", e.target.value)}>
-                      <option value="">—</option>
+                      <option value="">Selecione...</option>
                       {SEXO_OPCOES.map((s) => (
                         <option key={s} value={s}>
                           {s}
@@ -554,7 +576,7 @@ export function PortalAvaliacaoCpfForm({
               <div className="text-[11px] font-semibold text-gray-500 mb-2">Contato</div>
               <div className="grid md:grid-cols-2 gap-3">
                 <div>
-                  <label className={LABEL}>Telefone</label>
+                  <label className={LABEL}>Telefone *</label>
                   <input className={CAMPO} placeholder="(69) 99999-9999" value={cliente.telefone} onChange={(e) => atualizar("telefone", e.target.value)} />
                 </div>
                 <div>
@@ -773,6 +795,7 @@ export function PortalAvaliacaoCpfForm({
           Salvar rascunho
         </button>
         {rascunhoSalvoAgora && <span className="text-xs text-green-700 font-semibold">Rascunho salvo neste navegador.</span>}
+        {erroCadastroCliente && <span className="text-xs text-red-600">{erroCadastroCliente}</span>}
         {resultado?.ok && (
           <span className="text-xs text-green-700 font-semibold">
             Cadastrado com sucesso. O administrativo vai definir a finalidade e dar sequência no Financiamento.

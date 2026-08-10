@@ -8,6 +8,7 @@ import { registrarEJogarErro } from "@/lib/erros";
 import { enviarEmail } from "@/lib/email";
 import { gerarProximoIdCliente } from "@/lib/clientes/id-legado";
 import { gerarProximoIdAvaliacao } from "@/lib/avaliacoes/id-legado";
+import { montarEnderecoPF } from "@/lib/clientes/endereco";
 import {
   criarUploadAssinadoImagemConsulta,
   criarLinkImagemConsultaParaEmail,
@@ -83,13 +84,36 @@ async function resolverClienteId(
   const nomeNovo = texto(formData, "cliente_nome_busca");
   if (!nomeNovo) return null;
 
+  // Cadastro completo do cliente novo (Sexo, endereço, filiação) — pedido do
+  // usuário, 09/08/2026: "alinhamento do cadastro de cliente em todos os
+  // pontos de entrada". Ver componentes novos em components/avaliacao-form.tsx.
+  const endereco = await montarEnderecoPF({
+    rua: texto(formData, "rua"),
+    nPredial: texto(formData, "n_predial"),
+    complemento: texto(formData, "complemento"),
+    bairro: texto(formData, "bairro"),
+    cidadeId: texto(formData, "cidade_id"),
+    estadoId: texto(formData, "estado_id")
+  });
+
   const criado = await prisma.clientes.create({
     data: {
       tipo_cliente: "Pessoa Física",
       nome: nomeNovo,
       id_legado: await gerarProximoIdCliente(),
+      sexo: texto(formData, "sexo"),
       cpf: dados.cpf,
       telefone: dados.telefone,
+      nome_mae: texto(formData, "nome_mae"),
+      nome_pai: texto(formData, "nome_pai"),
+      cep: somenteDigitos(formData, "cep"),
+      rua: texto(formData, "rua"),
+      n_predial: texto(formData, "n_predial"),
+      complemento: texto(formData, "complemento"),
+      bairro: texto(formData, "bairro"),
+      estado_id: texto(formData, "estado_id"),
+      cidade_id: texto(formData, "cidade_id"),
+      endereco,
       parceiro_id: dados.parceiroId,
       status_cadastro: dados.cpf ? "Completo" : "Rascunho"
     }
@@ -145,6 +169,20 @@ export async function prepararUploadImagemConsultaAction(
   }
 }
 
+// Tipo de cliente (sempre Pessoa Física aqui), Nome, CPF, Sexo e Telefone
+// obrigatórios em todo cliente NOVO cadastrado por esta tela — pedido do
+// usuário, 09/08/2026 ("alinhamento do cadastro de cliente em todos os
+// pontos de entrada"). Cliente já cadastrado (cliente_id presente) não passa
+// por essa checagem, é só reaproveitado.
+function validarClienteNovoObrigatorio(formData: FormData, sexo: string | null, telefone: string | null, cpf: string | null) {
+  const clienteId = texto(formData, "cliente_id");
+  const nomeNovo = texto(formData, "cliente_nome_busca");
+  if (clienteId || !nomeNovo) return;
+  if (!cpf) throw new Error("Informe o CPF do cliente — obrigatório em todo cadastro novo.");
+  if (!sexo) throw new Error("Informe o sexo do cliente — obrigatório em todo cadastro novo.");
+  if (!telefone) throw new Error("Informe o telefone do cliente — obrigatório em todo cadastro novo.");
+}
+
 export async function criarAvaliacaoAction(formData: FormData) {
   await requireAdminSession();
 
@@ -157,6 +195,7 @@ export async function criarAvaliacaoAction(formData: FormData) {
   if (status === "Consulta de CPF" && (semNome || !cpf)) {
     throw new Error("Consulta de CPF precisa do nome completo e do CPF preenchidos.");
   }
+  validarClienteNovoObrigatorio(formData, texto(formData, "sexo"), telefone, cpf);
 
   const clienteId = await resolverClienteId(formData, { parceiroId, telefone, cpf });
   const campos = camposAvaliacao(formData, clienteId);
@@ -201,6 +240,7 @@ export async function atualizarAvaliacaoAction(formData: FormData) {
   if (status === "Consulta de CPF" && (semNome || !cpf)) {
     throw new Error("Consulta de CPF precisa do nome completo e do CPF preenchidos.");
   }
+  validarClienteNovoObrigatorio(formData, texto(formData, "sexo"), telefone, cpf);
 
   const clienteId = await resolverClienteId(formData, { parceiroId, telefone, cpf });
   const campos = camposAvaliacao(formData, clienteId);

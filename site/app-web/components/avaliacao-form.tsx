@@ -18,12 +18,21 @@ import {
   formatDataHora,
   formatValorEditavel
 } from "@/lib/format";
+import { SEXO_OPCOES } from "@/lib/clientes/opcoes";
+import { buscarCep, UF_PARA_ESTADO } from "@/lib/enderecos";
 import { prepararUploadImagemConsultaAction } from "@/app/financiamento/actions";
 import { supabaseBrowser, BUCKET_AVALIACOES_IMAGENS } from "@/lib/supabase-browser";
 
 type Banco = { id: string; nome: string };
 type Parceiro = { id: string; nome: string };
 type Cliente = { id: string; nome: string; cpf: string | null; telefone: string | null; parceiro_id: string | null };
+type EstadoOpcao = { id: string; nome: string };
+type CidadeOpcao = { id: string; nome: string; estado_id: string };
+
+function formatCep(v: string): string {
+  const d = v.replace(/\D/g, "").slice(0, 8);
+  return d.length > 5 ? `${d.slice(0, 5)}-${d.slice(5)}` : d;
+}
 
 type AvaliacaoExistente = {
   id: string;
@@ -261,6 +270,8 @@ export function AvaliacaoForm({
   cotitularesIniciais,
   bancos,
   parceiros,
+  estados,
+  cidades,
   parceiroEmail,
   imagemConsultaUrl,
   action,
@@ -273,6 +284,8 @@ export function AvaliacaoForm({
   cotitularesIniciais?: Cliente[];
   bancos: Banco[];
   parceiros: Parceiro[];
+  estados: EstadoOpcao[];
+  cidades: CidadeOpcao[];
   parceiroEmail?: string | null;
   imagemConsultaUrl?: string | null;
   action: (formData: FormData) => void | Promise<void>;
@@ -306,6 +319,41 @@ export function AvaliacaoForm({
   const [parceiroId, setParceiroId] = useState(a?.parceiro_id ?? "");
   const telefoneRef = useRef<HTMLInputElement>(null);
   const cpfRef = useRef<HTMLInputElement>(null);
+
+  // Cadastro completo do cliente NOVO (Sexo, endereço, filiação) — pedido do
+  // usuário (09/08/2026, "alinhamento do cadastro de cliente em todos os
+  // pontos de entrada"): antes esta tela só gravava nome/CPF/telefone soltos
+  // na avaliação, sem passar pelo cadastro de verdade. Só aparece quando
+  // está criando um cliente novo aqui (nenhum clienteId selecionado) — um
+  // cliente já cadastrado é só reaproveitado, edição fica na Central de
+  // Clientes. Mesmo padrão de campos/CEP de components/portal-avaliacao-cpf-form.tsx.
+  const [sexo, setSexo] = useState("");
+  const [nomeMae, setNomeMae] = useState("");
+  const [nomePai, setNomePai] = useState("");
+  const [cep, setCep] = useState("");
+  const [rua, setRua] = useState("");
+  const [nPredial, setNPredial] = useState("");
+  const [complemento, setComplemento] = useState("");
+  const [bairro, setBairro] = useState("");
+  const [estadoId, setEstadoId] = useState("");
+  const [cidadeId, setCidadeId] = useState("");
+  const cidadesDoEstado = useMemo(() => cidades.filter((c) => c.estado_id === estadoId), [cidades, estadoId]);
+
+  async function buscarEnderecoPorCep() {
+    const encontrado = await buscarCep(cep);
+    if (!encontrado) return;
+    const nomeEstado = UF_PARA_ESTADO[encontrado.uf] ?? "";
+    const estadoEncontrado = estados.find((e) => e.nome.toLowerCase() === nomeEstado.toLowerCase());
+    const cidadeEncontrada = estadoEncontrado
+      ? cidades.find(
+          (cid) => cid.estado_id === estadoEncontrado.id && cid.nome.toLowerCase() === encontrado.localidade.toLowerCase()
+        )
+      : undefined;
+    setRua(encontrado.logradouro || rua);
+    setBairro(encontrado.bairro || bairro);
+    setEstadoId(estadoEncontrado?.id ?? estadoId);
+    setCidadeId(cidadeEncontrada?.id ?? "");
+  }
 
   // Imagem da consulta: upload de verdade em vez de link colado (pedido do
   // usuário em 02/08/2026) — mesmo esquema do PublicacaoForm (Configurações):
@@ -378,6 +426,29 @@ export function AvaliacaoForm({
       const cpfOk = typeof cpfDigitado === "string" && cpfDigitado.replace(/\D/g, "").length >= 11;
       if (!nomeOk || !cpfOk) {
         alert("Consulta de CPF precisa do nome completo e do CPF preenchidos — é o que vai pro banco de dados ligado ao parceiro.");
+        return;
+      }
+    }
+
+    // Cliente NOVO (sem clienteId, nome digitado) precisa de CPF, Sexo e
+    // Telefone — pedido do usuário (09/08/2026, "alinhamento do cadastro de
+    // cliente"). Cliente já cadastrado (clienteId presente) não passa por
+    // essa checagem, é só reaproveitado.
+    if (!clienteId && buscaCliente.trim().length > 0) {
+      const cpfDigitado = new FormData(form).get("cpf");
+      const cpfOk = typeof cpfDigitado === "string" && cpfDigitado.replace(/\D/g, "").length >= 11;
+      const telefoneDigitado = new FormData(form).get("telefone");
+      const telefoneOk = typeof telefoneDigitado === "string" && telefoneDigitado.replace(/\D/g, "").length > 0;
+      if (!cpfOk) {
+        alert("Informe o CPF do cliente — obrigatório em todo cadastro novo.");
+        return;
+      }
+      if (!sexo) {
+        alert("Informe o sexo do cliente — obrigatório em todo cadastro novo.");
+        return;
+      }
+      if (!telefoneOk) {
+        alert("Informe o telefone do cliente — obrigatório em todo cadastro novo.");
         return;
       }
     }
@@ -460,7 +531,7 @@ export function AvaliacaoForm({
         )}
         <div className="grid md:grid-cols-2 gap-3">
           <div className="relative">
-            <label className={LABEL}>Cliente {consultaCpf && <span className="text-amber-600">*</span>}</label>
+            <label className={LABEL}>Cliente <span className="text-amber-600">*</span></label>
             <input
               className={CAMPO}
               placeholder="Digite o nome — se não existir, é criado ao salvar"
@@ -505,7 +576,7 @@ export function AvaliacaoForm({
             </select>
           </div>
           <div>
-            <label className={LABEL}>Telefone</label>
+            <label className={LABEL}>Telefone {!clienteId && <span className="text-amber-600">*</span>}</label>
             <input
               ref={telefoneRef}
               className={CAMPO}
@@ -515,7 +586,7 @@ export function AvaliacaoForm({
             />
           </div>
           <div>
-            <label className={LABEL}>CPF {consultaCpf && <span className="text-amber-600">*</span>}</label>
+            <label className={LABEL}>CPF {!clienteId && <span className="text-amber-600">*</span>}</label>
             <input
               ref={cpfRef}
               className={CAMPO}
@@ -525,6 +596,94 @@ export function AvaliacaoForm({
             />
           </div>
         </div>
+
+        {/* Cadastro completo do cliente NOVO — só aparece quando ainda não
+            escolheu um cliente já cadastrado (ver comentário no useState
+            acima). Cliente existente é só reaproveitado; editar o cadastro
+            completo dele é na Central de Clientes. */}
+        {!clienteId && (
+          <div className="mt-4 pt-3 border-t border-gray-100">
+            <div className="text-[11px] font-semibold text-gray-500 mb-2">Cadastro completo do cliente novo</div>
+            <div className="grid md:grid-cols-2 gap-3">
+              <div>
+                <label className={LABEL}>Sexo *</label>
+                <select className={CAMPO} name="sexo" value={sexo} onChange={(e) => setSexo(e.target.value)}>
+                  <option value="">Selecione...</option>
+                  {SEXO_OPCOES.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className={LABEL}>Nome da mãe</label>
+                <input className={CAMPO} name="nome_mae" value={nomeMae} onChange={(e) => setNomeMae(e.target.value)} />
+              </div>
+              <div>
+                <label className={LABEL}>Nome do pai</label>
+                <input className={CAMPO} name="nome_pai" value={nomePai} onChange={(e) => setNomePai(e.target.value)} />
+              </div>
+              <div>
+                <label className={LABEL}>CEP</label>
+                <input
+                  className={CAMPO}
+                  name="cep"
+                  placeholder="76800-000"
+                  value={cep}
+                  onChange={(e) => setCep(formatCep(e.target.value))}
+                  onBlur={buscarEnderecoPorCep}
+                />
+              </div>
+              <div>
+                <label className={LABEL}>Logradouro</label>
+                <input className={CAMPO} name="rua" value={rua} onChange={(e) => setRua(e.target.value)} />
+              </div>
+              <div>
+                <label className={LABEL}>Número predial</label>
+                <input className={CAMPO} name="n_predial" value={nPredial} onChange={(e) => setNPredial(e.target.value)} />
+              </div>
+              <div>
+                <label className={LABEL}>Complemento</label>
+                <input className={CAMPO} name="complemento" value={complemento} onChange={(e) => setComplemento(e.target.value)} />
+              </div>
+              <div>
+                <label className={LABEL}>Bairro</label>
+                <input className={CAMPO} name="bairro" value={bairro} onChange={(e) => setBairro(e.target.value)} />
+              </div>
+              <div>
+                <label className={LABEL}>Estado</label>
+                <select
+                  className={CAMPO}
+                  name="estado_id"
+                  value={estadoId}
+                  onChange={(e) => {
+                    setEstadoId(e.target.value);
+                    setCidadeId("");
+                  }}
+                >
+                  <option value="">—</option>
+                  {estados.map((e) => (
+                    <option key={e.id} value={e.id}>
+                      {e.nome}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className={LABEL}>Cidade</label>
+                <select className={CAMPO} name="cidade_id" value={cidadeId} onChange={(e) => setCidadeId(e.target.value)}>
+                  <option value="">—</option>
+                  {cidadesDoEstado.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.nome}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="mt-4 pt-3 border-t border-gray-100">
           <label className={LABEL}>

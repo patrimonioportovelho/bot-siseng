@@ -286,6 +286,18 @@ export async function criarAvaliacaoCpfAction(
       };
     }
 
+    // Sexo (PF) e Telefone também obrigatórios — pedido do usuário
+    // (09/08/2026, "alinhamento do cadastro de cliente em todos os pontos de
+    // entrada"). Nome/CPF/CNPJ já checados acima.
+    if (!cliente.clienteId) {
+      if (!ehCnpj && !cliente.sexo) {
+        return { ok: false, erro: "Informe o sexo do cliente." };
+      }
+      if (!cliente.telefone) {
+        return { ok: false, erro: "Informe o telefone do cliente." };
+      }
+    }
+
     let clienteId: string;
     let clienteNome: string;
     let clienteTelefone: string | null;

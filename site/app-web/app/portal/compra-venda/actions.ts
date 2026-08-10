@@ -150,6 +150,7 @@ type ClienteDigitado = {
   nome: string;
   rg: string;
   cpfCnpj: string;
+  sexo: string;
   endereco: string;
   cep: string;
   rua: string;
@@ -188,6 +189,7 @@ function parseClientes(formData: FormData, campo: string): ClienteDigitado[] {
         nome: String(c?.nome ?? "").trim(),
         rg: String(c?.rg ?? "").trim(),
         cpfCnpj: String(c?.cpfCnpj ?? "").trim(),
+        sexo: String(c?.sexo ?? "").trim(),
         endereco: String(c?.endereco ?? "").trim(),
         cep: String(c?.cep ?? "").trim(),
         rua: String(c?.rua ?? "").trim(),
@@ -230,6 +232,20 @@ function validarDocumentos(clientesNovos: ClienteDigitado[]): string | null {
   return null;
 }
 
+// Tipo de cliente, Nome, CPF/CNPJ, Sexo (PF) e Telefone obrigatórios em todo
+// cliente novo (pedido do usuário, 09/08/2026 — "alinhamento do cadastro de
+// cliente em todos os pontos de entrada"). Ver mesmo comentário em
+// app/portal/gestao/actions.ts.
+function validarCamposObrigatorios(clientesNovos: ClienteDigitado[]): string | null {
+  for (const c of clientesNovos) {
+    if (!c.tipoCliente) return `${c.nome || "Cliente"}: tipo de cliente é obrigatório.`;
+    if (!c.cpfCnpj) return `${c.nome}: ${c.tipoCliente === "Pessoa Jurídica" ? "CNPJ" : "CPF"} é obrigatório.`;
+    if (c.tipoCliente !== "Pessoa Jurídica" && !c.sexo) return `${c.nome}: sexo é obrigatório.`;
+    if (!c.telefone) return `${c.nome}: telefone é obrigatório.`;
+  }
+  return null;
+}
+
 // "" (não perguntado) vira NULL, "true"/"false" viram booleano de verdade —
 // usado no campo uniao_estavel (só existe quando estado_civil pede).
 function booleanoTri(v: string): boolean | null {
@@ -264,6 +280,7 @@ async function criarCliente(c: ClienteDigitado, parceiroId: string) {
       rg: !ehCnpj ? c.rg || null : null,
       cpf: !ehCnpj ? doc : null,
       cnpj: ehCnpj ? doc : null,
+      sexo: !ehCnpj ? c.sexo || null : null,
       nome_mae: !ehCnpj ? c.nomeMae || null : null,
       nome_pai: !ehCnpj ? c.nomePai || null : null,
       cep: !ehCnpj ? digitos(c.cep) : null,
@@ -467,6 +484,9 @@ export async function gerarCompraVendaAction(
     // evita duplicar cliente que outro corretor já cadastrou. Só o
     // administrativo decide se transfere o cliente existente.
     const todosNovos = [...compradoresForm, ...vendedoresForm].filter((c) => !c.clienteId);
+
+    const erroObrigatorio = validarCamposObrigatorios(todosNovos);
+    if (erroObrigatorio) return { ok: false, erro: erroObrigatorio };
 
     const erroDocumento = validarDocumentos(todosNovos);
     if (erroDocumento) return { ok: false, erro: erroDocumento };

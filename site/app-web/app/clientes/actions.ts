@@ -148,13 +148,54 @@ function mensagemDe(erro: unknown): string {
   return erro instanceof Error ? erro.message : String(erro);
 }
 
+// Checagem única dos campos que o usuário pediu pra alinhar em TODOS os
+// pontos de cadastro de cliente do sistema (09/08/2026 — "Tipo de cliente,
+// Nome, CPF, sexo e Telefone precisam ser obrigatórios em todos os
+// formulários dos clientes"): admin (este arquivo), e os 6 formulários do
+// portal do corretor (Gestão, Administração, Locação, Compra e Venda,
+// Avaliação de CPF, Financiamento). Pessoa Jurídica exige CNPJ em vez de
+// CPF/Sexo, mesmo padrão já usado em `camposEditaveis` acima. Exportada pra
+// ser reaproveitada pelas actions do portal, em vez de duplicar a regra em
+// cada arquivo.
+export function validarClienteObrigatorio(input: {
+  tipoCliente: string | null;
+  nome: string | null;
+  cpf: string | null;
+  cnpj: string | null;
+  sexo: string | null;
+  telefone: string | null;
+}): string | null {
+  if (!input.tipoCliente) return "Tipo de cliente é obrigatório.";
+  if (!input.nome) return "Nome é obrigatório.";
+  if (input.tipoCliente === "Pessoa Jurídica") {
+    if (!input.cnpj) return "CNPJ é obrigatório.";
+  } else {
+    if (!input.cpf) return "CPF é obrigatório.";
+    if (!input.sexo) return "Sexo é obrigatório.";
+  }
+  if (!input.telefone) return "Telefone é obrigatório.";
+  return null;
+}
+
 export async function criarClienteAction(_prev: unknown, formData: FormData): Promise<ResultadoFormulario> {
   await requireAdminSession();
 
   const nome = texto(formData, "nome");
   const tipoCliente = texto(formData, "tipo_cliente");
-  if (!nome || !tipoCliente) {
-    return { erro: "Nome e tipo de cliente são obrigatórios." };
+
+  // Tipo de cliente, Nome, CPF/CNPJ, Sexo (PF) e Telefone obrigatórios em
+  // todo cadastro novo (pedido do usuário, 09/08/2026 — alinhamento do
+  // cadastro de cliente em todos os pontos de entrada).
+  const erroObrigatorio = validarClienteObrigatorio({
+    tipoCliente,
+    nome,
+    cpf: texto(formData, "cpf"),
+    cnpj: texto(formData, "cnpj"),
+    sexo: texto(formData, "sexo"),
+    telefone: texto(formData, "telefone")
+  });
+  if (erroObrigatorio || !nome || !tipoCliente) {
+    return { erro: erroObrigatorio ?? "Nome e tipo de cliente são obrigatórios." };
   }
 
   // Loja obrigatória em todo cadastro novo (pedido do usuário em
@@ -165,15 +206,9 @@ export async function criarClienteAction(_prev: unknown, formData: FormData): Pr
     return { erro: "Loja é obrigatória." };
   }
 
-  // Valida dígito verificador de CPF/CNPJ antes de qualquer outra checagem
-  // — pega erro de digitação (número trocado) antes mesmo de ir atrás de
-  // duplicidade. Pessoa Jurídica exige CNPJ; Pessoa Física só valida o CPF
-  // se algo foi digitado (o campo não é obrigatório em todo cadastro
-  // antigo importado da planilha).
+  // Valida dígito verificador de CPF/CNPJ — pega erro de digitação (número
+  // trocado) antes mesmo de ir atrás de duplicidade.
   const docDigitado = tipoCliente === "Pessoa Jurídica" ? texto(formData, "cnpj") : texto(formData, "cpf");
-  if (tipoCliente === "Pessoa Jurídica" && !docDigitado) {
-    return { erro: "Informe o CNPJ." };
-  }
   if (docDigitado) {
     const erroDoc = validarCpfCnpj(docDigitado);
     if (erroDoc) return { erro: erroDoc };
@@ -255,6 +290,21 @@ export async function atualizarClienteAction(_prev: unknown, formData: FormData)
   if (!antes) return { erro: "Cliente não encontrado." };
 
   const tipoClienteEditado = texto(formData, "tipo_cliente");
+
+  // Mesma checagem de alinhamento aplicada na criação — também vale pra
+  // edição, já que cadastros antigos importados sem esses campos são
+  // justamente o problema que o usuário apontou ("sempre vem faltando
+  // informações").
+  const erroObrigatorioEditado = validarClienteObrigatorio({
+    tipoCliente: tipoClienteEditado,
+    nome: texto(formData, "nome") ?? antes.nome,
+    cpf: texto(formData, "cpf"),
+    cnpj: texto(formData, "cnpj"),
+    sexo: texto(formData, "sexo"),
+    telefone: texto(formData, "telefone")
+  });
+  if (erroObrigatorioEditado) return { erro: erroObrigatorioEditado };
+
   const docDigitadoEditado =
     tipoClienteEditado === "Pessoa Jurídica" ? texto(formData, "cnpj") : texto(formData, "cpf");
   if (docDigitadoEditado) {

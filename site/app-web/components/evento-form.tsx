@@ -42,13 +42,54 @@ function paraInputDate(d: Date | string | null | undefined): string {
 }
 
 // Diferente de paraInputDate (data pura, sem hora) — aqui o horário importa
-// de verdade (é quando o evento passa a aparecer no mural público/portal),
-// então usa hora local do navegador, não UTC.
+// de verdade (é quando o evento passa a aparecer no mural público/portal).
+// BUG CORRIGIDO 10/08/2026: a versão antiga usava getFullYear()/getHours()
+// do navegador, que lê o fuso horário CONFIGURADO NO COMPUTADOR de quem
+// está usando o sistema — nem sempre é Porto Velho (ex.: máquina com fuso
+// UTC ou outro). Isso fazia o campo mostrar (e, ao salvar de novo, gravar)
+// um horário errado, sempre com a mesma diferença fixa do horário real de
+// Porto Velho. Usa Intl com timeZone explícito, igual
+// lib/format.ts#partesHojePortoVelho — não depende do fuso do aparelho.
 function paraInputDateTime(d: Date | string | null | undefined): string {
   const data = d ? (typeof d === "string" ? new Date(d) : d) : new Date();
   if (Number.isNaN(data.getTime())) return "";
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${data.getFullYear()}-${pad(data.getMonth() + 1)}-${pad(data.getDate())}T${pad(data.getHours())}:${pad(data.getMinutes())}`;
+  const partes = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Porto_Velho",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23"
+  }).formatToParts(data);
+  const valor = (tipo: string) => partes.find((p) => p.type === tipo)?.value ?? "00";
+  return `${valor("year")}-${valor("month")}-${valor("day")}T${valor("hour")}:${valor("minute")}`;
+}
+
+// Sempre recorta e redimensiona a capa do evento pra exatamente 1080x1080
+// (pedido explícito do usuário, 10/08/2026 — tamanho fixo, sem exceção).
+// Recorte central "cover" (usa o maior quadrado possível no meio da
+// imagem, sem distorcer) e depois redesenha em 1080x1080. Roda no navegador
+// antes do upload, então a capa nunca sai do tamanho padrão nem depende do
+// usuário lembrar de redimensionar sozinho antes de escolher o arquivo.
+async function paraQuadrado1080(arquivo: File): Promise<File> {
+  const bitmap = await createImageBitmap(arquivo);
+  const lado = Math.min(bitmap.width, bitmap.height);
+  const origemX = (bitmap.width - lado) / 2;
+  const origemY = (bitmap.height - lado) / 2;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = 1080;
+  canvas.height = 1080;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return arquivo;
+  ctx.drawImage(bitmap, origemX, origemY, lado, lado, 0, 0, 1080, 1080);
+
+  const blob: Blob | null = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.9));
+  if (!blob) return arquivo;
+
+  const nomeBase = arquivo.name.replace(/\.[^.]+$/, "");
+  return new File([blob], `${nomeBase}.jpg`, { type: "image/jpeg" });
 }
 
 // Mesmo esquema de upload direto pro Storage via URL assinada usado nas
@@ -84,11 +125,12 @@ export function EventoForm({
     try {
       let imagemCaminho = "";
       if (arquivo) {
-        const preparo = await prepararUploadImagemEventoAction(arquivo.name);
+        const arquivoQuadrado = await paraQuadrado1080(arquivo);
+        const preparo = await prepararUploadImagemEventoAction(arquivoQuadrado.name);
         if (!preparo.ok) throw new Error(preparo.erro);
         const { error: erroUpload } = await supabaseBrowser()
           .storage.from(BUCKET_EVENTOS)
-          .uploadToSignedUrl(preparo.caminho, preparo.token, arquivo, { contentType: arquivo.type });
+          .uploadToSignedUrl(preparo.caminho, preparo.token, arquivoQuadrado, { contentType: arquivoQuadrado.type });
         if (erroUpload) throw new Error(`Falha ao enviar a imagem: ${erroUpload.message}`);
         imagemCaminho = preparo.caminho;
       }
@@ -99,6 +141,23 @@ export function EventoForm({
 
       await action(fd);
     } catch (erroEnvio) {
+      // BUG CORRIGIDO 10/08/2026: quando a action termina com redirect(...)
+      // (sempre que salva com sucesso), o Next lança um erro especial com
+      // `digest` começando em "NEXT_REDIRECT" pra sinalizar a navegação —
+      // não é uma falha de verdade. Sem esse tratamento, esse catch mostrava
+      // a mensagem literal "NEXT_REDIRECT" pro usuário mesmo com o evento já
+      // salvo no banco (é o que o usuário reportou como "editei e não
+      // atualizou a lista": o save funcionava, só o redirecionamento pra
+      // lista é que ficava preso aqui). Repropaga pra deixar o Next navegar.
+      if (
+        erroEnvio &&
+        typeof erroEnvio === "object" &&
+        "digest" in erroEnvio &&
+        typeof (erroEnvio as { digest?: unknown }).digest === "string" &&
+        (erroEnvio as { digest: string }).digest.startsWith("NEXT_REDIRECT")
+      ) {
+        throw erroEnvio;
+      }
       setErro(erroEnvio instanceof Error ? erroEnvio.message : "Falha ao salvar o evento.");
       setEnviando(false);
     }
@@ -297,9 +356,8 @@ export function EventoForm({
           className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full outline-none focus:border-primary bg-white file:mr-2 file:text-xs file:border-0 file:bg-gray-100 file:rounded file:px-2 file:py-1"
         />
         <p className="text-[10px] text-gray-400 mt-1">
-          {ev?.imagem_url
-            ? "Escolha um arquivo pra trocar a imagem atual."
-            : "Recomendado: imagem no formato paisagem (ex.: 1200x630px)."}
+          A imagem é recortada e redimensionada automaticamente para 1080x1080 — pode enviar em qualquer proporção
+          que o sistema ajusta sozinho.
         </p>
       </div>
 

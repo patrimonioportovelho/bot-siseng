@@ -74,6 +74,20 @@ export function PublicacaoForm({
 
       await action(fd);
     } catch (erroEnvio) {
+      // BUG CORRIGIDO 10/08/2026 (mesmo problema achado em evento-form.tsx):
+      // redirect() no final da action lança um erro especial com `digest`
+      // começando em "NEXT_REDIRECT" pra sinalizar a navegação — não é uma
+      // falha de verdade. Sem isso, o catch mostrava "NEXT_REDIRECT" na tela
+      // mesmo com a publicação já salva. Repropaga pra deixar o Next navegar.
+      if (
+        erroEnvio &&
+        typeof erroEnvio === "object" &&
+        "digest" in erroEnvio &&
+        typeof (erroEnvio as { digest?: unknown }).digest === "string" &&
+        (erroEnvio as { digest: string }).digest.startsWith("NEXT_REDIRECT")
+      ) {
+        throw erroEnvio;
+      }
       setErro(erroEnvio instanceof Error ? erroEnvio.message : "Falha ao salvar a publicação.");
       setEnviando(false);
     }

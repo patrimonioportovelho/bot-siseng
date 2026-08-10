@@ -31,6 +31,7 @@ type EventoExistente = {
   valor_desconto: unknown;
   desconto_prazo: Date | string | null;
   organizador_parceiro_id: string | null;
+  publicado_em: Date | string | null;
 };
 
 function paraInputDate(d: Date | string | null | undefined): string {
@@ -38,6 +39,16 @@ function paraInputDate(d: Date | string | null | undefined): string {
   const data = typeof d === "string" ? new Date(d) : d;
   if (Number.isNaN(data.getTime())) return "";
   return data.toISOString().slice(0, 10);
+}
+
+// Diferente de paraInputDate (data pura, sem hora) — aqui o horário importa
+// de verdade (é quando o evento passa a aparecer no mural público/portal),
+// então usa hora local do navegador, não UTC.
+function paraInputDateTime(d: Date | string | null | undefined): string {
+  const data = d ? (typeof d === "string" ? new Date(d) : d) : new Date();
+  if (Number.isNaN(data.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${data.getFullYear()}-${pad(data.getMonth() + 1)}-${pad(data.getDate())}T${pad(data.getHours())}:${pad(data.getMinutes())}`;
 }
 
 // Mesmo esquema de upload direto pro Storage via URL assinada usado nas
@@ -196,6 +207,20 @@ export function EventoForm({
             ))}
           </select>
         </div>
+      </div>
+
+      <div>
+        <label className={LABEL}>Agendar publicação para</label>
+        <input
+          type="datetime-local"
+          name="publicado_em"
+          defaultValue={paraInputDateTime(ev?.publicado_em ?? null)}
+          className={CAMPO}
+        />
+        <p className="text-[10px] text-gray-400 mt-1">
+          Antes desse horário o evento fica publicado só aqui no administrativo — não aparece no mural público nem
+          no portal, mesmo marcado como "publicado". Deixe no horário atual pra publicar já.
+        </p>
       </div>
 
       <div className="border border-gray-200 rounded-lg p-3 flex flex-col gap-2">

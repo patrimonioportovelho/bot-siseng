@@ -8,6 +8,8 @@ import { TIPO_ATIVIDADE_LABEL as TIPO_ATIVIDADE_LABEL_MANUTENCAO } from "@/lib/m
 import { TIPO_ATIVIDADE_LABEL as TIPO_ATIVIDADE_LABEL_GESTAO } from "@/lib/gestoes/opcoes";
 import { TIPO_ATIVIDADE_LABEL as TIPO_ATIVIDADE_LABEL_MARKETING, TIPOS_MATERIAL } from "@/lib/marketing/opcoes";
 import { BotaoSubmit } from "@/components/botao-submit";
+import { ocorrenciasNoIntervalo } from "@/lib/eventos/ocorrencias";
+import { podeVerEvento } from "@/lib/eventos/opcoes";
 import { criarSolicitacaoAgendaAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -50,7 +52,7 @@ export default async function PortalAgendaPage({
   const inicioMes = new Date(ano, mesIndice, 1);
   const fimMes = new Date(ano, mesIndice + 1, 1);
 
-  const [atividadesMarketing, atividadesGestao, atividadesManutencao, solicitacoes, meusImoveis] = await Promise.all([
+  const [atividadesMarketing, atividadesGestao, atividadesManutencao, solicitacoes, meusImoveis, parceiro, eventos] = await Promise.all([
     // Editorial do Marketing — qualquer marketing_atividades já É um
     // compromisso com data real (é uma atividade explicitamente agendada,
     // não um prazo solto). Antes isso excluía coluna "recebido"/"aguardando
@@ -89,10 +91,39 @@ export default async function PortalAgendaPage({
       where: { parceiro_id: session.parceiroId, excluido: false },
       orderBy: { endereco: "asc" },
       select: { id: true, endereco: true, id_legado: true }
+    }),
+    prisma.parceiros.findUnique({ where: { id: session.parceiroId }, select: { funcao: true } }),
+    // Eventos marcados pra aparecer no portal (portal_corretor) — a
+    // visibilidade (quem, pela função, pode ver) é filtrada depois, em JS,
+    // porque depende do resultado da consulta do parceiro acima (rodando em
+    // paralelo aqui).
+    prisma.eventos.findMany({
+      where: {
+        excluido: false,
+        ativo: true,
+        portal_corretor: true,
+        OR: [
+          { recorrencia: "Nenhuma", data_inicio: { gte: inicioMes, lt: fimMes } },
+          { recorrencia: { not: "Nenhuma" }, data_inicio: { lt: fimMes }, recorrencia_ate: { gte: inicioMes } }
+        ]
+      }
     })
   ]);
 
+  const eventosVisiveis = eventos.filter((ev) => podeVerEvento(ev.visibilidade, parceiro?.funcao ?? null));
+  const itensEventos = eventosVisiveis.flatMap((ev) =>
+    ocorrenciasNoIntervalo(ev.data_inicio, ev.recorrencia, ev.recorrencia_ate, inicioMes, fimMes).map((data) => ({
+      id: `evt-${ev.id}-${data.getTime()}`,
+      tipoLabel: ev.tipo ?? "Evento",
+      titulo: ev.nome,
+      data,
+      contexto: ev.local ?? "Evento",
+      cor: "amarelo" as const
+    }))
+  );
+
   const itens = [
+    ...itensEventos,
     ...atividadesMarketing.map((a) => ({
       id: `mkt-${a.id}`,
       tipoLabel: TIPO_ATIVIDADE_LABEL_MARKETING[a.tipo] ?? a.tipo,
@@ -141,8 +172,9 @@ export default async function PortalAgendaPage({
       <div className="max-w-5xl mx-auto px-4 py-6">
         <div className="text-lg font-bold text-gray-900 mb-1">Agenda</div>
         <p className="text-xs text-gray-500 mb-6">
-          Acompanhe as atividades já confirmadas do escritório (Marketing, suas Gestões e Manutenções dos seus
-          imóveis). Pra marcar algo novo, use "Solicitar atividade" abaixo — o setor responde e confirma o horário.
+          Acompanhe as atividades já confirmadas do escritório (Marketing, suas Gestões, Manutenções dos seus
+          imóveis e os Eventos abertos pra você). Pra marcar algo novo, use "Solicitar atividade" abaixo — o setor
+          responde e confirma o horário.
         </p>
 
         <div className="flex items-center justify-between mb-4 flex-wrap gap-2">

@@ -6,6 +6,8 @@ import { AdminLoginPanel } from "@/components/site/admin-login-panel";
 import { PortalLoginPanel } from "@/components/site/portal-login-panel";
 import { ShareButton } from "@/components/site/share-button";
 import { PublicacaoCard } from "@/components/site/publicacao-card";
+import { EventoCard } from "@/components/site/evento-card";
+import { proximaOcorrencia } from "@/lib/eventos/ocorrencias";
 
 export const dynamic = "force-dynamic";
 
@@ -52,6 +54,23 @@ export default async function LoginPage({
     // infinita na home pública.
     take: 9
   });
+
+  // Eventos públicos (visibilidade "Publico") já dentro da janela de
+  // publicação — junto com notícias/editais, seção própria, como pedido
+  // ("preciso que esses eventos seja publico na pagina externa junto com
+  // noticias, editais"). Só os que ainda vão acontecer (ou ainda estão
+  // recorrendo); eventos passados somem sozinhos da home.
+  const agora = new Date();
+  const eventosBrutos = await prisma.eventos.findMany({
+    where: { excluido: false, ativo: true, visibilidade: "Publico", publicado_em: { lte: agora } },
+    orderBy: { data_inicio: "asc" },
+    take: 30
+  });
+  const eventos = eventosBrutos
+    .map((ev) => ({ ev, proxima: proximaOcorrencia(ev.data_inicio, ev.recorrencia, ev.recorrencia_ate, agora) }))
+    .filter((x): x is { ev: (typeof eventosBrutos)[number]; proxima: Date } => x.proxima !== null)
+    .sort((a, b) => a.proxima.getTime() - b.proxima.getTime())
+    .slice(0, 6);
 
   // Link absoluto (com domínio) pra dar pra compartilhar notícia/edital ou o
   // SAC direto — link relativo não funciona quando compartilhado fora do site
@@ -133,6 +152,33 @@ export default async function LoginPage({
             ))}
           </div>
         </section>
+
+        {/* Eventos */}
+        {eventos.length > 0 && (
+          <section id="eventos" className="mb-16">
+            <div className="text-xl font-bold text-gray-800 mb-1">Eventos</div>
+            <p className="text-xs text-gray-500 mb-4">Reuniões, treinamentos e outros eventos abertos ao público.</p>
+
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {eventos.map(({ ev, proxima }) => (
+                <EventoCard
+                  key={ev.id}
+                  evento={{
+                    id: ev.id,
+                    tipo: ev.tipo,
+                    nome: ev.nome,
+                    local: ev.local,
+                    imagem_url: ev.imagem_url,
+                    dataExibida: proxima,
+                    recorrencia: ev.recorrencia,
+                    horario_inicio: ev.horario_inicio
+                  }}
+                  baseUrl={baseUrl}
+                />
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* SAC */}
         <section id="sac" className="mb-16">

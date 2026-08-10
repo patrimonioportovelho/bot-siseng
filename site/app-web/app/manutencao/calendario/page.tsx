@@ -8,6 +8,7 @@ import { TIPO_ATIVIDADE_LABEL as TIPO_ATIVIDADE_LABEL_MANUTENCAO } from "@/lib/m
 import { TIPO_ATIVIDADE_LABEL as TIPO_ATIVIDADE_LABEL_GESTAO } from "@/lib/gestoes/opcoes";
 import { TIPO_ATIVIDADE_LABEL as TIPO_ATIVIDADE_LABEL_MARKETING } from "@/lib/marketing/opcoes";
 import { lojasSelecionadas } from "@/lib/lojas/filtro";
+import { ocorrenciasNoIntervalo } from "@/lib/eventos/ocorrencias";
 
 export const dynamic = "force-dynamic";
 
@@ -39,7 +40,7 @@ export default async function ManutencaoCalendarioPage({
   const lojasFiltro = await lojasSelecionadas();
   const filtroLojaImovel = { OR: [{ loja_id: { in: lojasFiltro } }, { loja_id: null }] };
 
-  const [atividadesManutencao, atividadesGestao, atividadesMarketing] = await Promise.all([
+  const [atividadesManutencao, atividadesGestao, atividadesMarketing, eventos] = await Promise.all([
     prisma.manutencao_atividades.findMany({
       where: {
         data: { gte: inicioMes, lt: fimMes },
@@ -75,10 +76,44 @@ export default async function ManutencaoCalendarioPage({
       include: {
         marketing_ordens: { select: { id: true, titulo: true } }
       }
+    }),
+    // Eventos (Fase 2 — calendário compartilhado). Sem loja própria, igual
+    // Marketing: aparece pra todo mundo. Traz também os recorrentes que já
+    // começaram antes deste mês mas ainda não terminaram (recorrencia_ate),
+    // pra ocorrenciasNoIntervalo() calcular quais datas caem dentro do mês.
+    prisma.eventos.findMany({
+      where: {
+        excluido: false,
+        ativo: true,
+        OR: [
+          { recorrencia: "Nenhuma", data_inicio: { gte: inicioMes, lt: fimMes } },
+          { recorrencia: { not: "Nenhuma" }, data_inicio: { lt: fimMes }, recorrencia_ate: { gte: inicioMes } }
+        ]
+      }
     })
   ]);
 
+  const agora = hojePortoVelho();
+
+  // Cada evento vira uma "atividade" por ocorrência dentro do mês — únicos
+  // dão 1 item, recorrentes podem dar vários (uma por dia/semana/mês em que
+  // caem). "feito" aqui não é uma tarefa marcada como concluída (eventos não
+  // têm isso): é só usado pra pintar em verde uma ocorrência que já passou,
+  // em vez de vermelho "atrasada" (que soaria como algo pendente que falhou).
+  const itensEventos = eventos.flatMap((ev) =>
+    ocorrenciasNoIntervalo(ev.data_inicio, ev.recorrencia, ev.recorrencia_ate, inicioMes, fimMes).map((data) => ({
+      id: `evento-${ev.id}-${data.getTime()}`,
+      tipoLabel: ev.tipo ?? "Evento",
+      titulo: ev.nome,
+      data,
+      feito: data < agora,
+      href: `/eventos/${ev.id}`,
+      contexto: ev.local ?? "Evento"
+    }))
+  );
+
   const atividades = [
+    ...itensEventos,
     ...atividadesManutencao.map((a) => ({
       id: `manutencao-${a.id}`,
       tipoLabel: TIPO_ATIVIDADE_LABEL_MANUTENCAO[a.tipo] ?? a.tipo,
@@ -120,7 +155,7 @@ export default async function ManutencaoCalendarioPage({
       <Topbar />
 
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-        <div className="text-sm font-bold text-gray-800">Atividades · Manutenção, Gestões &amp; Marketing</div>
+        <div className="text-sm font-bold text-gray-800">Atividades · Manutenção, Gestões, Marketing &amp; Eventos</div>
         <AtividadesTabs ativo="/manutencao/calendario" />
       </div>
 

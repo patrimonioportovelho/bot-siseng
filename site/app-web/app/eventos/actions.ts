@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireAdminSession, requireAdm, logAlteracao } from "@/lib/auth";
-import { valorEditavelParaDecimal } from "@/lib/format";
+import { valorEditavelParaDecimal, dataHoraPortoVelho } from "@/lib/format";
 import { registrarEJogarErro } from "@/lib/erros";
 import { gerarProximoIdEvento } from "@/lib/eventos/id-legado";
 import { RECORRENCIA_OPCOES } from "@/lib/eventos/opcoes";
@@ -38,6 +38,18 @@ function booleano(formData: FormData, campo: string): boolean {
   return formData.get(campo) === "on" || formData.get(campo) === "true";
 }
 
+// Campo <input type="datetime-local"> vem como "2026-08-10T14:30", sem fuso
+// — passar isso direto pro `new Date(...)` do servidor (Vercel, em UTC)
+// gravaria 4h adiantado. dataHoraPortoVelho() já resolve isso certo (mesmo
+// bug corrigido antes na Agenda do portal). Sem valor: publica já (agora).
+function publicadoEm(formData: FormData): Date {
+  const t = texto(formData, "publicado_em");
+  if (!t || !t.includes("T")) return new Date();
+  const [dataParte, horaParte] = t.split("T");
+  const d = dataHoraPortoVelho(dataParte, horaParte);
+  return Number.isNaN(d.getTime()) ? new Date() : d;
+}
+
 // Monta os campos editáveis a partir do formulário — usado tanto na criação
 // quanto na edição. Só lê e converte; validação de negócio fica em
 // validarCampos(), separada, porque criar e editar redirecionam pra URLs
@@ -65,7 +77,8 @@ function camposFormulario(formData: FormData) {
     tem_desconto: temDesconto,
     valor_desconto: decimal(formData, "valor_desconto"),
     desconto_prazo: data(formData, "desconto_prazo"),
-    organizador_parceiro_id: texto(formData, "organizador_parceiro_id")
+    organizador_parceiro_id: texto(formData, "organizador_parceiro_id"),
+    publicado_em: publicadoEm(formData)
   };
 }
 
@@ -109,6 +122,7 @@ function dadosParaSalvar(c: ReturnType<typeof camposFormulario>) {
     valor_desconto: c.tem_desconto ? c.valor_desconto : null,
     desconto_prazo: c.tem_desconto ? c.desconto_prazo : null,
     organizador_parceiro_id: c.organizador_parceiro_id,
+    publicado_em: c.publicado_em,
     updated_at: new Date()
   };
 }

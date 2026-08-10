@@ -5,6 +5,9 @@ import { prisma } from "@/lib/prisma";
 import { requirePortalSession } from "@/lib/portal-auth";
 import { PortalHeader } from "@/components/portal-header";
 import { PublicacaoCard } from "@/components/site/publicacao-card";
+import { EventoCard } from "@/components/site/evento-card";
+import { podeVerEvento } from "@/lib/eventos/opcoes";
+import { proximaOcorrencia } from "@/lib/eventos/ocorrencias";
 import { GraficoBarras } from "@/components/grafico-barras";
 import { formatMoeda, situacaoVencimento, hojePortoVelho, STATUS_TRANSACAO_EM_ABERTO } from "@/lib/format";
 import { STATUS_AVALIACAO_ATIVOS, STATUS_AVALIACAO_ENCERRADOS } from "@/lib/financiamento/opcoes";
@@ -101,6 +104,8 @@ export default async function PortalPage() {
     metasAtivas,
     noticias,
     checklists,
+    parceiroFuncao,
+    eventosBrutos,
     clientesQtd,
     imoveisQtd,
     gestoesQtd,
@@ -149,6 +154,14 @@ export default async function PortalPage() {
     prisma.publicacoes_site.findMany({
       where: { ativo: true, portal_corretor: true, tipo: "Checklist" },
       orderBy: { titulo: "asc" }
+    }),
+    prisma.parceiros.findUnique({ where: { id: pid }, select: { funcao: true } }),
+    // Eventos marcados pro portal — visibilidade filtrada em JS logo abaixo
+    // (depende da função do parceiro acima, que roda em paralelo aqui).
+    prisma.eventos.findMany({
+      where: { excluido: false, ativo: true, portal_corretor: true, publicado_em: { lte: new Date() } },
+      orderBy: { data_inicio: "asc" },
+      take: 30
     }),
     prisma.clientes.count({
       where: { parceiro_id: pid, OR: [{ status_cadastro: null }, { status_cadastro: { not: "Arquivado" } }] }
@@ -225,6 +238,15 @@ export default async function PortalPage() {
   // fora do portal — mesmo padrão usado em /login e /noticias/[id].
   const host = (await headers()).get("host");
   const baseUrl = `${host?.includes("localhost") ? "http" : "https"}://${host}`;
+
+  // Só 2 no mini-painel (mesmo limite de Notícias) — o mural completo (com
+  // confirmar/recusar presença) fica em /portal/eventos.
+  const eventos = eventosBrutos
+    .filter((ev) => podeVerEvento(ev.visibilidade, parceiroFuncao?.funcao ?? null))
+    .map((ev) => ({ ev, proxima: proximaOcorrencia(ev.data_inicio, ev.recorrencia, ev.recorrencia_ate, hoje) }))
+    .filter((x): x is { ev: (typeof eventosBrutos)[number]; proxima: Date } => x.proxima !== null)
+    .sort((a, b) => a.proxima.getTime() - b.proxima.getTime())
+    .slice(0, NOTICIAS_LIMITE);
 
   // Avaliações agrupadas pelas mesmas 4 lentes que o usuário pediu pra ver:
   // Consulta de CPF (triagem inicial), Em andamento (o resto dos status
@@ -416,7 +438,7 @@ export default async function PortalPage() {
           </Secao>
         </div>
 
-        <div className="grid md:grid-cols-2 gap-4">
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
           <div className="bg-white border border-gray-200 rounded-xl p-4">
             <div className="flex items-center justify-between gap-2 mb-3">
               <div className="text-sm font-bold text-gray-800">Notícias</div>
@@ -430,6 +452,35 @@ export default async function PortalPage() {
             <div className="flex flex-col gap-3">
               {noticias.map((n) => (
                 <PublicacaoCard key={n.id} publicacao={n} baseUrl={baseUrl} />
+              ))}
+            </div>
+          </div>
+
+          <div className="bg-white border border-gray-200 rounded-xl p-4">
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <div className="text-sm font-bold text-gray-800">Eventos</div>
+              <Link href="/portal/eventos" className="text-[11px] text-primary font-semibold hover:underline">
+                Ver todos →
+              </Link>
+            </div>
+            {eventos.length === 0 && <p className="text-xs text-gray-400">Nenhum evento aberto pra você agora.</p>}
+            <div className="flex flex-col gap-3">
+              {eventos.map(({ ev, proxima }) => (
+                <EventoCard
+                  key={ev.id}
+                  evento={{
+                    id: ev.id,
+                    tipo: ev.tipo,
+                    nome: ev.nome,
+                    local: ev.local,
+                    imagem_url: ev.imagem_url,
+                    dataExibida: proxima,
+                    recorrencia: ev.recorrencia,
+                    horario_inicio: ev.horario_inicio
+                  }}
+                  baseUrl={baseUrl}
+                  publico={ev.visibilidade === "Publico"}
+                />
               ))}
             </div>
           </div>

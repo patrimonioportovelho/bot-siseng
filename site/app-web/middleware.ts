@@ -32,7 +32,12 @@ export async function middleware(req: NextRequest) {
   // Sistema administrativo — tudo fora de /login exige sessão válida.
   // /noticias/[id] também é público: é a página de cada notícia/edital
   // aberta a partir do card em /login (ver app/noticias/[id]/page.tsx).
-  if (pathname === "/login" || pathname.startsWith("/noticias/")) return NextResponse.next();
+  // /evento/[id] (singular — diferente de /eventos, que é a tela
+  // administrativa protegida) é a versão pública de um Evento, mostrada no
+  // mural externo junto com notícias/editais.
+  if (pathname === "/login" || pathname.startsWith("/noticias/") || pathname.startsWith("/evento/")) {
+    return NextResponse.next();
+  }
 
   const token = req.cookies.get(ADMIN_COOKIE)?.value;
   if (!(await sessaoValida(token, secret))) {

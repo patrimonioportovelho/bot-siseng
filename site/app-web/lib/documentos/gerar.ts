@@ -548,7 +548,11 @@ function linhaCondicaoPagamento(c: {
   data_pagamento: Date | null;
 }): string {
   const partes = [
-    `${c.tipo ?? "Parcela"}: R$ ${numero(c.valor)}`,
+    // Pedido do usuário (11/08/2026): valor sempre escrito por extenso
+    // entre parênteses aqui também, igual já era feito em ValorTransacao e
+    // nos honorários — antes só saía o número ("R$ 8.000,00"), sem o "(oito
+    // mil reais)" que o contrato pede em toda cláusula de valor.
+    `${c.tipo ?? "Parcela"}: R$ ${valorComExtenso(Number(c.valor))}`,
     c.parcelas ? `em ${c.parcelas}x` : null,
     c.forma_pagamento ? `forma de pagamento ${c.forma_pagamento}` : null,
     c.momento ? `no momento ${c.momento}` : null,

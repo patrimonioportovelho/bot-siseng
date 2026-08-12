@@ -8,8 +8,6 @@ import { valorEditavelParaDecimal, dataHoraPortoVelho } from "@/lib/format";
 import { registrarEJogarErro } from "@/lib/erros";
 import { gerarProximoIdEvento } from "@/lib/eventos/id-legado";
 import { RECORRENCIA_OPCOES } from "@/lib/eventos/opcoes";
-import { FUNCOES_EQUIPE } from "@/lib/parceiros/opcoes";
-import { enviarEmail } from "@/lib/email";
 import {
   criarUploadAssinadoImagemEvento,
   publicUrlImagemEvento,
@@ -296,70 +294,11 @@ export async function apagarEventoAction(formData: FormData) {
   redirect("/eventos?excluido=1");
 }
 
-// Disparo de e-mail por categoria (Fase 4, pedido do usuário 10/08/2026:
-// "gerador de email, disparo selecionar qual categoria quero enviar
-// (Administrativo, Corretor ou Corretor Estagiario) ou todos"). Mesmo
-// mecanismo (enviarEmail) já usado nas Elaborações do portal (Compra e
-// Venda, Locação, Administração, Avaliação de CPF) — só que aqui quem
-// dispara é o admin, escolhendo a categoria, e o corpo já vem pronto com os
-// dados do evento + lembrete de confirmar presença no painel (Portal).
-const CATEGORIAS_EMAIL_EVENTO = [...FUNCOES_EQUIPE, "Todos"];
-
-export async function enviarEmailEventoAction(formData: FormData) {
-  const admin = await requireAdminSession();
-
-  const id = texto(formData, "eventoId");
-  const categoria = texto(formData, "categoria") ?? "Todos";
-  if (!id) redirect("/eventos");
-  if (!CATEGORIAS_EMAIL_EVENTO.includes(categoria)) {
-    redirect(`/eventos/${id}?erro=${encodeURIComponent("Categoria inválida.")}`);
-  }
-
-  const evento = await prisma.eventos.findUnique({ where: { id } });
-  if (!evento || evento.excluido) redirect("/eventos");
-
-  const funcoes = categoria === "Todos" ? FUNCOES_EQUIPE : [categoria];
-  const destinatarios = await prisma.parceiros.findMany({
-    where: { funcao: { in: funcoes }, status_funcao: "Ativo", email: { not: null } },
-    select: { nome: true, email: true }
-  });
-
-  if (destinatarios.length === 0) {
-    redirect(`/eventos/${id}?erro=${encodeURIComponent("Nenhum parceiro ativo com e-mail cadastrado nessa categoria.")}`);
-  }
-
-  const dataTexto = evento.data_inicio.toLocaleDateString("pt-BR", { timeZone: "UTC" });
-  const horarioTexto = [evento.horario_inicio, evento.horario_fim].filter(Boolean).join(" às ");
-
-  const html = `
-    <div style="font-family: sans-serif; font-size: 14px; color: #1f2937;">
-      <p>Você foi convidado(a) para o evento <strong>${evento.nome}</strong>.</p>
-      <p>
-        <strong>Data:</strong> ${dataTexto}<br/>
-        ${horarioTexto ? `<strong>Horário:</strong> ${horarioTexto}<br/>` : ""}
-        ${evento.local ? `<strong>Local:</strong> ${evento.local}<br/>` : ""}
-      </p>
-      ${evento.descricao ? `<p>${evento.descricao}</p>` : ""}
-      <p style="color:#6b7280; font-size:13px;">Por favor, confirme sua presença no painel — acesse o Portal do Corretor e vá em "Eventos".</p>
-    </div>
-  `;
-
-  // Um envio por destinatário (não um "to" único com todo mundo junto) pra
-  // ninguém ver o e-mail dos colegas no cabeçalho — mesmo raciocínio de
-  // privacidade já aplicado em qualquer disparo em massa.
-  const resultados = await Promise.all(
-    destinatarios.map((p) => enviarEmail({ to: p.email as string, subject: `Convite: ${evento.nome}`, html }))
-  );
-  const enviados = resultados.filter((r) => r.ok).length;
-  const falharam = resultados.length - enviados;
-
-  await logAlteracao({
-    entidadeTipo: "eventos",
-    entidadeId: id,
-    acao: "enviar_email",
-    dadosDepois: { categoria, enviados, falharam, enviado_por: admin.nome }
-  });
-
-  revalidatePath(`/eventos/${id}`);
-  redirect(`/eventos/${id}?emailEnviados=${enviados}&emailFalharam=${falharam}`);
-}
+// Disparo de e-mail por categoria (Fase 4, pedido do usuário 10/08/2026):
+// a Server Action que existia aqui foi substituída em 12/08/2026 por
+// app/eventos/[id]/enviar-email/route.ts. Motivo: aquela mandava todo mundo
+// de uma vez com Promise.all, o que estourava o limite de conexões
+// simultâneas do Gmail e derrubava parte do disparo sem avisar (um disparo
+// real de 31 destinatários só saiu ~12-13) — e um <form>/Server Action não
+// dá pra mostrar progresso em tempo real ("X de Y") igual o usuário pediu.
+// A rota nova manda em lotes pequenos e devolve o progresso em streaming.

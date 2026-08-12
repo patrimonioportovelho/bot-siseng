@@ -23,10 +23,10 @@ export default async function EventoDetalhePage({
   searchParams
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ salvo?: string; erro?: string; emailEnviados?: string; emailFalharam?: string }>;
+  searchParams: Promise<{ salvo?: string; erro?: string }>;
 }) {
   const { id } = await params;
-  const { salvo, erro, emailEnviados, emailFalharam } = await searchParams;
+  const { salvo, erro } = await searchParams;
   const session = await getAdminSession();
 
   const [evento, organizadores] = await Promise.all([
@@ -135,12 +135,6 @@ export default async function EventoDetalhePage({
       )}
       {erro && (
         <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg px-3 py-2 mb-4">{erro}</div>
-      )}
-      {emailEnviados && (
-        <div className="bg-green-50 border border-green-200 text-green-700 text-xs rounded-lg px-3 py-2 mb-4">
-          {emailEnviados} e-mail{emailEnviados !== "1" ? "s" : ""} enviado{emailEnviados !== "1" ? "s" : ""}
-          {emailFalharam && emailFalharam !== "0" ? ` — ${emailFalharam} falharam.` : "."}
-        </div>
       )}
 
       <div className="text-sm font-bold text-gray-800 mb-1">{evento.nome}</div>

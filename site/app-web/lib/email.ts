@@ -41,7 +41,21 @@ function client() {
       // aí sim é capturado e devolvido pro formulário.
       connectionTimeout: 15000,
       greetingTimeout: 15000,
-      socketTimeout: 20000
+      socketTimeout: 20000,
+      // Pool de conexões (12/08/2026): sem isso, cada sendMail() abre uma
+      // conexão SMTP nova — inofensivo pra envio único, mas o disparo em
+      // massa de eventos (app/eventos/[id]/enviar-email/route.ts) manda
+      // vários de uma vez, e o Gmail limita conexões simultâneas por conta
+      // (por volta de 10-15). Foi isso que causou só ~12 de 31 convites
+      // saírem num disparo real: o resto da rajada foi recusado/derrubado
+      // pelo Gmail e caiu no catch como falha. Com pool, o nodemailer
+      // enfileira e reusa no máximo `maxConnections` conexões em vez de
+      // abrir uma pra cada mensagem — mantém o disparo em massa dentro do
+      // limite do Gmail automaticamente, mesmo se algum chamador futuro
+      // também mandar vários enviarEmail() em paralelo.
+      pool: true,
+      maxConnections: 3,
+      maxMessages: 100
     });
   }
   return transporter;

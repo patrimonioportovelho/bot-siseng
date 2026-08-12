@@ -7,17 +7,21 @@ const CAMPO =
   "text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full outline-none focus:border-primary bg-white";
 
 type Progresso = { feito: number; total: number };
-type Resultado = { enviados: number; falharam: number; total: number };
+type Falha = { nome: string; email: string; erro: string };
+type Resultado = { enviados: number; falharam: number; total: number; falhas: Falha[] };
 
 // Disparo de e-mail por categoria (Fase 4, 10/08/2026) — antes era um
 // <form action={Server Action}> nativo, sem JS. Trocado em 12/08/2026 por
-// fetch + streaming (POST /eventos/[id]/enviar-email) por dois motivos que
-// vieram juntos do usuário: (1) o disparo em massa mandava tudo de uma vez
-// e estourava o limite de conexões do Gmail, derrubando parte silenciosamente
-// (ver comentário em lib/email.ts); a rota nova manda em lotes pequenos, o
-// que só dá pra acompanhar em tempo real com JS mesmo; (2) o usuário pediu
-// uma barra de "1 de 22... concluindo" pra saber que está enviando, em vez
-// da tela ficar parada até redirecionar no final.
+// fetch + streaming (POST /eventos/[id]/enviar-email) por dois motivos:
+// (1) um disparo real de 31 destinatários só entregou ~12-13 — a causa
+// (conferida na caixa de saída do Gmail, ver comentário grande na rota) é
+// o filtro antispam de quem recebe rejeitando rajada vinda de conta
+// pessoal, não dá pra evitar 100% mas a rota manda um por vez com pausa
+// pra reduzir; (2) o usuário pediu uma barra de "1 de 22... concluindo"
+// pra saber que está enviando, em vez da tela ficar parada até o fim — e
+// isso só dá pra mostrar em tempo real com JS mesmo, não com um <form>
+// nativo. O resultado final também lista quem falhou, pra dar pra avisar
+// por outro canal (WhatsApp etc.) quem não recebeu o convite por e-mail.
 export function EmailEventoForm({ eventoId }: { eventoId: string }) {
   const [categoria, setCategoria] = useState("Todos");
   const [enviando, setEnviando] = useState(false);
@@ -59,11 +63,16 @@ export function EmailEventoForm({ eventoId }: { eventoId: string }) {
           if (!linha.trim()) continue;
           const evento = JSON.parse(linha) as
             | { tipo: "progresso"; feito: number; total: number }
-            | { tipo: "concluido"; enviados: number; falharam: number; total: number };
+            | { tipo: "concluido"; enviados: number; falharam: number; total: number; falhas: Falha[] };
           if (evento.tipo === "progresso") {
             setProgresso({ feito: evento.feito, total: evento.total });
           } else {
-            setResultado({ enviados: evento.enviados, falharam: evento.falharam, total: evento.total });
+            setResultado({
+              enviados: evento.enviados,
+              falharam: evento.falharam,
+              total: evento.total,
+              falhas: evento.falhas ?? []
+            });
           }
         }
       }
@@ -128,6 +137,20 @@ export function EmailEventoForm({ eventoId }: { eventoId: string }) {
           {resultado.enviados} e-mail{resultado.enviados !== 1 ? "s" : ""} enviado
           {resultado.enviados !== 1 ? "s" : ""} de {resultado.total}
           {resultado.falharam > 0 ? ` — ${resultado.falharam} falharam.` : "."}
+        </div>
+      )}
+      {resultado && resultado.falhas.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 text-amber-800 text-xs rounded-lg px-3 py-2 mt-2">
+          <div className="font-semibold mb-1">
+            Não recebeu o convite por e-mail — vale avisar por outro canal (WhatsApp etc.):
+          </div>
+          <ul className="list-disc list-inside">
+            {resultado.falhas.map((f) => (
+              <li key={f.email}>
+                {f.nome} ({f.email})
+              </li>
+            ))}
+          </ul>
         </div>
       )}
     </div>

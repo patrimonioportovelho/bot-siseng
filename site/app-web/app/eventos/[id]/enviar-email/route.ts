@@ -6,21 +6,40 @@ import { FUNCOES_EQUIPE } from "@/lib/parceiros/opcoes";
 
 const CATEGORIAS_EMAIL_EVENTO = [...FUNCOES_EQUIPE, "Todos"];
 
-// Quantos e-mails em paralelo por vez. O transporter (lib/email.ts) já
-// limita a 3 conexões simultâneas com o Gmail (pool), então manda em lotes
-// desse mesmo tamanho — não adianta preparar mais que isso de uma vez, só
-// ia ficar esperando o pool liberar conexão mesmo.
-const TAMANHO_LOTE = 3;
+// Pausa entre um envio e o próximo (ms). Não é sobre limite de conexão —
+// é pra não ficar em rajada. Ver comentário completo abaixo.
+const PAUSA_ENTRE_ENVIOS_MS = 700;
 
 // POST /eventos/[id]/enviar-email
 // Body: { categoria }
-// Substitui a antiga Server Action enviarEmailEventoAction (12/08/2026) —
-// aquela mandava todo mundo de uma vez com Promise.all, o que estourava o
-// limite de conexões simultâneas do Gmail e derrubava parte do disparo
-// silenciosamente (um disparo real de 31 destinatários só saiu ~12-13).
-// Essa rota manda em lotes pequenos e devolve o progresso em streaming (uma
-// linha JSON por lote concluído) pra tela mostrar "X de Y" em vez de ficar
-// travada sem feedback até o fim.
+// Substitui a antiga Server Action enviarEmailEventoAction. Duas correções
+// aconteceram aqui em 12/08/2026, uma em cima da outra:
+//
+// 1ª tentativa: achei que o problema era limite de conexão SMTP simultânea
+// (a antiga mandava tudo com Promise.all) e troquei por lotes + pool no
+// transporter. ERRADO — conferido depois na caixa de saída do Gmail
+// (patrimonioportovelho@gmail.com): dos 20 convites de um disparo real, os
+// 13 pra e-mail corporativo (@remax.com.br) foram todos entregues, e os 7
+// pra Gmail/Hotmail pessoal voltaram TODOS com bounce do próprio Gmail —
+// "Delivery Status Notification (Failure)", SMTP 5.7.1 "Message rejected".
+//
+// Causa real: é o filtro antispam do Gmail/Hotmail do LADO DE QUEM RECEBE.
+// Uma conta pessoal (@gmail.com) mandando o mesmo texto de convite pra
+// vários destinatários de uma vez tem cara de disparo em massa, e outros
+// provedores de webmail recusam a mensagem na entrada — sem relação
+// nenhuma com quantas conexões SMTP estavam abertas ao mesmo tempo.
+// Domínio corporativo geralmente não aplica esse filtro tão forte, por
+// isso passou 100% pro @remax.com.br.
+//
+// Não tem fix 100% garantido enquanto o remetente for uma conta pessoal do
+// Gmail (a solução definitiva seria migrar pra um serviço de e-mail
+// transacional com domínio próprio verificado — decisão que o usuário
+// preferiu não tomar agora, 12/08/2026). Mitigação aplicada: manda UM POR
+// VEZ (não em paralelo) com uma pausa entre cada envio, pra reduzir a cara
+// de rajada — reduz o risco, não elimina. Continua devolvendo o progresso
+// em streaming (uma linha JSON por envio) pra tela mostrar "X de Y", e o
+// resultado final lista quem falhou pra dar pra avisar por outro canal
+// (WhatsApp etc.) quem não recebeu o convite por e-mail.
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const sessao = await getAdminSession();
   if (!sessao) {
@@ -74,35 +93,42 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const stream = new ReadableStream({
     async start(controller) {
       let enviados = 0;
-      let falharam = 0;
+      const falhas: { nome: string; email: string; erro: string }[] = [];
 
-      // Um envio por destinatário (não um "to" único com todo mundo junto)
-      // pra ninguém ver o e-mail dos colegas no cabeçalho — mesmo raciocínio
-      // de privacidade de antes, só que agora em lotes de TAMANHO_LOTE em
-      // vez de tudo de uma vez.
-      for (let inicio = 0; inicio < destinatarios.length; inicio += TAMANHO_LOTE) {
-        const lote = destinatarios.slice(inicio, inicio + TAMANHO_LOTE);
-        const resultados = await Promise.all(
-          lote.map((p) => enviarEmail({ to: p.email as string, subject: `Convite: ${evento.nome}`, html }))
-        );
-        enviados += resultados.filter((r) => r.ok).length;
-        falharam += resultados.length - resultados.filter((r) => r.ok).length;
+      // Um por vez, com pausa entre cada um — não é sobre conexão (ver
+      // comentário no topo do arquivo), é pra não mandar em rajada.
+      for (let i = 0; i < destinatarios.length; i++) {
+        const p = destinatarios[i];
+        const resultado = await enviarEmail({ to: p.email as string, subject: `Convite: ${evento.nome}`, html });
+        if (resultado.ok) {
+          enviados++;
+        } else {
+          falhas.push({ nome: p.nome, email: p.email as string, erro: resultado.erro });
+        }
 
         controller.enqueue(
           encoder.encode(
-            JSON.stringify({ tipo: "progresso", feito: enviados + falharam, total, enviados, falharam }) + "\n"
+            JSON.stringify({ tipo: "progresso", feito: i + 1, total, enviados, falharam: falhas.length }) + "\n"
           )
         );
+
+        if (i < destinatarios.length - 1) {
+          await new Promise((r) => setTimeout(r, PAUSA_ENTRE_ENVIOS_MS));
+        }
       }
 
       await logAlteracao({
         entidadeTipo: "eventos",
         entidadeId: id,
         acao: "enviar_email",
-        dadosDepois: { categoria, enviados, falharam, enviado_por: sessao.nome }
+        dadosDepois: { categoria, enviados, falharam: falhas.length, falhas, enviado_por: sessao.nome }
       });
 
-      controller.enqueue(encoder.encode(JSON.stringify({ tipo: "concluido", enviados, falharam, total }) + "\n"));
+      controller.enqueue(
+        encoder.encode(
+          JSON.stringify({ tipo: "concluido", enviados, falharam: falhas.length, total, falhas }) + "\n"
+        )
+      );
       controller.close();
     }
   });

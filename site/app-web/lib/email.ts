@@ -17,7 +17,46 @@ import nodemailer from "nodemailer";
 // Resend. O NOME de exibição, esse sim dá pra trocar — é só o texto antes
 // do "<endereço>" no header From, o Gmail não mexe nisso.
 
-let transporter: ReturnType<typeof nodemailer.createTransport> | null = null;
+// Extraído numa função à parte (em vez de chamar nodemailer.createTransport
+// direto dentro de client()) só pra ReturnType<typeof criarTransporter>
+// inferir o mesmo overload usado na chamada de verdade — com `pool: true`
+// nas options, o TypeScript do nodemailer resolve pra um tipo de retorno
+// diferente do createTransport() sem argumentos, e ReturnType<typeof
+// nodemailer.createTransport> (sem chamar a função) pega o overload errado.
+// Bug só apareceu quando o @types/nodemailer passou a resolver de verdade
+// (antes o módulo nem era encontrado no ambiente).
+function criarTransporter(user: string, pass: string) {
+  return nodemailer.createTransport({
+    service: "gmail",
+    auth: { user, pass },
+    // Sem isso, um problema de rede/Gmail (ex.: bloqueio de saída SMTP,
+    // credencial inválida travando no handshake) deixa o envio pendurado
+    // até a função serverless do Vercel estourar o tempo máximo dela —
+    // e a transação/contrato já cadastrado nem chega a responder pro
+    // corretor (a tela fica parada, sem erro nenhum). Com os timeouts
+    // abaixo, um problema de conexão vira um erro em ~20s no máximo, que
+    // aí sim é capturado e devolvido pro formulário.
+    connectionTimeout: 15000,
+    greetingTimeout: 15000,
+    socketTimeout: 20000,
+    // Pool de conexões (12/08/2026): mantém no máximo `maxConnections`
+    // conexões SMTP abertas em vez de uma nova por sendMail(). ATENÇÃO:
+    // isto NÃO foi a causa do disparo de evento que só saiu ~12-13 de 31
+    // — aquilo era limite de conexão simultânea, uma teoria que pareceu
+    // razoável mas se provou errada ao checar a caixa de saída real do
+    // Gmail (ver comentário grande em app/eventos/[id]/enviar-email/
+    // route.ts): a causa de verdade é o filtro antispam do lado de quem
+    // RECEBE (Gmail/Hotmail pessoal recusando mensagem em rajada vinda de
+    // conta pessoal), o que pool nenhum resolve. Deixado mesmo assim como
+    // proteção defensiva de baixo custo — evita abrir conexão demais se
+    // algum chamador futuro mandar vários enviarEmail() em paralelo.
+    pool: true,
+    maxConnections: 3,
+    maxMessages: 100
+  });
+}
+
+let transporter: ReturnType<typeof criarTransporter> | null = null;
 
 function client() {
   const user = process.env.GMAIL_USER;
@@ -29,34 +68,7 @@ function client() {
     throw new Error("GMAIL_APP_PASSWORD não configurado no .env — veja .env.example.");
   }
   if (!transporter) {
-    transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: { user, pass },
-      // Sem isso, um problema de rede/Gmail (ex.: bloqueio de saída SMTP,
-      // credencial inválida travando no handshake) deixa o envio pendurado
-      // até a função serverless do Vercel estourar o tempo máximo dela —
-      // e a transação/contrato já cadastrado nem chega a responder pro
-      // corretor (a tela fica parada, sem erro nenhum). Com os timeouts
-      // abaixo, um problema de conexão vira um erro em ~20s no máximo, que
-      // aí sim é capturado e devolvido pro formulário.
-      connectionTimeout: 15000,
-      greetingTimeout: 15000,
-      socketTimeout: 20000,
-      // Pool de conexões (12/08/2026): mantém no máximo `maxConnections`
-      // conexões SMTP abertas em vez de uma nova por sendMail(). ATENÇÃO:
-      // isto NÃO foi a causa do disparo de evento que só saiu ~12-13 de 31
-      // — aquilo era limite de conexão simultânea, uma teoria que pareceu
-      // razoável mas se provou errada ao checar a caixa de saída real do
-      // Gmail (ver comentário grande em app/eventos/[id]/enviar-email/
-      // route.ts): a causa de verdade é o filtro antispam do lado de quem
-      // RECEBE (Gmail/Hotmail pessoal recusando mensagem em rajada vinda de
-      // conta pessoal), o que pool nenhum resolve. Deixado mesmo assim como
-      // proteção defensiva de baixo custo — evita abrir conexão demais se
-      // algum chamador futuro mandar vários enviarEmail() em paralelo.
-      pool: true,
-      maxConnections: 3,
-      maxMessages: 100
-    });
+    transporter = criarTransporter(user, pass);
   }
   return transporter;
 }

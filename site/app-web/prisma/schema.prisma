@@ -1746,8 +1746,15 @@ model eventos_inscricoes {
   evento_id        String    @db.Uuid
   tipo_formulario  String
   nome             String
-  email            String
-  telefone         String
+  // Fase 6 (12/08/2026): ficaram opcionais — quando quem cadastra é um
+  // parceiro da equipe reconhecido pelo e-mail (ver
+  // verificarConvidadoEmailAction/adicionarConvidadoEquipeAction em
+  // app/evento/[id]/actions.ts) adicionando um convidado que não tem
+  // contato próprio (ex.: filho pequeno), não tem o que preencher aqui.
+  // Continuam preenchidos normalmente no fluxo de convidado externo
+  // (inscreverEventoAction).
+  email            String?
+  telefone         String?
   endereco         String?
   profissao        String?
   especialidade    String?

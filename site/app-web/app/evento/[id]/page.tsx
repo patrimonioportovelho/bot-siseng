@@ -23,18 +23,27 @@ async function baseUrlAtual() {
   return `${host?.includes("localhost") ? "http" : "https"}://${host}`;
 }
 
-// Só evento com visibilidade "Publico", ativo e já dentro da janela de
-// publicação (publicado_em) entra aqui — os outros (fechado administrativo/
-// corretores/interno, ou agendado pro futuro) devolvem 404, mesmo sabendo o
-// id: essa rota é pública (ver middleware.ts), não passa por sessão nenhuma.
+// Evento com visibilidade "Publico" entra aqui sempre; um evento fechado
+// pra equipe (Interno/Fechado administrativo/Fechado corretores) também
+// entra, DESDE QUE tenha inscrição de convidado aberta (formulario_inscricao
+// != null) — Fase 6, 12/08/2026: "preciso que esse tipo de evento tem opção
+// de ser publicado fora... quando ele abrir pra ele preencher". A ideia é
+// separar duas coisas que "visibilidade" fazia junto antes: quem da EQUIPE
+// pode ver/confirmar presença no Portal (isso continua restrito, ver
+// funcoesPermitidas) x se a página de INSCRIÇÃO DE CONVIDADO externo é
+// alcançável — um evento "Interno" (só equipe confirma presença) ainda
+// pode/deve deixar convidado de fora se inscrever e pagar. Sem
+// formulario_inscricao E sem visibilidade Publico, continua 404 — não
+// expõe evento nenhum à toa. Ativo/publicado_em continuam obrigatórios de
+// qualquer forma.
 async function buscarEventoPublico(id: string) {
   return prisma.eventos.findFirst({
     where: {
       id,
       excluido: false,
       ativo: true,
-      visibilidade: "Publico",
-      publicado_em: { lte: new Date() }
+      publicado_em: { lte: new Date() },
+      OR: [{ visibilidade: "Publico" }, { formulario_inscricao: { not: null } }]
     },
     include: { parceiros: true }
   });

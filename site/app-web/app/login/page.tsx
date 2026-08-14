@@ -60,9 +60,23 @@ export default async function LoginPage({
   // ("preciso que esses eventos seja publico na pagina externa junto com
   // noticias, editais"). Só os que ainda vão acontecer (ou ainda estão
   // recorrendo); eventos passados somem sozinhos da home.
+  //
+  // Fase 6 (12/08/2026): também entra aqui evento "fechado" pra equipe
+  // (Interno etc., presença só de Administrativo/Corretor/Corretor
+  // Estagiário) que tenha inscrição de convidado aberta (
+  // formulario_inscricao != null) — mesmo raciocínio de app/evento/[id]/
+  // page.tsx#buscarEventoPublico: quem confirma presença fica restrito à
+  // equipe, mas convidado externo (não-parceiro) precisa achar a página de
+  // inscrição/pagamento por fora, sem precisar de link direto mandado na
+  // mão.
   const agora = new Date();
   const eventosBrutos = await prisma.eventos.findMany({
-    where: { excluido: false, ativo: true, visibilidade: "Publico", publicado_em: { lte: agora } },
+    where: {
+      excluido: false,
+      ativo: true,
+      publicado_em: { lte: agora },
+      OR: [{ visibilidade: "Publico" }, { formulario_inscricao: { not: null } }]
+    },
     orderBy: { data_inicio: "asc" },
     take: 30
   });

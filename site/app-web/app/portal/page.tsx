@@ -479,7 +479,13 @@ export default async function PortalPage() {
                     horario_inicio: ev.horario_inicio
                   }}
                   baseUrl={baseUrl}
-                  publico={ev.visibilidade === "Publico"}
+                  // Fase 6 (12/08/2026): evento fechado pra equipe também tem
+                  // página própria em /evento/[id] quando tem inscrição de
+                  // convidado aberta (ver buscarEventoPublico em
+                  // app/evento/[id]/page.tsx) — sem isso o card mandaria
+                  // pra /portal/eventos e escondia o botão de compartilhar
+                  // à toa, mesmo o link funcionando.
+                  publico={ev.visibilidade === "Publico" || Boolean(ev.formulario_inscricao)}
                 />
               ))}
             </div>

@@ -310,9 +310,14 @@ export default async function EventoDetalhePage({
                       </div>
                     )}
                   </div>
-                  <div>
-                    {i.email} · {i.telefone}
-                  </div>
+                  {(i.email || i.telefone) && (
+                    <div>
+                      {/* Podem ser null (Fase 6, 12/08/2026) — convidado sem
+                          contato próprio, cadastrado por alguém da equipe
+                          (ver convidado_por_id logo abaixo). */}
+                      {[i.email, i.telefone].filter(Boolean).join(" · ")}
+                    </div>
+                  )}
                   {(i.endereco || i.profissao || i.especialidade) && (
                     <div className="text-gray-500">
                       {[i.endereco, i.profissao, i.especialidade].filter(Boolean).join(" · ")}

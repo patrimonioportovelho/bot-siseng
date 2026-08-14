@@ -73,16 +73,6 @@ export default async function PortalEventosPage() {
     .filter((x) => x.proxima !== null)
     .sort((a, b) => a.proxima!.getTime() - b.proxima!.getTime());
 
-  // Texto do resumo do formulário interno, depois de já confirmado — só
-  // monta se tiver algo além do "Presença confirmada" padrão do badge.
-  function detalheFormularioInterno(levaConvidado: boolean | null, quantidadePessoas: number | null, observacoes: string | null): string | null {
-    const partes: string[] = [];
-    if (levaConvidado) partes.push(`Vai levar convidado${quantidadePessoas ? ` (${quantidadePessoas} pessoa${quantidadePessoas > 1 ? "s" : ""})` : ""}.`);
-    else if (levaConvidado === false) partes.push("Não vai levar convidado.");
-    if (observacoes) partes.push(observacoes);
-    return partes.length > 0 ? partes.join(" ") : null;
-  }
-
   return (
     <div className="min-h-screen bg-gray-50">
       <PortalHeader nome={session.nome} />
@@ -129,13 +119,29 @@ export default async function PortalEventosPage() {
 
                 {/* Formulário interno (Fase 3, 10/08/2026): campos extras só
                     quando o evento pede — vão junto com "Confirmar presença"
-                    no mesmo envio (ver responder() em ./actions.ts). */}
-                {ev.formulario_interno && status !== "Confirmado" && (
+                    no mesmo envio (ver responder() em ./actions.ts).
+                    BUG CORRIGIDO 12/08/2026 ("se eu responder depois eu não
+                    consigo abrir pra colocar um convidado"): antes esse bloco
+                    só aparecia com status !== "Confirmado", e o botão de
+                    confirmar ficava disabled depois — ou seja, quem já tinha
+                    confirmado não tinha como voltar aqui e mudar "vai levar
+                    convidado". Agora fica sempre visível (pré-preenchido com
+                    a resposta atual) e o botão vira "Atualizar resposta" em
+                    vez de travar — responder() já faz upsert, então reenviar
+                    só atualiza a mesma linha. */}
+                {ev.formulario_interno && (
                   <div className="bg-gray-50 border border-gray-200 rounded-lg p-2.5 mb-2 flex flex-col gap-1.5">
                     <div className="text-[11px] font-semibold text-gray-600">Vai levar convidado?</div>
                     <div className="flex items-center gap-3 text-xs text-gray-600">
                       <label className="flex items-center gap-1">
-                        <input type="radio" name="leva_convidado" value="sim" form={`form-confirmar-${ev.id}`} /> Sim
+                        <input
+                          type="radio"
+                          name="leva_convidado"
+                          value="sim"
+                          form={`form-confirmar-${ev.id}`}
+                          defaultChecked={levaConvidado === true}
+                        />{" "}
+                        Sim
                       </label>
                       <label className="flex items-center gap-1">
                         <input
@@ -143,7 +149,7 @@ export default async function PortalEventosPage() {
                           name="leva_convidado"
                           value="nao"
                           form={`form-confirmar-${ev.id}`}
-                          defaultChecked
+                          defaultChecked={levaConvidado !== true}
                         />{" "}
                         Não
                       </label>
@@ -152,6 +158,7 @@ export default async function PortalEventosPage() {
                         min={1}
                         placeholder="Quantas pessoas"
                         name="quantidade_pessoas"
+                        defaultValue={quantidadePessoas ?? ""}
                         form={`form-confirmar-${ev.id}`}
                         className="text-xs border border-gray-300 rounded-lg px-2 py-1 w-28 outline-none focus:border-primary bg-white"
                       />
@@ -160,9 +167,38 @@ export default async function PortalEventosPage() {
                       type="text"
                       placeholder="Observações (opcional)"
                       name="observacoes"
+                      defaultValue={observacoes ?? ""}
                       form={`form-confirmar-${ev.id}`}
                       className="text-xs border border-gray-300 rounded-lg px-2 py-1 w-full outline-none focus:border-primary bg-white"
                     />
+                  </div>
+                )}
+
+                {/* Convidados com preço por cabeça (Fase 6, 12/08/2026) — link
+                    fixo pra página pública de inscrição/pagamento, sempre
+                    visível (não depende de já ter confirmado presença).
+                    Substitui o formulário interno de cima quando o evento
+                    também tem isso ativo: aquele só guarda um número, esse
+                    junta nome + idade + Pix por convidado (ver
+                    app/evento/[id]/page.tsx e lib/eventos/pix.ts). */}
+                {ev.formulario_inscricao && (
+                  <div className="bg-primary/5 border border-primary/20 rounded-lg p-2.5 mb-2">
+                    <div className="text-[11px] font-semibold text-gray-700 mb-1">
+                      Convidados
+                      {ev.cobra_convidado && " — cobrança por cabeça, criança não paga"}
+                    </div>
+                    <p className="text-[11px] text-gray-500 mb-1.5">
+                      Adicione quantos convidados quiser a qualquer momento — a lista fica sempre acessível pelo
+                      mesmo link, usando seu e-mail pra te reconhecer.
+                    </p>
+                    <a
+                      href={`/evento/${ev.id}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-xs text-primary font-semibold hover:underline"
+                    >
+                      Adicionar/ver meus convidados →
+                    </a>
                   </div>
                 )}
 
@@ -176,10 +212,9 @@ export default async function PortalEventosPage() {
                     <input type="hidden" name="eventoId" value={ev.id} />
                     <button
                       type="submit"
-                      disabled={status === "Confirmado"}
-                      className="text-xs border border-green-200 text-green-700 rounded-lg px-2 py-1 disabled:opacity-50"
+                      className="text-xs border border-green-200 text-green-700 rounded-lg px-2 py-1"
                     >
-                      Confirmar presença
+                      {status === "Confirmado" ? "Atualizar resposta" : "Confirmar presença"}
                     </button>
                   </form>
                   <form action={recusarPresencaEventoAction}>
@@ -193,13 +228,6 @@ export default async function PortalEventosPage() {
                     </button>
                   </form>
                 </div>
-                {ev.formulario_interno &&
-                  status === "Confirmado" &&
-                  detalheFormularioInterno(levaConvidado, quantidadePessoas, observacoes) && (
-                    <p className="text-[11px] text-gray-400 mt-1">
-                      {detalheFormularioInterno(levaConvidado, quantidadePessoas, observacoes)}
-                    </p>
-                  )}
               </div>
             </div>
           ))}

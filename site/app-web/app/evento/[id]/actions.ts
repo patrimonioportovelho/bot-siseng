@@ -1,6 +1,9 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
+import { convidadoPaga, valorDevidoConvidado } from "@/lib/eventos/opcoes";
+
+const FUNCOES_EQUIPE_ELEGIVEIS = ["Administrativo", "Corretor", "Corretor Estagiário"];
 
 function texto(formData: FormData, campo: string): string | null {
   const v = formData.get(campo);
@@ -9,26 +12,34 @@ function texto(formData: FormData, campo: string): string | null {
   return t.length > 0 ? t : null;
 }
 
-export type InscricaoResultado = { ok: true } | { ok: false; erro: string };
-
-// Inscrição pública de convidado externo (Formulário Básico/Completo, Fase 3
-// do módulo Eventos — pedido do usuário 10/08/2026). Rota pública (ver
-// app/evento/[id]/page.tsx — só existe pra evento visibilidade "Publico"),
-// sem sessão nenhuma — por isso revalida tudo de novo aqui em vez de confiar
-// no que a página já filtrou (alguém pode montar o POST à mão).
-export async function inscreverEventoAction(formData: FormData): Promise<InscricaoResultado> {
-  const eventoId = texto(formData, "eventoId");
-  if (!eventoId) return { ok: false, erro: "Evento inválido." };
-
-  const evento = await prisma.eventos.findFirst({
+// Mesma condição de alcançabilidade usada em app/evento/[id]/page.tsx e
+// app/login/page.tsx — repetida aqui (não importada de lá, que é Server
+// Component) porque toda Server Action pública precisa revalidar do zero,
+// nunca confiar no que a página já filtrou (ver comentário abaixo).
+async function buscarEventoInscricaoAberta(eventoId: string) {
+  return prisma.eventos.findFirst({
     where: {
       id: eventoId,
       excluido: false,
       ativo: true,
-      visibilidade: "Publico",
-      publicado_em: { lte: new Date() }
+      publicado_em: { lte: new Date() },
+      OR: [{ visibilidade: "Publico" }, { formulario_inscricao: { not: null } }]
     }
   });
+}
+
+export type InscricaoResultado = { ok: true } | { ok: false; erro: string };
+
+// Inscrição pública de convidado externo (Formulário Básico/Completo, Fase 3
+// do módulo Eventos — pedido do usuário 10/08/2026). Rota pública (ver
+// app/evento/[id]/page.tsx), sem sessão nenhuma — por isso revalida tudo de
+// novo aqui em vez de confiar no que a página já filtrou (alguém pode montar
+// o POST à mão).
+export async function inscreverEventoAction(formData: FormData): Promise<InscricaoResultado> {
+  const eventoId = texto(formData, "eventoId");
+  if (!eventoId) return { ok: false, erro: "Evento inválido." };
+
+  const evento = await buscarEventoInscricaoAberta(eventoId);
   if (!evento || !evento.formulario_inscricao) {
     return { ok: false, erro: "Este evento não está com inscrições abertas." };
   }
@@ -65,11 +76,7 @@ export async function inscreverEventoAction(formData: FormData): Promise<Inscric
   // elegível — evita gravar um id forjado no POST direto.
   if (convidadoPorId) {
     const parceiro = await prisma.parceiros.findFirst({
-      where: {
-        id: convidadoPorId,
-        status_funcao: "Ativo",
-        funcao: { in: ["Administrativo", "Corretor", "Corretor Estagiário"] }
-      },
+      where: { id: convidadoPorId, status_funcao: "Ativo", funcao: { in: FUNCOES_EQUIPE_ELEGIVEIS } },
       select: { id: true }
     });
     if (!parceiro) return { ok: false, erro: "Selecione quem te convidou numa lista válida." };
@@ -86,6 +93,125 @@ export async function inscreverEventoAction(formData: FormData): Promise<Inscric
       profissao,
       especialidade,
       convidado_por_id: convidadoPorId,
+      idade
+    }
+  });
+
+  return { ok: true };
+}
+
+type ConvidadoResumo = { id: string; nome: string; idade: number | null; paga: boolean; pago: boolean; devido: number };
+
+export type VerificacaoConvidado =
+  | { tipo: "equipe"; parceiroId: string; nome: string; convidados: ConvidadoResumo[] }
+  | { tipo: "externo_existente"; inscricao: ConvidadoResumo }
+  | { tipo: "externo_novo" }
+  | { tipo: "erro"; erro: string };
+
+// "Passo 1" do formulário público (Fase 6, 12/08/2026 — pedido do usuário
+// depois de reportar que tava "muito superficial"): antes de mostrar
+// qualquer campo, pede só o e-mail e decide o que mostrar:
+//
+// 1) E-mail bate com parceiro ATIVO da equipe (Administrativo/Corretor/
+//    Corretor Estagiário) → devolve a lista de convidados que essa pessoa
+//    já cadastrou nesse evento (ver eventos_inscricoes.convidado_por_id) +
+//    sinal pro formulário virar "adicionar mais um", sem precisar escolher
+//    "quem te convidou" (já se sabe quem é) nem repetir nome/e-mail/
+//    telefone dela mesma a cada convidado novo. Reaberto quantas vezes
+//    quiser, sempre com a lista atualizada — não é login de verdade (sem
+//    senha), mas o e-mail é a mesma info que já era exposta sem nenhuma
+//    verificação no dropdown "quem te convidou" do formulário de convidado
+//    externo, então não é uma exposição nova.
+// 2) E-mail não bate com a equipe, mas já existe uma inscrição de convidado
+//    externo com esse e-mail nesse evento → devolve o status dela (grátis/
+//    paga/pago) em vez de deixar a pessoa se cadastrar de novo duplicado.
+// 3) E-mail novo → segue pro formulário normal de convidado externo
+//    (inscreverEventoAction).
+export async function verificarConvidadoEmailAction(formData: FormData): Promise<VerificacaoConvidado> {
+  const eventoId = texto(formData, "eventoId");
+  const email = texto(formData, "email");
+  if (!eventoId || !email) return { tipo: "erro", erro: "Informe seu e-mail." };
+
+  const evento = await buscarEventoInscricaoAberta(eventoId);
+  if (!evento || !evento.formulario_inscricao) {
+    return { tipo: "erro", erro: "Este evento não está com inscrições abertas." };
+  }
+
+  const valorConvidadoNumero = evento.valor_convidado ? Number(evento.valor_convidado) : null;
+  const resumo = (c: { id: string; nome: string; idade: number | null; pago: boolean }): ConvidadoResumo => ({
+    id: c.id,
+    nome: c.nome,
+    idade: c.idade,
+    paga: convidadoPaga(c.idade, evento.convidado_idade_gratis_ate),
+    pago: c.pago,
+    devido: valorDevidoConvidado(c.idade, evento.convidado_idade_gratis_ate, valorConvidadoNumero)
+  });
+
+  const parceiro = await prisma.parceiros.findFirst({
+    where: { email: { equals: email, mode: "insensitive" }, status_funcao: "Ativo", funcao: { in: FUNCOES_EQUIPE_ELEGIVEIS } },
+    select: { id: true, nome: true }
+  });
+  if (parceiro) {
+    const convidados = await prisma.eventos_inscricoes.findMany({
+      where: { evento_id: eventoId, convidado_por_id: parceiro.id },
+      orderBy: { created_at: "desc" }
+    });
+    return { tipo: "equipe", parceiroId: parceiro.id, nome: parceiro.nome, convidados: convidados.map(resumo) };
+  }
+
+  const existente = await prisma.eventos_inscricoes.findFirst({
+    where: { evento_id: eventoId, email: { equals: email, mode: "insensitive" } },
+    orderBy: { created_at: "desc" }
+  });
+  if (existente) {
+    return { tipo: "externo_existente", inscricao: resumo(existente) };
+  }
+
+  return { tipo: "externo_novo" };
+}
+
+// Adiciona um convidado direto pra quem já foi reconhecido como equipe no
+// passo 1 (verificarConvidadoEmailAction) — sem precisar dos campos de
+// contato (o convidado pode ser alguém sem e-mail/telefone próprio, tipo
+// filho pequeno) nem do dropdown "quem convidou" (já se sabe quem é).
+export async function adicionarConvidadoEquipeAction(formData: FormData): Promise<InscricaoResultado> {
+  const eventoId = texto(formData, "eventoId");
+  const parceiroId = texto(formData, "parceiroId");
+  const email = texto(formData, "email");
+  const nome = texto(formData, "nome");
+  if (!eventoId || !parceiroId || !email) return { ok: false, erro: "Sessão inválida — recarregue a página." };
+  if (!nome) return { ok: false, erro: "Informe o nome do convidado." };
+
+  const evento = await buscarEventoInscricaoAberta(eventoId);
+  if (!evento || !evento.formulario_inscricao) {
+    return { ok: false, erro: "Este evento não está com inscrições abertas." };
+  }
+
+  // Revalida de novo que quem tá adicionando é mesmo essa pessoa da equipe
+  // — é POST público sem sessão, então confia só no que reconfere aqui
+  // (parceiroId sozinho seria fácil de forjar; com o e-mail junto, dá pra
+  // confirmar que os dois batem com um parceiro ativo de verdade).
+  const parceiro = await prisma.parceiros.findFirst({
+    where: { id: parceiroId, email: { equals: email, mode: "insensitive" }, status_funcao: "Ativo", funcao: { in: FUNCOES_EQUIPE_ELEGIVEIS } }
+  });
+  if (!parceiro) return { ok: false, erro: "Não foi possível confirmar seu e-mail. Recarregue a página e tente de novo." };
+
+  let idade: number | null = null;
+  if (evento.cobra_convidado) {
+    const idadeTexto = texto(formData, "idade");
+    const idadeNumero = idadeTexto ? Number(idadeTexto) : NaN;
+    if (!Number.isInteger(idadeNumero) || idadeNumero < 0 || idadeNumero > 120) {
+      return { ok: false, erro: "Informe a idade do convidado (é como decidimos se paga ou não)." };
+    }
+    idade = idadeNumero;
+  }
+
+  await prisma.eventos_inscricoes.create({
+    data: {
+      evento_id: eventoId,
+      tipo_formulario: evento.formulario_inscricao,
+      nome,
+      convidado_por_id: parceiro.id,
       idade
     }
   });

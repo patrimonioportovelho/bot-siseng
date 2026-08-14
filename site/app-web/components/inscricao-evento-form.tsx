@@ -32,7 +32,9 @@ const STATUS_PRESENCA_COR: Record<string, string> = {
 };
 
 type ConvidadoResumo = { id: string; nome: string; idade: number | null; paga: boolean; pago: boolean; devido: number };
-type PresencaResumo = { status: "Pendente" | "Confirmado" | "Recusado" };
+// Fase 7, 14/08/2026 — ganhou isento/devido/pago (pagamento do evento em
+// si, não do convidado, ver app/evento/[id]/actions.ts).
+type PresencaResumo = { status: "Pendente" | "Confirmado" | "Recusado"; isento: boolean; devido: number; pago: boolean };
 type EquipeInfo = { parceiroId: string; nome: string; convidados: ConvidadoResumo[]; presenca: PresencaResumo | null };
 
 function formatMoeda(v: number) {
@@ -382,6 +384,29 @@ function EtapaEquipe({
             <div className="w-full bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg px-3 py-2">
               {erroPresenca}
             </div>
+          )}
+        </div>
+      )}
+
+      {/* Pix do evento pago (Fase 7, 14/08/2026) — só depois de confirmado,
+          só quem não é isento (por função ou exceção pontual, ver
+          confirmacaoIsenta em app/evento/[id]/actions.ts). Mesmo mecanismo
+          do convidado: Pix estático, admin marca "pago" por fora na tela do
+          evento. */}
+      {info.presenca && info.presenca.status === "Confirmado" && !info.presenca.isento && (
+        <div className="border-b border-gray-100 pb-3">
+          <div className="text-[11px] font-semibold text-gray-700 mb-1.5 flex items-center justify-between gap-2">
+            <span>Pagamento deste evento</span>
+            <span
+              className={`text-[10px] font-semibold uppercase rounded-full px-2 py-0.5 border ${
+                info.presenca.pago ? "bg-green-50 text-green-700 border-green-200" : "bg-red-50 text-red-600 border-red-200"
+              }`}
+            >
+              {info.presenca.pago ? "Pago" : `Deve ${formatMoeda(info.presenca.devido)}`}
+            </span>
+          </div>
+          {!info.presenca.pago && info.presenca.devido > 0 && (
+            <PixQrcode valor={info.presenca.devido} codigo={gerarPixCopiaECola({ valor: info.presenca.devido, descricao: "Convite" })} />
           )}
         </div>
       )}

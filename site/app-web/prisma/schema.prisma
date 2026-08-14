@@ -1614,9 +1614,14 @@ model solicitacoes_agenda {
 // ocorrência; pra um evento recorrente, as ocorrências seguintes são
 // calculadas em memória a partir de recorrencia/recorrencia_ate (não ficam
 // materializadas em linhas próprias) — ver lib/eventos/ocorrencias.ts.
-// `pago`/`valor`/`tem_desconto`/`valor_desconto`/`desconto_prazo` são só
-// campos informativos por enquanto — cobrança de verdade (Mercado Pago)
-// fica pra depois, o usuário foi explícito sobre isso.
+// `pago`/`valor`/`tem_desconto`/`valor_desconto`/`desconto_prazo` — Fase 7,
+// 14/08/2026: deixaram de ser só informativos. Usuário pediu pra
+// "consolidar o pagamento dessa forma: sempre que algum evento criado e
+// tiver pagamento, chamar essa geração de pix por enquanto e controle de
+// pagamento manual" — ou seja, mesmo mecanismo do convidado (Pix estático
+// via lib/eventos/pix.ts + eventos_confirmacoes.pago marcado à mão),
+// aplicado também à equipe que confirma presença num evento pago. Ver
+// pago_funcoes_isentas logo abaixo pra isenção por função.
 model eventos {
   id                      String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   id_legado               String?                @unique
@@ -1662,6 +1667,17 @@ model eventos {
   cobra_convidado            Boolean               @default(false)
   valor_convidado            Decimal?              @db.Decimal(10, 2)
   convidado_idade_gratis_ate Int?                  @default(14)
+  // Isenção de pagamento por função (Fase 7, 14/08/2026 — usuário perguntou
+  // "na hora do pagamento, pode ter isentar? aí ter administrativo,
+  // corretor, corretor estagiario" ao consolidar que evento.pago passa a
+  // usar o mesmo Pix estático + controle manual do convidado, não mais só
+  // informativo). Lista de funções que NÃO pagam esse evento (as demais
+  // funções elegíveis pagam) — mesmo espírito de convidado_idade_gratis_ate,
+  // só que por função em vez de idade. Pode ser sobrescrito por pessoa
+  // específica em eventos_confirmacoes.pago_isento (pedido: "os dois
+  // juntos" — regra geral por função + exceção pontual por pessoa). Só faz
+  // sentido quando pago = true.
+  pago_funcoes_isentas       String[]              @default([])
   organizador_parceiro_id String?                @db.Uuid
   excluido                Boolean                @default(false)
   // Fase 3 (pedido do usuário, 10/08/2026): "Formulário básico"/"Formulário
@@ -1712,6 +1728,15 @@ model eventos_confirmacoes {
   leva_convidado      Boolean?
   quantidade_pessoas  Int?
   observacoes         String?
+  // Controle de pagamento do evento pago (Fase 7, 14/08/2026) — mesmo
+  // espírito "só controle manual" de eventos_inscricoes.pago (Pix estático
+  // + admin marca por fora, sem gateway ainda). pago_isento é o override
+  // POR PESSOA da regra geral em eventos.pago_funcoes_isentas: null segue a
+  // regra da função dela; true força isento mesmo se a função normalmente
+  // paga; false força pagar mesmo se a função é isenta. Ver
+  // lib/eventos/opcoes.ts#confirmacaoIsenta.
+  pago                Boolean   @default(false)
+  pago_isento         Boolean?
   // Fase 5 (pedido do usuário, 10/08/2026: "quando um evento se repete, a
   // confirmação vai aparecer pra todos [de novo, a cada ocorrência], né?").
   // Antes disso a confirmação era UMA por (evento, parceiro) pra sempre —

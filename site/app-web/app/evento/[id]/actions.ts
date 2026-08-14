@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { convidadoPaga, valorDevidoConvidado, podeVerEvento } from "@/lib/eventos/opcoes";
+import { convidadoPaga, valorDevidoConvidado, podeVerEvento, valorEventoAgora, confirmacaoIsenta } from "@/lib/eventos/opcoes";
 import { proximaOcorrencia } from "@/lib/eventos/ocorrencias";
 
 const FUNCOES_EQUIPE_ELEGIVEIS = ["Administrativo", "Corretor", "Corretor Estagiário"];
@@ -114,7 +114,11 @@ type ConvidadoResumo = { id: string; nome: string; idade: number | null; paga: b
 // por aqui, no mesmo link público onde já gerenciam convidados. null quando
 // não há o que confirmar (evento sem ocorrência futura, ou visibilidade não
 // permite a função dele — mesma regra do Portal, ver podeVerEvento).
-type PresencaResumo = { status: "Pendente" | "Confirmado" | "Recusado" };
+// Fase 7, 14/08/2026: ganhou isento/devido/pago — mesmo espírito do
+// pagamento do convidado, aplicado agora também à equipe (evento.pago),
+// com isenção por função + override por pessoa (ver
+// lib/eventos/opcoes.ts#confirmacaoIsenta).
+type PresencaResumo = { status: "Pendente" | "Confirmado" | "Recusado"; isento: boolean; devido: number; pago: boolean };
 
 export type VerificacaoConvidado =
   | { tipo: "equipe"; parceiroId: string; nome: string; convidados: ConvidadoResumo[]; presenca: PresencaResumo | null }
@@ -186,9 +190,22 @@ export async function verificarConvidadoEmailAction(formData: FormData): Promise
               ocorrencia_data: ocorrencia
             }
           },
-          select: { status: true }
+          select: { status: true, pago: true, pago_isento: true }
         });
-        presenca = { status: (confirmacao?.status as PresencaResumo["status"] | undefined) ?? "Pendente" };
+        const isento = confirmacaoIsenta(parceiro.funcao, evento.pago_funcoes_isentas, confirmacao?.pago_isento ?? null);
+        const valorAgora = valorEventoAgora(
+          evento.valor ? Number(evento.valor) : null,
+          evento.tem_desconto,
+          evento.valor_desconto ? Number(evento.valor_desconto) : null,
+          evento.desconto_prazo,
+          new Date()
+        );
+        presenca = {
+          status: (confirmacao?.status as PresencaResumo["status"] | undefined) ?? "Pendente",
+          isento: !evento.pago || isento,
+          devido: evento.pago && !isento && valorAgora ? valorAgora : 0,
+          pago: confirmacao?.pago ?? false
+        };
       }
     }
 

@@ -8,11 +8,18 @@ import { AtaForm } from "@/components/ata-form";
 import { EmailEventoForm } from "@/components/email-evento-form";
 import { listarParceirosAdministrativos } from "@/lib/parceiros/administrativos";
 import { FUNCOES_EQUIPE } from "@/lib/parceiros/opcoes";
-import { funcoesPermitidas, convidadoPaga, valorDevidoConvidado } from "@/lib/eventos/opcoes";
+import { funcoesPermitidas, convidadoPaga, valorDevidoConvidado, valorEventoAgora, confirmacaoIsenta } from "@/lib/eventos/opcoes";
 import { proximaOcorrencia } from "@/lib/eventos/ocorrencias";
 import { gerarPixCopiaECola } from "@/lib/eventos/pix";
 import { PixAdminToggle } from "@/components/pix-admin-toggle";
-import { atualizarEventoAction, apagarEventoAction, alternarPagoInscricaoAction, apagarInscricaoAction } from "../actions";
+import {
+  atualizarEventoAction,
+  apagarEventoAction,
+  alternarPagoInscricaoAction,
+  apagarInscricaoAction,
+  alternarPagoConfirmacaoAction,
+  alternarIsencaoConfirmacaoAction
+} from "../actions";
 
 function formatDataCurta(d: Date) {
   return new Date(d).toLocaleDateString("pt-BR", { timeZone: "UTC", day: "2-digit", month: "2-digit", year: "numeric" });
@@ -62,8 +69,11 @@ export default async function EventoDetalhePage({
     respondido_em: Date | null;
     parceiro_id: string;
     nome: string;
+    funcao: string;
     leva_convidado: boolean | null;
     quantidade_pessoas: number | null;
+    pago: boolean;
+    pago_isento: boolean | null;
   }[] = [];
   let pendentes: { id: string; nome: string }[] = [];
   if (evento.portal_corretor) {
@@ -78,7 +88,9 @@ export default async function EventoDetalhePage({
           parceiro_id: true,
           leva_convidado: true,
           quantidade_pessoas: true,
-          parceiros: { select: { nome: true } }
+          pago: true,
+          pago_isento: true,
+          parceiros: { select: { nome: true, funcao: true } }
         },
         orderBy: { respondido_em: "desc" }
       }),
@@ -94,14 +106,30 @@ export default async function EventoDetalhePage({
       respondido_em: c.respondido_em,
       parceiro_id: c.parceiro_id,
       nome: c.parceiros.nome,
+      funcao: c.parceiros.funcao,
       leva_convidado: c.leva_convidado,
-      quantidade_pessoas: c.quantidade_pessoas
+      quantidade_pessoas: c.quantidade_pessoas,
+      pago: c.pago,
+      pago_isento: c.pago_isento
     }));
     const responderamIds = new Set(confirmacoesEvento.map((c) => c.parceiro_id));
     pendentes = elegiveis.filter((p) => !responderamIds.has(p.id));
   }
   const confirmados = confirmacoes.filter((c) => c.status === "Confirmado");
   const recusados = confirmacoes.filter((c) => c.status === "Recusado");
+
+  // Pagamento do evento pago pra quem confirmou (Fase 7, 14/08/2026) — só
+  // faz diferença quando evento.pago = true (senão devido fica sempre 0).
+  // valorEventoNumero já considera o desconto por antecedência (ver
+  // lib/eventos/opcoes.ts#valorEventoAgora — antes disso o desconto era só
+  // texto solto na página pública, nunca calculado de verdade).
+  const valorEventoNumero = valorEventoAgora(
+    evento.valor ? Number(evento.valor) : null,
+    evento.tem_desconto,
+    evento.valor_desconto ? Number(evento.valor_desconto) : null,
+    evento.desconto_prazo,
+    new Date()
+  );
 
   // Inscrições do Formulário Básico/Completo (Fase 3, 10/08/2026) — só
   // busca quando o evento chegou a ter o formulário ativo em algum momento
@@ -155,10 +183,15 @@ export default async function EventoDetalhePage({
   // resumoPorConvite. Sem formulario_inscricao (evento só com o formulário
   // interno de sempre), continua usando leva_convidado/quantidade_pessoas
   // normalmente — não muda nada pra quem nunca usou o sistema novo.
-  const confirmacoesComConvidados = confirmacoes.map((c) => ({
-    ...c,
-    quantidadeConvidadosReal: evento.formulario_inscricao ? (resumoPorConvite.get(c.parceiro_id)?.total ?? 0) : null
-  }));
+  const confirmacoesComConvidados = confirmacoes.map((c) => {
+    const isento = confirmacaoIsenta(c.funcao, evento.pago_funcoes_isentas, c.pago_isento);
+    return {
+      ...c,
+      quantidadeConvidadosReal: evento.formulario_inscricao ? (resumoPorConvite.get(c.parceiro_id)?.total ?? 0) : null,
+      isento,
+      devido: !isento && valorEventoNumero ? valorEventoNumero : 0
+    };
+  });
 
   return (
     <div>
@@ -221,33 +254,110 @@ export default async function EventoDetalhePage({
               <div className="text-[11px] text-gray-500">Não responderam</div>
             </div>
           </div>
-          {confirmacoesComConvidados.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
-              {confirmacoesComConvidados.map((c) => (
-                <span
-                  key={c.id}
-                  className={`text-[11px] rounded-full px-2 py-0.5 border ${
-                    c.status === "Confirmado"
-                      ? "bg-green-50 text-green-700 border-green-200"
-                      : "bg-red-50 text-red-600 border-red-200"
-                  }`}
-                >
-                  {c.nome}
-                  {c.status === "Confirmado" &&
-                    (evento.formulario_inscricao
-                      ? c.quantidadeConvidadosReal !== null &&
-                        c.quantidadeConvidadosReal > 0 && (
-                          <>
+          {/* Pagamento do evento (Fase 7, 14/08/2026: "vamos consolidar o
+              pagamento dessa forma... chamar essa geração de pix por
+              enquanto e controle de pagamento manual") — quando o evento
+              cobra, cada confirmado ganha uma linha detalhada (Pix + Marcar
+              pago + Isentar/Cobrar) igual ao que já existe pra convidado.
+              Sem cobrança, mantém as pastilhas simples de sempre. */}
+          {evento.pago ? (
+            <div className="flex flex-col gap-2">
+              {confirmacoesComConvidados
+                .filter((c) => c.status === "Confirmado")
+                .map((c) => (
+                  <div key={c.id} className="border border-gray-100 rounded-lg p-2.5 text-xs text-gray-600">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div className="font-semibold text-gray-800">
+                        {c.nome}
+                        <span className="text-gray-400 font-normal"> · {c.funcao}</span>
+                        {evento.formulario_inscricao && c.quantidadeConvidadosReal !== null && c.quantidadeConvidadosReal > 0 && (
+                          <span className="text-gray-400 font-normal">
                             {" "}
                             · +{c.quantidadeConvidadosReal} convidado{c.quantidadeConvidadosReal > 1 ? "s" : ""}
-                          </>
-                        )
-                      : c.leva_convidado && (
-                          <> · +{c.quantidade_pessoas ?? "?"} convidado{(c.quantidade_pessoas ?? 0) > 1 ? "s" : ""}</>
-                        ))}
-                </span>
-              ))}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span
+                          className={`text-[10px] font-semibold uppercase rounded-full px-2 py-0.5 border ${
+                            c.isento
+                              ? "bg-gray-50 text-gray-500 border-gray-200"
+                              : c.pago
+                                ? "bg-green-50 text-green-700 border-green-200"
+                                : "bg-red-50 text-red-600 border-red-200"
+                          }`}
+                        >
+                          {c.isento ? "Isento" : c.pago ? "Pago" : `Deve ${formatMoeda(c.devido)}`}
+                        </span>
+                        {!c.isento && (
+                          <form action={alternarPagoConfirmacaoAction}>
+                            <input type="hidden" name="confirmacaoId" value={c.id} />
+                            <button type="submit" className="text-[10px] text-primary font-semibold hover:underline">
+                              {c.pago ? "Desmarcar" : "Marcar pago"}
+                            </button>
+                          </form>
+                        )}
+                        <form action={alternarIsencaoConfirmacaoAction}>
+                          <input type="hidden" name="confirmacaoId" value={c.id} />
+                          <button type="submit" className="text-[10px] text-gray-400 font-semibold hover:underline">
+                            {c.pago_isento === null
+                              ? c.isento
+                                ? "Cobrar mesmo assim"
+                                : "Isentar"
+                              : "Voltar à regra da função"}
+                          </button>
+                        </form>
+                      </div>
+                    </div>
+                    {!c.isento && !c.pago && c.devido > 0 && (
+                      <div className="mt-1.5">
+                        <PixAdminToggle
+                          valor={c.devido}
+                          codigo={gerarPixCopiaECola({ valor: c.devido, descricao: "Convite" })}
+                        />
+                      </div>
+                    )}
+                  </div>
+                ))}
+              {recusados.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mt-1">
+                  {recusados.map((c) => (
+                    <span key={c.id} className="text-[11px] rounded-full px-2 py-0.5 border bg-red-50 text-red-600 border-red-200">
+                      {c.nome}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
+          ) : (
+            confirmacoesComConvidados.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {confirmacoesComConvidados.map((c) => (
+                  <span
+                    key={c.id}
+                    className={`text-[11px] rounded-full px-2 py-0.5 border ${
+                      c.status === "Confirmado"
+                        ? "bg-green-50 text-green-700 border-green-200"
+                        : "bg-red-50 text-red-600 border-red-200"
+                    }`}
+                  >
+                    {c.nome}
+                    {c.status === "Confirmado" &&
+                      (evento.formulario_inscricao
+                        ? c.quantidadeConvidadosReal !== null &&
+                          c.quantidadeConvidadosReal > 0 && (
+                            <>
+                              {" "}
+                              · +{c.quantidadeConvidadosReal} convidado{c.quantidadeConvidadosReal > 1 ? "s" : ""}
+                            </>
+                          )
+                        : c.leva_convidado && (
+                            <> · +{c.quantidade_pessoas ?? "?"} convidado{(c.quantidade_pessoas ?? 0) > 1 ? "s" : ""}</>
+                          ))}
+                  </span>
+                ))}
+              </div>
+            )
           )}
         </div>
       )}

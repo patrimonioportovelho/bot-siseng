@@ -1,8 +1,10 @@
 import { PortalHeader } from "@/components/portal-header";
 import { prisma } from "@/lib/prisma";
 import { requirePortalSession } from "@/lib/portal-auth";
-import { podeVerEvento, recorrenciaLabel } from "@/lib/eventos/opcoes";
+import { podeVerEvento, recorrenciaLabel, valorEventoAgora, confirmacaoIsenta } from "@/lib/eventos/opcoes";
 import { proximaOcorrencia } from "@/lib/eventos/ocorrencias";
+import { gerarPixCopiaECola } from "@/lib/eventos/pix";
+import { PixQrcode } from "@/components/pix-qrcode";
 import { confirmarPresencaEventoAction, recusarPresencaEventoAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -21,6 +23,10 @@ const STATUS_COR: Record<string, string> = {
 
 function formatData(data: Date) {
   return new Date(data).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric", timeZone: "America/Porto_Velho" });
+}
+
+function formatMoeda(v: number) {
+  return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
 // Compara só a data (ignora hora) — usado pra achar, entre as confirmações
@@ -61,13 +67,29 @@ export default async function PortalEventosPage() {
       const confirmacao = proxima
         ? ev.eventos_confirmacoes.find((c) => c.ocorrencia_data && mesmaData(c.ocorrencia_data, proxima))
         : undefined;
+
+      // Pagamento do evento (Fase 7, 14/08/2026) — só importa quando
+      // ev.pago = true; valorEventoAgora já considera o desconto por
+      // antecedência (ver lib/eventos/opcoes.ts).
+      const valorAgora = valorEventoAgora(
+        ev.valor ? Number(ev.valor) : null,
+        ev.tem_desconto,
+        ev.valor_desconto ? Number(ev.valor_desconto) : null,
+        ev.desconto_prazo,
+        agora
+      );
+      const isento = confirmacaoIsenta(parceiro?.funcao ?? null, ev.pago_funcoes_isentas, confirmacao?.pago_isento ?? null);
+
       return {
         ev,
         proxima,
         status: confirmacao?.status ?? "Pendente",
         levaConvidado: confirmacao?.leva_convidado ?? null,
         quantidadePessoas: confirmacao?.quantidade_pessoas ?? null,
-        observacoes: confirmacao?.observacoes ?? null
+        observacoes: confirmacao?.observacoes ?? null,
+        pagoOk: confirmacao?.pago ?? false,
+        isento,
+        devido: !isento && valorAgora ? valorAgora : 0
       };
     })
     .filter((x) => x.proxima !== null)
@@ -91,7 +113,7 @@ export default async function PortalEventosPage() {
         )}
 
         <div className="flex flex-col gap-3">
-          {eventos.map(({ ev, proxima, status, levaConvidado, quantidadePessoas, observacoes }) => (
+          {eventos.map(({ ev, proxima, status, levaConvidado, quantidadePessoas, observacoes, pagoOk, isento, devido }) => (
             <div key={ev.id} className="bg-white border border-gray-200 rounded-xl p-4 flex gap-3">
               {ev.imagem_url && (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -171,6 +193,33 @@ export default async function PortalEventosPage() {
                       form={`form-confirmar-${ev.id}`}
                       className="text-xs border border-gray-300 rounded-lg px-2 py-1 w-full outline-none focus:border-primary bg-white"
                     />
+                  </div>
+                )}
+
+                {/* Pagamento do evento (Fase 7, 14/08/2026: "vamos
+                    consolidar o pagamento dessa forma... chamar essa
+                    geração de pix por enquanto e controle de pagamento
+                    manual") — só depois de confirmar presença, só quando o
+                    evento cobra e a pessoa não é isenta (por função ou por
+                    exceção pontual, ver eventos.pago_funcoes_isentas /
+                    eventos_confirmacoes.pago_isento). O admin confere o Pix
+                    recebido por fora e marca "pago" na tela do evento —
+                    aqui só mostra o status. */}
+                {ev.pago && status === "Confirmado" && !isento && (
+                  <div className="bg-primary/5 border border-primary/20 rounded-lg p-2.5 mb-2">
+                    <div className="text-[11px] font-semibold text-gray-700 mb-1.5 flex items-center justify-between gap-2">
+                      <span>Pagamento deste evento</span>
+                      <span
+                        className={`text-[10px] font-semibold uppercase rounded-full px-2 py-0.5 border ${
+                          pagoOk ? "bg-green-50 text-green-700 border-green-200" : "bg-red-50 text-red-600 border-red-200"
+                        }`}
+                      >
+                        {pagoOk ? "Pago" : `Deve ${formatMoeda(devido)}`}
+                      </span>
+                    </div>
+                    {!pagoOk && devido > 0 && (
+                      <PixQrcode valor={devido} codigo={gerarPixCopiaECola({ valor: devido, descricao: "Convite" })} />
+                    )}
                   </div>
                 )}
 

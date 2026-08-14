@@ -8,6 +8,7 @@ import { valorEditavelParaDecimal, dataHoraPortoVelho } from "@/lib/format";
 import { registrarEJogarErro } from "@/lib/erros";
 import { gerarProximoIdEvento } from "@/lib/eventos/id-legado";
 import { RECORRENCIA_OPCOES } from "@/lib/eventos/opcoes";
+import { FUNCOES_EQUIPE } from "@/lib/parceiros/opcoes";
 import {
   criarUploadAssinadoImagemEvento,
   publicUrlImagemEvento,
@@ -56,6 +57,14 @@ function listaInteirosPositivos(formData: FormData, campo: string): number[] {
     .filter((n) => Number.isInteger(n) && n > 0);
 }
 
+// Checkboxes de isenção por função (Fase 7, 14/08/2026) — só aceita valores
+// que batem com FUNCOES_EQUIPE (mesma whitelist usada no resto do módulo de
+// eventos), por segurança (formulário nunca deveria mandar outra coisa, mas
+// não custa validar antes de gravar array de texto livre no banco).
+function listaFuncoesIsentas(formData: FormData, campo: string): string[] {
+  return formData.getAll(campo).filter((v): v is string => typeof v === "string" && FUNCOES_EQUIPE.includes(v));
+}
+
 // Campo <input type="datetime-local"> vem como "2026-08-10T14:30", sem fuso
 // — passar isso direto pro `new Date(...)` do servidor (Vercel, em UTC)
 // gravaria 4h adiantado. dataHoraPortoVelho() já resolve isso certo (mesmo
@@ -96,6 +105,7 @@ function camposFormulario(formData: FormData) {
     tem_desconto: temDesconto,
     valor_desconto: decimal(formData, "valor_desconto"),
     desconto_prazo: data(formData, "desconto_prazo"),
+    pago_funcoes_isentas: listaFuncoesIsentas(formData, "pago_funcoes_isentas"),
     cobra_convidado: cobraConvidado,
     valor_convidado: decimal(formData, "valor_convidado"),
     convidado_idade_gratis_ate: inteiro(formData, "convidado_idade_gratis_ate"),
@@ -154,6 +164,7 @@ function dadosParaSalvar(c: ReturnType<typeof camposFormulario>) {
     tem_desconto: c.tem_desconto,
     valor_desconto: c.tem_desconto ? c.valor_desconto : null,
     desconto_prazo: c.tem_desconto ? c.desconto_prazo : null,
+    pago_funcoes_isentas: c.pago ? c.pago_funcoes_isentas : [],
     cobra_convidado: c.cobra_convidado,
     valor_convidado: c.cobra_convidado ? c.valor_convidado : null,
     convidado_idade_gratis_ate: c.cobra_convidado ? (c.convidado_idade_gratis_ate ?? 14) : null,
@@ -363,6 +374,60 @@ export async function apagarInscricaoAction(formData: FormData) {
     entidadeId: id,
     acao: "apagar",
     dadosAntes: { nome: atual.nome, evento_id: atual.evento_id }
+  });
+
+  revalidatePath(`/eventos/${atual.evento_id}`);
+}
+
+// Controle manual de pagamento do evento pago pra quem confirmou presença
+// (Fase 7, 14/08/2026) — mesmo espírito de alternarPagoInscricaoAction
+// acima, só que em eventos_confirmacoes em vez de eventos_inscricoes.
+export async function alternarPagoConfirmacaoAction(formData: FormData) {
+  await requireAdminSession();
+
+  const id = texto(formData, "confirmacaoId");
+  if (!id) return;
+
+  const atual = await prisma.eventos_confirmacoes.findUnique({ where: { id } });
+  if (!atual) return;
+
+  await prisma.eventos_confirmacoes.update({ where: { id }, data: { pago: !atual.pago } });
+
+  await logAlteracao({
+    entidadeTipo: "eventos_confirmacoes",
+    entidadeId: id,
+    acao: atual.pago ? "marcar_nao_pago" : "marcar_pago",
+    dadosAntes: { pago: atual.pago },
+    dadosDepois: { pago: !atual.pago }
+  });
+
+  revalidatePath(`/eventos/${atual.evento_id}`);
+}
+
+// Isenção por pessoa (Fase 7, 14/08/2026 — usuário pediu "os dois juntos":
+// isenção por função no evento + exceção pontual por pessoa). Cicla
+// null → true (força isento) → false (força pagante) → null (segue a regra
+// da função de novo) — 3 estados, um clique por vez, mesmo espírito
+// "alternar" de alternarPagoInscricaoAction.
+export async function alternarIsencaoConfirmacaoAction(formData: FormData) {
+  await requireAdminSession();
+
+  const id = texto(formData, "confirmacaoId");
+  if (!id) return;
+
+  const atual = await prisma.eventos_confirmacoes.findUnique({ where: { id } });
+  if (!atual) return;
+
+  const proximo = atual.pago_isento === null ? true : atual.pago_isento === true ? false : null;
+
+  await prisma.eventos_confirmacoes.update({ where: { id }, data: { pago_isento: proximo } });
+
+  await logAlteracao({
+    entidadeTipo: "eventos_confirmacoes",
+    entidadeId: id,
+    acao: "alterar_isencao",
+    dadosAntes: { pago_isento: atual.pago_isento },
+    dadosDepois: { pago_isento: proximo }
   });
 
   revalidatePath(`/eventos/${atual.evento_id}`);

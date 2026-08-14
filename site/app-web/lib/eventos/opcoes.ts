@@ -97,3 +97,45 @@ export function valorDevidoConvidado(
   if (!convidadoPaga(idade, idadeGratisAte)) return 0;
   return valorConvidado ?? 0;
 }
+
+// Pagamento do evento em si — pra equipe que confirma presença (Fase 7,
+// 14/08/2026: "vamos consolidar o pagamento dessa forma. Sempre que algum
+// evento criado e tiver pagamento vamos chamar essa geração de pix por
+// enquanto e controle de pagamento manual"). Até aqui eventos.pago/valor
+// eram só informativos (ver comentário em prisma/schema.prisma) — agora
+// viram cobrança de verdade (Pix estático + eventos_confirmacoes.pago
+// marcado à mão), então precisam das mesmas duas perguntas que já existiam
+// pra convidado: "quanto" e "quem paga".
+
+// Quanto — considera o desconto por antecedência (tem_desconto/
+// valor_desconto/desconto_prazo) que já existia só como texto solto na
+// página pública ("Investimento: R$X · com desconto: R$Y até DATA") sem
+// nunca ter sido de fato calculado em lugar nenhum. Fora do prazo (ou sem
+// desconto configurado), vale o valor cheio.
+export function valorEventoAgora(
+  valor: number | null,
+  temDesconto: boolean,
+  valorDesconto: number | null,
+  descontoPrazo: Date | null,
+  agora: Date
+): number | null {
+  if (temDesconto && valorDesconto !== null && descontoPrazo && agora <= descontoPrazo) {
+    return valorDesconto;
+  }
+  return valor;
+}
+
+// Quem paga — regra por função (eventos.pago_funcoes_isentas) com override
+// por pessoa específica (eventos_confirmacoes.pago_isento): null segue a
+// regra da função; true/false força isento/pagante pra aquela pessoa,
+// independente da função. Pedido do usuário ao ser perguntado se dava pra
+// isentar por função: "os dois juntos".
+export function confirmacaoIsenta(
+  funcao: string | null,
+  funcoesIsentas: string[],
+  overrideIsento: boolean | null
+): boolean {
+  if (overrideIsento !== null && overrideIsento !== undefined) return overrideIsento;
+  if (!funcao) return false;
+  return funcoesIsentas.includes(funcao);
+}

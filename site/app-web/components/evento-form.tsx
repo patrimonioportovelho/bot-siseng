@@ -12,6 +12,7 @@ import {
   FORMULARIO_INSCRICAO_OPCOES,
   formularioInscricaoLabel
 } from "@/lib/eventos/opcoes";
+import { FUNCOES_EQUIPE } from "@/lib/parceiros/opcoes";
 
 const CAMPO =
   "text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full outline-none focus:border-primary bg-white";
@@ -37,6 +38,7 @@ type EventoExistente = {
   tem_desconto: boolean;
   valor_desconto: unknown;
   desconto_prazo: Date | string | null;
+  pago_funcoes_isentas: string[];
   cobra_convidado: boolean;
   valor_convidado: unknown;
   convidado_idade_gratis_ate: number | null;
@@ -124,6 +126,7 @@ export function EventoForm({
   const [recorrencia, setRecorrencia] = useState(ev?.recorrencia ?? "Nenhuma");
   const [pago, setPago] = useState(ev?.pago ?? false);
   const [temDesconto, setTemDesconto] = useState(ev?.tem_desconto ?? false);
+  const [funcoesIsentas, setFuncoesIsentas] = useState<string[]>(ev?.pago_funcoes_isentas ?? []);
   const [cobraConvidado, setCobraConvidado] = useState(ev?.cobra_convidado ?? false);
   const [visibilidade, setVisibilidade] = useState(ev?.visibilidade ?? "Publico");
   const [lembretes, setLembretes] = useState<number[]>(ev?.lembretes_dias_antes ?? []);
@@ -138,6 +141,14 @@ export function EventoForm({
 
   function removerLembrete(n: number) {
     setLembretes((atual) => atual.filter((x) => x !== n));
+  }
+
+  // Isenção por função (Fase 7, 14/08/2026) — checkbox por função elegível
+  // (Administrativo/Corretor/Corretor Estagiário) marcada = essa função NÃO
+  // paga esse evento. Vira <input type="hidden" name="pago_funcoes_isentas">
+  // repetido, um por função marcada (formData.getAll() no servidor).
+  function alternarFuncaoIsenta(funcao: string) {
+    setFuncoesIsentas((atual) => (atual.includes(funcao) ? atual.filter((f) => f !== funcao) : [...atual, funcao]));
   }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -408,8 +419,33 @@ export function EventoForm({
             </div>
           </div>
         )}
+        {pago && (
+          <div className="border-t border-gray-100 pt-2 mt-1">
+            <div className={LABEL}>Quem é isento (não paga esse evento)</div>
+            <div className="flex flex-wrap gap-3">
+              {FUNCOES_EQUIPE.map((funcao) => (
+                <label key={funcao} className="flex items-center gap-1.5 text-xs text-gray-600">
+                  <input
+                    type="checkbox"
+                    checked={funcoesIsentas.includes(funcao)}
+                    onChange={() => alternarFuncaoIsenta(funcao)}
+                  />
+                  {funcao}
+                </label>
+              ))}
+            </div>
+            {funcoesIsentas.map((f) => (
+              <input key={f} type="hidden" name="pago_funcoes_isentas" value={f} />
+            ))}
+            <p className="text-[10px] text-gray-400 mt-1">
+              Quem confirmar presença nessas funções não paga. Dá pra abrir uma exceção pontual por pessoa depois, na
+              tela do evento.
+            </p>
+          </div>
+        )}
         <p className="text-[10px] text-gray-400">
-          Por enquanto isso é só informativo — a cobrança automática (Mercado Pago) entra numa próxima etapa.
+          Pix estático (sem gateway) gerado pra quem confirma presença e não é isento — pagamento controlado
+          manualmente na tela do evento (admin marca "pago" depois de conferir).
         </p>
       </div>
 

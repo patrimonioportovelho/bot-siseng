@@ -19,8 +19,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // logado ou não, já que serve de respaldo jurídico do que foi publicado.
   // /portal/login também fica sem menu (ainda não tem sessão pra montar o
   // menu lateral do corretor).
+  // /evento/[id] (Fase 6, 12/08/2026): mesmo raciocínio — é a página
+  // pública de inscrição/pagamento de convidado, pensada pra ser
+  // compartilhada num anúncio (link direto, WhatsApp etc.). BUG
+  // CORRIGIDO: sem essa exclusão, quem abrisse o link já logado no
+  // sistema (o próprio admin testando, ou um corretor com o Portal aberto
+  // na mesma aba) via o menu lateral inteiro do admin/portal por cima —
+  // nada disso deveria aparecer numa página feita pra circular fora do
+  // sistema.
   const semMenu =
-    embutido || pathname === "/login" || pathname === "/portal/login" || pathname?.startsWith("/noticias");
+    embutido ||
+    pathname === "/login" ||
+    pathname === "/portal/login" ||
+    pathname?.startsWith("/noticias") ||
+    pathname?.startsWith("/evento/");
   const isPortal = pathname?.startsWith("/portal") && !semMenu;
 
   if (semMenu) {

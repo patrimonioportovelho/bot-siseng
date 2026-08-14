@@ -65,7 +65,14 @@ export function gerarPixCopiaECola(params: { valor?: number | null; descricao?: 
   const { chave, nomeBeneficiario, cidade } = PIX_CONVIDADOS_EVENTO;
 
   const infoAdicional = params.descricao ? campo("02", semAcento(params.descricao).slice(0, 40)) : "";
-  const merchantAccount = campo("00", "br.gov.bcb.pix") + campo("01", chave) + infoAdicional;
+  // GUI em MAIÚSCULAS ("BR.GOV.BCB.PIX") — bug real (12/08/2026, usuário
+  // reportou "nem qrcode nem texto deram certo, deram inválidos"): a
+  // primeira versão usava minúsculas ("br.gov.bcb.pix"), que alguns apps
+  // de banco recusam na validação estrutural do payload, antes de sequer
+  // tentar achar a chave. Conferido contra exemplo oficial (payload
+  // completo do Bacen/artigos técnicos) — o valor correto é sempre
+  // maiúsculo nos dois exemplos (estático e dinâmico).
+  const merchantAccount = campo("00", "BR.GOV.BCB.PIX") + campo("01", chave) + infoAdicional;
 
   const partes = [
     campo("00", "01"), // Payload Format Indicator

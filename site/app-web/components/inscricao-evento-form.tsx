@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { inscreverEventoAction } from "@/app/evento/[id]/actions";
+import { gerarPixCopiaECola } from "@/lib/eventos/pix";
+import { PixQrcode } from "@/components/pix-qrcode";
 
 const CAMPO =
   "text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full outline-none focus:border-primary bg-white";
@@ -21,25 +23,33 @@ const LABEL = "text-xs text-gray-600 block mb-1";
 // page.tsx) — aqui é só o preenchimento.
 export function InscricaoEventoForm({
   eventoId,
+  nomeEvento,
   completo,
   convidadoPor,
   cobraConvidado,
+  valorConvidadoNumero,
   valorConvidado,
   idadeGratisAte
 }: {
   eventoId: string;
+  nomeEvento: string;
   completo: boolean;
   convidadoPor: { id: string; nome: string }[];
   // Cobrança por convidado (Fase 6, 12/08/2026) — quando ativa, pede a
   // idade (pra saber se paga ou é criança grátis) e mostra o valor antes de
-  // enviar, pra ninguém se inscrever sem saber que tem custo.
+  // enviar, pra ninguém se inscrever sem saber que tem custo. Depois de
+  // enviar, se a idade digitada for de pagante, mostra o Pix na hora (ver
+  // lib/eventos/pix.ts) — sem isso, o convidado teria que esperar alguém
+  // do escritório mandar o código por outro canal.
   cobraConvidado: boolean;
+  valorConvidadoNumero: number | null;
   valorConvidado: string | null;
   idadeGratisAte: number;
 }) {
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [sucesso, setSucesso] = useState(false);
+  const [idadeSubmetida, setIdadeSubmetida] = useState<number | null>(null);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -52,6 +62,8 @@ export function InscricaoEventoForm({
         setErro(resultado.erro);
         return;
       }
+      const idadeTexto = fd.get("idade");
+      setIdadeSubmetida(typeof idadeTexto === "string" && idadeTexto ? Number(idadeTexto) : null);
       setSucesso(true);
     } catch {
       setErro("Falha ao enviar sua inscrição. Tente de novo em instantes.");
@@ -60,10 +72,20 @@ export function InscricaoEventoForm({
     }
   }
 
+  const ehPagante = cobraConvidado && idadeSubmetida !== null && idadeSubmetida > idadeGratisAte;
+
   if (sucesso) {
     return (
-      <div className="bg-green-50 border border-green-200 text-green-700 text-sm rounded-xl p-4">
-        Inscrição recebida! Te esperamos no evento.
+      <div className="flex flex-col gap-3">
+        <div className="bg-green-50 border border-green-200 text-green-700 text-sm rounded-xl p-4">
+          Inscrição recebida! Te esperamos no evento.
+        </div>
+        {ehPagante && valorConvidadoNumero && (
+          <PixQrcode
+            valor={valorConvidadoNumero}
+            codigo={gerarPixCopiaECola({ valor: valorConvidadoNumero, descricao: `Convite ${nomeEvento}` })}
+          />
+        )}
       </div>
     );
   }

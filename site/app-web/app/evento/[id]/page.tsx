@@ -182,9 +182,11 @@ export default async function EventoPublicoPage({ params }: { params: Promise<{ 
           <div className="mt-4">
             <InscricaoEventoForm
               eventoId={evento.id}
+              nomeEvento={evento.nome}
               completo={evento.formulario_inscricao === "Completo"}
               convidadoPor={convidadoPor}
               cobraConvidado={evento.cobra_convidado}
+              valorConvidadoNumero={evento.valor_convidado ? Number(evento.valor_convidado) : null}
               valorConvidado={
                 evento.valor_convidado
                   ? Number(evento.valor_convidado).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })

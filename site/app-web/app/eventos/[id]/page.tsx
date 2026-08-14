@@ -10,6 +10,8 @@ import { listarParceirosAdministrativos } from "@/lib/parceiros/administrativos"
 import { FUNCOES_EQUIPE } from "@/lib/parceiros/opcoes";
 import { funcoesPermitidas, convidadoPaga, valorDevidoConvidado } from "@/lib/eventos/opcoes";
 import { proximaOcorrencia } from "@/lib/eventos/ocorrencias";
+import { gerarPixCopiaECola } from "@/lib/eventos/pix";
+import { PixAdminToggle } from "@/components/pix-admin-toggle";
 import { atualizarEventoAction, apagarEventoAction, alternarPagoInscricaoAction } from "../actions";
 
 function formatDataCurta(d: Date) {
@@ -317,6 +319,14 @@ export default async function EventoDetalhePage({
                     </div>
                   )}
                   {i.parceiros && <div className="text-gray-400">Convidado(a) por {i.parceiros.nome}</div>}
+                  {i.paga && !i.pago && (
+                    <div className="mt-1">
+                      <PixAdminToggle
+                        valor={i.devido}
+                        codigo={gerarPixCopiaECola({ valor: i.devido, descricao: `Convite ${evento.nome}` })}
+                      />
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

@@ -1,7 +1,9 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { convidadoPaga, valorDevidoConvidado } from "@/lib/eventos/opcoes";
+import { convidadoPaga, valorDevidoConvidado, podeVerEvento } from "@/lib/eventos/opcoes";
+import { proximaOcorrencia } from "@/lib/eventos/ocorrencias";
 
 const FUNCOES_EQUIPE_ELEGIVEIS = ["Administrativo", "Corretor", "Corretor Estagiário"];
 
@@ -102,8 +104,20 @@ export async function inscreverEventoAction(formData: FormData): Promise<Inscric
 
 type ConvidadoResumo = { id: string; nome: string; idade: number | null; paga: boolean; pago: boolean; devido: number };
 
+// Presença do próprio parceiro (Administrativo/Corretor/Corretor Estagiário)
+// no evento — Fase 6d, 14/08/2026: pedido do usuário ("administrativo... não
+// tem um painel interno lá... quando ele entrar com email dele, ele precisa
+// ter a opção de confirmar se vai ou não igual ao painel do corretor,
+// corretor estagiario que não tem acesso precisa disso também"). Só
+// Corretor tem conta no Portal (ver lib/portal-auth.ts) — Administrativo e
+// Corretor Estagiário não têm outro jeito de confirmar presença a não ser
+// por aqui, no mesmo link público onde já gerenciam convidados. null quando
+// não há o que confirmar (evento sem ocorrência futura, ou visibilidade não
+// permite a função dele — mesma regra do Portal, ver podeVerEvento).
+type PresencaResumo = { status: "Pendente" | "Confirmado" | "Recusado" };
+
 export type VerificacaoConvidado =
-  | { tipo: "equipe"; parceiroId: string; nome: string; convidados: ConvidadoResumo[] }
+  | { tipo: "equipe"; parceiroId: string; nome: string; convidados: ConvidadoResumo[]; presenca: PresencaResumo | null }
   | { tipo: "externo_existente"; inscricao: ConvidadoResumo }
   | { tipo: "externo_novo" }
   | { tipo: "erro"; erro: string };
@@ -149,14 +163,36 @@ export async function verificarConvidadoEmailAction(formData: FormData): Promise
 
   const parceiro = await prisma.parceiros.findFirst({
     where: { email: { equals: email, mode: "insensitive" }, status_funcao: "Ativo", funcao: { in: FUNCOES_EQUIPE_ELEGIVEIS } },
-    select: { id: true, nome: true }
+    select: { id: true, nome: true, funcao: true }
   });
   if (parceiro) {
     const convidados = await prisma.eventos_inscricoes.findMany({
       where: { evento_id: eventoId, convidado_por_id: parceiro.id },
       orderBy: { created_at: "desc" }
     });
-    return { tipo: "equipe", parceiroId: parceiro.id, nome: parceiro.nome, convidados: convidados.map(resumo) };
+
+    // Mesma regra do Portal (podeVerEvento) + só existe ocorrência futura pra
+    // confirmar em eventos que ainda vão acontecer — sem isso, null (não
+    // mostra o bloco de presença pra essa pessoa/evento).
+    let presenca: PresencaResumo | null = null;
+    if (podeVerEvento(evento.visibilidade, parceiro.funcao)) {
+      const ocorrencia = proximaOcorrencia(evento.data_inicio, evento.recorrencia, evento.recorrencia_ate, new Date());
+      if (ocorrencia) {
+        const confirmacao = await prisma.eventos_confirmacoes.findUnique({
+          where: {
+            evento_id_parceiro_id_ocorrencia_data: {
+              evento_id: eventoId,
+              parceiro_id: parceiro.id,
+              ocorrencia_data: ocorrencia
+            }
+          },
+          select: { status: true }
+        });
+        presenca = { status: (confirmacao?.status as PresencaResumo["status"] | undefined) ?? "Pendente" };
+      }
+    }
+
+    return { tipo: "equipe", parceiroId: parceiro.id, nome: parceiro.nome, convidados: convidados.map(resumo), presenca };
   }
 
   const existente = await prisma.eventos_inscricoes.findFirst({
@@ -285,4 +321,63 @@ export async function removerInscricaoExternaAction(formData: FormData): Promise
   if (resultado.count === 0) return { ok: false, erro: "Inscrição não encontrada." };
 
   return { ok: true };
+}
+
+// Confirmação de presença da equipe (Administrativo/Corretor/Corretor
+// Estagiário) direto no link público — Fase 6d, 14/08/2026. Pedido do
+// usuário: "administrativo ele acessas pelo painel externo porque ele não
+// tem um painel interno lá... quando ele entrar com email dele, ele precisa
+// ter a opção de confirmar se vai ou não igual ao painel do corretor,
+// corretor estagiario que não tem acesso precisa disso também". Só Corretor
+// tem conta no Portal (ver lib/portal-auth.ts) — Administrativo e Corretor
+// Estagiário não têm outro jeito de responder presença. Mesma lógica de
+// responder() em app/portal/eventos/actions.ts (upsert por ocorrência,
+// mesma tabela eventos_confirmacoes), só que sem sessão de Portal — revalida
+// parceiroId+email igual às outras ações de equipe aqui nesse arquivo.
+async function responderPresencaEquipe(formData: FormData, status: "Confirmado" | "Recusado"): Promise<InscricaoResultado> {
+  const eventoId = texto(formData, "eventoId");
+  const parceiroId = texto(formData, "parceiroId");
+  const email = texto(formData, "email");
+  if (!eventoId || !parceiroId || !email) return { ok: false, erro: "Sessão inválida — recarregue a página." };
+
+  const evento = await buscarEventoInscricaoAberta(eventoId);
+  if (!evento) return { ok: false, erro: "Este evento não está mais disponível." };
+
+  const parceiro = await prisma.parceiros.findFirst({
+    where: { id: parceiroId, email: { equals: email, mode: "insensitive" }, status_funcao: "Ativo", funcao: { in: FUNCOES_EQUIPE_ELEGIVEIS } }
+  });
+  if (!parceiro) return { ok: false, erro: "Não foi possível confirmar seu e-mail. Recarregue a página e tente de novo." };
+
+  // Mesma proteção do Portal: não deixa responder um evento que a função
+  // dele nem deveria ver (visibilidade "Fechado administrativo" etc.).
+  if (!podeVerEvento(evento.visibilidade, parceiro.funcao)) {
+    return { ok: false, erro: "Este evento não está aberto pra sua função." };
+  }
+
+  const ocorrencia = proximaOcorrencia(evento.data_inicio, evento.recorrencia, evento.recorrencia_ate, new Date());
+  if (!ocorrencia) return { ok: false, erro: "Não há uma data futura pra confirmar presença." };
+
+  await prisma.eventos_confirmacoes.upsert({
+    where: {
+      evento_id_parceiro_id_ocorrencia_data: {
+        evento_id: eventoId,
+        parceiro_id: parceiro.id,
+        ocorrencia_data: ocorrencia
+      }
+    },
+    create: { evento_id: eventoId, parceiro_id: parceiro.id, ocorrencia_data: ocorrencia, status, respondido_em: new Date() },
+    update: { status, respondido_em: new Date() }
+  });
+
+  revalidatePath(`/eventos/${eventoId}`);
+  revalidatePath("/portal/eventos");
+  return { ok: true };
+}
+
+export async function confirmarPresencaEquipeAction(formData: FormData): Promise<InscricaoResultado> {
+  return responderPresencaEquipe(formData, "Confirmado");
+}
+
+export async function recusarPresencaEquipeAction(formData: FormData): Promise<InscricaoResultado> {
+  return responderPresencaEquipe(formData, "Recusado");
 }

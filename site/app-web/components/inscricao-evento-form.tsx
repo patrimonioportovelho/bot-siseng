@@ -6,7 +6,9 @@ import {
   verificarConvidadoEmailAction,
   adicionarConvidadoEquipeAction,
   removerConvidadoEquipeAction,
-  removerInscricaoExternaAction
+  removerInscricaoExternaAction,
+  confirmarPresencaEquipeAction,
+  recusarPresencaEquipeAction
 } from "@/app/evento/[id]/actions";
 import { gerarPixCopiaECola } from "@/lib/eventos/pix";
 import { PixQrcode } from "@/components/pix-qrcode";
@@ -16,8 +18,22 @@ const CAMPO =
   "text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full outline-none focus:border-primary bg-white";
 const LABEL = "text-xs text-gray-600 block mb-1";
 
+// Fase 6d, 14/08/2026 — mesmos labels/cores do Portal (app/portal/eventos/
+// page.tsx), reaproveitados aqui pro bloco de presença da equipe.
+const STATUS_PRESENCA_LABEL: Record<string, string> = {
+  Pendente: "Ainda não respondeu",
+  Confirmado: "Presença confirmada",
+  Recusado: "Ausência avisada"
+};
+const STATUS_PRESENCA_COR: Record<string, string> = {
+  Pendente: "bg-gray-50 text-gray-500 border-gray-200",
+  Confirmado: "bg-green-50 text-green-700 border-green-200",
+  Recusado: "bg-red-50 text-red-600 border-red-200"
+};
+
 type ConvidadoResumo = { id: string; nome: string; idade: number | null; paga: boolean; pago: boolean; devido: number };
-type EquipeInfo = { parceiroId: string; nome: string; convidados: ConvidadoResumo[] };
+type PresencaResumo = { status: "Pendente" | "Confirmado" | "Recusado" };
+type EquipeInfo = { parceiroId: string; nome: string; convidados: ConvidadoResumo[]; presenca: PresencaResumo | null };
 
 function formatMoeda(v: number) {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -83,7 +99,12 @@ export function InscricaoEventoForm({
       }
       setEmail(emailDigitado);
       if (resultado.tipo === "equipe") {
-        setEquipeInfo({ parceiroId: resultado.parceiroId, nome: resultado.nome, convidados: resultado.convidados });
+        setEquipeInfo({
+          parceiroId: resultado.parceiroId,
+          nome: resultado.nome,
+          convidados: resultado.convidados,
+          presenca: resultado.presenca
+        });
         setEtapa("equipe");
       } else if (resultado.tipo === "externo_existente") {
         setExternoInfo(resultado.inscricao);
@@ -104,7 +125,12 @@ export function InscricaoEventoForm({
     fd.set("email", email);
     const resultado = await verificarConvidadoEmailAction(fd);
     if (resultado.tipo === "equipe") {
-      setEquipeInfo({ parceiroId: resultado.parceiroId, nome: resultado.nome, convidados: resultado.convidados });
+      setEquipeInfo({
+        parceiroId: resultado.parceiroId,
+        nome: resultado.nome,
+        convidados: resultado.convidados,
+        presenca: resultado.presenca
+      });
     }
   }
 
@@ -222,6 +248,8 @@ function EtapaEquipe({
   const [especialidade, setEspecialidade] = useState("");
   const [idade, setIdade] = useState("");
   const [removendoId, setRemovendoId] = useState<string | null>(null);
+  const [respondendo, setRespondendo] = useState<"Confirmado" | "Recusado" | null>(null);
+  const [erroPresenca, setErroPresenca] = useState<string | null>(null);
 
   async function adicionar(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -275,6 +303,33 @@ function EtapaEquipe({
     }
   }
 
+  // Confirmação de presença da própria equipe (Fase 6d, 14/08/2026) —
+  // Administrativo/Corretor Estagiário não têm Portal (só Corretor tem, ver
+  // lib/portal-auth.ts), então esse é o único jeito deles responderem
+  // "vou"/"não vou" pro evento. Mesma tabela eventos_confirmacoes do Portal
+  // (ver responderPresencaEquipe em app/evento/[id]/actions.ts).
+  async function responderPresenca(status: "Confirmado" | "Recusado") {
+    setErroPresenca(null);
+    setRespondendo(status);
+    try {
+      const fd = new FormData();
+      fd.set("eventoId", eventoId);
+      fd.set("parceiroId", info.parceiroId);
+      fd.set("email", email);
+      const acao = status === "Confirmado" ? confirmarPresencaEquipeAction : recusarPresencaEquipeAction;
+      const resultado = await acao(fd);
+      if (!resultado.ok) {
+        setErroPresenca(resultado.erro);
+        return;
+      }
+      await onAtualizar();
+    } catch {
+      setErroPresenca("Falha ao responder. Tente de novo em instantes.");
+    } finally {
+      setRespondendo(null);
+    }
+  }
+
   const totalDevido = info.convidados.reduce((s, c) => s + c.devido, 0);
   const totalPago = info.convidados.reduce((s, c) => s + (c.pago ? c.devido : 0), 0);
 
@@ -291,6 +346,45 @@ function EtapaEquipe({
           Seus convidados pra {nomeEvento}. Volte nesse mesmo link quando quiser pra adicionar mais.
         </p>
       </div>
+
+      {/* Confirmar presença (Fase 6d, 14/08/2026) — só aparece quando há
+          o que confirmar (evento com ocorrência futura e visibilidade que
+          permite a função dessa pessoa, ver presenca no passo 1). */}
+      {info.presenca && (
+        <div className="border-t border-b border-gray-100 py-3 flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex flex-col gap-1">
+            <div className="text-[11px] font-semibold text-gray-600">Sua presença em {nomeEvento}</div>
+            <span
+              className={`text-[10px] font-semibold uppercase rounded-full px-2 py-0.5 border w-fit ${STATUS_PRESENCA_COR[info.presenca.status]}`}
+            >
+              {STATUS_PRESENCA_LABEL[info.presenca.status]}
+            </span>
+          </div>
+          <div className="flex gap-1.5">
+            <button
+              type="button"
+              onClick={() => responderPresenca("Confirmado")}
+              disabled={respondendo !== null}
+              className="text-xs border border-green-200 text-green-700 rounded-lg px-2 py-1 disabled:opacity-50"
+            >
+              {respondendo === "Confirmado" ? "..." : info.presenca.status === "Confirmado" ? "Atualizar" : "Vou"}
+            </button>
+            <button
+              type="button"
+              onClick={() => responderPresenca("Recusado")}
+              disabled={respondendo !== null || info.presenca.status === "Recusado"}
+              className="text-xs border border-red-200 text-red-600 rounded-lg px-2 py-1 disabled:opacity-50"
+            >
+              {respondendo === "Recusado" ? "..." : "Não vou"}
+            </button>
+          </div>
+          {erroPresenca && (
+            <div className="w-full bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg px-3 py-2">
+              {erroPresenca}
+            </div>
+          )}
+        </div>
+      )}
 
       {info.convidados.length > 0 && (
         <div className="flex flex-col gap-1.5">

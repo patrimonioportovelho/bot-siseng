@@ -171,9 +171,18 @@ export async function verificarConvidadoEmailAction(formData: FormData): Promise
 }
 
 // Adiciona um convidado direto pra quem já foi reconhecido como equipe no
-// passo 1 (verificarConvidadoEmailAction) — sem precisar dos campos de
-// contato (o convidado pode ser alguém sem e-mail/telefone próprio, tipo
-// filho pequeno) nem do dropdown "quem convidou" (já se sabe quem é).
+// passo 1 (verificarConvidadoEmailAction) — sem precisar do dropdown "quem
+// convidou" (já se sabe quem é) nem repetir os próprios dados da equipe.
+//
+// Campos de contato (Fase 6c, 14/08/2026 — pedido do usuário depois de
+// reportar "não abre o formulario só vem nome e idade": perguntado se
+// queria mais campos, respondeu "conforme o formulario escolhido no evento
+// sempre"): agora segue o MESMO tipo_formulario do evento — telefone
+// sempre, e endereço/profissão/especialidade quando "Completo" — igual ao
+// que o convidado externo preenche sozinho em inscreverEventoAction acima.
+// Diferença: aqui telefone continua OPCIONAL (não required), porque o
+// convidado pode ser alguém sem contato próprio (tipo filho pequeno) — foi
+// por isso que eventos_inscricoes.telefone virou nullable na Fase 6b.
 export async function adicionarConvidadoEquipeAction(formData: FormData): Promise<InscricaoResultado> {
   const eventoId = texto(formData, "eventoId");
   const parceiroId = texto(formData, "parceiroId");
@@ -196,6 +205,12 @@ export async function adicionarConvidadoEquipeAction(formData: FormData): Promis
   });
   if (!parceiro) return { ok: false, erro: "Não foi possível confirmar seu e-mail. Recarregue a página e tente de novo." };
 
+  const completo = evento.formulario_inscricao === "Completo";
+  const telefone = texto(formData, "telefone");
+  const endereco = completo ? texto(formData, "endereco") : null;
+  const profissao = completo ? texto(formData, "profissao") : null;
+  const especialidade = completo ? texto(formData, "especialidade") : null;
+
   let idade: number | null = null;
   if (evento.cobra_convidado) {
     const idadeTexto = texto(formData, "idade");
@@ -211,6 +226,10 @@ export async function adicionarConvidadoEquipeAction(formData: FormData): Promis
       evento_id: eventoId,
       tipo_formulario: evento.formulario_inscricao,
       nome,
+      telefone,
+      endereco,
+      profissao,
+      especialidade,
       convidado_por_id: parceiro.id,
       idade
     }

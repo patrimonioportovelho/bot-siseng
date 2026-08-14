@@ -59,8 +59,21 @@ function crc16(payload: string): string {
 
 // valor: em reais (ex.: 50 = R$ 50,00) — omite o campo quando não vier
 // (o padrão permite Pix sem valor fixo, pagador digita). descricao: texto
-// livre curto que aparece pro pagador antes de confirmar (ex.: nome do
-// evento) — cortado em 40 caracteres, sem acento, por segurança de espaço.
+// livre curto que aparece pro pagador antes de confirmar — cortado em 40
+// caracteres, sem acento, por segurança de espaço.
+//
+// Nota (Fase 6c, 14/08/2026): usuário reportou de novo "deram inválidos"
+// mesmo depois do fix do GUI maiúsculo, e pediu "nome mais simples convite,
+// ta tendo espaços no link acredito que seja isso". A validação estrutural
+// TLV/CRC do payload foi reconferida byte a byte (decodificador próprio +
+// CRC recalculado em Python, independente do JS) e bateu certinho mesmo com
+// "Convite Nome Do Evento" — então o campo 26/02 (Informação Adicional) em
+// si não quebra o padrão EMV. Mas nem todo app de banco implementa esse
+// subcampo opcional direito, e o mais provável é a chave Pix (CNPJ) ainda
+// não estar cadastrada de fato no Pix do banco (BS2) — isso o código não
+// tem como verificar. De qualquer forma, os pontos de chamada agora usam
+// só "Convite" (uma palavra, sem espaço) pra eliminar essa variável e
+// reduzir a superfície de erro.
 export function gerarPixCopiaECola(params: { valor?: number | null; descricao?: string }): string {
   const { chave, nomeBeneficiario, cidade } = PIX_CONVIDADOS_EVENTO;
 

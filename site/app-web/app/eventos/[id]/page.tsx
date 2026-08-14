@@ -343,7 +343,7 @@ export default async function EventoDetalhePage({
                     <div className="mt-1">
                       <PixAdminToggle
                         valor={i.devido}
-                        codigo={gerarPixCopiaECola({ valor: i.devido, descricao: `Convite ${evento.nome}` })}
+                        codigo={gerarPixCopiaECola({ valor: i.devido, descricao: "Convite" })}
                       />
                     </div>
                   )}

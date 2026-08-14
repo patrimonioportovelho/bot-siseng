@@ -146,6 +146,7 @@ export function InscricaoEventoForm({
         nomeEvento={nomeEvento}
         email={email}
         info={equipeInfo}
+        completo={completo}
         cobraConvidado={cobraConvidado}
         valorConvidado={valorConvidado}
         idadeGratisAte={idadeGratisAte}
@@ -194,6 +195,7 @@ function EtapaEquipe({
   nomeEvento,
   email,
   info,
+  completo,
   cobraConvidado,
   valorConvidado,
   idadeGratisAte,
@@ -204,6 +206,7 @@ function EtapaEquipe({
   nomeEvento: string;
   email: string;
   info: EquipeInfo;
+  completo: boolean;
   cobraConvidado: boolean;
   valorConvidado: string | null;
   idadeGratisAte: number;
@@ -213,6 +216,10 @@ function EtapaEquipe({
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [nome, setNome] = useState("");
+  const [telefone, setTelefone] = useState("");
+  const [endereco, setEndereco] = useState("");
+  const [profissao, setProfissao] = useState("");
+  const [especialidade, setEspecialidade] = useState("");
   const [idade, setIdade] = useState("");
   const [removendoId, setRemovendoId] = useState<string | null>(null);
 
@@ -228,6 +235,10 @@ function EtapaEquipe({
         return;
       }
       setNome("");
+      setTelefone("");
+      setEndereco("");
+      setProfissao("");
+      setEspecialidade("");
       setIdade("");
       await onAtualizar();
     } catch {
@@ -318,7 +329,7 @@ function EtapaEquipe({
                   <div className="mt-1.5">
                     <PixAdminToggle
                       valor={c.devido}
-                      codigo={gerarPixCopiaECola({ valor: c.devido, descricao: `Convite ${nomeEvento}` })}
+                      codigo={gerarPixCopiaECola({ valor: c.devido, descricao: "Convite" })}
                     />
                   </div>
                 )}
@@ -363,6 +374,48 @@ function EtapaEquipe({
             {enviando ? "Adicionando..." : "+ Adicionar"}
           </button>
         </div>
+        {/* Telefone/endereço/profissão/especialidade (Fase 6c, 14/08/2026) —
+            segue o mesmo tipo_formulario do evento (Básico/Completo), igual
+            ao formulário de convidado externo. Diferença: telefone aqui NÃO
+            é required — a pessoa da equipe pode não saber o contato do
+            convidado (ex.: filho pequeno), ver comentário em
+            adicionarConvidadoEquipeAction. */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <input
+            name="telefone"
+            value={telefone}
+            onChange={(e) => setTelefone(e.target.value)}
+            placeholder="Telefone (opcional)"
+            className={CAMPO + " flex-1 min-w-[140px]"}
+          />
+        </div>
+        {completo && (
+          <>
+            <input
+              name="endereco"
+              value={endereco}
+              onChange={(e) => setEndereco(e.target.value)}
+              placeholder="Endereço (opcional)"
+              className={CAMPO}
+            />
+            <div className="flex items-center gap-2 flex-wrap">
+              <input
+                name="profissao"
+                value={profissao}
+                onChange={(e) => setProfissao(e.target.value)}
+                placeholder="Profissão (opcional)"
+                className={CAMPO + " flex-1 min-w-[140px]"}
+              />
+              <input
+                name="especialidade"
+                value={especialidade}
+                onChange={(e) => setEspecialidade(e.target.value)}
+                placeholder="Especialidade (opcional)"
+                className={CAMPO + " flex-1 min-w-[140px]"}
+              />
+            </div>
+          </>
+        )}
         {cobraConvidado && (
           <p className="text-[10px] text-gray-400">
             Entrada: {valorConvidado ?? "consulte"} por pessoa. Até {idadeGratisAte} anos não paga.
@@ -451,7 +504,7 @@ function EtapaExternoExistente({
       {info.paga && !info.pago && valorConvidadoNumero && (
         <PixQrcode
           valor={info.devido}
-          codigo={gerarPixCopiaECola({ valor: info.devido, descricao: `Convite ${nomeEvento}` })}
+          codigo={gerarPixCopiaECola({ valor: info.devido, descricao: "Convite" })}
         />
       )}
     </div>
@@ -520,7 +573,7 @@ function EtapaExternoNovo({
         {ehPagante && valorConvidadoNumero && (
           <PixQrcode
             valor={valorConvidadoNumero}
-            codigo={gerarPixCopiaECola({ valor: valorConvidadoNumero, descricao: `Convite ${nomeEvento}` })}
+            codigo={gerarPixCopiaECola({ valor: valorConvidadoNumero, descricao: "Convite" })}
           />
         )}
       </div>

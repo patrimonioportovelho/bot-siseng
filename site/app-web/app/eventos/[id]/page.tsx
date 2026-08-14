@@ -143,6 +143,23 @@ export default async function EventoDetalhePage({
   const totalDevidoGeral = inscricoesComValor.reduce((soma, i) => soma + i.devido, 0);
   const totalRecebidoGeral = inscricoesComValor.reduce((soma, i) => soma + (i.pago ? i.devido : 0), 0);
 
+  // "+N convidados" ao lado do nome em Presença/ausência (Fase 6e,
+  // 14/08/2026: usuário reportou "eu Jota Silvestre por enquanto estou com
+  // 1 convidado em baixo, e em cima está +2"). Bug: esse badge usava
+  // eventos_confirmacoes.leva_convidado/quantidade_pessoas — o formulário
+  // interno ANTIGO (Fase 3), que fica travado com o número respondido lá
+  // atrás e nem é mais coletado no Portal pra evento com o sistema novo de
+  // convidados (ver "tira essa parte" em app/portal/eventos/page.tsx). Pra
+  // evento com formulario_inscricao ativo, o número de verdade é a contagem
+  // real de eventos_inscricoes por convidado_por_id — já calculada acima em
+  // resumoPorConvite. Sem formulario_inscricao (evento só com o formulário
+  // interno de sempre), continua usando leva_convidado/quantidade_pessoas
+  // normalmente — não muda nada pra quem nunca usou o sistema novo.
+  const confirmacoesComConvidados = confirmacoes.map((c) => ({
+    ...c,
+    quantidadeConvidadosReal: evento.formulario_inscricao ? (resumoPorConvite.get(c.parceiro_id)?.total ?? 0) : null
+  }));
+
   return (
     <div>
       <Topbar />
@@ -204,9 +221,9 @@ export default async function EventoDetalhePage({
               <div className="text-[11px] text-gray-500">Não responderam</div>
             </div>
           </div>
-          {confirmacoes.length > 0 && (
+          {confirmacoesComConvidados.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
-              {confirmacoes.map((c) => (
+              {confirmacoesComConvidados.map((c) => (
                 <span
                   key={c.id}
                   className={`text-[11px] rounded-full px-2 py-0.5 border ${
@@ -216,9 +233,18 @@ export default async function EventoDetalhePage({
                   }`}
                 >
                   {c.nome}
-                  {c.status === "Confirmado" && c.leva_convidado && (
-                    <> · +{c.quantidade_pessoas ?? "?"} convidado{(c.quantidade_pessoas ?? 0) > 1 ? "s" : ""}</>
-                  )}
+                  {c.status === "Confirmado" &&
+                    (evento.formulario_inscricao
+                      ? c.quantidadeConvidadosReal !== null &&
+                        c.quantidadeConvidadosReal > 0 && (
+                          <>
+                            {" "}
+                            · +{c.quantidadeConvidadosReal} convidado{c.quantidadeConvidadosReal > 1 ? "s" : ""}
+                          </>
+                        )
+                      : c.leva_convidado && (
+                          <> · +{c.quantidade_pessoas ?? "?"} convidado{(c.quantidade_pessoas ?? 0) > 1 ? "s" : ""}</>
+                        ))}
                 </span>
               ))}
             </div>

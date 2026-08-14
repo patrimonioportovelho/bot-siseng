@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   inscreverEventoAction,
   verificarConvidadoEmailAction,
@@ -69,7 +69,8 @@ export function InscricaoEventoForm({
   cobraConvidado,
   valorConvidadoNumero,
   valorConvidado,
-  idadeGratisAte
+  idadeGratisAte,
+  emailInicial
 }: {
   eventoId: string;
   nomeEvento: string;
@@ -79,21 +80,28 @@ export function InscricaoEventoForm({
   valorConvidadoNumero: number | null;
   valorConvidado: string | null;
   idadeGratisAte: number;
+  // Fase 7b, 14/08/2026 ("corretor logado não devia digitar e-mail de
+  // novo") — vem de ?email= na URL, montado só pelo link do Portal (ver
+  // app/portal/eventos/page.tsx), que já sabe o e-mail de quem tá logado.
+  // Quando presente, pula direto pra verificação — quem abre o MESMO link
+  // sem esse parâmetro (compartilhado, público) continua vendo a etapa de
+  // digitar e-mail normalmente.
+  emailInicial: string | null;
 }) {
   const [etapa, setEtapa] = useState<"email" | "equipe" | "externo_existente" | "externo_novo">("email");
   const [email, setEmail] = useState("");
-  const [verificando, setVerificando] = useState(false);
+  const [verificando, setVerificando] = useState(Boolean(emailInicial));
   const [erro, setErro] = useState<string | null>(null);
   const [equipeInfo, setEquipeInfo] = useState<EquipeInfo | null>(null);
   const [externoInfo, setExternoInfo] = useState<ConvidadoResumo | null>(null);
 
-  async function verificarEmail(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
+  async function processarEmail(emailDigitado: string) {
     setErro(null);
     setVerificando(true);
     try {
-      const fd = new FormData(e.currentTarget);
-      const emailDigitado = String(fd.get("email") ?? "").trim();
+      const fd = new FormData();
+      fd.set("eventoId", eventoId);
+      fd.set("email", emailDigitado);
       const resultado = await verificarConvidadoEmailAction(fd);
       if (resultado.tipo === "erro") {
         setErro(resultado.erro);
@@ -121,6 +129,23 @@ export function InscricaoEventoForm({
     }
   }
 
+  async function verificarEmail(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    await processarEmail(String(fd.get("email") ?? "").trim());
+  }
+
+  // Auto-verificação (Fase 7b) — só roda uma vez, ao montar, e só quando
+  // veio um e-mail pela URL. Se falhar (email inválido, evento fechado
+  // etc.), cai de volta na etapa "email" normal com o erro mostrado — a
+  // pessoa ainda consegue digitar na mão.
+  useEffect(() => {
+    if (emailInicial) {
+      processarEmail(emailInicial);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function recarregarEquipe() {
     const fd = new FormData();
     fd.set("eventoId", eventoId);
@@ -143,6 +168,16 @@ export function InscricaoEventoForm({
     setExternoInfo(null);
   }
 
+  // Auto-verificação em andamento (Fase 7b) — evita mostrar o formulário
+  // de e-mail por um instante antes de trocar de etapa sozinho, quando veio
+  // ?email= da URL. Se der erro, verificando volta a false e cai no
+  // formulário normal abaixo (com o erro já visível).
+  if (emailInicial && verificando && etapa === "email") {
+    return (
+      <div className="bg-white border border-gray-200 rounded-xl p-4 text-xs text-gray-500">Carregando seus dados...</div>
+    );
+  }
+
   if (etapa === "email") {
     return (
       <form onSubmit={verificarEmail} className="bg-white border border-gray-200 rounded-xl p-4 flex flex-col gap-2">
@@ -153,7 +188,7 @@ export function InscricaoEventoForm({
         </p>
         <div>
           <label className={LABEL}>E-mail</label>
-          <input name="email" type="email" required className={CAMPO} />
+          <input name="email" type="email" required defaultValue={emailInicial ?? undefined} className={CAMPO} />
         </div>
         {erro && <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg px-3 py-2">{erro}</div>}
         <button

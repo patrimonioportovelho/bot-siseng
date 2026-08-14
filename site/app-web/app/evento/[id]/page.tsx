@@ -85,8 +85,15 @@ export async function generateMetadata({
   };
 }
 
-export default async function EventoPublicoPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function EventoPublicoPage({
+  params,
+  searchParams
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ email?: string }>;
+}) {
   const { id } = await params;
+  const { email } = await searchParams;
   const evento = await buscarEventoPublico(id);
   if (!evento) notFound();
 
@@ -202,6 +209,7 @@ export default async function EventoPublicoPage({ params }: { params: Promise<{ 
                   : null
               }
               idadeGratisAte={evento.convidado_idade_gratis_ate ?? 14}
+              emailInicial={email ?? null}
             />
           </div>
         )}

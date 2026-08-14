@@ -44,7 +44,7 @@ export default async function PortalEventosPage() {
   const agora = new Date();
 
   const [parceiro, eventosBrutos] = await Promise.all([
-    prisma.parceiros.findUnique({ where: { id: session.parceiroId }, select: { funcao: true } }),
+    prisma.parceiros.findUnique({ where: { id: session.parceiroId }, select: { funcao: true, email: true } }),
     prisma.eventos.findMany({
       where: { excluido: false, ativo: true, portal_corretor: true, publicado_em: { lte: agora } },
       orderBy: { data_inicio: "asc" },
@@ -240,8 +240,19 @@ export default async function PortalEventosPage() {
                       Adicione quantos convidados quiser a qualquer momento — a lista fica sempre acessível pelo
                       mesmo link, usando seu e-mail pra te reconhecer.
                     </p>
+                    {/* ?email= (Fase 7b, 14/08/2026: "corretor logado não
+                        devia digitar e-mail de novo") — /evento/[id] é uma
+                        página pública sem sessão própria (pensada pra
+                        circular por fora, ver components/app-shell.tsx), mas
+                        quem já está logado no Portal já teve o e-mail
+                        confirmado aqui; passar ele na URL deixa a página
+                        pular a etapa de digitar e-mail de novo (ver
+                        InscricaoEventoForm/emailInicial). Quem abre o MESMO
+                        link sem vir do Portal continua digitando
+                        normalmente — nada muda pra quem recebe o link
+                        compartilhado. */}
                     <a
-                      href={`/evento/${ev.id}`}
+                      href={`/evento/${ev.id}${parceiro?.email ? `?email=${encodeURIComponent(parceiro.email)}` : ""}`}
                       target="_blank"
                       rel="noreferrer"
                       className="text-xs text-primary font-semibold hover:underline"

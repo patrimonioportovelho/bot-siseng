@@ -4,7 +4,9 @@ import { useState } from "react";
 import {
   inscreverEventoAction,
   verificarConvidadoEmailAction,
-  adicionarConvidadoEquipeAction
+  adicionarConvidadoEquipeAction,
+  removerConvidadoEquipeAction,
+  removerInscricaoExternaAction
 } from "@/app/evento/[id]/actions";
 import { gerarPixCopiaECola } from "@/lib/eventos/pix";
 import { PixQrcode } from "@/components/pix-qrcode";
@@ -156,10 +158,13 @@ export function InscricaoEventoForm({
   if (etapa === "externo_existente" && externoInfo) {
     return (
       <EtapaExternoExistente
+        eventoId={eventoId}
+        email={email}
         nomeEvento={nomeEvento}
         info={externoInfo}
         valorConvidadoNumero={valorConvidadoNumero}
         onTrocarEmail={trocarEmail}
+        onRemovido={trocarEmail}
       />
     );
   }
@@ -209,6 +214,7 @@ function EtapaEquipe({
   const [erro, setErro] = useState<string | null>(null);
   const [nome, setNome] = useState("");
   const [idade, setIdade] = useState("");
+  const [removendoId, setRemovendoId] = useState<string | null>(null);
 
   async function adicionar(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -228,6 +234,33 @@ function EtapaEquipe({
       setErro("Falha ao adicionar. Tente de novo em instantes.");
     } finally {
       setEnviando(false);
+    }
+  }
+
+  // Remove um convidado já cadastrado (Fase 6b, 12/08/2026: "cadastrei os
+  // convidados porém não tem como apagar, o qr code deles já estão
+  // gerados"). Só convidado — a própria pessoa (equipe) não tem botão pra
+  // apagar a própria resposta de presença aqui, isso fica só no Portal.
+  async function remover(inscricaoId: string) {
+    if (!window.confirm("Remover este convidado da lista?")) return;
+    setErro(null);
+    setRemovendoId(inscricaoId);
+    try {
+      const fd = new FormData();
+      fd.set("eventoId", eventoId);
+      fd.set("parceiroId", info.parceiroId);
+      fd.set("email", email);
+      fd.set("inscricaoId", inscricaoId);
+      const resultado = await removerConvidadoEquipeAction(fd);
+      if (!resultado.ok) {
+        setErro(resultado.erro);
+        return;
+      }
+      await onAtualizar();
+    } catch {
+      setErro("Falha ao remover. Tente de novo em instantes.");
+    } finally {
+      setRemovendoId(null);
     }
   }
 
@@ -265,11 +298,21 @@ function EtapaEquipe({
                     {c.nome}
                     {c.idade !== null && <span className="text-gray-400 font-normal"> · {c.idade} anos</span>}
                   </div>
-                  {cobraConvidado && (
-                    <span className={`text-[10px] font-semibold uppercase rounded-full px-2 py-0.5 border ${badge.cor}`}>
-                      {badge.texto}
-                    </span>
-                  )}
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {cobraConvidado && (
+                      <span className={`text-[10px] font-semibold uppercase rounded-full px-2 py-0.5 border ${badge.cor}`}>
+                        {badge.texto}
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => remover(c.id)}
+                      disabled={removendoId === c.id}
+                      className="text-[10px] text-red-500 font-semibold hover:underline disabled:opacity-50"
+                    >
+                      {removendoId === c.id ? "Removendo..." : "Remover"}
+                    </button>
+                  </div>
                 </div>
                 {c.paga && !c.pago && (
                   <div className="mt-1.5">
@@ -334,17 +377,50 @@ function EtapaEquipe({
 // Convidado externo que já tinha se inscrito com esse e-mail nesse evento —
 // mostra o status em vez de deixar cadastrar de novo (evita duplicar).
 function EtapaExternoExistente({
+  eventoId,
+  email,
   nomeEvento,
   info,
   valorConvidadoNumero,
-  onTrocarEmail
+  onTrocarEmail,
+  onRemovido
 }: {
+  eventoId: string;
+  email: string;
   nomeEvento: string;
   info: ConvidadoResumo;
   valorConvidadoNumero: number | null;
   onTrocarEmail: () => void;
+  onRemovido: () => void;
 }) {
+  const [removendo, setRemovendo] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
   const badge = badgeConvidado(info);
+
+  // Convidado externo cancelando a própria inscrição (Fase 6b, 12/08/2026,
+  // mesmo pedido: "não tem como apagar... coloca botão pra apagar").
+  async function cancelar() {
+    if (!window.confirm("Cancelar sua inscrição neste evento?")) return;
+    setErro(null);
+    setRemovendo(true);
+    try {
+      const fd = new FormData();
+      fd.set("eventoId", eventoId);
+      fd.set("email", email);
+      fd.set("inscricaoId", info.id);
+      const resultado = await removerInscricaoExternaAction(fd);
+      if (!resultado.ok) {
+        setErro(resultado.erro);
+        return;
+      }
+      onRemovido();
+    } catch {
+      setErro("Falha ao cancelar. Tente de novo em instantes.");
+    } finally {
+      setRemovendo(false);
+    }
+  }
+
   return (
     <div className="flex flex-col gap-3">
       <div className="bg-white border border-gray-200 rounded-xl p-4">
@@ -355,9 +431,22 @@ function EtapaExternoExistente({
           </button>
         </div>
         <p className="text-xs text-gray-500">Te esperamos em {nomeEvento}.</p>
-        <span className={`text-[10px] font-semibold uppercase rounded-full px-2 py-0.5 border inline-block mt-2 ${badge.cor}`}>
-          {badge.texto}
-        </span>
+        <div className="flex items-center gap-2 mt-2 flex-wrap">
+          <span className={`text-[10px] font-semibold uppercase rounded-full px-2 py-0.5 border ${badge.cor}`}>
+            {badge.texto}
+          </span>
+          <button
+            type="button"
+            onClick={cancelar}
+            disabled={removendo}
+            className="text-[10px] text-red-500 font-semibold hover:underline disabled:opacity-50"
+          >
+            {removendo ? "Cancelando..." : "Cancelar minha inscrição"}
+          </button>
+        </div>
+        {erro && (
+          <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg px-3 py-2 mt-2">{erro}</div>
+        )}
       </div>
       {info.paga && !info.pago && valorConvidadoNumero && (
         <PixQrcode

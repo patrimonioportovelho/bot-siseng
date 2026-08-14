@@ -218,3 +218,52 @@ export async function adicionarConvidadoEquipeAction(formData: FormData): Promis
 
   return { ok: true };
 }
+
+// Remove um convidado da própria lista de quem já foi reconhecido como
+// equipe (Fase 6b, 12/08/2026: "cadastrei os convidados porém não tem como
+// apagar, o qr code deles já estão gerados"). Só apaga convidado — nunca a
+// resposta de presença de Administrativo/Corretor/Corretor Estagiário
+// (eventos_confirmacoes é outra tabela, só "confirmado"/"recusado", sem
+// delete nenhum, ver app/portal/eventos/actions.ts).
+export async function removerConvidadoEquipeAction(formData: FormData): Promise<InscricaoResultado> {
+  const eventoId = texto(formData, "eventoId");
+  const parceiroId = texto(formData, "parceiroId");
+  const email = texto(formData, "email");
+  const inscricaoId = texto(formData, "inscricaoId");
+  if (!eventoId || !parceiroId || !email || !inscricaoId) {
+    return { ok: false, erro: "Sessão inválida — recarregue a página." };
+  }
+
+  // Revalida de novo quem tá removendo é mesmo essa pessoa da equipe, igual
+  // adicionarConvidadoEquipeAction.
+  const parceiro = await prisma.parceiros.findFirst({
+    where: { id: parceiroId, email: { equals: email, mode: "insensitive" }, status_funcao: "Ativo", funcao: { in: FUNCOES_EQUIPE_ELEGIVEIS } }
+  });
+  if (!parceiro) return { ok: false, erro: "Não foi possível confirmar seu e-mail. Recarregue a página e tente de novo." };
+
+  // Só apaga se o convidado for mesmo dessa pessoa nesse evento — impede
+  // apagar convidado de outro parceiro só sabendo o id da inscrição.
+  const resultado = await prisma.eventos_inscricoes.deleteMany({
+    where: { id: inscricaoId, evento_id: eventoId, convidado_por_id: parceiro.id }
+  });
+  if (resultado.count === 0) return { ok: false, erro: "Convidado não encontrado." };
+
+  return { ok: true };
+}
+
+// Convidado externo cancelando a própria inscrição (mesmo pedido do
+// usuário acima) — reconhecido pelo e-mail (mesmo passo 1), sem parceiro
+// envolvido.
+export async function removerInscricaoExternaAction(formData: FormData): Promise<InscricaoResultado> {
+  const eventoId = texto(formData, "eventoId");
+  const email = texto(formData, "email");
+  const inscricaoId = texto(formData, "inscricaoId");
+  if (!eventoId || !email || !inscricaoId) return { ok: false, erro: "Sessão inválida — recarregue a página." };
+
+  const resultado = await prisma.eventos_inscricoes.deleteMany({
+    where: { id: inscricaoId, evento_id: eventoId, email: { equals: email, mode: "insensitive" } }
+  });
+  if (resultado.count === 0) return { ok: false, erro: "Inscrição não encontrada." };
+
+  return { ok: true };
+}

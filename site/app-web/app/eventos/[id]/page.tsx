@@ -12,7 +12,7 @@ import { funcoesPermitidas, convidadoPaga, valorDevidoConvidado } from "@/lib/ev
 import { proximaOcorrencia } from "@/lib/eventos/ocorrencias";
 import { gerarPixCopiaECola } from "@/lib/eventos/pix";
 import { PixAdminToggle } from "@/components/pix-admin-toggle";
-import { atualizarEventoAction, apagarEventoAction, alternarPagoInscricaoAction } from "../actions";
+import { atualizarEventoAction, apagarEventoAction, alternarPagoInscricaoAction, apagarInscricaoAction } from "../actions";
 
 function formatDataCurta(d: Date) {
   return new Date(d).toLocaleDateString("pt-BR", { timeZone: "UTC", day: "2-digit", month: "2-digit", year: "numeric" });
@@ -286,29 +286,44 @@ export default async function EventoDetalhePage({
                       {i.nome}
                       {i.idade !== null && <span className="text-gray-400 font-normal"> · {i.idade} anos</span>}
                     </div>
-                    {evento.cobra_convidado && (
-                      <div className="flex items-center gap-1.5">
-                        <span
-                          className={`text-[10px] font-semibold uppercase rounded-full px-2 py-0.5 border ${
-                            !i.paga
-                              ? "bg-gray-50 text-gray-500 border-gray-200"
-                              : i.pago
-                                ? "bg-green-50 text-green-700 border-green-200"
-                                : "bg-red-50 text-red-600 border-red-200"
-                          }`}
-                        >
-                          {!i.paga ? "Grátis" : i.pago ? "Pago" : `Deve ${formatMoeda(i.devido)}`}
-                        </span>
-                        {i.paga && (
-                          <form action={alternarPagoInscricaoAction}>
-                            <input type="hidden" name="inscricaoId" value={i.id} />
-                            <button type="submit" className="text-[10px] text-primary font-semibold hover:underline">
-                              {i.pago ? "Desmarcar" : "Marcar pago"}
-                            </button>
-                          </form>
-                        )}
-                      </div>
-                    )}
+                    <div className="flex items-center gap-1.5">
+                      {evento.cobra_convidado && (
+                        <>
+                          <span
+                            className={`text-[10px] font-semibold uppercase rounded-full px-2 py-0.5 border ${
+                              !i.paga
+                                ? "bg-gray-50 text-gray-500 border-gray-200"
+                                : i.pago
+                                  ? "bg-green-50 text-green-700 border-green-200"
+                                  : "bg-red-50 text-red-600 border-red-200"
+                            }`}
+                          >
+                            {!i.paga ? "Grátis" : i.pago ? "Pago" : `Deve ${formatMoeda(i.devido)}`}
+                          </span>
+                          {i.paga && (
+                            <form action={alternarPagoInscricaoAction}>
+                              <input type="hidden" name="inscricaoId" value={i.id} />
+                              <button type="submit" className="text-[10px] text-primary font-semibold hover:underline">
+                                {i.pago ? "Desmarcar" : "Marcar pago"}
+                              </button>
+                            </form>
+                          )}
+                        </>
+                      )}
+                      {/* Apagar convidado (Fase 6b, 12/08/2026: "coloca botão
+                          para apagar o convidado"). Só existe aqui, na lista
+                          de eventos_inscricoes — Administrativo/Corretor/
+                          Corretor Estagiário respondem presença em
+                          eventos_confirmacoes (outra tabela, sem delete
+                          nenhum, pedido explícito do usuário: "esses só podem
+                          confirmar se vão ou não, não podem ser apagados"). */}
+                      <form action={apagarInscricaoAction}>
+                        <input type="hidden" name="inscricaoId" value={i.id} />
+                        <button type="submit" className="text-[10px] text-red-500 font-semibold hover:underline">
+                          Apagar
+                        </button>
+                      </form>
+                    </div>
                   </div>
                   {(i.email || i.telefone) && (
                     <div>

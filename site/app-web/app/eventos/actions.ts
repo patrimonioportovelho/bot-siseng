@@ -340,6 +340,34 @@ export async function alternarPagoInscricaoAction(formData: FormData) {
   revalidatePath(`/eventos/${atual.evento_id}`);
 }
 
+// Apaga um convidado (Fase 6b, 12/08/2026: "cadastrei os convidados porém
+// não tem como apagar... coloca botão pra apagar o convidado"). Só admin —
+// e só CONVIDADO (eventos_inscricoes). Administrativo/Corretor/Corretor
+// Estagiário respondem presença em eventos_confirmacoes, que não tem
+// (e não ganha) delete nenhum — pedido explícito do usuário: "esses só
+// podem confirmar se vão ou não, não podem ser apagados, somente o
+// convidados".
+export async function apagarInscricaoAction(formData: FormData) {
+  await requireAdminSession();
+
+  const id = texto(formData, "inscricaoId");
+  if (!id) return;
+
+  const atual = await prisma.eventos_inscricoes.findUnique({ where: { id } });
+  if (!atual) return;
+
+  await prisma.eventos_inscricoes.delete({ where: { id } });
+
+  await logAlteracao({
+    entidadeTipo: "eventos_inscricoes",
+    entidadeId: id,
+    acao: "apagar",
+    dadosAntes: { nome: atual.nome, evento_id: atual.evento_id }
+  });
+
+  revalidatePath(`/eventos/${atual.evento_id}`);
+}
+
 // Disparo de e-mail por categoria (Fase 4, pedido do usuário 10/08/2026):
 // a Server Action que existia aqui foi substituída em 12/08/2026 por
 // app/eventos/[id]/enviar-email/route.ts. Motivo: aquela mandava todo mundo

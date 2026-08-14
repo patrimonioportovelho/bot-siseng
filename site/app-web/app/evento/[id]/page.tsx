@@ -184,6 +184,13 @@ export default async function EventoPublicoPage({ params }: { params: Promise<{ 
               eventoId={evento.id}
               completo={evento.formulario_inscricao === "Completo"}
               convidadoPor={convidadoPor}
+              cobraConvidado={evento.cobra_convidado}
+              valorConvidado={
+                evento.valor_convidado
+                  ? Number(evento.valor_convidado).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+                  : null
+              }
+              idadeGratisAte={evento.convidado_idade_gratis_ate ?? 14}
             />
           </div>
         )}

@@ -1648,6 +1648,20 @@ model eventos {
   tem_desconto            Boolean                @default(false)
   valor_desconto          Decimal?               @db.Decimal(10, 2)
   desconto_prazo          DateTime?              @db.Date
+  // Cobrança por convidado (Fase 6, pedido do usuário 12/08/2026: "quero um
+  // pagamento específico para convidados... marcar que tem convidado e
+  // cobrar por cabeça, criança até 14 anos não paga"). Separado do
+  // valor/tem_desconto acima — aquele é o valor do evento em si (ex.: um
+  // curso pago); esse é só pra quem se inscreve como convidado externo pelo
+  // Formulário de inscrição (ver eventos_inscricoes.idade). Mesmo espírito
+  // "só informativo" do resto — sem cobrança automática (Mercado Pago fica
+  // pra outra etapa), só calcula quanto cada convidado deve pro admin
+  // controlar o pagamento por fora e marcar manualmente (eventos_inscricoes.
+  // pago). convidado_idade_gratis_ate default 14 (regra pedida), mas
+  // editável por evento — não é o desconto por antecedência (esse é etário).
+  cobra_convidado            Boolean               @default(false)
+  valor_convidado            Decimal?              @db.Decimal(10, 2)
+  convidado_idade_gratis_ate Int?                  @default(14)
   organizador_parceiro_id String?                @db.Uuid
   excluido                Boolean                @default(false)
   // Fase 3 (pedido do usuário, 10/08/2026): "Formulário básico"/"Formulário
@@ -1742,6 +1756,17 @@ model eventos_inscricoes {
   // lib/eventos/opcoes.ts#funcoesPermitidas, mesma lista de funções já usada
   // na visibilidade do evento).
   convidado_por_id String?   @db.Uuid
+  // Idade do convidado (Fase 6, 12/08/2026) — só pedida no formulário
+  // quando eventos.cobra_convidado = true (ver InscricaoEventoForm). Usada
+  // só pra decidir se paga ou é grátis (idade <= eventos.
+  // convidado_idade_gratis_ate); não guarda data de nascimento porque o
+  // formulário público é rápido de preencher, idade em anos já resolve.
+  // Null nos eventos sem cobrança de convidado (o campo nem aparece).
+  idade            Int?
+  // Controle manual de pagamento (mesmo espírito "só informativo" do valor
+  // geral do evento, ver eventos.cobra_convidado) — admin marca aqui depois
+  // que o convidado paga por fora (Pix, dinheiro etc.).
+  pago             Boolean   @default(false)
   created_at       DateTime  @default(now()) @db.Timestamptz(6)
   eventos          eventos   @relation(fields: [evento_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   parceiros        parceiros? @relation(fields: [convidado_por_id], references: [id], onDelete: NoAction, onUpdate: NoAction)

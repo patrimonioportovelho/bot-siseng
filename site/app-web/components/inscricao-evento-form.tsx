@@ -13,14 +13,29 @@ const LABEL = "text-xs text-gray-600 block mb-1";
 // Cliente simples (sem upload, sem redirect) — chama a Server Action direto
 // e mostra sucesso/erro na mesma página, sem precisar do tratamento de
 // NEXT_REDIRECT usado em evento-form.tsx/publicacao-form.tsx.
+//
+// Fase 6 (12/08/2026, "cobrar por cabeça, criança até 14 anos não paga"):
+// uma inscrição por pessoa (inclusive criança — o responsável preenche uma
+// vez pra cada uma), com campo de idade só quando o evento cobra convidado.
+// A lista/resumo por quem convidou fica no admin (app/eventos/[id]/
+// page.tsx) — aqui é só o preenchimento.
 export function InscricaoEventoForm({
   eventoId,
   completo,
-  convidadoPor
+  convidadoPor,
+  cobraConvidado,
+  valorConvidado,
+  idadeGratisAte
 }: {
   eventoId: string;
   completo: boolean;
   convidadoPor: { id: string; nome: string }[];
+  // Cobrança por convidado (Fase 6, 12/08/2026) — quando ativa, pede a
+  // idade (pra saber se paga ou é criança grátis) e mostra o valor antes de
+  // enviar, pra ninguém se inscrever sem saber que tem custo.
+  cobraConvidado: boolean;
+  valorConvidado: string | null;
+  idadeGratisAte: number;
 }) {
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -103,6 +118,16 @@ export function InscricaoEventoForm({
           ))}
         </select>
       </div>
+
+      {cobraConvidado && (
+        <div>
+          <label className={LABEL}>Sua idade</label>
+          <input name="idade" type="number" min={0} max={120} required className={CAMPO} />
+          <p className="text-[10px] text-gray-400 mt-1">
+            Entrada: {valorConvidado ?? "consulte"} por pessoa. Até {idadeGratisAte} anos não paga.
+          </p>
+        </div>
+      )}
 
       {erro && <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg px-3 py-2">{erro}</div>}
 

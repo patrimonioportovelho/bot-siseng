@@ -46,6 +46,21 @@ export async function inscreverEventoAction(formData: FormData): Promise<Inscric
   const especialidade = completo ? texto(formData, "especialidade") : null;
   const convidadoPorId = texto(formData, "convidado_por_id");
 
+  // Idade (Fase 6, 12/08/2026) — só obrigatória quando o evento cobra por
+  // convidado (decide quem paga x quem é criança grátis, ver
+  // lib/eventos/opcoes.ts#convidadoPaga). Revalida aqui de novo mesmo com o
+  // <input required> no form, porque é rota pública sem sessão — alguém
+  // pode montar o POST à mão sem o campo.
+  let idade: number | null = null;
+  if (evento.cobra_convidado) {
+    const idadeTexto = texto(formData, "idade");
+    const idadeNumero = idadeTexto ? Number(idadeTexto) : NaN;
+    if (!Number.isInteger(idadeNumero) || idadeNumero < 0 || idadeNumero > 120) {
+      return { ok: false, erro: "Informe sua idade (é como decidimos se você paga ou não)." };
+    }
+    idade = idadeNumero;
+  }
+
   // Confere que o "quem convidou" escolhido é mesmo um parceiro ativo e
   // elegível — evita gravar um id forjado no POST direto.
   if (convidadoPorId) {
@@ -70,7 +85,8 @@ export async function inscreverEventoAction(formData: FormData): Promise<Inscric
       endereco,
       profissao,
       especialidade,
-      convidado_por_id: convidadoPorId
+      convidado_por_id: convidadoPorId,
+      idade
     }
   });
 

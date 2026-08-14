@@ -34,6 +34,13 @@ function decimal(formData: FormData, campo: string): number | null {
   return valorEditavelParaDecimal(t);
 }
 
+function inteiro(formData: FormData, campo: string): number | null {
+  const t = texto(formData, campo);
+  if (t === null) return null;
+  const n = Number(t);
+  return Number.isInteger(n) ? n : null;
+}
+
 function booleano(formData: FormData, campo: string): boolean {
   return formData.get(campo) === "on" || formData.get(campo) === "true";
 }
@@ -70,6 +77,7 @@ function camposFormulario(formData: FormData) {
   const recorrencia = texto(formData, "recorrencia") ?? "Nenhuma";
   const pago = booleano(formData, "pago");
   const temDesconto = booleano(formData, "tem_desconto");
+  const cobraConvidado = booleano(formData, "cobra_convidado");
   return {
     nome: texto(formData, "nome"),
     tipo: texto(formData, "tipo"),
@@ -88,6 +96,9 @@ function camposFormulario(formData: FormData) {
     tem_desconto: temDesconto,
     valor_desconto: decimal(formData, "valor_desconto"),
     desconto_prazo: data(formData, "desconto_prazo"),
+    cobra_convidado: cobraConvidado,
+    valor_convidado: decimal(formData, "valor_convidado"),
+    convidado_idade_gratis_ate: inteiro(formData, "convidado_idade_gratis_ate"),
     organizador_parceiro_id: texto(formData, "organizador_parceiro_id"),
     publicado_em: publicadoEm(formData),
     // Fase 3 (10/08/2026) — "" no <select> vira null (nenhum formulário
@@ -110,6 +121,12 @@ function validarCampos(c: ReturnType<typeof camposFormulario>): string | null {
   }
   if (c.tem_desconto && (c.valor_desconto === null || c.valor_desconto <= 0)) {
     return 'Informe o valor do desconto (ou desmarque "Tem desconto").';
+  }
+  if (c.cobra_convidado && (c.valor_convidado === null || c.valor_convidado <= 0)) {
+    return 'Informe o valor por convidado (ou desmarque "Cobrar convidados").';
+  }
+  if (c.cobra_convidado && c.convidado_idade_gratis_ate !== null && c.convidado_idade_gratis_ate < 0) {
+    return "Idade grátis do convidado inválida.";
   }
   return null;
 }
@@ -137,6 +154,9 @@ function dadosParaSalvar(c: ReturnType<typeof camposFormulario>) {
     tem_desconto: c.tem_desconto,
     valor_desconto: c.tem_desconto ? c.valor_desconto : null,
     desconto_prazo: c.tem_desconto ? c.desconto_prazo : null,
+    cobra_convidado: c.cobra_convidado,
+    valor_convidado: c.cobra_convidado ? c.valor_convidado : null,
+    convidado_idade_gratis_ate: c.cobra_convidado ? (c.convidado_idade_gratis_ate ?? 14) : null,
     organizador_parceiro_id: c.organizador_parceiro_id,
     publicado_em: c.publicado_em,
     formulario_inscricao: c.formulario_inscricao,
@@ -292,6 +312,32 @@ export async function apagarEventoAction(formData: FormData) {
 
   revalidatePath("/eventos");
   redirect("/eventos?excluido=1");
+}
+
+// Controle manual de pagamento por convidado (Fase 6, 12/08/2026) — o
+// convidado paga por fora (Pix, dinheiro etc.), o admin só marca aqui que
+// recebeu. Alterna (não é só "marcar pago") pra dar pra desfazer clique
+// errado sem precisar de uma segunda tela.
+export async function alternarPagoInscricaoAction(formData: FormData) {
+  await requireAdminSession();
+
+  const id = texto(formData, "inscricaoId");
+  if (!id) return;
+
+  const atual = await prisma.eventos_inscricoes.findUnique({ where: { id } });
+  if (!atual) return;
+
+  await prisma.eventos_inscricoes.update({ where: { id }, data: { pago: !atual.pago } });
+
+  await logAlteracao({
+    entidadeTipo: "eventos_inscricoes",
+    entidadeId: id,
+    acao: atual.pago ? "marcar_nao_pago" : "marcar_pago",
+    dadosAntes: { pago: atual.pago },
+    dadosDepois: { pago: !atual.pago }
+  });
+
+  revalidatePath(`/eventos/${atual.evento_id}`);
 }
 
 // Disparo de e-mail por categoria (Fase 4, pedido do usuário 10/08/2026):

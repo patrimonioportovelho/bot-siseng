@@ -37,6 +37,9 @@ type EventoExistente = {
   tem_desconto: boolean;
   valor_desconto: unknown;
   desconto_prazo: Date | string | null;
+  cobra_convidado: boolean;
+  valor_convidado: unknown;
+  convidado_idade_gratis_ate: number | null;
   organizador_parceiro_id: string | null;
   publicado_em: Date | string | null;
   formulario_inscricao: string | null;
@@ -121,6 +124,7 @@ export function EventoForm({
   const [recorrencia, setRecorrencia] = useState(ev?.recorrencia ?? "Nenhuma");
   const [pago, setPago] = useState(ev?.pago ?? false);
   const [temDesconto, setTemDesconto] = useState(ev?.tem_desconto ?? false);
+  const [cobraConvidado, setCobraConvidado] = useState(ev?.cobra_convidado ?? false);
   const [visibilidade, setVisibilidade] = useState(ev?.visibilidade ?? "Publico");
   const [lembretes, setLembretes] = useState<number[]>(ev?.lembretes_dias_antes ?? []);
   const [novoLembrete, setNovoLembrete] = useState("");
@@ -406,6 +410,48 @@ export function EventoForm({
         )}
         <p className="text-[10px] text-gray-400">
           Por enquanto isso é só informativo — a cobrança automática (Mercado Pago) entra numa próxima etapa.
+        </p>
+      </div>
+
+      <div className="border border-gray-200 rounded-lg p-3 flex flex-col gap-2">
+        <label className="flex items-center gap-2 text-xs text-gray-600">
+          <input
+            type="checkbox"
+            name="cobra_convidado"
+            checked={cobraConvidado}
+            onChange={(e) => setCobraConvidado(e.target.checked)}
+          />{" "}
+          Cobrar convidados por cabeça
+        </label>
+        {cobraConvidado && (
+          <div className="grid md:grid-cols-2 gap-2">
+            <div>
+              <label className={LABEL}>Valor por convidado</label>
+              <input
+                name="valor_convidado"
+                inputMode="decimal"
+                placeholder="0,00"
+                defaultValue={formatValorEditavel(ev?.cobra_convidado ? ev?.valor_convidado : null)}
+                className={CAMPO}
+              />
+            </div>
+            <div>
+              <label className={LABEL}>Grátis até quantos anos</label>
+              <input
+                name="convidado_idade_gratis_ate"
+                inputMode="numeric"
+                placeholder="14"
+                defaultValue={ev?.convidado_idade_gratis_ate ?? 14}
+                className={CAMPO}
+              />
+            </div>
+          </div>
+        )}
+        <p className="text-[10px] text-gray-400">
+          Vale só pra quem se inscrever como convidado externo pelo Formulário de inscrição (abaixo) — não pro
+          pagamento do evento em si. Convidado informa a idade ao se inscrever; até a idade acima não paga. Mesmo
+          espírito "só informativo" de cima: você confere quem deve o quê na aba de Inscrições e marca manualmente
+          quem já pagou.
         </p>
       </div>
 

@@ -8,12 +8,16 @@ import { AtaForm } from "@/components/ata-form";
 import { EmailEventoForm } from "@/components/email-evento-form";
 import { listarParceirosAdministrativos } from "@/lib/parceiros/administrativos";
 import { FUNCOES_EQUIPE } from "@/lib/parceiros/opcoes";
-import { funcoesPermitidas } from "@/lib/eventos/opcoes";
+import { funcoesPermitidas, convidadoPaga, valorDevidoConvidado } from "@/lib/eventos/opcoes";
 import { proximaOcorrencia } from "@/lib/eventos/ocorrencias";
-import { atualizarEventoAction, apagarEventoAction } from "../actions";
+import { atualizarEventoAction, apagarEventoAction, alternarPagoInscricaoAction } from "../actions";
 
 function formatDataCurta(d: Date) {
   return new Date(d).toLocaleDateString("pt-BR", { timeZone: "UTC", day: "2-digit", month: "2-digit", year: "numeric" });
+}
+
+function formatMoeda(v: number) {
+  return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
 export const dynamic = "force-dynamic";
@@ -107,6 +111,36 @@ export default async function EventoDetalhePage({
     include: { parceiros: { select: { nome: true } } }
   });
 
+  // Resumo por convidado (Fase 6, 12/08/2026: "controle da quantidade é
+  // essencial") — quanto cada inscrição deve (idade x valor/idade grátis do
+  // evento) e agrupado por quem convidou, pra corretor e admin verem de
+  // uma vez quantos convidados + quanto falta receber. Só faz sentido
+  // calcular quando o evento tem cobrança de convidado configurada.
+  const valorConvidadoNumero = evento.valor_convidado ? Number(evento.valor_convidado) : null;
+  const inscricoesComValor = inscricoes.map((i) => ({
+    ...i,
+    paga: convidadoPaga(i.idade, evento.convidado_idade_gratis_ate),
+    devido: valorDevidoConvidado(i.idade, evento.convidado_idade_gratis_ate, valorConvidadoNumero)
+  }));
+  const resumoPorConvite = new Map<
+    string,
+    { nome: string; total: number; pagantes: number; gratis: number; devido: number; recebido: number }
+  >();
+  for (const i of inscricoesComValor) {
+    const chave = i.convidado_por_id ?? "sem-convite";
+    const nome = i.parceiros?.nome ?? "Sem convite definido";
+    const atual = resumoPorConvite.get(chave) ?? { nome, total: 0, pagantes: 0, gratis: 0, devido: 0, recebido: 0 };
+    atual.total += 1;
+    if (i.paga) atual.pagantes += 1;
+    else atual.gratis += 1;
+    atual.devido += i.devido;
+    if (i.pago) atual.recebido += i.devido;
+    resumoPorConvite.set(chave, atual);
+  }
+  const resumoConvidados = Array.from(resumoPorConvite.values()).sort((a, b) => b.total - a.total);
+  const totalDevidoGeral = inscricoesComValor.reduce((soma, i) => soma + i.devido, 0);
+  const totalRecebidoGeral = inscricoesComValor.reduce((soma, i) => soma + (i.pago ? i.devido : 0), 0);
+
   return (
     <div>
       <Topbar />
@@ -196,13 +230,84 @@ export default async function EventoDetalhePage({
             Inscrições ({inscricoes.length})
           </div>
           <p className="text-xs text-gray-500 mb-3">Respostas do formulário de inscrição pública na página do evento.</p>
+
+          {evento.cobra_convidado && inscricoes.length > 0 && (
+            <div className="mb-3">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-2">
+                <div className="bg-gray-50 border border-gray-100 rounded-lg p-2.5 text-center">
+                  <div className="text-base font-bold text-gray-800">{inscricoes.length}</div>
+                  <div className="text-[11px] text-gray-500">Convidados</div>
+                </div>
+                <div className="bg-gray-50 border border-gray-100 rounded-lg p-2.5 text-center">
+                  <div className="text-base font-bold text-gray-800">{formatMoeda(totalDevidoGeral)}</div>
+                  <div className="text-[11px] text-gray-500">A receber (total)</div>
+                </div>
+                <div className="bg-green-50 border border-green-100 rounded-lg p-2.5 text-center">
+                  <div className="text-base font-bold text-green-700">{formatMoeda(totalRecebidoGeral)}</div>
+                  <div className="text-[11px] text-green-700">Já recebido</div>
+                </div>
+                <div className="bg-amber-50 border border-amber-100 rounded-lg p-2.5 text-center">
+                  <div className="text-base font-bold text-amber-700">
+                    {formatMoeda(totalDevidoGeral - totalRecebidoGeral)}
+                  </div>
+                  <div className="text-[11px] text-amber-700">Faltando</div>
+                </div>
+              </div>
+              <div className="text-[11px] font-semibold text-gray-600 mb-1">Por quem convidou</div>
+              <div className="flex flex-col gap-1">
+                {resumoConvidados.map((r) => (
+                  <div
+                    key={r.nome}
+                    className="flex items-center justify-between gap-2 text-xs text-gray-600 border-b border-gray-50 py-1"
+                  >
+                    <span className="truncate flex-1 min-w-0">
+                      {r.nome} — {r.total} convidado{r.total !== 1 ? "s" : ""}
+                      {r.gratis > 0 && ` (${r.gratis} criança${r.gratis !== 1 ? "s" : ""})`}
+                    </span>
+                    <span className="text-gray-400 whitespace-nowrap">
+                      {formatMoeda(r.recebido)} / {formatMoeda(r.devido)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {inscricoes.length === 0 ? (
             <p className="text-xs text-gray-400">Ninguém se inscreveu ainda.</p>
           ) : (
             <div className="flex flex-col gap-2">
-              {inscricoes.map((i) => (
+              {inscricoesComValor.map((i) => (
                 <div key={i.id} className="border border-gray-100 rounded-lg p-2.5 text-xs text-gray-600">
-                  <div className="font-semibold text-gray-800">{i.nome}</div>
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div className="font-semibold text-gray-800">
+                      {i.nome}
+                      {i.idade !== null && <span className="text-gray-400 font-normal"> · {i.idade} anos</span>}
+                    </div>
+                    {evento.cobra_convidado && (
+                      <div className="flex items-center gap-1.5">
+                        <span
+                          className={`text-[10px] font-semibold uppercase rounded-full px-2 py-0.5 border ${
+                            !i.paga
+                              ? "bg-gray-50 text-gray-500 border-gray-200"
+                              : i.pago
+                                ? "bg-green-50 text-green-700 border-green-200"
+                                : "bg-red-50 text-red-600 border-red-200"
+                          }`}
+                        >
+                          {!i.paga ? "Grátis" : i.pago ? "Pago" : `Deve ${formatMoeda(i.devido)}`}
+                        </span>
+                        {i.paga && (
+                          <form action={alternarPagoInscricaoAction}>
+                            <input type="hidden" name="inscricaoId" value={i.id} />
+                            <button type="submit" className="text-[10px] text-primary font-semibold hover:underline">
+                              {i.pago ? "Desmarcar" : "Marcar pago"}
+                            </button>
+                          </form>
+                        )}
+                      </div>
+                    )}
+                  </div>
                   <div>
                     {i.email} · {i.telefone}
                   </div>

@@ -78,3 +78,22 @@ export function formularioInscricaoLabel(f: string | null): string {
   if (f === "Completo") return "Formulário completo";
   return "Nenhum";
 }
+
+// Cobrança por convidado (Fase 6, 12/08/2026) — "cobrar por cabeça, criança
+// até 14 anos não paga". Sem idade informada, trata como pagante (mais
+// seguro pro controle financeiro cobrar de mais do que deixar passar de
+// graça por falta de dado — o admin sempre pode ajustar manualmente).
+export function convidadoPaga(idade: number | null, idadeGratisAte: number | null): boolean {
+  if (idade === null) return true;
+  const limite = idadeGratisAte ?? 14;
+  return idade > limite;
+}
+
+export function valorDevidoConvidado(
+  idade: number | null,
+  idadeGratisAte: number | null,
+  valorConvidado: number | null
+): number {
+  if (!convidadoPaga(idade, idadeGratisAte)) return 0;
+  return valorConvidado ?? 0;
+}

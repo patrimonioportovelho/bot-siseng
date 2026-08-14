@@ -120,16 +120,16 @@ export default async function PortalEventosPage() {
                 {/* Formulário interno (Fase 3, 10/08/2026): campos extras só
                     quando o evento pede — vão junto com "Confirmar presença"
                     no mesmo envio (ver responder() em ./actions.ts).
-                    BUG CORRIGIDO 12/08/2026 ("se eu responder depois eu não
-                    consigo abrir pra colocar um convidado"): antes esse bloco
-                    só aparecia com status !== "Confirmado", e o botão de
-                    confirmar ficava disabled depois — ou seja, quem já tinha
-                    confirmado não tinha como voltar aqui e mudar "vai levar
-                    convidado". Agora fica sempre visível (pré-preenchido com
-                    a resposta atual) e o botão vira "Atualizar resposta" em
-                    vez de travar — responder() já faz upsert, então reenviar
-                    só atualiza a mesma linha. */}
-                {ev.formulario_interno && (
+                    REMOVIDO daqui quando o evento também tem o sistema novo
+                    de convidados (formulario_inscricao) — pedido do usuário
+                    12/08/2026: "tira essa parte, deixa pra ele confirmar em
+                    adicionar/ver meus convidados". Só um número solto aqui
+                    ficava redundante (e sem ligação nenhuma com nome/idade/
+                    Pix) com o card "Convidados" logo abaixo, que já cobre a
+                    mesma necessidade de forma completa. Continua existindo
+                    pra evento que só tem formulario_interno (sem o sistema
+                    novo) — não quebra o que já funcionava nesses casos. */}
+                {ev.formulario_interno && !ev.formulario_inscricao && (
                   <div className="bg-gray-50 border border-gray-200 rounded-lg p-2.5 mb-2 flex flex-col gap-1.5">
                     <div className="text-[11px] font-semibold text-gray-600">Vai levar convidado?</div>
                     <div className="flex items-center gap-3 text-xs text-gray-600">

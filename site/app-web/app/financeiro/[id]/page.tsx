@@ -4,7 +4,7 @@ import { Topbar } from "@/components/topbar";
 import { prisma } from "@/lib/prisma";
 import { MovimentacaoDetalhe } from "@/components/movimentacao-detalhe";
 import { RateioForm } from "@/components/rateio-form";
-import { formatMoeda, formatPercentual, formatDataCalendario, formatCpf, formatCnpj } from "@/lib/format";
+import { formatMoeda, formatPercentual, formatDataCalendario, formatDataHora, formatCpf, formatCnpj } from "@/lib/format";
 import {
   atualizarMovimentacaoAction,
   gerarRateioAction,
@@ -368,8 +368,9 @@ export default async function MovimentacaoPage({
                 >
                   <span className="text-xs text-gray-700">
                     {formatMoeda(p.valor)}
+                    <span className="text-gray-400"> — gerado em {formatDataHora(p.criado_em)}</span>
                     {p.pago && p.confirmado_em && (
-                      <span className="text-gray-400"> — confirmado em {formatDataCalendario(p.confirmado_em)}</span>
+                      <span className="text-gray-400"> · confirmado em {formatDataHora(p.confirmado_em)}</span>
                     )}
                   </span>
                   <form action={alternarPagamentoParcialAction}>

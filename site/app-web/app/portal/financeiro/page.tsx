@@ -1,12 +1,9 @@
+import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { requirePortalSession } from "@/lib/portal-auth";
 import { PortalHeader } from "@/components/portal-header";
 import { formatMoeda, formatDataCalendario, situacaoVencimento } from "@/lib/format";
 import { saldoDevido } from "@/lib/financeiro/pagamentos-pix";
-import { gerarPixCopiaECola } from "@/lib/pix";
-import { PixQrcode } from "@/components/pix-qrcode";
-import { PortalGerarPixParcial } from "@/components/portal-gerar-pix-parcial";
-import { cancelarPagamentoParcialAction } from "@/app/portal/financeiro/actions";
 
 export const dynamic = "force-dynamic";
 
@@ -45,8 +42,12 @@ function Badge({ situacao }: { situacao: "vencido" | "alerta" | "normal" | null 
 // "A pagar" — todo Recebimento vinculado a ele (qualquer categoria, ex.: Fee
 // Corretor Remax) ainda em aberto. Não é um lançamento novo/duplicado: é a
 // MESMA linha de movimentacoes que o admin vê em /financeiro, só que do lado
-// dele — com a opção de gerar Pix por pedaço (parcial) contra o saldo
-// devedor, igual ele pediu ("dia 01 gera 50, dia 10 gera mais 50").
+// dele. Aqui é só a lista resumida (saldo devedor + vencimento); a opção de
+// gerar Pix por pedaço (parcial) e o histórico/QR Code de cada pedaço ficam
+// na página de detalhe (/portal/financeiro/[id], mesma ideia da página de
+// detalhe do admin) — pedido do usuário 14/08/2026: "quando vai na página no
+// financeiro do corretor ocupa muito espaço e o QR Code só some depois que
+// confirma, imagina quando tiver um monte de despesa".
 //
 // "Recebido" e "A receber" — repasse de honorário (comissão) que a
 // imobiliária deve/já pagou a ele, vindo do rateio (gerarRateioAction em
@@ -119,69 +120,35 @@ export default async function PortalFinanceiroPage() {
         <div className="flex flex-col gap-4">
           <Secao titulo="A pagar" sub="Toda dívida vinculada a você — pague aos poucos gerando um Pix por vez.">
             {aPagar.length === 0 && <p className="text-xs text-gray-400">Nenhuma dívida em aberto no momento.</p>}
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-2">
               {aPagar.map((m) => {
                 const parciais = m.pagamentos_pix.map((p) => ({ valor: Number(p.valor), pago: p.pago }));
                 const saldo = saldoDevido(Number(m.valor), parciais);
-                const pendentesNaoConfirmados = m.pagamentos_pix
-                  .filter((p) => !p.pago)
-                  .reduce((soma, p) => soma + Number(p.valor), 0);
-                const tetoDisponivel = Math.max(0, Math.round((saldo - pendentesNaoConfirmados) * 100) / 100);
+                const pendentes = m.pagamentos_pix.filter((p) => !p.pago).length;
                 const situacao = situacaoVencimento(m.vencimento, false, DIAS_ALERTA);
 
                 return (
-                  <div key={m.id} className="border border-gray-200 rounded-lg p-3">
-                    <div className="flex items-start justify-between gap-2 mb-1">
-                      <div>
-                        <div className="text-xs font-semibold text-gray-800">
-                          {m.categorias_financeiras.nome}
-                          {m.descricao && <span className="text-gray-400 font-normal"> — {m.descricao}</span>}
-                        </div>
-                        <div className="text-[11px] text-gray-400">Vence em {formatDataCalendario(m.vencimento)}</div>
+                  <Link
+                    key={m.id}
+                    href={`/portal/financeiro/${m.id}`}
+                    className="flex items-center justify-between gap-3 border border-gray-200 rounded-lg px-3 py-2.5 hover:bg-gray-50"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-xs font-semibold text-gray-800 truncate">
+                        {m.categorias_financeiras.nome}
+                        {m.descricao && <span className="text-gray-400 font-normal"> — {m.descricao}</span>}
                       </div>
+                      <div className="text-[11px] text-gray-400">
+                        Vence em {formatDataCalendario(m.vencimento)}
+                        {pendentes > 0 && ` · ${pendentes} Pix aguardando confirmação`}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
                       <Badge situacao={situacao} />
+                      <span className="text-xs font-bold text-red-600 whitespace-nowrap">{formatMoeda(saldo)}</span>
+                      <span className="text-gray-300">→</span>
                     </div>
-
-                    <div className="flex items-center justify-between gap-2 text-xs mt-2 mb-1">
-                      <span className="text-gray-500">Total: {formatMoeda(m.valor)}</span>
-                      <span className="font-bold text-red-600">Saldo devedor: {formatMoeda(saldo)}</span>
-                    </div>
-
-                    {m.pagamentos_pix.length > 0 && (
-                      <div className="flex flex-col gap-1.5 mt-2 mb-2">
-                        {m.pagamentos_pix.map((p) => (
-                          <div
-                            key={p.id}
-                            className={`flex items-center justify-between gap-2 text-[11px] rounded-lg px-2 py-1.5 border ${
-                              p.pago ? "bg-green-50 border-green-100 text-green-700" : "bg-amber-50 border-amber-100 text-amber-700"
-                            }`}
-                          >
-                            <span>
-                              {formatMoeda(p.valor)} — {p.pago ? `confirmado em ${formatDataCalendario(p.confirmado_em)}` : "aguardando confirmação"}
-                            </span>
-                            {!p.pago && (
-                              <form action={cancelarPagamentoParcialAction}>
-                                <input type="hidden" name="pagamentoPixId" value={p.id} />
-                                <button type="submit" className="text-[10px] text-gray-400 hover:text-red-600 underline">
-                                  cancelar
-                                </button>
-                              </form>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {m.pagamentos_pix
-                      .filter((p) => !p.pago)
-                      .map((p) => (
-                        <div key={`qr-${p.id}`} className="mt-2">
-                          <PixQrcode valor={Number(p.valor)} codigo={gerarPixCopiaECola({ valor: Number(p.valor), descricao: "Fee" })} />
-                        </div>
-                      ))}
-
-                    {tetoDisponivel > 0 && <PortalGerarPixParcial movimentacaoId={m.id} tetoDisponivel={tetoDisponivel} />}
-                  </div>
+                  </Link>
                 );
               })}
             </div>

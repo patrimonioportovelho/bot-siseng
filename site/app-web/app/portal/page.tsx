@@ -119,8 +119,9 @@ export default async function PortalPage() {
     administracoesAtivas,
     avaliacoesPorStatus,
     avaliacoesAprovadas,
-    honorariosRecebidos,
+    honorariosRecebidosMovimentacoes,
     honorariosPendentes,
+    honorariosPagoDireto,
     transacoesGrafico,
     administracoesGrafico
   ] = await Promise.all([
@@ -205,13 +206,26 @@ export default async function PortalPage() {
       where: { parceiro_id: pid, excluido: false, status: "Aprovado" },
       select: { data_validade: true }
     }),
-    prisma.pagamentos.aggregate({
-      where: { parceiro_id: pid, status: "Pago" },
-      _sum: { valor_parceiro: true },
+    // Fase 8 (14/08/2026) — corrigido: "Recebido"/"A receber" usavam
+    // pagamentos.status, que fica eternamente "Pendente" (nada no sistema
+    // nunca escreve "Pago" nesse campo — achado ao construir o Financeiro do
+    // corretor no Portal). O sinal confiável é movimentacoes.pago na Despesa
+    // de repasse gerada pelo rateio (pagamento_id aponta pra cá, ver
+    // gerarRateioAction em app/financeiro/actions.ts). "Pago direto" (vendedor
+    // pagou o corretor por fora, sem passar pela nossa conta — não gera
+    // Despesa nenhuma) conta como recebido na hora, separado abaixo.
+    prisma.movimentacoes.aggregate({
+      where: { tipo: "Despesa", parceiro_id: pid, pagamento_id: { not: null }, pago: true },
+      _sum: { valor: true },
+      _count: true
+    }),
+    prisma.movimentacoes.aggregate({
+      where: { tipo: "Despesa", parceiro_id: pid, pagamento_id: { not: null }, pago: false },
+      _sum: { valor: true },
       _count: true
     }),
     prisma.pagamentos.aggregate({
-      where: { parceiro_id: pid, status: { not: "Pago" } },
+      where: { parceiro_id: pid, pago_direto: true },
       _sum: { valor_parceiro: true },
       _count: true
     }),
@@ -262,6 +276,11 @@ export default async function PortalPage() {
   );
   const encerradoQtd = STATUS_AVALIACAO_ENCERRADOS.reduce((acc, s) => acc + contarStatus(s), 0);
   const avaliacoesTotalQtd = consultaCpfQtd + aprovadoQtd + concluidoQtd + emAndamentoQtd + encerradoQtd;
+
+  // Soma os dois lados do "Recebido" (Despesa de rateio já paga + pago
+  // direto, que não gera Despesa nenhuma — ver comentário na query acima).
+  const honorariosRecebidoValor = Number(honorariosRecebidosMovimentacoes._sum.valor ?? 0) + Number(honorariosPagoDireto._sum.valor_parceiro ?? 0);
+  const honorariosRecebidoQtd = honorariosRecebidosMovimentacoes._count + honorariosPagoDireto._count;
 
   const aprovadasVencendoQtd = avaliacoesAprovadas.filter((a) => {
     const sit = situacaoVencimento(a.data_validade, false, DIAS_ALERTA_VALIDADE);
@@ -425,13 +444,13 @@ export default async function PortalPage() {
               <Kpi
                 tone="verde"
                 label="Recebido"
-                value={formatMoeda(honorariosRecebidos._sum.valor_parceiro ?? 0)}
-                sub={`${honorariosRecebidos._count} repasse(s)`}
+                value={formatMoeda(honorariosRecebidoValor)}
+                sub={`${honorariosRecebidoQtd} repasse(s)`}
               />
               <Kpi
                 tone="ambar"
                 label="A receber"
-                value={formatMoeda(honorariosPendentes._sum.valor_parceiro ?? 0)}
+                value={formatMoeda(Number(honorariosPendentes._sum.valor ?? 0))}
                 sub={`${honorariosPendentes._count} pendente(s)`}
               />
             </div>

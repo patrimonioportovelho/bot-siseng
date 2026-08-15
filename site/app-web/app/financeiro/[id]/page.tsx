@@ -5,7 +5,14 @@ import { prisma } from "@/lib/prisma";
 import { MovimentacaoDetalhe } from "@/components/movimentacao-detalhe";
 import { RateioForm } from "@/components/rateio-form";
 import { formatMoeda, formatPercentual, formatDataCalendario, formatCpf, formatCnpj } from "@/lib/format";
-import { atualizarMovimentacaoAction, gerarRateioAction, excluirMovimentacaoAction, marcarPagoAction } from "../actions";
+import {
+  atualizarMovimentacaoAction,
+  gerarRateioAction,
+  excluirMovimentacaoAction,
+  marcarPagoAction,
+  alternarPagamentoParcialAction
+} from "../actions";
+import { saldoDevido } from "@/lib/financeiro/pagamentos-pix";
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +43,10 @@ export default async function MovimentacaoPage({
         }
       },
       categorias_financeiras: { select: { nome: true } },
+      // Pagamentos parciais via Pix gerados pelo corretor no Portal (Fase 8,
+      // 14/08/2026) — só existe pra Recebimento vinculado a parceiro_id
+      // (dívida dele, ex.: Fee Corretor Remax), ver movimentacoes_pagamentos_pix.
+      pagamentos_pix: { orderBy: { criado_em: "asc" } },
       clientes_interessado: { select: { nome: true } },
       clientes_proprietario: {
         select: {
@@ -326,6 +337,59 @@ export default async function MovimentacaoPage({
           marcarPagoAction={marcarPagoAction}
           pendenteRecebido={pendenteRecebido}
         />
+
+        {/* Pagamentos parciais via Pix gerados pelo corretor no Portal
+            (Fase 8, 14/08/2026) — "administrativo vai lá vê que no
+            recebimento abre, olha o extrato do banco se realmente tiver
+            pago, ele confirma". Cada linha aqui é um pedaço; confirmar/
+            desfazer chama alternarPagamentoParcialAction, que recalcula o
+            saldo e fecha a movimentação sozinha quando bate o total. */}
+        {movimentacao.tipo === "Recebimento" && movimentacao.parceiro_id && movimentacao.pagamentos_pix.length > 0 && (
+          <div className="bg-white border border-gray-200 rounded-xl p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-sm font-bold text-gray-800">Pagamentos parciais via Pix (corretor)</div>
+              <span className="text-xs text-gray-500">
+                Saldo devedor:{" "}
+                <strong className="text-gray-800">
+                  {formatMoeda(
+                    saldoDevido(
+                      Number(movimentacao.valor),
+                      movimentacao.pagamentos_pix.map((p) => ({ valor: Number(p.valor), pago: p.pago }))
+                    )
+                  )}
+                </strong>
+              </span>
+            </div>
+            <div className="flex flex-col gap-2">
+              {movimentacao.pagamentos_pix.map((p) => (
+                <div
+                  key={p.id}
+                  className="flex items-center justify-between gap-2 border border-gray-100 rounded-lg px-3 py-2"
+                >
+                  <span className="text-xs text-gray-700">
+                    {formatMoeda(p.valor)}
+                    {p.pago && p.confirmado_em && (
+                      <span className="text-gray-400"> — confirmado em {formatDataCalendario(p.confirmado_em)}</span>
+                    )}
+                  </span>
+                  <form action={alternarPagamentoParcialAction}>
+                    <input type="hidden" name="pagamentoPixId" value={p.id} />
+                    <button
+                      type="submit"
+                      className={`text-[11px] font-semibold rounded-full px-3 py-1 border ${
+                        p.pago
+                          ? "bg-green-50 text-green-700 border-green-200 hover:bg-green-100"
+                          : "bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100"
+                      }`}
+                    >
+                      {p.pago ? "Confirmado — desfazer" : "Confirmar pagamento"}
+                    </button>
+                  </form>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {movimentacao.tipo === "Recebimento" && transacaoVinculada && pagamentosExistentes.length === 0 && (
           <RateioForm

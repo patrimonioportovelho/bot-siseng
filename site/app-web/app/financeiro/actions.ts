@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAdminSession, logAlteracao } from "@/lib/auth";
 import { valorEditavelParaDecimal, somarMeses } from "@/lib/format";
 import { registrarEJogarErro } from "@/lib/erros";
+import { saldoDevido } from "@/lib/financeiro/pagamentos-pix";
 
 function texto(formData: FormData, campo: string): string | null {
   const v = formData.get(campo);
@@ -298,6 +299,76 @@ export async function marcarPagoAction(formData: FormData) {
   revalidatePath(`/financeiro/${id}`);
   revalidatePath("/financeiro");
   redirect(`/financeiro/${id}?salvo=1`);
+}
+
+// Confirma (ou desfaz) um pagamento parcial via Pix gerado pelo corretor no
+// Financeiro do Portal (Fase 8, 14/08/2026 — "toda vez que ele gerar um
+// pagamento no recebimento da despesa precisa ter um saldo, administrativo
+// vai lá vê que no recebimento abre, olha o extrato do banco se realmente
+// tiver pago, ele confirma"). Cada clique alterna pago true/false — igual ao
+// padrão do marcarPagoAction acima, só que na linha do pedaço parcial em vez
+// da movimentação inteira.
+//
+// Quando a soma dos parciais CONFIRMADOS bate (ou passa) o valor total da
+// movimentação, ela fecha sozinha (pago=true na movimentação-mãe) — é o
+// "saldo com uma aba diminuindo do valor total até fechar" que o usuário
+// descreveu. Desfazer um parcial que tinha fechado a conta reabre a
+// movimentação-mãe automaticamente, pra não deixar pago=true com saldo
+// devedor > 0.
+export async function alternarPagamentoParcialAction(formData: FormData) {
+  await requireAdminSession();
+
+  const id = texto(formData, "pagamentoPixId");
+  if (!id) throw new Error("Pagamento inválido.");
+
+  const atual = await prisma.movimentacoes_pagamentos_pix.findUnique({ where: { id } });
+  if (!atual) throw new Error("Pagamento não encontrado.");
+
+  const novoPago = !atual.pago;
+  let movimentacaoId = atual.movimentacao_id;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.movimentacoes_pagamentos_pix.update({
+      where: { id },
+      data: { pago: novoPago, confirmado_em: novoPago ? new Date() : null }
+    });
+
+    const movimentacao = await tx.movimentacoes.findUnique({
+      where: { id: atual.movimentacao_id },
+      include: { pagamentos_pix: true }
+    });
+    if (!movimentacao) return;
+
+    const parciais = movimentacao.pagamentos_pix.map((p) => ({
+      valor: Number(p.valor),
+      pago: p.id === id ? novoPago : p.pago
+    }));
+    const saldo = saldoDevido(Number(movimentacao.valor), parciais);
+
+    if (saldo <= 0 && !movimentacao.pago) {
+      await tx.movimentacoes.update({
+        where: { id: movimentacao.id },
+        data: { pago: true, data_pagamento: new Date(), updated_at: new Date() }
+      });
+    } else if (saldo > 0 && movimentacao.pago) {
+      await tx.movimentacoes.update({
+        where: { id: movimentacao.id },
+        data: { pago: false, data_pagamento: null, updated_at: new Date() }
+      });
+    }
+  });
+
+  await logAlteracao({
+    entidadeTipo: "movimentacoes_pagamentos_pix",
+    entidadeId: id,
+    acao: novoPago ? "confirmar" : "desfazer",
+    dadosAntes: { pago: atual.pago },
+    dadosDepois: { pago: novoPago }
+  });
+
+  revalidatePath(`/financeiro/${movimentacaoId}`);
+  revalidatePath("/financeiro");
+  revalidatePath("/portal/financeiro");
 }
 
 // Categoria fixa usada nas despesas geradas pelo rateio — já existe importada

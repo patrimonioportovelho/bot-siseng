@@ -722,6 +722,11 @@ model movimentacoes {
   transacoes               transacoes?            @relation(fields: [transacao_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   clientes_interessado     clientes?              @relation("movimentacoes_cliente_interessado_idToclientes", fields: [cliente_interessado_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   clientes_proprietario    clientes?              @relation("movimentacoes_cliente_proprietario_idToclientes", fields: [cliente_proprietario_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  // Pagamentos parciais via Pix gerados pelo corretor no Financeiro do
+  // Portal (Fase 8, 14/08/2026) — ver movimentacoes_pagamentos_pix abaixo.
+  // Só existe pra Recebimento vinculado a um parceiro (dívida dele, ex.:
+  // Fee Corretor Remax); Despesa nunca tem linha aqui.
+  pagamentos_pix           movimentacoes_pagamentos_pix[]
 
   @@index([categoria_id], map: "idx_movimentacoes_categoria")
   @@index([parceiro_id], map: "idx_movimentacoes_parceiro")
@@ -729,6 +734,40 @@ model movimentacoes {
   @@index([transacao_id], map: "idx_movimentacoes_transacao")
   @@index([cliente_interessado_id], map: "idx_movimentacoes_cliente_interessado")
   @@index([cliente_proprietario_id], map: "idx_movimentacoes_cliente_proprietario")
+}
+
+// Pagamento parcial via Pix (Fase 8, 14/08/2026) — pedido do usuário:
+// "financeiro do administrativo tem o recebimento... toda vez que lançar um
+// Recebimento nome do corretor gerar uma despesa para ele no portal...
+// quando ele abrir a despesa - se a dívida é 150 e vence dia 20, dia 01 ele
+// gera 50 reais, dia 10 gera mais 50 pra ficar em dia pagando aos poucos...
+// toda vez que ele gerar um pagamento precisa ter um saldo, administrativo
+// vai lá vê que no recebimento abre, olha o extrato do banco se realmente
+// tiver pago, ele confirma e o valor fica em saldo com uma aba diminuindo
+// do valor total".
+//
+// Não duplica lançamento nenhum no razão — a "despesa dele no portal" é só
+// a MESMA linha de movimentacoes (tipo Recebimento, com parceiro_id dele)
+// vista do lado dele (ver app/portal/financeiro/page.tsx), pra não gerar
+// dois lançamentos pro mesmo dinheiro. O saldo devedor é
+// movimentacoes.valor menos a soma das linhas aqui com pago=true. Quando a
+// soma bate o valor total, a movimentacoes.pago vira true sozinha (ver
+// confirmarPagamentoParcialAction em app/financeiro/actions.ts) — mesmo
+// "quitado" de sempre, só que alcançado aos poucos.
+model movimentacoes_pagamentos_pix {
+  id              String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  movimentacao_id String        @db.Uuid
+  valor           Decimal       @db.Decimal(14, 2)
+  // false = corretor gerou o Pix, ainda esperando o admin conferir no
+  // extrato (ver Recebimento aberto por fora, mesmo espírito do "controle
+  // manual" já usado em eventos_inscricoes.pago). true = admin conferiu e
+  // confirmou.
+  pago            Boolean       @default(false)
+  criado_em       DateTime      @default(now()) @db.Timestamptz(6)
+  confirmado_em   DateTime?     @db.Timestamptz(6)
+  movimentacoes   movimentacoes @relation(fields: [movimentacao_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([movimentacao_id], map: "idx_movimentacoes_pagamentos_pix_movimentacao")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.

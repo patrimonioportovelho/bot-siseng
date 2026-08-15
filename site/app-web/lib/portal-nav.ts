@@ -13,6 +13,7 @@ import type { NavItem } from "@/lib/nav";
 // próprio botão "+ Novo" pra chegar no formulário.
 export const PORTAL_NAV_ITEMS: NavItem[] = [
   { label: "Painel", href: "/portal" },
+  { label: "Financeiro", href: "/portal/financeiro" },
   { label: "Agenda", href: "/portal/agenda" },
   { label: "Eventos", href: "/portal/eventos" },
   { label: "Elaboração de Contrato de Gestão", href: "/portal/gestao" },

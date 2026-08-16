@@ -15,7 +15,13 @@ import {
 
 type ClienteOpcao = { id: string; nome: string; id_legado: string | null; parceiroId: string | null };
 type LojaOpcao = { id: string; nome: string };
-type ParceiroOpcao = { id: string; nome: string; funcao: string | null };
+type ParceiroOpcao = {
+  id: string;
+  nome: string;
+  funcao: string | null;
+  porcProprietario: number | null;
+  porcInteressado: number | null;
+};
 type ImovelOpcao = {
   id: string;
   id_legado: string | null;

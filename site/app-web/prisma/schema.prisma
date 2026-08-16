@@ -870,8 +870,19 @@ model parceiros {
   data_saida                                                                  DateTime?                 @db.Date
   obs_funcao                                                                  String?
   fee                                                                         Decimal?                  @db.Decimal(12, 2)
-  porc_compr                                                                  Decimal?                  @db.Decimal(6, 4)
-  porc_vend                                                                   Decimal?                  @db.Decimal(6, 4)
+  // Comissionamento pré-definido do corretor (Corretor/Corretor Estagiário) —
+  // renomeado de porc_compr/porc_vend (16/08/2026, pedido do usuário: "na
+  // verdade deveria ser interessado e proprietário porque serve para compra
+  // e venda e locação"). porc_proprietario é a % dele quando atua do lado do
+  // proprietário/vendedor/locador (transacoes.corretor_proprietario_id);
+  // porc_interessado é a % quando atua do lado do interessado/comprador/
+  // locatário (transacoes.corretor_contraparte_id) — em QUALQUER tipo de
+  // transação (Compra e Venda OU Locação), não só compra. Usado só como
+  // valor padrão pra pré-preencher transacoes.porc_corretor_proprietario/
+  // porc_corretor_contraparte quando esse corretor é definido numa
+  // transação nova — o administrativo continua podendo editar depois.
+  porc_proprietario                                                           Decimal?                  @db.Decimal(6, 4)
+  porc_interessado                                                            Decimal?                  @db.Decimal(6, 4)
   dia_fee                                                                     Int?                      @db.SmallInt
   banco_id                                                                    String?                   @db.Uuid
   codigo_banco                                                                String?

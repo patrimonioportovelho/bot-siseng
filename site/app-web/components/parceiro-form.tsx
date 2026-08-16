@@ -12,6 +12,12 @@ import {
 import { formatCpf, formatTelefone, formatPercentual, formatMoeda, formatDataCalendario } from "@/lib/format";
 import { buscarCep, UF_PARA_ESTADO } from "@/lib/enderecos";
 
+// % Proprietário / % Interessado (renomeado de "% compra"/"% venda" em
+// 16/08/2026 — pedido do usuário: "na verdade deveria ser interessado e
+// proprietário porque serve para compra e venda e locação", não só compra).
+// Serve como valor padrão pré-preenchido quando esse corretor é escolhido
+// numa transação nova (ver components/transacao-form.tsx) — o corretor não
+// edita isso aqui sozinho no sentido de "por transação", só o cadastro base.
 const FUNCOES_COM_COMISSIONAMENTO = ["Corretor", "Corretor Estagiário"];
 
 type Loja = { id: string; nome: string };
@@ -52,8 +58,8 @@ type ParceiroExistente = {
   data_saida: Date | null;
   obs_funcao: string | null;
   fee: unknown;
-  porc_compr: unknown;
-  porc_vend: unknown;
+  porc_proprietario: unknown;
+  porc_interessado: unknown;
   dia_fee: number | null;
   banco_id: string | null;
   codigo_banco: string | null;
@@ -169,8 +175,8 @@ function Ficha({ parceiro, onEditar }: { parceiro: ParceiroExistente; onEditar: 
         <Cartao titulo="Comissionamento">
           <div className="grid md:grid-cols-4 gap-3">
             <Linha label="Fee (R$)" valor={formatMoeda(p.fee)} />
-            <Linha label="% compra" valor={p.porc_compr != null ? formatPercentual(p.porc_compr) : null} />
-            <Linha label="% venda" valor={p.porc_vend != null ? formatPercentual(p.porc_vend) : null} />
+            <Linha label="% Proprietário" valor={p.porc_proprietario != null ? formatPercentual(p.porc_proprietario) : null} />
+            <Linha label="% Interessado" valor={p.porc_interessado != null ? formatPercentual(p.porc_interessado) : null} />
             <Linha label="Dia do fee" valor={p.dia_fee} />
           </div>
         </Cartao>
@@ -564,7 +570,9 @@ export function ParceiroForm({
         <div className="bg-white border border-gray-200 rounded-xl p-4">
           <div className="text-sm font-bold text-gray-800 mb-3">Comissionamento</div>
           <p className="text-[11px] text-gray-400 mb-3 -mt-2">
-            Visível apenas para Corretor e Corretor Estagiário.
+            Visível apenas para Corretor e Corretor Estagiário. % Proprietário/% Interessado são a comissão padrão
+            dele em qualquer negócio (Compra e Venda ou Locação) — servem só pra pré-preencher automaticamente
+            quando o administrativo definir os corretores numa transação nova; continuam editáveis por transação.
           </p>
           <div className="grid md:grid-cols-4 gap-3">
             <div>
@@ -572,21 +580,21 @@ export function ParceiroForm({
               <input className={CAMPO} name="fee" defaultValue={p?.fee != null ? String(p.fee) : ""} />
             </div>
             <div>
-              <label className={LABEL}>% compra</label>
+              <label className={LABEL}>% Proprietário</label>
               <input
                 className={CAMPO}
-                name="porc_compr"
+                name="porc_proprietario"
                 placeholder="Ex.: 22,5"
-                defaultValue={p?.porc_compr != null ? formatPercentual(p.porc_compr) : ""}
+                defaultValue={p?.porc_proprietario != null ? formatPercentual(p.porc_proprietario) : ""}
               />
             </div>
             <div>
-              <label className={LABEL}>% venda</label>
+              <label className={LABEL}>% Interessado</label>
               <input
                 className={CAMPO}
-                name="porc_vend"
+                name="porc_interessado"
                 placeholder="Ex.: 22,5"
-                defaultValue={p?.porc_vend != null ? formatPercentual(p.porc_vend) : ""}
+                defaultValue={p?.porc_interessado != null ? formatPercentual(p.porc_interessado) : ""}
               />
             </div>
             <div>

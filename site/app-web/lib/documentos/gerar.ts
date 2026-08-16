@@ -1088,8 +1088,11 @@ async function montarDadosContratoCorretor(parceiroId: string): Promise<Record<s
     Telefone: formatTelefone(p.telefone),
     Endereco: p.endereco ?? "",
     Fee: p.fee != null ? numero(p.fee) : "",
-    PorcCompr: percentual(p.porc_compr),
-    PorcVend: percentual(p.porc_vend),
+    // Placeholders do template continuam PorcCompr/PorcVend (nome do
+    // documento já publicado não muda) — só a fonte no banco foi renomeada
+    // (16/08/2026) pra porc_proprietario/porc_interessado.
+    PorcCompr: percentual(p.porc_proprietario),
+    PorcVend: percentual(p.porc_interessado),
     DiaFee: p.dia_fee ?? "",
     Cidade: p.lojas?.cidade ?? "",
     Estado: p.lojas?.estado ?? "",

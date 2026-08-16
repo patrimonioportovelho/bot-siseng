@@ -36,7 +36,18 @@ import { AdicionarProprietarioImovel } from "@/components/adicionar-proprietario
 
 type ClienteOpcao = { id: string; nome: string; id_legado: string | null; parceiroId: string | null };
 type LojaOpcao = { id: string; nome: string };
-type ParceiroOpcao = { id: string; nome: string; funcao: string | null };
+type ParceiroOpcao = {
+  id: string;
+  nome: string;
+  funcao: string | null;
+  // % de comissionamento pré-definida do parceiro (Corretor/Corretor
+  // Estagiário) — cadastro em Parceiro (16/08/2026, ver
+  // components/parceiro-form.tsx), usada só pra PRÉ-PREENCHER
+  // porc_corretor_proprietario/porc_corretor_contraparte quando ele é
+  // escolhido aqui; continua editável pelo administrativo depois.
+  porcProprietario: number | null;
+  porcInteressado: number | null;
+};
 type ImovelOpcao = {
   id: string;
   id_legado: string | null;
@@ -433,6 +444,21 @@ export function TransacaoForm({
 
   const corretores = useMemo(() => parceiros.filter((p) => FUNCOES_CORRETOR.includes(p.funcao ?? "")), [parceiros]);
 
+  // Pedido do usuário (16/08/2026): "quando for definir os corretores já
+  // venha automaticamente a porcentagem do corretor pré-definida... o
+  // corretor não vai poder editar a porcentagem, somente o administrativo
+  // quando abrir a transação". A % vem do cadastro do parceiro
+  // (porcProprietario/porcInteressado) só como VALOR PADRÃO no momento em
+  // que o corretor é escolhido/trocado aqui — continua um input de texto
+  // normal, o admin pode digitar por cima na hora se o negócio combinar
+  // outro percentual.
+  function porcPadraoCorretor(parceiroId: string, lado: "proprietario" | "interessado"): string {
+    const p = parceiros.find((x) => x.id === parceiroId);
+    if (!p) return "";
+    const valor = lado === "proprietario" ? p.porcProprietario : p.porcInteressado;
+    return valor != null ? formatPercentual(valor) : "";
+  }
+
   const imoveisFiltrados = useMemo(() => {
     const b = buscaImovel.trim().toLowerCase();
     const base = semAdministracao ? imoveis.filter((i) => !idsComAdmAtiva.has(i.id)) : imoveis;
@@ -470,7 +496,10 @@ export function TransacaoForm({
     setListaImovelAberta(false);
     setAdmImovelId("");
     const corretorAuto = i.parceiroId ?? i.proprietarios[0]?.parceiroId ?? "";
-    if (corretorAuto) setCorretorProprietarioId(corretorAuto);
+    if (corretorAuto) {
+      setCorretorProprietarioId(corretorAuto);
+      setPorcCorretorProprietarioTexto(porcPadraoCorretor(corretorAuto, "proprietario"));
+    }
   }
 
   function selecionarAdministracao(a: AdministracaoOpcao) {
@@ -478,7 +507,10 @@ export function TransacaoForm({
     setBuscaAdministracao(labelAdministracao(a));
     setListaAdministracaoAberta(false);
     setImovelId(a.imovelId);
-    if (a.parceiroId) setCorretorProprietarioId(a.parceiroId);
+    if (a.parceiroId) {
+      setCorretorProprietarioId(a.parceiroId);
+      setPorcCorretorProprietarioTexto(porcPadraoCorretor(a.parceiroId, "proprietario"));
+    }
   }
 
   function adicionarInteressado(c: ClienteOpcao) {
@@ -486,7 +518,10 @@ export function TransacaoForm({
     setInteressados((atual) => [...atual, c]);
     setBuscaInteressado("");
     setListaInteressadoAberta(false);
-    if (eraOPrimeiro && c.parceiroId) setCorretorContraparteId(c.parceiroId);
+    if (eraOPrimeiro && c.parceiroId) {
+      setCorretorContraparteId(c.parceiroId);
+      setPorcCorretorContraparteTexto(porcPadraoCorretor(c.parceiroId, "interessado"));
+    }
   }
 
   function removerInteressado(id: string) {
@@ -1168,7 +1203,10 @@ export function TransacaoForm({
               className={CAMPO}
               name="corretor_proprietario_id"
               value={corretorProprietarioId}
-              onChange={(e) => setCorretorProprietarioId(e.target.value)}
+              onChange={(e) => {
+                setCorretorProprietarioId(e.target.value);
+                setPorcCorretorProprietarioTexto(porcPadraoCorretor(e.target.value, "proprietario"));
+              }}
             >
               <option value="">—</option>
               {corretores.map((p) => (
@@ -1177,7 +1215,10 @@ export function TransacaoForm({
                 </option>
               ))}
             </select>
-            <p className="text-[11px] text-gray-400 mt-1">Vem automático do proprietário — pode trocar se precisar.</p>
+            <p className="text-[11px] text-gray-400 mt-1">
+              Vem automático do proprietário — pode trocar se precisar. A % abaixo vem do cadastro do corretor, só
+              o administrativo edita.
+            </p>
           </div>
           <div>
             <label className={LABEL}>Corretor da contraparte</label>
@@ -1185,7 +1226,10 @@ export function TransacaoForm({
               className={CAMPO}
               name="corretor_contraparte_id"
               value={corretorContraparteId}
-              onChange={(e) => setCorretorContraparteId(e.target.value)}
+              onChange={(e) => {
+                setCorretorContraparteId(e.target.value);
+                setPorcCorretorContraparteTexto(porcPadraoCorretor(e.target.value, "interessado"));
+              }}
             >
               <option value="">—</option>
               {corretores.map((p) => (
@@ -1194,7 +1238,10 @@ export function TransacaoForm({
                 </option>
               ))}
             </select>
-            <p className="text-[11px] text-gray-400 mt-1">Vem automático do interessado — pode trocar se precisar.</p>
+            <p className="text-[11px] text-gray-400 mt-1">
+              Vem automático do interessado — pode trocar se precisar. A % abaixo vem do cadastro do corretor, só o
+              administrativo edita.
+            </p>
           </div>
           <div>
             <label className={LABEL}>Status do honorário</label>

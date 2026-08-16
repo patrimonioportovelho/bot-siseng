@@ -41,7 +41,7 @@ export default async function NovaTransacaoPage({
     }),
     prisma.parceiros.findMany({
       orderBy: { nome: "asc" },
-      select: { id: true, nome: true, funcao: true }
+      select: { id: true, nome: true, funcao: true, porc_proprietario: true, porc_interessado: true }
     }),
     // Só administrações com status Ativo podem virar uma locação em
     // "Elaboração de Contrato de Locação" — imóvel e proprietário vêm dela.
@@ -58,6 +58,14 @@ export default async function NovaTransacaoPage({
       }
     })
   ]);
+
+  const parceirosComComissao = parceiros.map((p) => ({
+    id: p.id,
+    nome: p.nome,
+    funcao: p.funcao,
+    porcProprietario: p.porc_proprietario != null ? Number(p.porc_proprietario) : null,
+    porcInteressado: p.porc_interessado != null ? Number(p.porc_interessado) : null
+  }));
 
   const clientesComParceiro = clientes.map((c) => ({
     id: c.id,
@@ -106,7 +114,7 @@ export default async function NovaTransacaoPage({
         lojas={lojas}
         clientes={clientesComParceiro}
         imoveis={imoveisComProprietarios}
-        parceiros={parceiros}
+        parceiros={parceirosComComissao}
         administracoes={administracoes}
         imoveisComAdmAtivaIds={imoveisComAdmAtivaIds}
         interessadosIniciais={[]}

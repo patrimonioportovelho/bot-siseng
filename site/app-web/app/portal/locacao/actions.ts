@@ -599,6 +599,14 @@ export async function gerarLocacaoAction(
 
     const idLegado = await gerarProximoIdLocacao();
 
+    // % de cada corretor vem do cadastro dele (mesma regra da Compra e Venda
+    // — ver comentário em app/portal/compra-venda/actions.ts), nunca do
+    // formulário do portal, que nunca expôs esse campo.
+    const [corretorProprietarioComissao, corretorContraparteComissao] = await Promise.all([
+      prisma.parceiros.findUnique({ where: { id: corretorProprietarioId }, select: { porc_proprietario: true } }),
+      prisma.parceiros.findUnique({ where: { id: corretorContraparteId }, select: { porc_interessado: true } })
+    ]);
+
     const novo = await prisma.transacoes
       .create({
         data: {
@@ -630,6 +638,8 @@ export async function gerarLocacaoAction(
           parceiro_externo_id: temParceria ? parceiroExternoId : null,
           corretor_proprietario_id: corretorProprietarioId,
           corretor_contraparte_id: corretorContraparteId,
+          porc_corretor_proprietario: Number(corretorProprietarioComissao?.porc_proprietario ?? 0),
+          porc_corretor_contraparte: Number(corretorContraparteComissao?.porc_interessado ?? 0),
           criado_no_portal: true
         }
       })

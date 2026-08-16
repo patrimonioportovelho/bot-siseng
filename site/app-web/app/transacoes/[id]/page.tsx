@@ -67,7 +67,7 @@ export default async function TransacaoDetalhePage({
     }),
     prisma.parceiros.findMany({
       orderBy: { nome: "asc" },
-      select: { id: true, nome: true, funcao: true }
+      select: { id: true, nome: true, funcao: true, porc_proprietario: true, porc_interessado: true }
     }),
     prisma.adm_imoveis.findMany({
       where: { status: "Ativo", excluido: false },
@@ -107,6 +107,14 @@ export default async function TransacaoDetalhePage({
         prisma.movimentacoes.count({ where: { transacao_id: id, tipo: "Recebimento" } })
       ])
     : [[], 0];
+
+  const parceirosComComissao = parceiros.map((p) => ({
+    id: p.id,
+    nome: p.nome,
+    funcao: p.funcao,
+    porcProprietario: p.porc_proprietario != null ? Number(p.porc_proprietario) : null,
+    porcInteressado: p.porc_interessado != null ? Number(p.porc_interessado) : null
+  }));
 
   const clientesComParceiro = clientes.map((c) => ({
     id: c.id,
@@ -279,7 +287,7 @@ export default async function TransacaoDetalhePage({
         lojas={lojas}
         clientes={clientesComParceiro}
         imoveis={imoveisComProprietarios}
-        parceiros={parceiros}
+        parceiros={parceirosComComissao}
         administracoes={administracoes}
         imoveisComAdmAtivaIds={imoveisComAdmAtivaIds}
         interessadosIniciais={interessadosComParceiro}

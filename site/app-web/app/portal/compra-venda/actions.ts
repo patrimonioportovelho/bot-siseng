@@ -633,6 +633,20 @@ export async function gerarCompraVendaAction(
 
     const idLegado = await gerarProximoIdCV();
 
+    // % de cada corretor vem do cadastro dele (porc_proprietario/
+    // porc_interessado em parceiros), nunca do formulário — pedido do
+    // usuário (16/08/2026): "quero que todos os cadastrados que tenha parte
+    // de comissionamento quando for definir os corretores já venha
+    // automaticamente a porcentagem do corretor pré-definida... o corretor
+    // não vai poder editar a porcentagem, somente o administrativo quando
+    // abrir a transação". O portal nunca expôs esse campo (só o admin edita
+    // em /transacoes/[id]), então isso só preenche o valor certo desde a
+    // criação em vez de deixar 0 até o admin corrigir na mão.
+    const [corretorProprietarioComissao, corretorContraparteComissao] = await Promise.all([
+      prisma.parceiros.findUnique({ where: { id: corretorProprietarioIdForm }, select: { porc_proprietario: true } }),
+      prisma.parceiros.findUnique({ where: { id: corretorContraparteIdForm }, select: { porc_interessado: true } })
+    ]);
+
     const novo = await prisma.transacoes
       .create({
         data: {
@@ -657,6 +671,8 @@ export async function gerarCompraVendaAction(
           parceiro_externo_id: temParceria ? parceiroExternoId : null,
           corretor_proprietario_id: corretorProprietarioIdForm,
           corretor_contraparte_id: corretorContraparteIdForm,
+          porc_corretor_proprietario: Number(corretorProprietarioComissao?.porc_proprietario ?? 0),
+          porc_corretor_contraparte: Number(corretorContraparteComissao?.porc_interessado ?? 0),
           gestao_id: gestaoId,
           compra_sem_gestao: compraSemGestao,
           historico_gestao_data_assinatura: historicoData,

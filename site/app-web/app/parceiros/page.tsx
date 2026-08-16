@@ -134,6 +134,12 @@ export default async function ParceirosPage({
             </button>
           </form>
           <Link
+            href="/parceiros/comissionamento"
+            className="text-xs bg-white border border-gray-300 text-gray-600 rounded-lg px-3 py-1.5 font-semibold whitespace-nowrap"
+          >
+            Comissionamento em lote
+          </Link>
+          <Link
             href="/parceiros/novo"
             className="text-xs bg-primary text-white rounded-lg px-3 py-1.5 font-semibold whitespace-nowrap"
           >

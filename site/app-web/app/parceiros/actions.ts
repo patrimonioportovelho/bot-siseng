@@ -280,3 +280,56 @@ export async function apagarParceiroAction(formData: FormData) {
   revalidatePath("/parceiros");
   redirect("/parceiros?excluido=1");
 }
+
+type LinhaComissionamento = { id: string; porc_proprietario: string; porc_interessado: string };
+
+// Tela de preenchimento em lote de % Proprietário/% Interessado
+// (app/parceiros/comissionamento/page.tsx) — criada em 16/08/2026 depois de
+// um `prisma db push` ter apagado os 48 valores que existiam nos campos
+// antigos (porc_compr/porc_vend, sem backup no plano Free do Supabase pra
+// restaurar). Também serve pra cobrir cadastro que nunca teve o
+// comissionamento preenchido de verdade (usuário: "nem todos tem ainda pode
+// ser erro de cadastro do administrativo") — não é só reposição do que se
+// perdeu, é revisão geral de quem está com o campo vazio.
+export async function salvarComissionamentoLoteAction(_prev: unknown, formData: FormData): Promise<ResultadoFormulario> {
+  await requireAdminSession();
+
+  const linhasTexto = texto(formData, "linhas");
+  if (!linhasTexto) return { erro: "Nada pra salvar." };
+
+  let linhas: LinhaComissionamento[];
+  try {
+    linhas = JSON.parse(linhasTexto);
+  } catch {
+    return { erro: "Dados inválidos." };
+  }
+  if (!Array.isArray(linhas) || linhas.length === 0) return { erro: "Nenhuma linha pra salvar." };
+
+  try {
+    await prisma.$transaction(
+      linhas.map((l) =>
+        prisma.parceiros.update({
+          where: { id: l.id },
+          data: {
+            porc_proprietario: percentualParaDecimal(l.porc_proprietario ?? ""),
+            porc_interessado: percentualParaDecimal(l.porc_interessado ?? ""),
+            updated_at: new Date()
+          }
+        })
+      )
+    );
+  } catch (erro) {
+    return { erro: mensagemDe(erro) };
+  }
+
+  await logAlteracao({
+    entidadeTipo: "parceiros",
+    entidadeId: "lote",
+    acao: "editar_comissionamento_lote",
+    dadosDepois: { quantidade: linhas.length }
+  });
+
+  revalidatePath("/parceiros/comissionamento");
+  revalidatePath("/parceiros");
+  redirect("/parceiros/comissionamento?salvo=1");
+}

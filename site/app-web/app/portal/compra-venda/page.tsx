@@ -3,7 +3,7 @@ import { requirePortalSession } from "@/lib/portal-auth";
 import { PortalHeader } from "@/components/portal-header";
 import { PortalRascunhoAviso } from "@/components/portal-rascunho-aviso";
 import { prisma } from "@/lib/prisma";
-import { formatMoeda, formatDataCalendario, statusTone, STATUS_TRANSACAO_EM_ABERTO, type Tone } from "@/lib/format";
+import { formatMoeda, formatDataCalendario, statusTone, STATUS_TRANSACAO_TODOS, type Tone } from "@/lib/format";
 import { andamentoTone } from "@/lib/transacoes/opcoes";
 
 export const dynamic = "force-dynamic";
@@ -15,47 +15,89 @@ const TONE_CLASSES: Record<Tone, string> = {
   cancelada: "bg-red-50 text-red-600 border-red-200"
 };
 
-// Painel do corretor pra Compra e Venda — mostra o que ele já cadastrou
-// (só leitura: quem edita é o administrativo em /transacoes) e o rascunho
-// salvo no navegador, se tiver. Negócios finalizados/cancelados seguem fora
-// desta lista (mesmo critério de STATUS_TRANSACAO_EM_ABERTO usado no resto
-// do sistema) — já contam no painel principal (/portal). O destaque de cada
-// card é o Andamento do contrato (Elaboração/Conferência/.../Conclusão —
-// ver lib/transacoes/opcoes.ts) em vez do Status normal, que fica só como
-// texto menor de apoio — o Andamento é o que reflete de verdade em que pé
-// está o processo, dia a dia.
+// Painel do corretor pra Compra e Venda — mostra o que ele já cadastrou (só
+// leitura: quem edita é o administrativo em /transacoes) e o rascunho salvo
+// no navegador, se tiver.
 //
-// Um filtro por mês/ano de cadastro (MesAnoFiltro) chegou a existir aqui
-// (01/08/2026), mas quebrava o propósito da própria tela: um negócio em
-// andamento não tem prazo — cadastrado em julho e ainda aberto em agosto
-// simplesmente sumia da lista assim que o mês virava, porque o filtro
-// exigia created_at dentro do mês selecionado (16/08/2026, usuário: "não
-// está aparecendo as transações em andamento"). Removido — a lista mostra
-// TODO negócio aberto dele, sem recorte de data; quem quiser histórico de
-// negócio já concluído continua olhando o painel principal (/portal).
-export default async function PortalCompraVendaPage() {
+// Histórico (16/08/2026): a lista só mostrava negócio ABERTO
+// (STATUS_TRANSACAO_EM_ABERTO), e ainda tinha um filtro por mês/ano de
+// cadastro (MesAnoFiltro) que fazia negócio em andamento sumir assim que o
+// mês virava (usuário: "não está aparecendo as transações em andamento").
+// Removido o filtro de data. Só que aí, negócio FINALIZADO some da lista de
+// vez — e o usuário voltou: "mesmo com status finalizado é preciso aparecer
+// pro corretor saber o que ele fechou e quando fechou... vai replicar a
+// parte de compra e venda lá [/transacoes/venda, admin] mas sendo apenas do
+// Parceiro". Agora replica esse comportamento: mostra TODO negócio dele
+// (qualquer status, incluindo finalizado/cancelado), agrupado por Status
+// (mesma ordem de STATUS_TRANSACAO_TODOS — aberto primeiro, encerrado por
+// último), com a busca por imóvel/cliente/Id ("não esqueça do filtro") igual
+// à do administrativo — só que list ONLY dos negócios dele (proprietário ou
+// contraparte), sem o agrupamento por Loja (não faz sentido pra um corretor
+// só, que só vê os negócios que já são dele).
+export default async function PortalCompraVendaPage({
+  searchParams
+}: {
+  searchParams: Promise<{ q?: string }>;
+}) {
   const session = await requirePortalSession();
   const pid = session.parceiroId;
+
+  const { q } = await searchParams;
+  const termo = (q ?? "").trim();
 
   const transacoes = await prisma.transacoes.findMany({
     where: {
       excluido: false,
       tipo: "Compra e Venda",
-      status: STATUS_TRANSACAO_EM_ABERTO,
-      OR: [{ corretor_proprietario_id: pid }, { corretor_contraparte_id: pid }]
+      AND: [
+        { OR: [{ corretor_proprietario_id: pid }, { corretor_contraparte_id: pid }] },
+        ...(termo
+          ? [
+              {
+                OR: [
+                  { imoveis: { endereco: { contains: termo, mode: "insensitive" as const } } },
+                  { imoveis: { inscricao: { contains: termo, mode: "insensitive" as const } } },
+                  { clientes_transacoes_cliente_idToclientes: { nome: { contains: termo, mode: "insensitive" as const } } },
+                  {
+                    clientes_transacoes_cliente_contraparte_idToclientes: {
+                      nome: { contains: termo, mode: "insensitive" as const }
+                    }
+                  },
+                  { id_legado: { contains: termo, mode: "insensitive" as const } }
+                ]
+              }
+            ]
+          : [])
+      ]
     },
-    orderBy: { created_at: "desc" },
+    orderBy: [{ data_assinatura: { sort: "desc", nulls: "last" } }, { created_at: "desc" }],
     select: {
       id: true,
       id_legado: true,
       status: true,
       andamento: true,
       valor_transacao: true,
+      data_assinatura: true,
       created_at: true,
       imoveis: { select: { endereco: true } },
       clientes_transacoes_cliente_idToclientes: { select: { nome: true } },
       clientes_transacoes_cliente_contraparte_idToclientes: { select: { nome: true } }
     }
+  });
+
+  const porStatus = new Map<string, typeof transacoes>();
+  for (const t of transacoes) {
+    const s = t.status ?? "Sem status";
+    if (!porStatus.has(s)) porStatus.set(s, []);
+    porStatus.get(s)!.push(t);
+  }
+  const statusOrdenados = [...porStatus.keys()].sort((x, y) => {
+    const ix = STATUS_TRANSACAO_TODOS.indexOf(x);
+    const iy = STATUS_TRANSACAO_TODOS.indexOf(y);
+    if (ix === -1 && iy === -1) return x.localeCompare(y);
+    if (ix === -1) return 1;
+    if (iy === -1) return -1;
+    return ix - iy;
   });
 
   return (
@@ -77,8 +119,8 @@ export default async function PortalCompraVendaPage() {
           </Link>
         </div>
         <p className="text-xs text-gray-500 mb-4">
-          Seus negócios em andamento — depois de cadastrado só dá pra acompanhar aqui, quem altera é o
-          administrativo. Finalizados/cancelados saem desta lista (contam só no seu painel principal).
+          Todos os seus negócios de compra e venda, do início até fechar (ou cancelar) — depois de cadastrado só dá
+          pra acompanhar aqui, quem altera é o administrativo.
         </p>
 
         <div className="mb-4">
@@ -89,42 +131,73 @@ export default async function PortalCompraVendaPage() {
           />
         </div>
 
+        <form className="flex gap-2 flex-wrap mb-4">
+          <input
+            type="text"
+            name="q"
+            defaultValue={termo}
+            placeholder="Buscar por imóvel, cliente ou Id..."
+            className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full sm:w-72 outline-none focus:border-primary bg-white"
+          />
+          <button type="submit" className="text-xs bg-white border border-gray-300 text-gray-600 rounded-lg px-3 py-1.5">
+            Buscar
+          </button>
+        </form>
+
         {transacoes.length === 0 ? (
           <div className="bg-white border border-gray-200 rounded-xl p-6 text-center">
-            <p className="text-xs text-gray-400">Nenhum negócio de compra e venda em andamento no momento.</p>
+            <p className="text-xs text-gray-400">
+              {termo ? "Nenhum negócio encontrado pra essa busca." : "Nenhum negócio de compra e venda cadastrado ainda."}
+            </p>
           </div>
         ) : (
-          <div className="flex flex-col gap-2">
-            {transacoes.map((t) => (
-              <div key={t.id} className="bg-white border border-gray-200 rounded-xl p-4">
-                <div className="flex items-center justify-between gap-3 flex-wrap mb-1">
-                  <span className="text-sm font-semibold text-gray-800">
-                    {t.imoveis?.endereco ?? "Imóvel sem endereço"}
-                  </span>
-                  {/* Destaque passou a ser o Andamento (etapa real do
-                      processo — Elaboração/Conferência/.../Conclusão),
-                      pedido do usuário em 01/08/2026: reflete melhor o dia a
-                      dia do que o Status normal, que fica como texto de
-                      apoio logo abaixo. */}
-                  <span
-                    className={`text-[11px] font-semibold px-2 py-1 rounded-lg border whitespace-nowrap ${TONE_CLASSES[andamentoTone(t.andamento)]}`}
-                  >
-                    {t.andamento ?? "Sem andamento"}
-                  </span>
+          statusOrdenados.map((status) => {
+            const doStatus = porStatus.get(status)!;
+            const tone = statusTone(status === "Sem status" ? null : status);
+            return (
+              <div key={status} className="mb-4 last:mb-0">
+                <div className={`text-xs font-bold px-3 py-1.5 mb-2 rounded-lg border ${TONE_CLASSES[tone]}`}>
+                  {status} ({doStatus.length})
                 </div>
-                <div className="text-[11px] text-gray-400">
-                  {t.id_legado ?? t.id} · {formatMoeda(t.valor_transacao)} · Status: {t.status ?? "—"} · cadastrado em{" "}
-                  {formatDataCalendario(t.created_at)}
-                  {t.clientes_transacoes_cliente_idToclientes?.nome && (
-                    <> · Propr.: {t.clientes_transacoes_cliente_idToclientes.nome}</>
-                  )}
-                  {t.clientes_transacoes_cliente_contraparte_idToclientes?.nome && (
-                    <> · Interess.: {t.clientes_transacoes_cliente_contraparte_idToclientes.nome}</>
-                  )}
+                <div className="flex flex-col gap-2">
+                  {doStatus.map((t) => (
+                    <div key={t.id} className="bg-white border border-gray-200 rounded-xl p-4">
+                      <div className="flex items-center justify-between gap-3 flex-wrap mb-1">
+                        <span className="text-sm font-semibold text-gray-800">
+                          {t.imoveis?.endereco ?? "Imóvel sem endereço"}
+                        </span>
+                        {/* Andamento (etapa real do processo — Elaboração/
+                            Conferência/.../Conclusão) continua como
+                            destaque secundário — o Status (agrupamento
+                            acima) já mostra em que pé geral está o negócio. */}
+                        {t.andamento && (
+                          <span
+                            className={`text-[11px] font-semibold px-2 py-1 rounded-lg border whitespace-nowrap ${TONE_CLASSES[andamentoTone(t.andamento)]}`}
+                          >
+                            {t.andamento}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-gray-400">
+                        {t.id_legado ?? t.id} · {formatMoeda(t.valor_transacao)}
+                        {t.data_assinatura ? (
+                          <> · assinado em {formatDataCalendario(t.data_assinatura)}</>
+                        ) : (
+                          <> · cadastrado em {formatDataCalendario(t.created_at)}</>
+                        )}
+                        {t.clientes_transacoes_cliente_idToclientes?.nome && (
+                          <> · Propr.: {t.clientes_transacoes_cliente_idToclientes.nome}</>
+                        )}
+                        {t.clientes_transacoes_cliente_contraparte_idToclientes?.nome && (
+                          <> · Interess.: {t.clientes_transacoes_cliente_contraparte_idToclientes.nome}</>
+                        )}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
-            ))}
-          </div>
+            );
+          })
         )}
       </div>
     </div>

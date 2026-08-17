@@ -2,9 +2,8 @@ import Link from "next/link";
 import { requirePortalSession } from "@/lib/portal-auth";
 import { PortalHeader } from "@/components/portal-header";
 import { PortalRascunhoAviso } from "@/components/portal-rascunho-aviso";
-import { MesAnoFiltro } from "@/components/mes-ano-filtro";
 import { prisma } from "@/lib/prisma";
-import { formatMoeda, formatDataCalendario, statusTone, hojePortoVelho, STATUS_TRANSACAO_EM_ABERTO, type Tone } from "@/lib/format";
+import { formatMoeda, formatDataCalendario, statusTone, STATUS_TRANSACAO_EM_ABERTO, type Tone } from "@/lib/format";
 import { andamentoTone } from "@/lib/transacoes/opcoes";
 
 export const dynamic = "force-dynamic";
@@ -16,47 +15,33 @@ const TONE_CLASSES: Record<Tone, string> = {
   cancelada: "bg-red-50 text-red-600 border-red-200"
 };
 
-// "AAAA-MM" do período pedido na URL (?periodo=), com fallback pro mês
-// atual (hora de Porto Velho) quando não informado ou mal formatado.
-function periodoValido(bruto: string | undefined): string {
-  if (bruto && /^\d{4}-\d{2}$/.test(bruto)) return bruto;
-  const hoje = hojePortoVelho();
-  return `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, "0")}`;
-}
-
 // Painel do corretor pra Compra e Venda — mostra o que ele já cadastrou
 // (só leitura: quem edita é o administrativo em /transacoes) e o rascunho
 // salvo no navegador, se tiver. Negócios finalizados/cancelados seguem fora
 // desta lista (mesmo critério de STATUS_TRANSACAO_EM_ABERTO usado no resto
-// do sistema) — já contam no painel principal (/portal).
+// do sistema) — já contam no painel principal (/portal). O destaque de cada
+// card é o Andamento do contrato (Elaboração/Conferência/.../Conclusão —
+// ver lib/transacoes/opcoes.ts) em vez do Status normal, que fica só como
+// texto menor de apoio — o Andamento é o que reflete de verdade em que pé
+// está o processo, dia a dia.
 //
-// Filtro de mês/ano adicionado em 01/08/2026 (pedido do usuário): sempre
-// mostra o mês do cadastro (created_at) atual por padrão, com o seletor
-// (MesAnoFiltro) pra ver outros meses. O destaque de cada card passou a ser
-// o Andamento do contrato (Elaboração/Conferência/.../Conclusão — ver
-// lib/transacoes/opcoes.ts) em vez do Status normal, que fica só como texto
-// menor de apoio — o Andamento é o que reflete de verdade em que pé está o
-// processo, dia a dia.
-export default async function PortalCompraVendaPage({
-  searchParams
-}: {
-  searchParams: Promise<{ periodo?: string }>;
-}) {
+// Um filtro por mês/ano de cadastro (MesAnoFiltro) chegou a existir aqui
+// (01/08/2026), mas quebrava o propósito da própria tela: um negócio em
+// andamento não tem prazo — cadastrado em julho e ainda aberto em agosto
+// simplesmente sumia da lista assim que o mês virava, porque o filtro
+// exigia created_at dentro do mês selecionado (16/08/2026, usuário: "não
+// está aparecendo as transações em andamento"). Removido — a lista mostra
+// TODO negócio aberto dele, sem recorte de data; quem quiser histórico de
+// negócio já concluído continua olhando o painel principal (/portal).
+export default async function PortalCompraVendaPage() {
   const session = await requirePortalSession();
   const pid = session.parceiroId;
-
-  const { periodo: periodoBruto } = await searchParams;
-  const periodo = periodoValido(periodoBruto);
-  const [ano, mes] = periodo.split("-").map(Number);
-  const inicioMes = new Date(ano, mes - 1, 1);
-  const fimMes = new Date(ano, mes, 1);
 
   const transacoes = await prisma.transacoes.findMany({
     where: {
       excluido: false,
       tipo: "Compra e Venda",
       status: STATUS_TRANSACAO_EM_ABERTO,
-      created_at: { gte: inicioMes, lt: fimMes },
       OR: [{ corretor_proprietario_id: pid }, { corretor_contraparte_id: pid }]
     },
     orderBy: { created_at: "desc" },
@@ -96,11 +81,6 @@ export default async function PortalCompraVendaPage({
           administrativo. Finalizados/cancelados saem desta lista (contam só no seu painel principal).
         </p>
 
-        <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
-          <div className="text-xs text-gray-500">Cadastrados em:</div>
-          <MesAnoFiltro periodo={periodo} />
-        </div>
-
         <div className="mb-4">
           <PortalRascunhoAviso
             chave="sis_rascunho_compra_venda"
@@ -111,7 +91,7 @@ export default async function PortalCompraVendaPage({
 
         {transacoes.length === 0 ? (
           <div className="bg-white border border-gray-200 rounded-xl p-6 text-center">
-            <p className="text-xs text-gray-400">Nenhum negócio de compra e venda em andamento nesse mês.</p>
+            <p className="text-xs text-gray-400">Nenhum negócio de compra e venda em andamento no momento.</p>
           </div>
         ) : (
           <div className="flex flex-col gap-2">

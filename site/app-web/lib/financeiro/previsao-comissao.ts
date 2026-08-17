@@ -60,6 +60,18 @@ export type PrevisaoComissao = {
 // prever (não cai no modo "honorário inteiro" por engano, senão contaria
 // duas vezes). semCondicaoJaGerado só importa quando temCondicoes=false: diz
 // se o honorário inteiro (sem fatiar por condição) já foi rateado pra ele.
+//
+// porcPadraoProprietario/porcPadraoInteressado (Fase 8d, 16/08/2026 — bug
+// achado depois do usuário reportar "está aparecendo o a receber mas embaixo
+// não aparece os compra e venda a receber"): transacoes.porc_corretor_*
+// só é preenchido de verdade quando um admin abre a transação e mexe no
+// seletor de corretor (Fase 9) — pra negócio criado ANTES disso, ou que o
+// admin ainda não tocou, esse campo fica 0 no banco, e a previsão dava 0 e
+// sumia da lista inteira. Esses parâmetros são o % pré-definido no cadastro
+// do PRÓPRIO corretor (parceiros.porc_proprietario/porc_interessado) — usado
+// só como estimativa quando a transação em si ainda não tem nada gravado
+// (porc_corretor_* = 0); se já tem algo diferente de 0, usa o da transação
+// (pode ter sido ajustado pelo admin pra esse negócio específico).
 export function previsaoComissaoTransacao(params: {
   transacao: TransacaoParaPrevisao;
   parceiroId: string;
@@ -67,13 +79,33 @@ export function previsaoComissaoTransacao(params: {
   condicoesPendentes: CondicaoParaPrevisao[];
   semCondicaoJaGerado: boolean;
   fracaoExtra?: number;
+  porcPadraoProprietario?: number | null;
+  porcPadraoInteressado?: number | null;
 }): PrevisaoComissao[] {
-  const { transacao, parceiroId, temCondicoes, condicoesPendentes, semCondicaoJaGerado, fracaoExtra } = params;
+  const {
+    transacao,
+    parceiroId,
+    temCondicoes,
+    condicoesPendentes,
+    semCondicaoJaGerado,
+    fracaoExtra,
+    porcPadraoProprietario,
+    porcPadraoInteressado
+  } = params;
 
-  const fracaoCorretor =
-    (transacao.corretor_proprietario_id === parceiroId ? transacao.porc_corretor_proprietario : 0) +
-    (transacao.corretor_contraparte_id === parceiroId ? transacao.porc_corretor_contraparte : 0) +
-    (fracaoExtra ?? 0);
+  const fracaoLadoProprietario =
+    transacao.corretor_proprietario_id === parceiroId
+      ? transacao.porc_corretor_proprietario > 0
+        ? transacao.porc_corretor_proprietario
+        : (porcPadraoProprietario ?? 0)
+      : 0;
+  const fracaoLadoInteressado =
+    transacao.corretor_contraparte_id === parceiroId
+      ? transacao.porc_corretor_contraparte > 0
+        ? transacao.porc_corretor_contraparte
+        : (porcPadraoInteressado ?? 0)
+      : 0;
+  const fracaoCorretor = fracaoLadoProprietario + fracaoLadoInteressado + (fracaoExtra ?? 0);
   if (fracaoCorretor <= 0) return [];
 
   function valorParaFracaoCondicao(fracaoCondicao: number): number {

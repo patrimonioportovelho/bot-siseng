@@ -73,7 +73,15 @@ export default async function PortalFinanceiroPage() {
   const session = await requirePortalSession();
   const pid = session.parceiroId;
 
-  const [aPagar, despesasPagas, despesasPendentes, pagosDireto, transacoesAbertas, administracoesSemLocacao] = await Promise.all([
+  const [
+    aPagar,
+    despesasPagas,
+    despesasPendentes,
+    pagosDireto,
+    transacoesAbertas,
+    administracoesSemLocacao,
+    comissaoPadraoCorretor
+  ] = await Promise.all([
     prisma.movimentacoes.findMany({
       where: { tipo: "Recebimento", parceiro_id: pid, pago: false },
       include: { categorias_financeiras: { select: { nome: true } }, pagamentos_pix: { orderBy: { criado_em: "desc" } } },
@@ -150,7 +158,12 @@ export default async function PortalFinanceiroPage() {
         porc_honorario: true,
         transacoes: { where: { tipo: "Locação", excluido: false }, select: { id: true } }
       }
-    })
+    }),
+    // % pré-definida do próprio corretor (cadastro em Parceiro, Fase 9) —
+    // usada como fallback na previsão abaixo pra negócio que ainda não tem
+    // porc_corretor_proprietario/contraparte preenchido na transação em si
+    // (ver comentário em lib/financeiro/previsao-comissao.ts).
+    prisma.parceiros.findUnique({ where: { id: pid }, select: { porc_proprietario: true, porc_interessado: true } })
   ]);
 
   const totalRecebidoDespesas = despesasPagas.reduce((soma, m) => soma + Number(m.valor), 0);
@@ -184,7 +197,9 @@ export default async function PortalFinanceiroPage() {
       temCondicoes,
       condicoesPendentes,
       semCondicaoJaGerado,
-      fracaoExtra
+      fracaoExtra,
+      porcPadraoProprietario: comissaoPadraoCorretor?.porc_proprietario != null ? Number(comissaoPadraoCorretor.porc_proprietario) : null,
+      porcPadraoInteressado: comissaoPadraoCorretor?.porc_interessado != null ? Number(comissaoPadraoCorretor.porc_interessado) : null
     });
   });
 

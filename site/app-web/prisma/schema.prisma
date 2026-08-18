@@ -1579,8 +1579,29 @@ model marketing_atividades {
   tipo               String
   titulo             String
   data               DateTime         @db.Date
+  // Horário avulso "HH:MM" (Fase Marketing/Agenda — cancelamento e
+  // reagendamento, 16/08/2026) — `data` é @db.Date, sem componente de hora
+  // nenhum, e é essa tabela que alimenta tanto a ficha da OM quanto o
+  // calendário compartilhado (/manutencao/calendario). Pedido do usuário:
+  // "preciso do horario nas atividades do OM e preciso que ele acompanhe no
+  // calendario geral também". Texto simples (não Time do banco) pra não
+  // precisar de mais uma coluna com fuso — sempre horário de Porto Velho,
+  // igual ao resto do sistema, ver lib/format.ts#formatHoraPortoVelho.
+  hora               String?
   feito              Boolean          @default(false)
   notas              String?
+  // Cancelamento do compromisso (Fase Marketing/Agenda, 16/08/2026) —
+  // pedido do usuário: "se for cancelado tanto pelo corretor quanto pelo
+  // marketing precisamos informar o porque foi cancelado". Não apaga a
+  // atividade (fica visível no calendário/OM com o motivo, só marcada) —
+  // reagendar (confirmarSolicitacaoAgendaAction/reagendarSolicitacaoAgendaAction)
+  // limpa esses 4 campos de volta pra null/false na mesma atividade.
+  cancelado          Boolean          @default(false)
+  cancelado_motivo   String?
+  // "corretor" ou "marketing" — quem cancelou, pro outro lado saber de onde
+  // veio (ex.: corretor abre a Agenda e vê "cancelado pelo marketing: ...").
+  cancelado_por_tipo String?
+  cancelado_em       DateTime?        @db.Timestamptz(6)
   created_at         DateTime         @default(now()) @db.Timestamptz(6)
   marketing_ordens   marketing_ordens @relation(fields: [marketing_ordem_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
@@ -1638,6 +1659,14 @@ model solicitacoes_agenda {
   // 09/08/2026. Propagado pra marketing_ordens.imovel_id quando o pedido é
   // confirmado (confirmarSolicitacaoAgendaAction).
   imovel_id                   String?           @db.Uuid
+  // Cancelamento (Fase Marketing/Agenda, 16/08/2026) — mesma ideia de
+  // marketing_atividades acima, só que aqui é o PEDIDO em si (o "status"
+  // ganha o valor "cancelada" além de pendente/confirmada/recusada já
+  // existentes). Ver cancelarSolicitacaoAgendaAction (marketing) e
+  // cancelarSolicitacaoAgendaCorretorAction (portal) em cada lado.
+  cancelado_motivo             String?
+  cancelado_por_tipo           String?
+  cancelado_em                 DateTime?         @db.Timestamptz(6)
   excluido                    Boolean           @default(false)
   created_at                  DateTime          @default(now()) @db.Timestamptz(6)
   marketing_ordens            marketing_ordens? @relation(fields: [marketing_ordem_id], references: [id], onDelete: SetNull, onUpdate: NoAction)

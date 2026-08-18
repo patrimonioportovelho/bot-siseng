@@ -12,9 +12,12 @@ type Atividade = {
   tipoLabel: string;
   titulo: string;
   data: Date;
+  hora?: string | null;
   feito: boolean;
   href: string;
   contexto: string;
+  cancelado?: boolean;
+  canceladoMotivo?: string | null;
 };
 
 const DIAS_SEMANA = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
@@ -78,21 +81,30 @@ export function ManutencaoCalendario({
               </span>
               <div className="flex flex-col gap-1">
                 {atividadesDoDia.map((a) => {
-                  const atrasada = !a.feito && dia < hoje;
+                  const atrasada = !a.feito && !a.cancelado && dia < hoje;
+                  // hora avulsa (16/08/2026) — pedido do usuário: "para que
+                  // se veja os horarios juntamente com o dia e a OM". Some
+                  // do texto quando a atividade não tem horário definido.
+                  const titulo = a.hora ? `${a.hora} ${a.titulo}` : a.titulo;
+                  const tooltip = a.cancelado
+                    ? `${a.tipoLabel} — ${a.contexto} — CANCELADO${a.canceladoMotivo ? `: ${a.canceladoMotivo}` : ""}`
+                    : `${a.tipoLabel} — ${a.contexto}`;
                   return (
                     <Link
                       key={a.id}
                       href={a.href}
-                      title={`${a.tipoLabel} — ${a.contexto}`}
+                      title={tooltip}
                       className={`text-[10px] rounded px-1.5 py-0.5 truncate border ${
-                        atrasada
+                        a.cancelado
+                          ? "bg-red-50 text-red-500 border-red-200 line-through"
+                          : atrasada
                           ? "bg-[#B14226]/10 text-[#B14226] border-[#B14226]/30 font-semibold"
                           : a.feito
                           ? "bg-[#3C7A57]/10 text-[#3C7A57] border-[#3C7A57]/30"
                           : "bg-gray-100 text-gray-600 border-gray-200"
                       }`}
                     >
-                      {a.titulo}
+                      {titulo}
                     </Link>
                   );
                 })}

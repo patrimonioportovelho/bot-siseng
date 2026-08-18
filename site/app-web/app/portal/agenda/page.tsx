@@ -10,20 +10,27 @@ import { TIPO_ATIVIDADE_LABEL as TIPO_ATIVIDADE_LABEL_MARKETING, TIPOS_MATERIAL 
 import { BotaoSubmit } from "@/components/botao-submit";
 import { ocorrenciasNoIntervalo } from "@/lib/eventos/ocorrencias";
 import { podeVerEvento } from "@/lib/eventos/opcoes";
-import { criarSolicitacaoAgendaAction } from "./actions";
+import { criarSolicitacaoAgendaAction, cancelarSolicitacaoAgendaCorretorAction, reagendarSolicitacaoAgendaCorretorAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
 const STATUS_LABEL: Record<string, string> = {
   pendente: "Aguardando resposta",
   confirmada: "Confirmada",
-  recusada: "Recusada"
+  recusada: "Recusada",
+  cancelada: "Cancelada"
 };
 
 const STATUS_COR: Record<string, string> = {
   pendente: "bg-[#A9822E]/10 text-[#A9822E] border-[#A9822E]/30",
   confirmada: "bg-green-50 text-green-700 border-green-200",
-  recusada: "bg-red-50 text-red-600 border-red-200"
+  recusada: "bg-red-50 text-red-600 border-red-200",
+  cancelada: "bg-red-50 text-red-600 border-red-200"
+};
+
+const CANCELADO_POR_LABEL: Record<string, string> = {
+  marketing: "Marketing",
+  corretor: "Você"
 };
 
 function parseMes(mes: string | undefined): { ano: number; mesIndice: number } {
@@ -129,8 +136,11 @@ export default async function PortalAgendaPage({
       tipoLabel: TIPO_ATIVIDADE_LABEL_MARKETING[a.tipo] ?? a.tipo,
       titulo: a.titulo,
       data: a.data,
+      hora: a.hora,
       contexto: a.marketing_ordens.titulo,
-      cor: "roxo" as const
+      cor: "roxo" as const,
+      cancelado: a.cancelado,
+      canceladoMotivo: a.cancelado_motivo
     })),
     ...atividadesGestao.map((a) => ({
       id: `gst-${a.id}`,
@@ -298,6 +308,58 @@ export default async function PortalAgendaPage({
                     <div className="text-[11px] text-green-700 mt-0.5">Confirmado: {formatDataHora(s.data_hora_confirmada)}</div>
                   )}
                   {s.resposta_texto && <div className="text-[11px] text-gray-500 mt-0.5">"{s.resposta_texto}"</div>}
+
+                  {s.status === "cancelada" && s.cancelado_motivo && (
+                    <div className="text-[11px] text-red-600 mt-1 bg-red-50 border border-red-100 rounded-lg px-2 py-1">
+                      Cancelado por {CANCELADO_POR_LABEL[s.cancelado_por_tipo ?? ""] ?? s.cancelado_por_tipo}: "{s.cancelado_motivo}"
+                    </div>
+                  )}
+
+                  {s.status === "confirmada" && (
+                    <details className="mt-1.5">
+                      <summary className="text-[11px] text-red-500 cursor-pointer select-none">Cancelar agendamento</summary>
+                      <form action={cancelarSolicitacaoAgendaCorretorAction} className="flex flex-col gap-1.5 mt-1.5">
+                        <input type="hidden" name="solicitacaoId" value={s.id} />
+                        <textarea
+                          name="motivo"
+                          required
+                          rows={2}
+                          placeholder="Por que precisa cancelar?"
+                          className="text-[11px] border border-gray-300 rounded-lg px-2 py-1 w-full outline-none focus:border-primary"
+                        />
+                        <BotaoSubmit className="text-[11px] bg-red-600 text-white rounded-lg px-2 py-1 font-semibold self-start" carregandoTexto="Cancelando...">
+                          Confirmar cancelamento
+                        </BotaoSubmit>
+                      </form>
+                    </details>
+                  )}
+
+                  {s.status === "cancelada" && (
+                    <details className="mt-1.5">
+                      <summary className="text-[11px] text-primary cursor-pointer select-none">Propor novo horário</summary>
+                      <form action={reagendarSolicitacaoAgendaCorretorAction} className="flex flex-col gap-1.5 mt-1.5">
+                        <input type="hidden" name="solicitacaoId" value={s.id} />
+                        <div className="grid grid-cols-2 gap-1.5">
+                          <input
+                            type="date"
+                            name="nova_data"
+                            defaultValue={hojeInputDate()}
+                            required
+                            className="text-[11px] border border-gray-300 rounded-lg px-2 py-1 w-full outline-none focus:border-primary"
+                          />
+                          <input
+                            type="time"
+                            name="novo_horario"
+                            defaultValue="09:00"
+                            className="text-[11px] border border-gray-300 rounded-lg px-2 py-1 w-full outline-none focus:border-primary"
+                          />
+                        </div>
+                        <BotaoSubmit className="text-[11px] bg-primary text-white rounded-lg px-2 py-1 font-semibold self-start" carregandoTexto="Enviando...">
+                          Enviar novo horário
+                        </BotaoSubmit>
+                      </form>
+                    </details>
+                  )}
                 </div>
               ))}
               {solicitacoes.length === 0 && <p className="text-xs text-gray-400">Nenhum pedido feito ainda.</p>}

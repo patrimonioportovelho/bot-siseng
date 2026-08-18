@@ -137,9 +137,12 @@ export default async function ManutencaoCalendarioPage({
       tipoLabel: TIPO_ATIVIDADE_LABEL_MARKETING[a.tipo] ?? a.tipo,
       titulo: a.titulo,
       data: a.data,
+      hora: a.hora,
       feito: a.feito,
       href: `/marketing/${a.marketing_ordens.id}`,
-      contexto: a.marketing_ordens.titulo
+      contexto: a.marketing_ordens.titulo,
+      cancelado: a.cancelado,
+      canceladoMotivo: a.cancelado_motivo
     }))
   ].sort((a, b) => a.data.getTime() - b.data.getTime());
 

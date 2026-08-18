@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAdminSession, logAlteracao } from "@/lib/auth";
 import { registrarEJogarErro } from "@/lib/erros";
 import { gerarProximoIdOrdemMarketing } from "@/lib/marketing/id-legado";
-import { dataHoraPortoVelho } from "@/lib/format";
+import { dataHoraPortoVelho, formatHoraPortoVelho } from "@/lib/format";
 
 function texto(formData: FormData, campo: string): string | null {
   const v = formData.get(campo);
@@ -338,6 +338,11 @@ export async function criarAtividadeAction(formData: FormData) {
   const tipo = texto(formData, "tipo");
   const titulo = texto(formData, "titulo");
   const dataAtividade = data(formData, "data");
+  // hora avulsa (16/08/2026) — pedido do usuário: "preciso do horario nas
+  // atividades do OM e preciso que ele acompanhe no calendario geral
+  // também". Opcional: atividade sem horário definido (ex.: prazo de
+  // entrega de material) continua só com data, sem quebrar nada.
+  const horaAtividade = texto(formData, "hora");
 
   if (!ordemId || !tipo || !titulo || !dataAtividade) {
     throw new Error("Tipo, título e data são obrigatórios pra agendar a atividade.");
@@ -350,6 +355,7 @@ export async function criarAtividadeAction(formData: FormData) {
         tipo,
         titulo,
         data: dataAtividade,
+        hora: horaAtividade,
         notas: texto(formData, "notas")
       }
     })
@@ -511,6 +517,13 @@ export async function adicionarNotaAction(formData: FormData) {
 // coluna "Recebido" sozinho: o pedido do corretor "é" o agendamento, ele
 // não precisa reagendar em outro lugar (pedido do usuário, 09/08/2026).
 // visto_pelo_corretor volta a false pra acender a notificação no portal.
+//
+// Reconfirmação (16/08/2026, fluxo de cancelamento/reagendamento): quando o
+// pedido JÁ tem marketing_ordem_id (ex.: foi cancelado e o corretor propôs
+// um novo horário pela reagendarSolicitacaoAgendaCorretorAction, voltando
+// pro status "pendente") não cria uma OM nova — reaproveita a que já existe
+// e só reativa/atualiza a atividade de captação dela, senão duplicava OM
+// toda vez que um mesmo pedido fosse reagendado.
 export async function confirmarSolicitacaoAgendaAction(formData: FormData) {
   const admin = await requireAdminSession();
 
@@ -526,45 +539,87 @@ export async function confirmarSolicitacaoAgendaAction(formData: FormData) {
   // administrativo também está digitando um horário local de Porto Velho,
   // não do servidor.
   const dataConfirmada = novaData ? dataHoraPortoVelho(novaData, novaHora ?? "09:00") : solicitacao.data_hora_sugerida;
+  const horaConfirmada = novaHora ?? formatHoraPortoVelho(dataConfirmada);
 
-  const idLegado = await gerarProximoIdOrdemMarketing();
+  let ordemId = solicitacao.marketing_ordem_id;
 
-  const ordemCriada = await prisma.marketing_ordens
-    .create({
-      data: {
-        id_legado: idLegado,
-        titulo: solicitacao.titulo,
-        tipo: solicitacao.tipo,
-        objetivo: solicitacao.descricao,
-        solicitante_parceiro_id: solicitacao.parceiro_id,
-        // Imóvel que o corretor já linkou no pedido — "cadastro inteligente"
-        // da OM (09/08/2026): a Ordem nasce puxando endereço/valor daqui em
-        // vez de exigir digitar tudo de novo no briefing (ver
-        // components/marketing-briefing-form.tsx).
-        imovel_id: solicitacao.imovel_id,
-        coluna: "recebido",
-        data_captacao: dataConfirmada
-      }
-    })
-    .catch((erro) => registrarEJogarErro({ entidadeTipo: "marketing_ordens", acao: "criar_de_solicitacao", erro }));
+  if (!ordemId) {
+    const idLegado = await gerarProximoIdOrdemMarketing();
 
-  // BUG encontrado em 09/08/2026 ("os calendários não se atualizaram"): esta
-  // action gravava data_captacao na Ordem, mas nenhum dos calendários
-  // (/manutencao/calendario, /portal/agenda) lê esse campo — os dois só
-  // mostram marketing_atividades. Sem essa linha, o horário confirmado não
-  // aparecia em lugar nenhum, só dentro da própria ficha da Ordem. Cria a
-  // atividade que representa esse compromisso já agendado.
-  await prisma.marketing_atividades
-    .create({
-      data: {
-        marketing_ordem_id: ordemCriada.id,
-        tipo: "captacao",
-        titulo: solicitacao.titulo,
-        data: dataConfirmada,
-        notas: solicitacao.descricao
-      }
-    })
-    .catch((erro) => registrarEJogarErro({ entidadeTipo: "marketing_atividades", entidadeId: ordemCriada.id, acao: "criar_de_solicitacao", erro }));
+    const ordemCriada = await prisma.marketing_ordens
+      .create({
+        data: {
+          id_legado: idLegado,
+          titulo: solicitacao.titulo,
+          tipo: solicitacao.tipo,
+          objetivo: solicitacao.descricao,
+          solicitante_parceiro_id: solicitacao.parceiro_id,
+          // Imóvel que o corretor já linkou no pedido — "cadastro inteligente"
+          // da OM (09/08/2026): a Ordem nasce puxando endereço/valor daqui em
+          // vez de exigir digitar tudo de novo no briefing (ver
+          // components/marketing-briefing-form.tsx).
+          imovel_id: solicitacao.imovel_id,
+          coluna: "recebido",
+          data_captacao: dataConfirmada
+        }
+      })
+      .catch((erro) => registrarEJogarErro({ entidadeTipo: "marketing_ordens", acao: "criar_de_solicitacao", erro }));
+    ordemId = ordemCriada.id;
+
+    // BUG encontrado em 09/08/2026 ("os calendários não se atualizaram"):
+    // esta action gravava data_captacao na Ordem, mas nenhum dos
+    // calendários (/manutencao/calendario, /portal/agenda) lê esse campo —
+    // os dois só mostram marketing_atividades. Sem essa linha, o horário
+    // confirmado não aparecia em lugar nenhum, só dentro da própria ficha
+    // da Ordem. Cria a atividade que representa esse compromisso agendado
+    // (hora à parte — ver comentário do campo em prisma/schema.prisma).
+    await prisma.marketing_atividades
+      .create({
+        data: {
+          marketing_ordem_id: ordemId,
+          tipo: "captacao",
+          titulo: solicitacao.titulo,
+          data: dataConfirmada,
+          hora: horaConfirmada,
+          notas: solicitacao.descricao
+        }
+      })
+      .catch((erro) => registrarEJogarErro({ entidadeTipo: "marketing_atividades", entidadeId: ordemId!, acao: "criar_de_solicitacao", erro }));
+  } else {
+    // Reconfirmação: já existe OM (pedido cancelado e reagendado antes) —
+    // reativa a atividade de captação dela em vez de criar outra.
+    const atividadeExistente = await prisma.marketing_atividades.findFirst({
+      where: { marketing_ordem_id: ordemId, tipo: "captacao" },
+      orderBy: { created_at: "desc" }
+    });
+
+    if (atividadeExistente) {
+      await prisma.marketing_atividades.update({
+        where: { id: atividadeExistente.id },
+        data: {
+          data: dataConfirmada,
+          hora: horaConfirmada,
+          cancelado: false,
+          cancelado_motivo: null,
+          cancelado_por_tipo: null,
+          cancelado_em: null
+        }
+      });
+    } else {
+      await prisma.marketing_atividades.create({
+        data: {
+          marketing_ordem_id: ordemId,
+          tipo: "captacao",
+          titulo: solicitacao.titulo,
+          data: dataConfirmada,
+          hora: horaConfirmada,
+          notas: solicitacao.descricao
+        }
+      });
+    }
+
+    await prisma.marketing_ordens.update({ where: { id: ordemId }, data: { data_captacao: dataConfirmada } });
+  }
 
   const depois = await prisma.solicitacoes_agenda
     .update({
@@ -576,7 +631,10 @@ export async function confirmarSolicitacaoAgendaAction(formData: FormData) {
         respondido_por_parceiro_id: admin.parceiroId,
         respondido_em: new Date(),
         visto_pelo_corretor: false,
-        marketing_ordem_id: ordemCriada.id
+        marketing_ordem_id: ordemId,
+        cancelado_motivo: null,
+        cancelado_por_tipo: null,
+        cancelado_em: null
       }
     })
     .catch((erro) => registrarEJogarErro({ entidadeTipo: "solicitacoes_agenda", entidadeId: id, acao: "confirmar", erro }));
@@ -591,10 +649,149 @@ export async function confirmarSolicitacaoAgendaAction(formData: FormData) {
 
   revalidatePath("/marketing/agenda");
   revalidatePath("/marketing");
-  revalidatePath(`/marketing/${ordemCriada.id}`);
+  revalidatePath(`/marketing/${ordemId}`);
   // Os dois calendários que dependem de marketing_atividades — sem isso o
   // corretor só veria o compromisso novo depois de sair e voltar na Agenda
   // (o Next só invalida o cache das rotas listadas aqui).
+  revalidatePath("/manutencao/calendario");
+  revalidatePath("/manutencao/painel");
+  revalidatePath("/portal/agenda");
+  revalidatePath("/portal");
+}
+
+// Cancela um pedido JÁ CONFIRMADO (o compromisso existe, mas precisa ser
+// desmarcado) — pedido do usuário 16/08/2026: "se for cancelado tanto pelo
+// corretor quanto pelo marketing precisamos informar o porque foi
+// cancelado". Motivo é obrigatório. Não apaga nem a solicitação nem a
+// Ordem/atividade — fica tudo visível (inclusive no calendário geral) com o
+// motivo e quem cancelou, até alguém reagendar.
+export async function cancelarSolicitacaoAgendaAction(formData: FormData) {
+  const admin = await requireAdminSession();
+
+  const id = texto(formData, "solicitacaoId");
+  const motivo = texto(formData, "motivo");
+  if (!id) throw new Error("Solicitação inválida.");
+  if (!motivo) throw new Error("Informe o motivo do cancelamento.");
+
+  const solicitacao = await prisma.solicitacoes_agenda.findUnique({ where: { id } });
+  if (!solicitacao) throw new Error("Solicitação não encontrada.");
+  if (solicitacao.status !== "confirmada") throw new Error("Só dá pra cancelar um agendamento já confirmado.");
+
+  await prisma.$transaction(async (tx) => {
+    await tx.solicitacoes_agenda.update({
+      where: { id },
+      data: {
+        status: "cancelada",
+        cancelado_motivo: motivo,
+        cancelado_por_tipo: "marketing",
+        cancelado_em: new Date(),
+        visto_pelo_corretor: false
+      }
+    });
+
+    if (solicitacao.marketing_ordem_id) {
+      const atividade = await tx.marketing_atividades.findFirst({
+        where: { marketing_ordem_id: solicitacao.marketing_ordem_id, tipo: "captacao" },
+        orderBy: { created_at: "desc" }
+      });
+      if (atividade) {
+        await tx.marketing_atividades.update({
+          where: { id: atividade.id },
+          data: { cancelado: true, cancelado_motivo: motivo, cancelado_por_tipo: "marketing", cancelado_em: new Date() }
+        });
+      }
+    }
+  });
+
+  await logAlteracao({
+    entidadeTipo: "solicitacoes_agenda",
+    entidadeId: id,
+    acao: "editar",
+    dadosAntes: { status: solicitacao.status },
+    dadosDepois: { status: "cancelada", cancelado_por_tipo: "marketing", cancelado_motivo: motivo }
+  });
+
+  revalidatePath("/marketing/agenda");
+  revalidatePath("/marketing");
+  if (solicitacao.marketing_ordem_id) revalidatePath(`/marketing/${solicitacao.marketing_ordem_id}`);
+  revalidatePath("/manutencao/calendario");
+  revalidatePath("/manutencao/painel");
+  revalidatePath("/portal/agenda");
+  revalidatePath("/portal");
+}
+
+// Reagenda um pedido cancelado — o administrativo já entra com data/hora
+// definitiva (mesmo espírito de "marketing confirma o horário final" que já
+// vale pro fluxo normal), então isso já volta pra "confirmada" direto, sem
+// passar por "pendente" de novo.
+export async function reagendarSolicitacaoAgendaAction(formData: FormData) {
+  const admin = await requireAdminSession();
+
+  const id = texto(formData, "solicitacaoId");
+  const novaData = texto(formData, "nova_data");
+  const novaHora = texto(formData, "nova_hora");
+  if (!id) throw new Error("Solicitação inválida.");
+  if (!novaData) throw new Error("Informe a nova data.");
+
+  const solicitacao = await prisma.solicitacoes_agenda.findUnique({ where: { id } });
+  if (!solicitacao) throw new Error("Solicitação não encontrada.");
+
+  const novaDataHora = dataHoraPortoVelho(novaData, novaHora ?? "09:00");
+  const horaTexto = novaHora ?? formatHoraPortoVelho(novaDataHora);
+
+  await prisma.$transaction(async (tx) => {
+    await tx.solicitacoes_agenda.update({
+      where: { id },
+      data: {
+        status: "confirmada",
+        data_hora_confirmada: novaDataHora,
+        respondido_por_parceiro_id: admin.parceiroId,
+        respondido_em: new Date(),
+        visto_pelo_corretor: false,
+        cancelado_motivo: null,
+        cancelado_por_tipo: null,
+        cancelado_em: null
+      }
+    });
+
+    if (solicitacao.marketing_ordem_id) {
+      await tx.marketing_ordens.update({ where: { id: solicitacao.marketing_ordem_id }, data: { data_captacao: novaDataHora } });
+
+      const atividade = await tx.marketing_atividades.findFirst({
+        where: { marketing_ordem_id: solicitacao.marketing_ordem_id, tipo: "captacao" },
+        orderBy: { created_at: "desc" }
+      });
+      if (atividade) {
+        await tx.marketing_atividades.update({
+          where: { id: atividade.id },
+          data: { data: novaDataHora, hora: horaTexto, cancelado: false, cancelado_motivo: null, cancelado_por_tipo: null, cancelado_em: null }
+        });
+      } else {
+        await tx.marketing_atividades.create({
+          data: {
+            marketing_ordem_id: solicitacao.marketing_ordem_id,
+            tipo: "captacao",
+            titulo: solicitacao.titulo,
+            data: novaDataHora,
+            hora: horaTexto,
+            notas: solicitacao.descricao
+          }
+        });
+      }
+    }
+  });
+
+  await logAlteracao({
+    entidadeTipo: "solicitacoes_agenda",
+    entidadeId: id,
+    acao: "editar",
+    dadosAntes: { status: solicitacao.status },
+    dadosDepois: { status: "confirmada", data_hora_confirmada: novaDataHora }
+  });
+
+  revalidatePath("/marketing/agenda");
+  revalidatePath("/marketing");
+  if (solicitacao.marketing_ordem_id) revalidatePath(`/marketing/${solicitacao.marketing_ordem_id}`);
   revalidatePath("/manutencao/calendario");
   revalidatePath("/manutencao/painel");
   revalidatePath("/portal/agenda");

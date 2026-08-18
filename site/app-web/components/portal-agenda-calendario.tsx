@@ -11,8 +11,11 @@ type Item = {
   tipoLabel: string;
   titulo: string;
   data: Date;
+  hora?: string | null;
   contexto: string;
   cor: "azul" | "verde" | "roxo" | "amarelo";
+  cancelado?: boolean;
+  canceladoMotivo?: string | null;
 };
 
 const DIAS_SEMANA = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
@@ -74,9 +77,16 @@ export function PortalAgendaCalendario({ ano, mesIndice, itens }: { ano: number;
                 {itensDoDia.map((it) => (
                   <div
                     key={it.id}
-                    title={`${it.tipoLabel} — ${it.contexto}`}
-                    className={`text-[10px] rounded px-1.5 py-0.5 truncate border ${CORES[it.cor]}`}
+                    title={
+                      it.cancelado
+                        ? `${it.tipoLabel} — ${it.contexto} — CANCELADO${it.canceladoMotivo ? `: ${it.canceladoMotivo}` : ""}`
+                        : `${it.tipoLabel} — ${it.contexto}`
+                    }
+                    className={`text-[10px] rounded px-1.5 py-0.5 truncate border ${
+                      it.cancelado ? "bg-red-50 text-red-500 border-red-200 line-through" : CORES[it.cor]
+                    }`}
                   >
+                    {it.hora ? `${it.hora} ` : ""}
                     {it.titulo}
                   </div>
                 ))}

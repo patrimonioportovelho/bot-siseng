@@ -10,7 +10,7 @@ import { MarketingBriefingForm } from "@/components/marketing-briefing-form";
 import { BotaoSubmit } from "@/components/botao-submit";
 import { listarParceirosAdministrativos } from "@/lib/parceiros/administrativos";
 import { labelColuna, pilarImpactoDaColuna, PILAR_IMPACTO_COR, slaDaOrdem } from "@/lib/marketing/opcoes";
-import { formatData } from "@/lib/format";
+import { formatData, formatDataHora } from "@/lib/format";
 import {
   atualizarOrdemAction,
   apagarOrdemAction,
@@ -157,6 +157,16 @@ export default async function MarketingDetalhePage({
             ? ` · Responsável: ${ordem.parceiros_marketing_ordens_responsavel_atual_idToparceiros.nome}`
             : ""}
         </div>
+        {/* Horário confirmado do agendamento (captação) — pedido do usuário
+            16/08/2026: "não está indo o horario confirmado, preciso do
+            horario... na própria Ordem de Marketing". data_captacao já é
+            Timestamptz com hora de verdade (só marketing_atividades.data
+            que não tinha, corrigido junto nessa mesma leva). */}
+        {ordem.data_captacao && (
+          <div className="text-xs text-primary font-semibold mt-1">
+            Horário confirmado: {formatDataHora(ordem.data_captacao)}
+          </div>
+        )}
       </div>
 
       <div className="flex flex-col gap-5">

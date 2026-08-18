@@ -140,6 +140,18 @@ export function dataHoraPortoVelho(dataYYYYMMDD: string, horaHHMM: string): Date
   return new Date(`${dataYYYYMMDD}T${horaHHMM || "09:00"}:00${OFFSET_PORTO_VELHO}`);
 }
 
+// Caminho inverso de dataHoraPortoVelho — extrai só "HH:MM" (fuso de Porto
+// Velho) de um Date/Timestamptz, pra gravar em campos de hora avulsos (ex.:
+// marketing_atividades.hora, Fase Marketing/Agenda, 16/08/2026) ou exibir
+// junto de uma data já formatada por formatDataCalendario (que é UTC puro,
+// então nunca bate sozinho com o horário local).
+export function formatHoraPortoVelho(data: unknown): string {
+  if (!data) return "";
+  const d = new Date(data as string);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleTimeString("pt-BR", { timeZone: "America/Porto_Velho", hour: "2-digit", minute: "2-digit" });
+}
+
 // Presets de período usados nos filtros de dashboard (Este mês / Este ano /
 // Personalizado).
 export type PeriodoPreset = "mes" | "ano" | "personalizado";

@@ -5,7 +5,23 @@ import { formatDataCalendario, hojeInputDate, hojePortoVelho } from "@/lib/forma
 import { TIPOS_ATIVIDADE, TIPO_ATIVIDADE_LABEL } from "@/lib/marketing/opcoes";
 import { BotaoSubmit } from "@/components/botao-submit";
 
-type Atividade = { id: string; tipo: string; titulo: string; data: Date | string; feito: boolean; notas: string | null };
+type Atividade = {
+  id: string;
+  tipo: string;
+  titulo: string;
+  data: Date | string;
+  hora: string | null;
+  feito: boolean;
+  notas: string | null;
+  cancelado: boolean;
+  cancelado_motivo: string | null;
+  cancelado_por_tipo: string | null;
+};
+
+const CANCELADO_POR_LABEL: Record<string, string> = {
+  marketing: "Marketing",
+  corretor: "Corretor"
+};
 
 // Mesmo componente de Gestões/Manutenção (components/gestao-atividades.tsx),
 // só trocando ordemId no lugar de gestaoId. Essas atividades são a fonte
@@ -57,6 +73,7 @@ export function MarketingAtividades({
           required
         />
         <input name="data" type="date" defaultValue={hojeInputDate()} className="text-xs border border-gray-300 rounded-lg px-2 py-1.5 outline-none focus:border-primary" required />
+        <input name="hora" type="time" className="text-xs border border-gray-300 rounded-lg px-2 py-1.5 outline-none focus:border-primary" title="Horário (opcional)" />
         <input
           name="notas"
           placeholder="Notas (opcional)"
@@ -75,23 +92,41 @@ export function MarketingAtividades({
             <div
               key={a.id}
               className={`flex items-center gap-2 border rounded-lg px-2.5 py-1.5 group ${
-                atrasada ? "bg-[#B14226]/5 border-[#B14226]/30" : "border-gray-100"
+                a.cancelado ? "bg-red-50 border-red-200" : atrasada ? "bg-[#B14226]/5 border-[#B14226]/30" : "border-gray-100"
               }`}
             >
               <input
                 type="checkbox"
                 checked={a.feito}
+                disabled={a.cancelado}
                 onChange={() => startTransition(() => marcarFeita(a.id, ordemId))}
                 className="rounded"
               />
               <div className="flex-1 min-w-0">
-                <span className={`text-xs ${a.feito ? "line-through text-gray-400" : atrasada ? "text-[#B14226] font-medium" : "text-gray-700"}`}>
+                <span
+                  className={`text-xs ${
+                    a.cancelado
+                      ? "line-through text-red-500"
+                      : a.feito
+                        ? "line-through text-gray-400"
+                        : atrasada
+                          ? "text-[#B14226] font-medium"
+                          : "text-gray-700"
+                  }`}
+                >
                   {TIPO_ATIVIDADE_LABEL[a.tipo] ?? a.tipo} — {a.titulo}
                 </span>
                 {a.notas && <div className="text-[11px] text-gray-400">{a.notas}</div>}
+                {a.cancelado && (
+                  <div className="text-[11px] text-red-600 mt-0.5">
+                    Cancelado{a.cancelado_por_tipo ? ` por ${CANCELADO_POR_LABEL[a.cancelado_por_tipo] ?? a.cancelado_por_tipo}` : ""}
+                    {a.cancelado_motivo ? `: "${a.cancelado_motivo}"` : ""}
+                  </div>
+                )}
               </div>
-              <span className={`text-[11px] whitespace-nowrap ${atrasada ? "text-[#B14226]" : "text-gray-400"}`}>
+              <span className={`text-[11px] whitespace-nowrap ${a.cancelado ? "text-red-500" : atrasada ? "text-[#B14226]" : "text-gray-400"}`}>
                 {formatDataCalendario(dataAtividade)}
+                {a.hora ? ` às ${a.hora}` : ""}
               </span>
               <button
                 type="button"

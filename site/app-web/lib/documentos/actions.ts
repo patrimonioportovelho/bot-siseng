@@ -146,24 +146,47 @@ export async function buscarRegistrosAction(
       return rows.map((p) => ({ id: p.id, label: p.nome }));
     }
     case "chaves": {
-      const rows = await prisma.chaves.findMany({
-        where: termo
-          ? {
-              transacoes: {
+      // Termo de Entrega de Chaves — pedido do usuário 18/08/2026: "quero
+      // que a busca seja liberada, independente de status, todos os
+      // imóveis em locação podem aparecer... se eu jogar um id, nome,
+      // endereço de algum imóvel que já foi locado, distrato, não importa
+      // qual, precisa aparecer e gerar". Antes buscava só na tabela
+      // `chaves` (nunca escrita pelo app-web — vem de fora, tipo bot/
+      // automação legada), então a maioria das locações nem aparecia.
+      // Agora busca direto em `transacoes` tipo Locação, sem filtro de
+      // status nenhum (locado, distrato, finalizado, tanto faz).
+      const rows = await prisma.transacoes.findMany({
+        where: {
+          excluido: false,
+          tipo: "Locação",
+          ...(termo
+            ? {
                 OR: [
-                  { chave: { contains: termo, mode: "insensitive" } },
-                  { imoveis: { endereco: { contains: termo, mode: "insensitive" } } }
+                  { id_legado: { contains: termo, mode: "insensitive" } },
+                  { imoveis: { endereco: { contains: termo, mode: "insensitive" } } },
+                  { imoveis: { id_legado: { contains: termo, mode: "insensitive" } } },
+                  { clientes_transacoes_cliente_idToclientes: { nome: { contains: termo, mode: "insensitive" } } },
+                  {
+                    clientes_transacoes_cliente_contraparte_idToclientes: {
+                      nome: { contains: termo, mode: "insensitive" }
+                    }
+                  }
                 ]
               }
-            }
-          : undefined,
-        include: { transacoes: { include: { imoveis: true } } },
+            : {})
+        },
+        include: {
+          imoveis: true,
+          clientes_transacoes_cliente_contraparte_idToclientes: true
+        },
         orderBy: { created_at: "desc" },
         take: 20
       });
-      return rows.map((k) => ({
-        id: k.id,
-        label: `${k.transacoes.chave ?? "sem chave"} · ${k.transacoes.imoveis?.endereco ?? "—"}`
+      return rows.map((t) => ({
+        id: t.id,
+        label: `${t.id_legado ?? t.id} — ${t.imoveis?.endereco ?? "sem endereço"} · ${
+          t.clientes_transacoes_cliente_contraparte_idToclientes?.nome ?? "sem locatário"
+        }${t.status ? ` (${t.status})` : ""}`
       }));
     }
     case "movimentacao": {

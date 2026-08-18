@@ -1103,23 +1103,25 @@ async function montarDadosContratoCorretor(parceiroId: string): Promise<Record<s
   };
 }
 
-async function montarDadosChaves(chavesId: string): Promise<Record<string, unknown>> {
-  const k = await prisma.chaves.findUnique({
-    where: { id: chavesId },
+// Termo de Entrega de Chaves — 18/08/2026: passou a receber a transação
+// direto (`transacao_id`, escolhida em buscarRegistrosAction sem depender
+// mais da tabela `chaves`, que nunca era escrita pelo app-web e deixava a
+// maioria das locações de fora da busca). `data_entrega` vira a data de
+// hoje (momento em que o termo é gerado/preenchido) — a tabela `chaves`
+// antiga guardava uma data própria, mas como ela não é mais a fonte, usamos
+// a data de geração mesmo.
+async function montarDadosChaves(transacaoId: string): Promise<Record<string, unknown>> {
+  const t = await prisma.transacoes.findUnique({
+    where: { id: transacaoId },
     include: {
-      transacoes: {
-        include: {
-          clientes_transacoes_cliente_contraparte_idToclientes: true,
-          imoveis: true,
-          parceiros_transacoes_corretor_proprietario_idToparceiros: true,
-          parceiros_transacoes_corretor_contraparte_idToparceiros: true
-        }
-      }
+      clientes_transacoes_cliente_contraparte_idToclientes: true,
+      imoveis: true,
+      parceiros_transacoes_corretor_proprietario_idToparceiros: true,
+      parceiros_transacoes_corretor_contraparte_idToparceiros: true
     }
   });
-  if (!k) throw new Error(`Registro de chaves "${chavesId}" não encontrado.`);
+  if (!t) throw new Error(`Transação "${transacaoId}" não encontrada.`);
 
-  const t = k.transacoes;
   const corretorResponsavel =
     t.parceiros_transacoes_corretor_contraparte_idToparceiros?.nome ??
     t.parceiros_transacoes_corretor_proprietario_idToparceiros?.nome ??
@@ -1128,9 +1130,9 @@ async function montarDadosChaves(chavesId: string): Promise<Record<string, unkno
   return {
     transacao_tipo: t.tipo,
     imovel_endereco: t.imoveis?.endereco ?? "",
-    recebedor_nome: t.clientes_transacoes_cliente_contraparte_idToclientes.nome,
+    recebedor_nome: t.clientes_transacoes_cliente_contraparte_idToclientes?.nome ?? "",
     corretor_responsavel: corretorResponsavel,
-    data_entrega: dataCurta(k.data ?? new Date())
+    data_entrega: dataCurta(new Date())
   };
 }
 

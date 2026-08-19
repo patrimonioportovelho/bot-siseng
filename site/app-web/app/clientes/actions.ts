@@ -59,23 +59,20 @@ function booleanoTri(formData: FormData, campo: string): boolean | null {
   return null;
 }
 
-// Endereço de Pessoa Física é sempre concatenado a partir dos campos
-// divididos (CEP/rua/número/complemento/bairro/cidade/estado) — mesmo
-// padrão de app/imoveis/actions.ts#montarEndereco. Pessoa Jurídica usa
-// "Sede" como campo de texto livre solto (não tem divisão), então o valor
-// digitado no campo `endereco` do formulário é usado direto nesse caso.
+// Endereço é sempre concatenado a partir dos campos divididos (CEP/rua/
+// número/complemento/bairro/cidade/estado) — mesmo padrão de
+// app/imoveis/actions.ts#montarEndereco. Vale tanto pra Pessoa Física
+// ("Endereço") quanto Pessoa Jurídica ("Sede") — pedido do usuário
+// (19/08/2026): "sede segue conforme o endereço de pessoa física, cep, rua,
+// ... estado, cidade" — mesmo padrão estruturado pros dois tipos, não mais
+// texto livre pra PJ.
 //
-// Quando é PF mas nenhum campo do endereço dividido foi preenchido (ex.:
-// cadastro antigo da planilha, aberto pra editar outra coisa sem mexer no
+// Quando nenhum campo do endereço dividido foi preenchido (ex.: cadastro
+// antigo da planilha, PF ou PJ, aberto pra editar outra coisa sem mexer no
 // endereço), devolve `undefined` — assim o Prisma não inclui `endereco` no
 // update e o texto livre antigo (importado) continua intacto, em vez de
 // ser apagado sem querer.
 async function montarEnderecoCliente(formData: FormData): Promise<string | null | undefined> {
-  const tipoCliente = texto(formData, "tipo_cliente");
-  if (tipoCliente === "Pessoa Jurídica") {
-    return texto(formData, "endereco");
-  }
-
   const rua = texto(formData, "rua");
   const nPredial = texto(formData, "n_predial");
   const complemento = texto(formData, "complemento");
@@ -112,13 +109,16 @@ async function camposEditaveis(formData: FormData) {
     cat_profissao: ehPessoaFisica ? texto(formData, "cat_profissao") : null,
     tipo_servidor: ehPessoaFisica ? texto(formData, "tipo_servidor") : null,
     profissao: ehPessoaFisica ? texto(formData, "profissao") : null,
-    cep: ehPessoaFisica ? digitos(formData, "cep") : null,
-    rua: ehPessoaFisica ? texto(formData, "rua") : null,
-    n_predial: ehPessoaFisica ? texto(formData, "n_predial") : null,
-    complemento: ehPessoaFisica ? texto(formData, "complemento") : null,
-    bairro: ehPessoaFisica ? texto(formData, "bairro") : null,
-    estado_id: ehPessoaFisica ? texto(formData, "estado_id") : null,
-    cidade_id: ehPessoaFisica ? texto(formData, "cidade_id") : null,
+    // Endereço estruturado (CEP/rua/número/complemento/bairro/estado/
+    // cidade) vale pros dois tipos agora — PF usa como "Endereço", PJ como
+    // "Sede", mesmo formato (19/08/2026, ver montarEnderecoCliente acima).
+    cep: digitos(formData, "cep"),
+    rua: texto(formData, "rua"),
+    n_predial: texto(formData, "n_predial"),
+    complemento: texto(formData, "complemento"),
+    bairro: texto(formData, "bairro"),
+    estado_id: texto(formData, "estado_id"),
+    cidade_id: texto(formData, "cidade_id"),
     endereco: await montarEnderecoCliente(formData),
     observacao: texto(formData, "observacao"),
     parceiro_id: texto(formData, "parceiro_id"),

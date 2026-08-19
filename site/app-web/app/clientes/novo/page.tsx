@@ -10,7 +10,7 @@ export default async function NovoClientePage() {
   const [lojas, bancos, parceiros, estados, cidades, clientesPfDisponiveis] = await Promise.all([
     prisma.lojas.findMany({ orderBy: { nome: "asc" } }),
     prisma.bancos.findMany({ orderBy: { nome: "asc" } }),
-    prisma.parceiros.findMany({ orderBy: { nome: "asc" }, select: { id: true, nome: true } }),
+    prisma.parceiros.findMany({ orderBy: { nome: "asc" }, select: { id: true, nome: true, loja_id: true } }),
     prisma.estados.findMany({ orderBy: { nome: "asc" } }),
     prisma.cidades.findMany({ orderBy: { nome: "asc" } }),
     // Usado só se o cadastro virar Pessoa Jurídica — pra buscar um sócio já

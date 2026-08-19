@@ -24,7 +24,7 @@ export default async function ClienteDetalhePage({
     prisma.clientes.findUnique({ where: { id }, include: { parceiros: true } }),
     prisma.lojas.findMany({ orderBy: { nome: "asc" } }),
     prisma.bancos.findMany({ orderBy: { nome: "asc" } }),
-    prisma.parceiros.findMany({ orderBy: { nome: "asc" }, select: { id: true, nome: true } }),
+    prisma.parceiros.findMany({ orderBy: { nome: "asc" }, select: { id: true, nome: true, loja_id: true } }),
     prisma.estados.findMany({ orderBy: { nome: "asc" } }),
     prisma.cidades.findMany({ orderBy: { nome: "asc" } })
   ]);

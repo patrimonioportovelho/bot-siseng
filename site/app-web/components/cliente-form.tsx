@@ -17,7 +17,7 @@ import { SocioForm } from "@/components/socio-form";
 
 type Loja = { id: string; nome: string };
 type Banco = { id: string; nome: string; codigo: string | null };
-type ParceiroOpcao = { id: string; nome: string };
+type ParceiroOpcao = { id: string; nome: string; loja_id: string | null };
 type EstadoOpcao = { id: string; nome: string };
 type CidadeOpcao = { id: string; nome: string; estado_id: string };
 type ClientePF = { id: string; nome: string; cpf: string | null };
@@ -177,24 +177,20 @@ function Ficha({
       </Cartao>
 
       <Cartao titulo={ehPessoaJuridica ? "Sede" : "Endereço"}>
-        {ehPessoaJuridica ? (
-          <Linha label="Endereço completo da sede" valor={c.endereco} />
-        ) : (
-          <div className="grid md:grid-cols-2 gap-3">
-            <Linha label="CEP" valor={c.cep} />
-            <Linha label="Logradouro" valor={c.rua} />
-            <Linha label="Número predial" valor={c.n_predial} />
-            <Linha label="Complemento" valor={c.complemento} />
-            <Linha label="Bairro" valor={c.bairro} />
-            <Linha label="Estado" valor={estado?.nome} />
-            <Linha label="Cidade" valor={cidade?.nome} />
-            {!c.rua && c.endereco && (
-              <div className="md:col-span-2">
-                <Linha label="Endereço (cadastro antigo)" valor={c.endereco} />
-              </div>
-            )}
-          </div>
-        )}
+        <div className="grid md:grid-cols-2 gap-3">
+          <Linha label="CEP" valor={c.cep} />
+          <Linha label="Logradouro" valor={c.rua} />
+          <Linha label="Número predial" valor={c.n_predial} />
+          <Linha label="Complemento" valor={c.complemento} />
+          <Linha label="Bairro" valor={c.bairro} />
+          <Linha label="Estado" valor={estado?.nome} />
+          <Linha label="Cidade" valor={cidade?.nome} />
+          {!c.rua && c.endereco && (
+            <div className="md:col-span-2">
+              <Linha label={ehPessoaJuridica ? "Sede (cadastro antigo)" : "Endereço (cadastro antigo)"} valor={c.endereco} />
+            </div>
+          )}
+        </div>
       </Cartao>
 
       {!ehPessoaJuridica && (
@@ -386,8 +382,9 @@ export function ClienteForm({
   // Endereço antigo (importado da planilha, sem os campos divididos
   // preenchidos) — só mostrado como referência, nunca perdido: se o admin
   // não mexer nos campos de endereço, o texto antigo continua intacto (ver
-  // montarEnderecoCliente em app/clientes/actions.ts).
-  const mostrarEnderecoAntigo = ehPessoaFisica && !c?.rua && !!c?.endereco;
+  // montarEnderecoCliente em app/clientes/actions.ts). Vale pra PF e PJ —
+  // "Sede" da PJ passou a usar o mesmo formato estruturado (19/08/2026).
+  const mostrarEnderecoAntigo = !c?.rua && !!c?.endereco;
 
   async function aoSairDoCep() {
     const digitos = cep.replace(/\D/g, "");
@@ -434,6 +431,20 @@ export function ClienteForm({
     setBancoId(id);
     const banco = bancos.find((b) => b.id === id);
     if (banco?.codigo) setCodigoBanco(banco.codigo);
+  }
+
+  // Parceiro responsável → Loja: ao escolher o parceiro, a loja dele já
+  // cadastrada em Parceiro é puxada automaticamente (pedido do usuário,
+  // 19/08/2026 — exemplo dado: selecionar "Jota Silvestre..." já preenche
+  // "Porto Velho" sozinho). Continua editável manualmente depois — só
+  // preenche quando o parceiro escolhido tem loja cadastrada.
+  const [parceiroId, setParceiroId] = useState(c?.parceiro_id ?? "");
+  const [lojaId, setLojaId] = useState(c?.loja_id ?? "");
+
+  function selecionarParceiro(id: string) {
+    setParceiroId(id);
+    const parceiro = parceiros.find((p) => p.id === id);
+    if (parceiro?.loja_id) setLojaId(parceiro.loja_id);
   }
 
   if (c && !modoEdicao) {
@@ -648,80 +659,73 @@ export function ClienteForm({
 
         <div className="bg-white border border-gray-200 rounded-xl p-4">
           <div className="text-sm font-bold text-gray-800 mb-3">{ehPessoaJuridica ? "Sede" : "Endereço"}</div>
-          {ehPessoaJuridica ? (
+          <div className="grid md:grid-cols-2 gap-3">
+            {mostrarEnderecoAntigo && (
+              <p className="text-[11px] text-gray-400 md:col-span-2">
+                Endereço atual (cadastro antigo, formato livre): {c?.endereco}. Preencha os campos abaixo para
+                atualizar para o formato dividido.
+              </p>
+            )}
             <div>
-              <label className={LABEL}>Endereço completo da sede</label>
-              <textarea className={CAMPO + " min-h-20"} name="endereco" defaultValue={c?.endereco ?? ""} />
+              <label className={LABEL}>CEP</label>
+              <input
+                className={CAMPO}
+                name="cep"
+                placeholder="76800-000"
+                value={cep}
+                onChange={(e) => setCep(formatCep(e.target.value))}
+                onBlur={aoSairDoCep}
+              />
+              {buscandoCep && <p className="text-[11px] text-gray-400 mt-1">Buscando endereço pelo CEP...</p>}
+              {cepAvisoCidade && <p className="text-[11px] text-amber-600 mt-1">{cepAvisoCidade}</p>}
             </div>
-          ) : (
-            <div className="grid md:grid-cols-2 gap-3">
-              {mostrarEnderecoAntigo && (
-                <p className="text-[11px] text-gray-400 md:col-span-2">
-                  Endereço atual (cadastro antigo, formato livre): {c?.endereco}. Preencha os campos abaixo para
-                  atualizar para o formato dividido.
-                </p>
-              )}
-              <div>
-                <label className={LABEL}>CEP</label>
-                <input
-                  className={CAMPO}
-                  name="cep"
-                  placeholder="76800-000"
-                  value={cep}
-                  onChange={(e) => setCep(formatCep(e.target.value))}
-                  onBlur={aoSairDoCep}
-                />
-                {buscandoCep && <p className="text-[11px] text-gray-400 mt-1">Buscando endereço pelo CEP...</p>}
-                {cepAvisoCidade && <p className="text-[11px] text-amber-600 mt-1">{cepAvisoCidade}</p>}
-              </div>
-              <div>
-                <label className={LABEL}>Logradouro</label>
-                <input className={CAMPO} name="rua" value={rua} onChange={(e) => setRua(e.target.value)} />
-              </div>
-              <div>
-                <label className={LABEL}>Número predial</label>
-                <input className={CAMPO} name="n_predial" defaultValue={c?.n_predial ?? ""} />
-              </div>
-              <div>
-                <label className={LABEL}>Complemento</label>
-                <input className={CAMPO} name="complemento" defaultValue={c?.complemento ?? ""} />
-              </div>
-              <div>
-                <label className={LABEL}>Bairro</label>
-                <input className={CAMPO} name="bairro" value={bairro} onChange={(e) => setBairro(e.target.value)} />
-              </div>
-              <div>
-                <label className={LABEL}>Estado</label>
-                <select
-                  className={CAMPO}
-                  name="estado_id"
-                  value={estadoId}
-                  onChange={(e) => {
-                    setEstadoId(e.target.value);
-                    setCidadeId("");
-                  }}
-                >
-                  <option value="">—</option>
-                  {estados.map((e) => (
-                    <option key={e.id} value={e.id}>
-                      {e.nome}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className={LABEL}>Cidade</label>
-                <select className={CAMPO} name="cidade_id" value={cidadeId} onChange={(e) => setCidadeId(e.target.value)}>
-                  <option value="">—</option>
-                  {cidadesDoEstado.map((cid) => (
-                    <option key={cid.id} value={cid.id}>
-                      {cid.nome}
-                    </option>
-                  ))}
-                </select>
-              </div>
+            <div>
+              <label className={LABEL}>Logradouro</label>
+              <input className={CAMPO} name="rua" value={rua} onChange={(e) => setRua(e.target.value)} />
             </div>
-          )}
+            <div>
+              <label className={LABEL}>Número predial</label>
+              <input className={CAMPO} name="n_predial" defaultValue={c?.n_predial ?? ""} />
+            </div>
+            <div>
+              <label className={LABEL}>Complemento</label>
+              <input className={CAMPO} name="complemento" defaultValue={c?.complemento ?? ""} />
+            </div>
+            <div>
+              <label className={LABEL}>Bairro</label>
+              <input className={CAMPO} name="bairro" value={bairro} onChange={(e) => setBairro(e.target.value)} />
+            </div>
+            <div>
+              <label className={LABEL}>Estado</label>
+              <select
+                className={CAMPO}
+                name="estado_id"
+                value={estadoId}
+                onChange={(e) => {
+                  setEstadoId(e.target.value);
+                  setCidadeId("");
+                }}
+              >
+                <option value="">—</option>
+                {estados.map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.nome}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className={LABEL}>Cidade</label>
+              <select className={CAMPO} name="cidade_id" value={cidadeId} onChange={(e) => setCidadeId(e.target.value)}>
+                <option value="">—</option>
+                {cidadesDoEstado.map((cid) => (
+                  <option key={cid.id} value={cid.id}>
+                    {cid.nome}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
         </div>
 
         {ehPessoaFisica && (
@@ -765,7 +769,12 @@ export function ClienteForm({
           <div className="grid md:grid-cols-2 gap-3">
             <div>
               <label className={LABEL}>Parceiro responsável</label>
-              <select className={CAMPO} name="parceiro_id" defaultValue={c?.parceiro_id ?? ""}>
+              <select
+                className={CAMPO}
+                name="parceiro_id"
+                value={parceiroId}
+                onChange={(e) => selecionarParceiro(e.target.value)}
+              >
                 <option value="">—</option>
                 {parceiros.map((p) => (
                   <option key={p.id} value={p.id}>
@@ -776,7 +785,13 @@ export function ClienteForm({
             </div>
             <div>
               <label className={LABEL}>Loja *</label>
-              <select className={CAMPO} name="loja_id" defaultValue={c?.loja_id ?? ""} required>
+              <select
+                className={CAMPO}
+                name="loja_id"
+                value={lojaId}
+                onChange={(e) => setLojaId(e.target.value)}
+                required
+              >
                 <option value="" disabled>
                   Selecione...
                 </option>
@@ -786,6 +801,10 @@ export function ClienteForm({
                   </option>
                 ))}
               </select>
+              <p className="text-[11px] text-gray-400 mt-1">
+                Preenchida automaticamente ao escolher o parceiro (conforme o cadastro dele) — pode trocar manualmente
+                se precisar.
+              </p>
             </div>
             <div className="md:col-span-2">
               <label className={LABEL}>Observação</label>

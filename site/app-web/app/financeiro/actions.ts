@@ -248,24 +248,32 @@ export async function excluirMovimentacaoAction(formData: FormData) {
   await requireAdminSession();
 
   const id = texto(formData, "movimentacaoId");
-  if (!id) throw new Error("Movimentação inválida.");
+  const voltarPara = id ? `/financeiro/${id}` : "/financeiro";
+  let tipoMovimentacao: string | null = null;
 
-  const antes = await prisma.movimentacoes.findUnique({ where: { id } });
-  if (!antes) throw new Error("Movimentação não encontrada.");
+  try {
+    if (!id) throw new Error("Movimentação inválida.");
 
-  await prisma.movimentacoes
-    .delete({ where: { id } })
-    .catch((erro) => registrarEJogarErro({ entidadeTipo: "movimentacoes", entidadeId: id, acao: "excluir", erro }));
+    const antes = await prisma.movimentacoes.findUnique({ where: { id } });
+    if (!antes) throw new Error("Movimentação não encontrada.");
+    tipoMovimentacao = antes.tipo;
 
-  await logAlteracao({
-    entidadeTipo: "movimentacoes",
-    entidadeId: id,
-    acao: "excluir",
-    dadosAntes: antes
-  });
+    await prisma.movimentacoes
+      .delete({ where: { id } })
+      .catch((erro) => registrarEJogarErro({ entidadeTipo: "movimentacoes", entidadeId: id, acao: "excluir", erro }));
+
+    await logAlteracao({
+      entidadeTipo: "movimentacoes",
+      entidadeId: id,
+      acao: "excluir",
+      dadosAntes: antes
+    });
+  } catch (erro) {
+    redirect(`${voltarPara}?erro=${encodeURIComponent(mensagemDe(erro))}`);
+  }
 
   revalidatePath("/financeiro");
-  redirect(`/financeiro?tipo=${antes.tipo === "Recebimento" ? "recebimento" : "despesa"}&excluido=1`);
+  redirect(`/financeiro?tipo=${tipoMovimentacao === "Recebimento" ? "recebimento" : "despesa"}&excluido=1`);
 }
 
 // Marca/desmarca como Pago-Recebido direto da lista ou do detalhe, sem abrir
@@ -274,27 +282,35 @@ export async function marcarPagoAction(formData: FormData) {
   await requireAdminSession();
 
   const id = texto(formData, "movimentacaoId");
-  if (!id) throw new Error("Movimentação inválida.");
+  const voltarPara = id ? `/financeiro/${id}` : "/financeiro";
 
-  const antes = await prisma.movimentacoes.findUnique({ where: { id } });
-  if (!antes) throw new Error("Movimentação não encontrada.");
+  try {
+    if (!id) throw new Error("Movimentação inválida.");
 
-  const pago = !antes.pago;
-  const dataPagamentoTexto = texto(formData, "data_pagamento");
-  const dataPagamento = pago ? (dataPagamentoTexto ? data(formData, "data_pagamento") : new Date()) : null;
+    const antes = await prisma.movimentacoes.findUnique({ where: { id } });
+    if (!antes) throw new Error("Movimentação não encontrada.");
 
-  await prisma.movimentacoes.update({
-    where: { id },
-    data: { pago, data_pagamento: dataPagamento, updated_at: new Date() }
-  });
+    const pago = !antes.pago;
+    const dataPagamentoTexto = texto(formData, "data_pagamento");
+    const dataPagamento = pago ? (dataPagamentoTexto ? data(formData, "data_pagamento") : new Date()) : null;
 
-  await logAlteracao({
-    entidadeTipo: "movimentacoes",
-    entidadeId: id,
-    acao: "editar",
-    dadosAntes: { pago: antes.pago },
-    dadosDepois: { pago }
-  });
+    await prisma.movimentacoes
+      .update({
+        where: { id },
+        data: { pago, data_pagamento: dataPagamento, updated_at: new Date() }
+      })
+      .catch((erro) => registrarEJogarErro({ entidadeTipo: "movimentacoes", entidadeId: id, acao: "editar", erro }));
+
+    await logAlteracao({
+      entidadeTipo: "movimentacoes",
+      entidadeId: id,
+      acao: "editar",
+      dadosAntes: { pago: antes.pago },
+      dadosDepois: { pago }
+    });
+  } catch (erro) {
+    redirect(`${voltarPara}?erro=${encodeURIComponent(mensagemDe(erro))}`);
+  }
 
   revalidatePath(`/financeiro/${id}`);
   revalidatePath("/financeiro");
@@ -319,52 +335,59 @@ export async function alternarPagamentoParcialAction(formData: FormData) {
   await requireAdminSession();
 
   const id = texto(formData, "pagamentoPixId");
-  if (!id) throw new Error("Pagamento inválido.");
+  let movimentacaoId: string | null = null;
 
-  const atual = await prisma.movimentacoes_pagamentos_pix.findUnique({ where: { id } });
-  if (!atual) throw new Error("Pagamento não encontrado.");
+  try {
+    if (!id) throw new Error("Pagamento inválido.");
 
-  const novoPago = !atual.pago;
-  let movimentacaoId = atual.movimentacao_id;
+    const atual = await prisma.movimentacoes_pagamentos_pix.findUnique({ where: { id } });
+    if (!atual) throw new Error("Pagamento não encontrado.");
+    movimentacaoId = atual.movimentacao_id;
 
-  await prisma.$transaction(async (tx) => {
-    await tx.movimentacoes_pagamentos_pix.update({
-      where: { id },
-      data: { pago: novoPago, confirmado_em: novoPago ? new Date() : null }
+    const novoPago = !atual.pago;
+
+    await prisma.$transaction(async (tx) => {
+      await tx.movimentacoes_pagamentos_pix.update({
+        where: { id },
+        data: { pago: novoPago, confirmado_em: novoPago ? new Date() : null }
+      });
+
+      const movimentacao = await tx.movimentacoes.findUnique({
+        where: { id: atual.movimentacao_id },
+        include: { pagamentos_pix: true }
+      });
+      if (!movimentacao) return;
+
+      const parciais = movimentacao.pagamentos_pix.map((p) => ({
+        valor: Number(p.valor),
+        pago: p.id === id ? novoPago : p.pago
+      }));
+      const saldo = saldoDevido(Number(movimentacao.valor), parciais);
+
+      if (saldo <= 0 && !movimentacao.pago) {
+        await tx.movimentacoes.update({
+          where: { id: movimentacao.id },
+          data: { pago: true, data_pagamento: new Date(), updated_at: new Date() }
+        });
+      } else if (saldo > 0 && movimentacao.pago) {
+        await tx.movimentacoes.update({
+          where: { id: movimentacao.id },
+          data: { pago: false, data_pagamento: null, updated_at: new Date() }
+        });
+      }
     });
 
-    const movimentacao = await tx.movimentacoes.findUnique({
-      where: { id: atual.movimentacao_id },
-      include: { pagamentos_pix: true }
+    await logAlteracao({
+      entidadeTipo: "movimentacoes_pagamentos_pix",
+      entidadeId: id,
+      acao: novoPago ? "confirmar" : "desfazer",
+      dadosAntes: { pago: atual.pago },
+      dadosDepois: { pago: novoPago }
     });
-    if (!movimentacao) return;
-
-    const parciais = movimentacao.pagamentos_pix.map((p) => ({
-      valor: Number(p.valor),
-      pago: p.id === id ? novoPago : p.pago
-    }));
-    const saldo = saldoDevido(Number(movimentacao.valor), parciais);
-
-    if (saldo <= 0 && !movimentacao.pago) {
-      await tx.movimentacoes.update({
-        where: { id: movimentacao.id },
-        data: { pago: true, data_pagamento: new Date(), updated_at: new Date() }
-      });
-    } else if (saldo > 0 && movimentacao.pago) {
-      await tx.movimentacoes.update({
-        where: { id: movimentacao.id },
-        data: { pago: false, data_pagamento: null, updated_at: new Date() }
-      });
-    }
-  });
-
-  await logAlteracao({
-    entidadeTipo: "movimentacoes_pagamentos_pix",
-    entidadeId: id,
-    acao: novoPago ? "confirmar" : "desfazer",
-    dadosAntes: { pago: atual.pago },
-    dadosDepois: { pago: novoPago }
-  });
+  } catch (erro) {
+    const voltarPara = movimentacaoId ? `/financeiro/${movimentacaoId}` : "/financeiro";
+    redirect(`${voltarPara}?erro=${encodeURIComponent(mensagemDe(erro))}`);
+  }
 
   revalidatePath(`/financeiro/${movimentacaoId}`);
   revalidatePath("/financeiro");
@@ -399,7 +422,13 @@ type LinhaRateio = {
 // vez por transação: cria 1 linha em `pagamentos` + 1 despesa em
 // `movimentacoes` (linkada via pagamento_id) por parceiro/corretor
 // envolvido. A imobiliária não gera despesa (fica com o valor "em casa").
-export async function gerarRateioAction(formData: FormData) {
+// Tratamento de erro (16/08/2026, revisão P1 do sistema): a outra ação (além
+// de gerarBoletosAction) em que um erro tinha custo real — a tela de rateio
+// (components/rateio-form.tsx) deixa cada linha ajustável (desconto, "pago
+// direto") antes de confirmar, e um throw aqui derrubava esse ajuste manual
+// pro error boundary. Mesmo padrão { erro } + useActionState dos formulários
+// grandes: erro aparece inline, linhas ajustadas continuam na tela.
+export async function gerarRateioAction(_prev: unknown, formData: FormData): Promise<ResultadoFormulario> {
   await requireAdminSession();
 
   const transacaoId = texto(formData, "transacao_id");
@@ -412,111 +441,115 @@ export async function gerarRateioAction(formData: FormData) {
   const condicaoPagamentoId = texto(formData, "condicao_pagamento_id");
 
   if (!transacaoId || !recebimentoId || !vencimentoTexto || !linhasTexto) {
-    throw new Error("Dados incompletos para gerar o rateio.");
+    return { erro: "Dados incompletos para gerar o rateio." };
   }
 
   let linhas: LinhaRateio[];
   try {
     linhas = JSON.parse(linhasTexto);
   } catch {
-    throw new Error("Rateio inválido.");
+    return { erro: "Rateio inválido." };
   }
   if (!Array.isArray(linhas) || linhas.length === 0) {
-    throw new Error("Nenhuma linha de rateio informada.");
+    return { erro: "Nenhuma linha de rateio informada." };
   }
 
-  // Checagem por recebimento_id (não transacao_id): uma Locação tem N
-  // Recebimentos (um por mês) com o mesmo transacao_id, então travar por
-  // transação inteira impedia o rateio dos meses seguintes depois do 1°.
-  const jaExiste = await prisma.pagamentos.findFirst({ where: { recebimento_id: recebimentoId } });
-  if (jaExiste) {
-    throw new Error("O rateio desse recebimento já foi gerado.");
-  }
-
-  const [categoria, transacao, condicaoPagamento] = await Promise.all([
-    prisma.categorias_financeiras.findFirst({ where: { nome: CATEGORIA_REPASSE_HONORARIO, tipo: "Despesa" } }),
-    prisma.transacoes.findUnique({ where: { id: transacaoId } }),
-    condicaoPagamentoId ? prisma.condicoes_pagamento.findUnique({ where: { id: condicaoPagamentoId } }) : Promise.resolve(null)
-  ]);
-  if (!categoria) throw new Error(`Categoria "${CATEGORIA_REPASSE_HONORARIO}" não encontrada.`);
-  if (!transacao) throw new Error("Transação não encontrada.");
-  if (condicaoPagamentoId && (!condicaoPagamento || condicaoPagamento.transacao_id !== transacaoId || !condicaoPagamento.gera_comissao)) {
-    throw new Error("Condição de pagamento inválida para esta transação.");
-  }
-
-  // Valor do honorário é recalculado aqui a partir do banco, não confiando
-  // no valor mandado pelo formulário — igual já é feito nas outras Server
-  // Actions do sistema. Quando o Recebimento está vinculado a uma condição
-  // marcada como "honorário pago aqui" (ver condicoes_pagamento.gera_comissao),
-  // só a fatia dela (porc_comissao) entra no rateio, não o honorário
-  // inteiro — sem isso, cada Recebimento de um negócio parcelado pagaria o
-  // honorário total de novo.
-  const fracaoCondicao = condicaoPagamento ? Number(condicaoPagamento.porc_comissao ?? 0) : 1;
-  const valorHonorarioTotal = Number(transacao.valor_transacao) * Number(transacao.porc_honorario ?? 0) * fracaoCondicao;
-  const vencimento = new Date(vencimentoTexto + "T00:00:00");
-
-  let pagamentosCriados = 0;
-  let despesasCriadas = 0;
-
-  await prisma.$transaction(async (tx) => {
-    for (const linha of linhas) {
-      if (!linha.parceiro_id || !(linha.valor_final > 0)) continue;
-
-      const pagoDireto = linha.pago_direto === true;
-
-      const pagamento = await tx.pagamentos.create({
-        data: {
-          status: "Pendente",
-          transacao_id: transacaoId,
-          recebimento_id: recebimentoId,
-          condicao_pagamento_id: condicaoPagamentoId || null,
-          cliente_id: transacao.cliente_id,
-          tipo: transacao.tipo,
-          parceiro_id: linha.parceiro_id,
-          parte: linha.parte,
-          porcentagem: linha.porcentagem,
-          desconto: linha.desconto > 0 ? linha.desconto : null,
-          observacao: linha.observacao,
-          valor_honorario: valorHonorarioTotal,
-          valor_parceiro: linha.valor_final,
-          pago_direto: pagoDireto
-        }
-      });
-      pagamentosCriados += 1;
-
-      // Pago direto: o vendedor já acertou com o corretor sem passar pela
-      // nossa conta — não existe despesa nossa pra lançar, só o registro
-      // acima (histórico + sai da previsão do dashboard).
-      if (pagoDireto) continue;
-
-      await tx.movimentacoes.create({
-        data: {
-          tipo: "Despesa",
-          categoria_id: categoria.id,
-          transacao_id: transacaoId,
-          parceiro_id: linha.parceiro_id,
-          pagamento_id: pagamento.id,
-          descricao: `Repasse de honorário — ${linha.parte} — ${linha.parceiro_nome}`,
-          valor: linha.valor_final,
-          vencimento,
-          pago: false,
-          gerado_automaticamente: true
-        }
-      });
-      despesasCriadas += 1;
+  try {
+    // Checagem por recebimento_id (não transacao_id): uma Locação tem N
+    // Recebimentos (um por mês) com o mesmo transacao_id, então travar por
+    // transação inteira impedia o rateio dos meses seguintes depois do 1°.
+    const jaExiste = await prisma.pagamentos.findFirst({ where: { recebimento_id: recebimentoId } });
+    if (jaExiste) {
+      return { erro: "O rateio desse recebimento já foi gerado." };
     }
-  });
 
-  if (pagamentosCriados === 0) {
-    throw new Error("Nenhuma linha válida para gerar o rateio (confira parceiro e valor de cada uma).");
+    const [categoria, transacao, condicaoPagamento] = await Promise.all([
+      prisma.categorias_financeiras.findFirst({ where: { nome: CATEGORIA_REPASSE_HONORARIO, tipo: "Despesa" } }),
+      prisma.transacoes.findUnique({ where: { id: transacaoId } }),
+      condicaoPagamentoId ? prisma.condicoes_pagamento.findUnique({ where: { id: condicaoPagamentoId } }) : Promise.resolve(null)
+    ]);
+    if (!categoria) return { erro: `Categoria "${CATEGORIA_REPASSE_HONORARIO}" não encontrada.` };
+    if (!transacao) return { erro: "Transação não encontrada." };
+    if (condicaoPagamentoId && (!condicaoPagamento || condicaoPagamento.transacao_id !== transacaoId || !condicaoPagamento.gera_comissao)) {
+      return { erro: "Condição de pagamento inválida para esta transação." };
+    }
+
+    // Valor do honorário é recalculado aqui a partir do banco, não confiando
+    // no valor mandado pelo formulário — igual já é feito nas outras Server
+    // Actions do sistema. Quando o Recebimento está vinculado a uma condição
+    // marcada como "honorário pago aqui" (ver condicoes_pagamento.gera_comissao),
+    // só a fatia dela (porc_comissao) entra no rateio, não o honorário
+    // inteiro — sem isso, cada Recebimento de um negócio parcelado pagaria o
+    // honorário total de novo.
+    const fracaoCondicao = condicaoPagamento ? Number(condicaoPagamento.porc_comissao ?? 0) : 1;
+    const valorHonorarioTotal = Number(transacao.valor_transacao) * Number(transacao.porc_honorario ?? 0) * fracaoCondicao;
+    const vencimento = new Date(vencimentoTexto + "T00:00:00");
+
+    let pagamentosCriados = 0;
+    let despesasCriadas = 0;
+
+    await prisma.$transaction(async (tx) => {
+      for (const linha of linhas) {
+        if (!linha.parceiro_id || !(linha.valor_final > 0)) continue;
+
+        const pagoDireto = linha.pago_direto === true;
+
+        const pagamento = await tx.pagamentos.create({
+          data: {
+            status: "Pendente",
+            transacao_id: transacaoId,
+            recebimento_id: recebimentoId,
+            condicao_pagamento_id: condicaoPagamentoId || null,
+            cliente_id: transacao.cliente_id,
+            tipo: transacao.tipo,
+            parceiro_id: linha.parceiro_id,
+            parte: linha.parte,
+            porcentagem: linha.porcentagem,
+            desconto: linha.desconto > 0 ? linha.desconto : null,
+            observacao: linha.observacao,
+            valor_honorario: valorHonorarioTotal,
+            valor_parceiro: linha.valor_final,
+            pago_direto: pagoDireto
+          }
+        });
+        pagamentosCriados += 1;
+
+        // Pago direto: o vendedor já acertou com o corretor sem passar pela
+        // nossa conta — não existe despesa nossa pra lançar, só o registro
+        // acima (histórico + sai da previsão do dashboard).
+        if (pagoDireto) continue;
+
+        await tx.movimentacoes.create({
+          data: {
+            tipo: "Despesa",
+            categoria_id: categoria.id,
+            transacao_id: transacaoId,
+            parceiro_id: linha.parceiro_id,
+            pagamento_id: pagamento.id,
+            descricao: `Repasse de honorário — ${linha.parte} — ${linha.parceiro_nome}`,
+            valor: linha.valor_final,
+            vencimento,
+            pago: false,
+            gerado_automaticamente: true
+          }
+        });
+        despesasCriadas += 1;
+      }
+    });
+
+    if (pagamentosCriados === 0) {
+      return { erro: "Nenhuma linha válida para gerar o rateio (confira parceiro e valor de cada uma)." };
+    }
+
+    await logAlteracao({
+      entidadeTipo: "pagamentos",
+      entidadeId: transacaoId,
+      acao: "criar",
+      dadosDepois: { transacao_id: transacaoId, quantidade: pagamentosCriados, despesas: despesasCriadas }
+    });
+  } catch (erro) {
+    return { erro: mensagemDe(erro) };
   }
-
-  await logAlteracao({
-    entidadeTipo: "pagamentos",
-    entidadeId: transacaoId,
-    acao: "criar",
-    dadosDepois: { transacao_id: transacaoId, quantidade: pagamentosCriados, despesas: despesasCriadas }
-  });
 
   revalidatePath(`/financeiro/${recebimentoId}`);
   revalidatePath("/financeiro");

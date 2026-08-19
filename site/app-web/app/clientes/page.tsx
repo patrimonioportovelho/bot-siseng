@@ -12,9 +12,9 @@ const PAGE_SIZE = 50;
 export default async function ClientesPage({
   searchParams
 }: {
-  searchParams: Promise<{ q?: string; page?: string; excluido?: string }>;
+  searchParams: Promise<{ q?: string; page?: string; excluido?: string; erro?: string }>;
 }) {
-  const { q, page: pageParam, excluido } = await searchParams;
+  const { q, page: pageParam, excluido, erro } = await searchParams;
   const termo = (q ?? "").trim();
   const page = Math.max(1, Number(pageParam ?? "1") || 1);
   const lojasFiltro = await lojasSelecionadas();
@@ -59,6 +59,11 @@ export default async function ClientesPage({
     <div>
       <Topbar />
 
+      {erro && (
+        <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg px-3 py-2 mb-4">
+          {erro}
+        </div>
+      )}
       {excluido === "1" && (
         <div className="bg-green-50 border border-green-200 text-green-700 text-xs rounded-lg px-3 py-2 mb-4">
           Cadastro apagado com sucesso.

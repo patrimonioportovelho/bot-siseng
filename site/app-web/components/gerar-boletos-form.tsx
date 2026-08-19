@@ -1,8 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useActionState, useMemo, useState } from "react";
 import { formatMoeda, formatValorEditavel, valorEditavelParaDecimal, hojeInputDate, somarMeses } from "@/lib/format";
 import { BotaoComConfirmacao } from "@/components/botao-com-confirmacao";
+
+type ResultadoBoletos = { erro: string } | undefined;
 
 type CategoriaOpcao = { id: string; nome: string };
 
@@ -95,8 +97,14 @@ export function GerarBoletosForm({
   transacao: TransacaoBoleto;
   categorias: CategoriaOpcao[];
   mesesJaGerados: number;
-  action: (formData: FormData) => void;
+  action: (prevState: ResultadoBoletos, formData: FormData) => Promise<ResultadoBoletos>;
 }) {
+  // useActionState (16/08/2026, revisão P1) — antes um erro ao gerar
+  // derrubava a tela e perdia a prévia editada linha a linha. Agora volta
+  // inline, sem sair da tela, com a prévia intacta (mesmo padrão de
+  // transacao-form.tsx/rateio-form.tsx).
+  const [resultado, formAction] = useActionState(action, undefined);
+
   const comAdministracao = transacao.status === "Imóvel em Locação";
   const semAdministracao = transacao.status === "Imóvel em locação sem administração";
 
@@ -356,13 +364,19 @@ export function GerarBoletosForm({
         </div>
       </div>
 
+      {resultado?.erro && (
+        <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg px-3 py-2 mt-3">
+          {resultado.erro} — a prévia acima continua aí, é só corrigir e confirmar de novo.
+        </div>
+      )}
+
       <div className="flex items-center justify-between mt-4">
         <span className="text-xs text-gray-500">
           Total da prévia: <span className="font-semibold text-gray-800">{formatMoeda(totalPrevia)}</span> em{" "}
           {linhas.length} movimentação(ões)
         </span>
         <form
-          action={action}
+          action={formAction}
           onSubmit={(e) => {
             if (linhas.length === 0) e.preventDefault();
           }}

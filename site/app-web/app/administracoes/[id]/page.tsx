@@ -16,10 +16,10 @@ export default async function AdministracaoDetalhePage({
   searchParams
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ salvo?: string; embed?: string }>;
+  searchParams: Promise<{ salvo?: string; embed?: string; erro?: string }>;
 }) {
   const { id } = await params;
-  const { salvo, embed } = await searchParams;
+  const { salvo, embed, erro } = await searchParams;
   const embutido = embed === "1";
   const session = await getAdminSession();
 
@@ -109,6 +109,12 @@ export default async function AdministracaoDetalhePage({
           </form>
         )}
       </div>
+
+      {erro && (
+        <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg px-3 py-2 mb-4">
+          {erro}
+        </div>
+      )}
 
       {salvo === "1" && (
         <div className="bg-green-50 border border-green-200 text-green-700 text-xs rounded-lg px-3 py-2 mb-4">

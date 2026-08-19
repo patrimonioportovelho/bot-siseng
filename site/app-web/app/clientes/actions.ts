@@ -326,23 +326,31 @@ export async function apagarClienteAction(formData: FormData) {
   const admin = await requireAdm();
 
   const id = texto(formData, "clienteId");
-  if (!id) throw new Error("Cliente inválido.");
+  const voltarPara = id ? `/clientes/${id}` : "/clientes";
 
-  const antes = await prisma.clientes.findUnique({ where: { id } });
-  if (!antes) throw new Error("Cliente não encontrado.");
+  try {
+    if (!id) throw new Error("Cliente inválido.");
 
-  await prisma.clientes.update({
-    where: { id },
-    data: { status_cadastro: "Arquivado", updated_at: new Date() }
-  });
+    const antes = await prisma.clientes.findUnique({ where: { id } });
+    if (!antes) throw new Error("Cliente não encontrado.");
 
-  await logAlteracao({
-    entidadeTipo: "clientes",
-    entidadeId: id,
-    acao: "excluir",
-    dadosAntes: { status_cadastro: antes.status_cadastro },
-    dadosDepois: { status_cadastro: "Arquivado", excluido_por: admin.nome }
-  });
+    await prisma.clientes
+      .update({
+        where: { id },
+        data: { status_cadastro: "Arquivado", updated_at: new Date() }
+      })
+      .catch((erro) => registrarEJogarErro({ entidadeTipo: "clientes", entidadeId: id, acao: "excluir", erro }));
+
+    await logAlteracao({
+      entidadeTipo: "clientes",
+      entidadeId: id,
+      acao: "excluir",
+      dadosAntes: { status_cadastro: antes.status_cadastro },
+      dadosDepois: { status_cadastro: "Arquivado", excluido_por: admin.nome }
+    });
+  } catch (erro) {
+    redirect(`${voltarPara}?erro=${encodeURIComponent(mensagemDe(erro))}`);
+  }
 
   revalidatePath("/clientes");
   redirect("/clientes?excluido=1");
@@ -518,16 +526,24 @@ export async function removerSocioAction(formData: FormData) {
 
   const vinculoId = texto(formData, "vinculo_id");
   const pjClienteId = texto(formData, "pj_cliente_id");
-  if (!vinculoId || !pjClienteId) throw new Error("Vínculo inválido.");
+  const voltarPara = pjClienteId ? `/clientes/${pjClienteId}` : "/clientes";
 
-  await prisma.clientes_socios.delete({ where: { id: vinculoId } });
+  try {
+    if (!vinculoId || !pjClienteId) throw new Error("Vínculo inválido.");
 
-  await logAlteracao({
-    entidadeTipo: "clientes",
-    entidadeId: pjClienteId,
-    acao: "remover_socio",
-    dadosAntes: { vinculo_id: vinculoId }
-  });
+    await prisma.clientes_socios
+      .delete({ where: { id: vinculoId } })
+      .catch((erro) => registrarEJogarErro({ entidadeTipo: "clientes_socios", entidadeId: vinculoId, acao: "remover", erro }));
+
+    await logAlteracao({
+      entidadeTipo: "clientes",
+      entidadeId: pjClienteId,
+      acao: "remover_socio",
+      dadosAntes: { vinculo_id: vinculoId }
+    });
+  } catch (erro) {
+    redirect(`${voltarPara}?erro=${encodeURIComponent(mensagemDe(erro))}`);
+  }
 
   revalidatePath(`/clientes/${pjClienteId}`);
 }

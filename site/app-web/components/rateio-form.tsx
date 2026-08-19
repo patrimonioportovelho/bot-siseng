@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useActionState, useEffect, useMemo, useState } from "react";
 import { formatMoeda, formatPercentual, hojeInputDate } from "@/lib/format";
+
+type ResultadoRateio = { erro: string } | undefined;
 
 type ParceiroInfo = { id: string; nome: string } | null;
 
@@ -85,8 +87,14 @@ export function RateioForm({
   transacao: TransacaoRateio;
   recebimentoId: string;
   vencimentoSugerido: Date | string | null;
-  action: (formData: FormData) => void;
+  action: (prevState: ResultadoRateio, formData: FormData) => Promise<ResultadoRateio>;
 }) {
+  // useActionState (16/08/2026, revisão P1) — antes um erro na geração do
+  // rateio derrubava a tela e perdia qualquer desconto/"pago direto" já
+  // ajustado manualmente nas linhas abaixo. Agora o erro volta inline, sem
+  // sair da tela, com as linhas intactas (mesmo padrão de transacao-form.tsx).
+  const [resultado, formAction] = useActionState(action, undefined);
+
   const valorTransacao = Number(transacao.valor_transacao);
   const porcHonorario = Number(transacao.porc_honorario ?? 0);
   const porcParceria = Number(transacao.porc_parceria ?? 0);
@@ -247,7 +255,7 @@ export function RateioForm({
   }
 
   return (
-    <form action={action} className="bg-white border border-gray-200 rounded-xl p-4">
+    <form action={formAction} className="bg-white border border-gray-200 rounded-xl p-4">
       <input type="hidden" name="transacao_id" value={transacao.id} />
       <input type="hidden" name="recebimento_id" value={recebimentoId} />
       <input type="hidden" name="condicao_pagamento_id" value={condicaoId} />
@@ -395,6 +403,12 @@ export function RateioForm({
           );
         })}
       </div>
+
+      {resultado?.erro && (
+        <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg px-3 py-2 mt-3">
+          {resultado.erro} — os ajustes nas linhas acima continuam aí, é só corrigir e gerar de novo.
+        </div>
+      )}
 
       <div className="flex items-center justify-end gap-3 mt-4 flex-wrap">
         {!algumaDespesaSeraGerada && (

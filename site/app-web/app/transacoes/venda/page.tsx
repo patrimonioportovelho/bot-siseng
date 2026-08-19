@@ -6,13 +6,18 @@ export const dynamic = "force-dynamic";
 export default async function TransacoesVendaPage({
   searchParams
 }: {
-  searchParams: Promise<{ q?: string; excluido?: string }>;
+  searchParams: Promise<{ q?: string; excluido?: string; erro?: string }>;
 }) {
-  const { q, excluido } = await searchParams;
+  const { q, excluido, erro } = await searchParams;
 
   return (
     <div>
       <Topbar />
+      {erro && (
+        <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg px-3 py-2 mb-4">
+          {erro}
+        </div>
+      )}
       {excluido === "1" && (
         <div className="bg-green-50 border border-green-200 text-green-700 text-xs rounded-lg px-3 py-2 mb-4">
           Cadastro apagado com sucesso.

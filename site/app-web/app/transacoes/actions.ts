@@ -408,46 +408,62 @@ export async function atualizarTransacaoAction(_prev: unknown, formData: FormDat
 
 // Ação enxuta usada só para o select de troca rápida de status dentro da
 // tela de Administração.
+//
+// Tratamento de erro (16/08/2026, revisão P1 do sistema): antes qualquer
+// throw aqui derrubava a tela de Administração inteira pro error boundary —
+// não perdia formulário nenhum (é só um <select> que salva sozinho), mas
+// ainda era uma experiência ruim sem necessidade. Agora um erro volta pra
+// mesma tela de Administração com ?erro=... na URL (banner vermelho, ver
+// app/administracoes/[id]/page.tsx) em vez de quebrar a página. O caminho
+// de sucesso continua idêntico: sem redirect, só revalidatePath — o select
+// "salva sozinho" continua funcionando exatamente igual.
 export async function atualizarStatusTransacaoAction(formData: FormData) {
   await requireAdminSession();
 
-  const id = formData.get("transacaoId");
-  const status = formData.get("status");
-  const admImovelId = formData.get("admImovelId");
-  if (typeof id !== "string" || typeof status !== "string" || !id || !status) {
-    throw new Error("Transação ou status inválido.");
+  const idRaw = formData.get("transacaoId");
+  const statusRaw = formData.get("status");
+  const admImovelIdRaw = formData.get("admImovelId");
+  const admImovelId = typeof admImovelIdRaw === "string" && admImovelIdRaw ? admImovelIdRaw : null;
+  const voltarPara = admImovelId ? `/administracoes/${admImovelId}` : "/transacoes/locacao";
+
+  try {
+    if (typeof idRaw !== "string" || typeof statusRaw !== "string" || !idRaw || !statusRaw) {
+      throw new Error("Transação ou status inválido.");
+    }
+    const id = idRaw;
+    const status = statusRaw;
+
+    const antes = await prisma.transacoes.findUnique({ where: { id } });
+    if (!antes) throw new Error("Transação não encontrada.");
+
+    const ehCompraVenda = antes.tipo === "Compra e Venda";
+
+    const depois = await prisma.transacoes
+      .update({
+        where: { id },
+        data: {
+          status,
+          updated_at: new Date(),
+          // Troca rápida de status também aplica a regra de andamento (ver
+          // resolverAndamento acima) — sem isso, mudar o status pra Distrato/
+          // Cancelado por aqui deixaria o andamento parado na etapa antiga.
+          ...(ehCompraVenda ? { andamento: resolverAndamento(status, null, antes.andamento) } : {})
+        }
+      })
+      .catch((erro) => registrarEJogarErro({ entidadeTipo: "transacoes", entidadeId: id, acao: "atualizar_status", erro }));
+
+    await logAlteracao({
+      entidadeTipo: "transacoes",
+      entidadeId: id,
+      acao: "editar",
+      dadosAntes: { status: antes.status },
+      dadosDepois: { status: depois.status }
+    });
+  } catch (erro) {
+    redirect(`${voltarPara}?erro=${encodeURIComponent(mensagemDe(erro))}`);
   }
 
-  const antes = await prisma.transacoes.findUnique({ where: { id } });
-  if (!antes) throw new Error("Transação não encontrada.");
-
-  const ehCompraVenda = antes.tipo === "Compra e Venda";
-
-  const depois = await prisma.transacoes
-    .update({
-      where: { id },
-      data: {
-        status,
-        updated_at: new Date(),
-        // Troca rápida de status também aplica a regra de andamento (ver
-        // resolverAndamento acima) — sem isso, mudar o status pra Distrato/
-        // Cancelado por aqui deixaria o andamento parado na etapa antiga.
-        ...(ehCompraVenda ? { andamento: resolverAndamento(status, null, antes.andamento) } : {})
-      }
-    })
-    .catch((erro) => registrarEJogarErro({ entidadeTipo: "transacoes", entidadeId: id, acao: "atualizar_status", erro }));
-
-  await logAlteracao({
-    entidadeTipo: "transacoes",
-    entidadeId: id,
-    acao: "editar",
-    dadosAntes: { status: antes.status },
-    dadosDepois: { status: depois.status }
-  });
-
-  if (typeof admImovelId === "string" && admImovelId) {
-    revalidatePath(`/administracoes/${admImovelId}`);
-  }
+  if (admImovelId) revalidatePath(`/administracoes/${admImovelId}`);
   revalidatePath("/transacoes/locacao");
   revalidatePath("/transacoes/venda");
 }
@@ -458,61 +474,73 @@ export async function atualizarStatusTransacaoAction(formData: FormData) {
 // conta de caução/honorário/mensal tem casos atípicos demais pra travar
 // no servidor — é por isso que a tela deixa cada linha editável antes de
 // confirmar).
-export async function gerarBoletosAction(formData: FormData) {
+//
+// Tratamento de erro (16/08/2026, revisão P1 do sistema): essa é uma das
+// duas ações do sistema em que um erro tinha custo de verdade além do
+// "clique de novo" — a prévia é montada e ajustada linha a linha na tela
+// (components/gerar-boletos-form.tsx), e um throw aqui derrubava tudo isso
+// pro error boundary. Agora segue o mesmo padrão { erro } + useActionState
+// já usado nos formulários grandes (ver ResultadoFormulario acima): o erro
+// aparece inline, sem sair da tela, com as linhas editadas intactas.
+export async function gerarBoletosAction(_prev: unknown, formData: FormData): Promise<ResultadoFormulario> {
   await requireAdminSession();
 
   const transacaoId = texto(formData, "transacao_id");
   const linhasTexto = texto(formData, "linhas");
-  if (!transacaoId || !linhasTexto) throw new Error("Dados incompletos para gerar os boletos.");
+  if (!transacaoId || !linhasTexto) return { erro: "Dados incompletos para gerar os boletos." };
 
   let linhas: Array<{ categoria_id: string; valor: number; vencimento: string; descricao: string }>;
   try {
     linhas = JSON.parse(linhasTexto);
   } catch {
-    throw new Error("Boletos inválidos.");
+    return { erro: "Boletos inválidos." };
   }
   if (!Array.isArray(linhas) || linhas.length === 0) {
-    throw new Error("Nenhum boleto informado.");
+    return { erro: "Nenhum boleto informado." };
   }
 
-  const transacao = await prisma.transacoes.findUnique({ where: { id: transacaoId } });
-  if (!transacao) throw new Error("Transação não encontrada.");
-  if (transacao.tipo !== "Locação") throw new Error("Gerar boletos só vale para transações de Locação.");
+  try {
+    const transacao = await prisma.transacoes.findUnique({ where: { id: transacaoId } });
+    if (!transacao) return { erro: "Transação não encontrada." };
+    if (transacao.tipo !== "Locação") return { erro: "Gerar boletos só vale para transações de Locação." };
 
-  const linhasValidas = linhas.filter(
-    (l) => l.categoria_id && l.valor > 0 && l.vencimento && !Number.isNaN(new Date(l.vencimento + "T00:00:00").getTime())
-  );
-  if (linhasValidas.length === 0) {
-    throw new Error("Nenhuma linha válida pra gerar (confira categoria, valor e vencimento de cada uma).");
+    const linhasValidas = linhas.filter(
+      (l) => l.categoria_id && l.valor > 0 && l.vencimento && !Number.isNaN(new Date(l.vencimento + "T00:00:00").getTime())
+    );
+    if (linhasValidas.length === 0) {
+      return { erro: "Nenhuma linha válida pra gerar (confira categoria, valor e vencimento de cada uma)." };
+    }
+
+    const criados = await prisma
+      .$transaction(
+      linhasValidas.map((l) =>
+        prisma.movimentacoes.create({
+          data: {
+            tipo: "Recebimento",
+            categoria_id: l.categoria_id,
+            transacao_id: transacaoId,
+            cliente_proprietario_id: transacao.cliente_id,
+            cliente_interessado_id: transacao.cliente_contraparte_id,
+            descricao: l.descricao || null,
+            valor: l.valor,
+            vencimento: new Date(l.vencimento + "T00:00:00"),
+            pago: false,
+            gerado_automaticamente: true
+          }
+        })
+      )
+      )
+      .catch((erro) => registrarEJogarErro({ entidadeTipo: "movimentacoes", entidadeId: transacaoId, acao: "gerar_movimentacao", erro }));
+
+    await logAlteracao({
+      entidadeTipo: "movimentacoes",
+      entidadeId: transacaoId,
+      acao: "criar",
+      dadosDepois: { transacao_id: transacaoId, quantidade: criados.length, origem: "gerar_boletos" }
+    });
+  } catch (erro) {
+    return { erro: mensagemDe(erro) };
   }
-
-  const criados = await prisma
-    .$transaction(
-    linhasValidas.map((l) =>
-      prisma.movimentacoes.create({
-        data: {
-          tipo: "Recebimento",
-          categoria_id: l.categoria_id,
-          transacao_id: transacaoId,
-          cliente_proprietario_id: transacao.cliente_id,
-          cliente_interessado_id: transacao.cliente_contraparte_id,
-          descricao: l.descricao || null,
-          valor: l.valor,
-          vencimento: new Date(l.vencimento + "T00:00:00"),
-          pago: false,
-          gerado_automaticamente: true
-        }
-      })
-    )
-    )
-    .catch((erro) => registrarEJogarErro({ entidadeTipo: "movimentacoes", entidadeId: transacaoId, acao: "gerar_movimentacao", erro }));
-
-  await logAlteracao({
-    entidadeTipo: "movimentacoes",
-    entidadeId: transacaoId,
-    acao: "criar",
-    dadosDepois: { transacao_id: transacaoId, quantidade: criados.length, origem: "gerar_boletos" }
-  });
 
   revalidatePath(`/transacoes/${transacaoId}`);
   revalidatePath("/financeiro");
@@ -527,24 +555,30 @@ export async function alternarBoletoEmitidoAction(formData: FormData) {
   await requireAdminSession();
 
   const id = texto(formData, "transacaoId");
-  if (!id) throw new Error("Transação inválida.");
+  const voltarPara = id ? `/transacoes/${id}` : "/transacoes/locacao";
 
-  const antes = await prisma.transacoes.findUnique({ where: { id }, select: { boleto_emitido: true } });
-  if (!antes) throw new Error("Transação não encontrada.");
+  try {
+    if (!id) throw new Error("Transação inválida.");
 
-  const boletoEmitido = !antes.boleto_emitido;
+    const antes = await prisma.transacoes.findUnique({ where: { id }, select: { boleto_emitido: true } });
+    if (!antes) throw new Error("Transação não encontrada.");
 
-  await prisma.transacoes
-    .update({ where: { id }, data: { boleto_emitido: boletoEmitido, updated_at: new Date() } })
-    .catch((erro) => registrarEJogarErro({ entidadeTipo: "transacoes", entidadeId: id, acao: "editar", erro }));
+    const boletoEmitido = !antes.boleto_emitido;
 
-  await logAlteracao({
-    entidadeTipo: "transacoes",
-    entidadeId: id,
-    acao: "editar",
-    dadosAntes: { boleto_emitido: antes.boleto_emitido },
-    dadosDepois: { boleto_emitido: boletoEmitido }
-  });
+    await prisma.transacoes
+      .update({ where: { id }, data: { boleto_emitido: boletoEmitido, updated_at: new Date() } })
+      .catch((erro) => registrarEJogarErro({ entidadeTipo: "transacoes", entidadeId: id, acao: "editar", erro }));
+
+    await logAlteracao({
+      entidadeTipo: "transacoes",
+      entidadeId: id,
+      acao: "editar",
+      dadosAntes: { boleto_emitido: antes.boleto_emitido },
+      dadosDepois: { boleto_emitido: boletoEmitido }
+    });
+  } catch (erro) {
+    redirect(`${voltarPara}?erro=${encodeURIComponent(mensagemDe(erro))}`);
+  }
 
   revalidatePath(`/transacoes/${id}`);
   revalidatePath("/transacoes/locacao");
@@ -560,26 +594,35 @@ export async function apagarTransacaoAction(formData: FormData) {
   const admin = await requireAdm();
 
   const id = texto(formData, "transacaoId");
-  if (!id) throw new Error("Transação inválida.");
+  const voltarPara = id ? `/transacoes/${id}` : "/transacoes/locacao";
+  let tipoTransacao: string | null = null;
 
-  const antes = await prisma.transacoes.findUnique({ where: { id } });
-  if (!antes) throw new Error("Transação não encontrada.");
+  try {
+    if (!id) throw new Error("Transação inválida.");
 
-  await prisma.transacoes
-    .update({
-      where: { id },
-      data: { excluido: true, updated_at: new Date() }
-    })
-    .catch((erro) => registrarEJogarErro({ entidadeTipo: "transacoes", entidadeId: id, acao: "excluir", erro }));
+    const antes = await prisma.transacoes.findUnique({ where: { id } });
+    if (!antes) throw new Error("Transação não encontrada.");
+    tipoTransacao = antes.tipo;
 
-  await logAlteracao({
-    entidadeTipo: "transacoes",
-    entidadeId: id,
-    acao: "excluir",
-    dadosAntes: { status: antes.status },
-    dadosDepois: { excluido: true, excluido_por: admin.nome }
-  });
+    await prisma.transacoes
+      .update({
+        where: { id },
+        data: { excluido: true, updated_at: new Date() }
+      })
+      .catch((erro) => registrarEJogarErro({ entidadeTipo: "transacoes", entidadeId: id, acao: "excluir", erro }));
 
-  revalidatePath(antes.tipo === "Locação" ? "/transacoes/locacao" : "/transacoes/venda");
-  redirect(`${antes.tipo === "Locação" ? "/transacoes/locacao" : "/transacoes/venda"}?excluido=1`);
+    await logAlteracao({
+      entidadeTipo: "transacoes",
+      entidadeId: id,
+      acao: "excluir",
+      dadosAntes: { status: antes.status },
+      dadosDepois: { excluido: true, excluido_por: admin.nome }
+    });
+  } catch (erro) {
+    redirect(`${voltarPara}?erro=${encodeURIComponent(mensagemDe(erro))}`);
+  }
+
+  const lista = tipoTransacao === "Locação" ? "/transacoes/locacao" : "/transacoes/venda";
+  revalidatePath(lista);
+  redirect(`${lista}?excluido=1`);
 }

@@ -21,10 +21,10 @@ export default async function MovimentacaoPage({
   searchParams
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ salvo?: string }>;
+  searchParams: Promise<{ salvo?: string; erro?: string }>;
 }) {
   const { id } = await params;
-  const { salvo } = await searchParams;
+  const { salvo, erro } = await searchParams;
 
   const movimentacao = await prisma.movimentacoes.findUnique({
     where: { id },
@@ -207,6 +207,12 @@ export default async function MovimentacaoPage({
       </Link>
 
       <div className="text-sm font-bold text-gray-800 mb-4">Movimentação</div>
+
+      {erro && (
+        <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg px-3 py-2 mb-4">
+          {erro}
+        </div>
+      )}
 
       {salvo === "1" && (
         <div className="bg-green-50 border border-green-200 text-green-700 text-xs rounded-lg px-3 py-2 mb-4">

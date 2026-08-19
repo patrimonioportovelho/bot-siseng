@@ -32,6 +32,7 @@ export default async function FinanceiroPage({
     pag_de?: string;
     pag_ate?: string;
     excluido?: string;
+    erro?: string;
   }>;
 }) {
   const {
@@ -44,7 +45,8 @@ export default async function FinanceiroPage({
     venc_ate: vencAte,
     pag_de: pagDe,
     pag_ate: pagAte,
-    excluido
+    excluido,
+    erro
   } = await searchParams;
   const tipo = tipoParam === "recebimento" ? "Recebimento" : "Despesa";
   const termo = (q ?? "").trim();
@@ -183,6 +185,11 @@ export default async function FinanceiroPage({
     <div>
       <Topbar />
 
+      {erro && (
+        <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg px-3 py-2 mb-4">
+          {erro}
+        </div>
+      )}
       {excluido === "1" && (
         <div className="bg-green-50 border border-green-200 text-green-700 text-xs rounded-lg px-3 py-2 mb-4">
           Movimentação excluída com sucesso.

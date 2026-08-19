@@ -8,6 +8,7 @@ import { requireAdminSession, logAlteracao } from "@/lib/auth";
 import { valorEditavelParaDecimal, somarMeses } from "@/lib/format";
 import { registrarEJogarErro } from "@/lib/erros";
 import { saldoDevido } from "@/lib/financeiro/pagamentos-pix";
+import { mensagemDeErro as mensagemDe } from "@/lib/forms/resultado";
 
 function texto(formData: FormData, campo: string): string | null {
   const v = formData.get(campo);
@@ -47,14 +48,12 @@ function data(formData: FormData, campo: string): Date | null {
 // 07/09 ... até a 12ª); Recorrente gera N linhas também mensais, mas
 // repetindo o mesmo Valor em cada uma (sem dividir) — pra cobrança fixa que
 // se repete por vários meses.
-// Mesmo padrão de app/clientes/actions.ts: retorna { erro } em vez de
-// lançar, pro erro aparecer inline no formulário sem apagar o que foi
-// digitado. registrarEJogarErro continua gravando tudo no logs_erro antes.
-export type ResultadoFormulario = { erro: string } | undefined;
-
-function mensagemDe(erro: unknown): string {
-  return erro instanceof Error ? erro.message : String(erro);
-}
+// Gold Standard de tratamento de erro (ver lib/forms/resultado.ts): retorna
+// { erro } em vez de lançar, pro erro aparecer inline no formulário sem
+// apagar o que foi digitado. registrarEJogarErro continua gravando tudo no
+// logs_erro antes.
+import type { ResultadoFormulario } from "@/lib/forms/resultado";
+export type { ResultadoFormulario } from "@/lib/forms/resultado";
 
 export async function criarMovimentacaoAction(_prev: unknown, formData: FormData): Promise<ResultadoFormulario> {
   await requireAdminSession();

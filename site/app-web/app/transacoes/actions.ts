@@ -8,6 +8,7 @@ import { valorEditavelParaDecimal, percentualParaDecimal } from "@/lib/format";
 import { registrarEJogarErro } from "@/lib/erros";
 import { sincronizarProprietariosExtra, sincronizarVinculosConjuge } from "@/lib/imoveis/proprietarios-extra";
 import { STATUS_COMPRA_VENDA_CANCELAMENTO, ANDAMENTO_COMPRA_VENDA_PADRAO } from "@/lib/transacoes/opcoes";
+import { mensagemDeErro as mensagemDe } from "@/lib/forms/resultado";
 
 // Resolve o valor de `andamento` (só usado por Compra e Venda — ver
 // comentário completo em prisma/schema.prisma) a cada criação/edição: se o
@@ -266,17 +267,15 @@ async function sincronizarComissaoExtra(transacaoId: string, formData: FormData)
     );
 }
 
-// Mesmo padrão adotado em app/clientes/actions.ts: as actions dos
-// formulários grandes retornam { erro } em vez de lançar exceção — o erro
-// aparece inline no formulário e o que foi digitado continua intacto (antes,
-// qualquer erro derrubava a página pro error boundary e apagava tudo). O
-// registro no logs_erro não muda: registrarEJogarErro grava antes de lançar
-// e o catch aqui só transforma o throw em retorno.
-export type ResultadoFormulario = { erro: string } | undefined;
-
-function mensagemDe(erro: unknown): string {
-  return erro instanceof Error ? erro.message : String(erro);
-}
+// Gold Standard de tratamento de erro (ver lib/forms/resultado.ts) — as
+// actions dos formulários grandes retornam { erro } em vez de lançar
+// exceção — o erro aparece inline no formulário e o que foi digitado
+// continua intacto (antes, qualquer erro derrubava a página pro error
+// boundary e apagava tudo). O registro no logs_erro não muda:
+// registrarEJogarErro grava antes de lançar e o catch aqui só transforma o
+// throw em retorno.
+import type { ResultadoFormulario } from "@/lib/forms/resultado";
+export type { ResultadoFormulario } from "@/lib/forms/resultado";
 
 export async function criarTransacaoAction(_prev: unknown, formData: FormData): Promise<ResultadoFormulario> {
   await requireAdminSession();

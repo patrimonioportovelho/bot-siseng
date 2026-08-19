@@ -7,9 +7,11 @@ import { requireAdminSession, requireAdm, logAlteracao } from "@/lib/auth";
 import { valorEditavelParaDecimal } from "@/lib/format";
 import { registrarEJogarErro } from "@/lib/erros";
 import { buscarClienteDuplicado } from "@/lib/clientes/duplicidade";
-import { validarCpfCnpj, validarClienteObrigatorio } from "@/lib/clientes/validacao";
+import { validarCpfCnpj } from "@/lib/clientes/validacao";
+import { validarClienteZod } from "@/lib/clientes/schema";
 import { montarEnderecoPF } from "@/lib/clientes/endereco";
 import { gerarProximoIdCliente } from "@/lib/clientes/id-legado";
+import { mensagemDeErro as mensagemDe, type ResultadoFormulario as ResultadoFormularioBase } from "@/lib/forms/resultado";
 
 function texto(formData: FormData, campo: string): string | null {
   const v = formData.get(campo);
@@ -132,21 +134,17 @@ async function camposEditaveis(formData: FormData) {
   };
 }
 
-// Resultado padrão das actions de formulário grande do admin: em vez de
-// `throw new Error(...)` (que derruba a página inteira pro error boundary e
-// APAGA tudo que estava digitado — era a raiz do "toda vez perdemos
-// cadastro"), a action devolve { erro } e o formulário mostra a mensagem
-// inline, com os campos intactos. O registro no logs_erro continua igual:
-// registrarEJogarErro grava ANTES de lançar, e aqui o catch só transforma o
-// throw em retorno — nenhum erro deixa de ficar registrado.
+// Gold Standard de tratamento de erro (ver lib/forms/resultado.ts): em vez
+// de `throw new Error(...)` (que derruba a página inteira pro error
+// boundary e APAGA tudo que estava digitado — era a raiz do "toda vez
+// perdemos cadastro"), a action devolve { erro } e o formulário mostra a
+// mensagem inline, com os campos intactos. O registro no logs_erro continua
+// igual: registrarEJogarErro grava ANTES de lançar, e aqui o catch só
+// transforma o throw em retorno — nenhum erro deixa de ficar registrado.
 // `duplicado: true` acompanha o erro quando o bloqueio foi a checagem de
 // cliente repetido — o formulário usa isso pra mostrar a opção "criar mesmo
 // assim" (só faz sentido nesse caso).
-export type ResultadoFormulario = { erro: string; duplicado?: boolean } | undefined;
-
-function mensagemDe(erro: unknown): string {
-  return erro instanceof Error ? erro.message : String(erro);
-}
+export type ResultadoFormulario = ResultadoFormularioBase<{ duplicado?: boolean }>;
 
 // Checagem única dos campos que o usuário pediu pra alinhar em TODOS os
 // pontos de cadastro de cliente do sistema (09/08/2026 — "Tipo de cliente,
@@ -162,35 +160,26 @@ export async function criarClienteAction(_prev: unknown, formData: FormData): Pr
   const nome = texto(formData, "nome");
   const tipoCliente = texto(formData, "tipo_cliente");
 
-  // Tipo de cliente, Nome, CPF/CNPJ, Sexo (PF) e Telefone obrigatórios em
-  // todo cadastro novo (pedido do usuário, 09/08/2026 — alinhamento do
-  // cadastro de cliente em todos os pontos de entrada).
-  const erroObrigatorio = validarClienteObrigatorio({
+  // Validação via Zod (Gold Standard, 19/08/2026 — ver lib/clientes/schema.ts)
+  // — mesmas regras de sempre (Tipo de cliente, Nome, CPF/CNPJ com dígito
+  // verificador, Sexo obrigatório pra PF, Telefone e Loja), agora
+  // centralizadas num schema único em vez de checagem manual campo a campo.
+  const erroValidacao = validarClienteZod({
     tipoCliente,
     nome,
     cpf: texto(formData, "cpf"),
     cnpj: texto(formData, "cnpj"),
     sexo: texto(formData, "sexo"),
-    telefone: texto(formData, "telefone")
+    telefone: texto(formData, "telefone"),
+    lojaId: texto(formData, "loja_id")
   });
-  if (erroObrigatorio || !nome || !tipoCliente) {
-    return { erro: erroObrigatorio ?? "Nome e tipo de cliente são obrigatórios." };
-  }
-
-  // Loja obrigatória em todo cadastro novo (pedido do usuário em
-  // 01/08/2026) — dá suporte ao filtro de loja no Topbar. Cadastro já
-  // existente sem loja continua editável normalmente (reforçado só pelo
-  // `required` no <select>, mesmo padrão de Transações/Administrações).
-  if (!texto(formData, "loja_id")) {
-    return { erro: "Loja é obrigatória." };
-  }
-
-  // Valida dígito verificador de CPF/CNPJ — pega erro de digitação (número
-  // trocado) antes mesmo de ir atrás de duplicidade.
-  const docDigitado = tipoCliente === "Pessoa Jurídica" ? texto(formData, "cnpj") : texto(formData, "cpf");
-  if (docDigitado) {
-    const erroDoc = validarCpfCnpj(docDigitado);
-    if (erroDoc) return { erro: erroDoc };
+  if (erroValidacao) return { erro: erroValidacao };
+  // Zod já garante que nome/tipo_cliente vieram preenchidos (schema exige
+  // min(1)) — este if só existe pra o TypeScript enxergar `nome` e
+  // `tipoCliente` como `string` dali pra baixo (mesmo narrowing que o guard
+  // antigo fazia), na prática nunca deve disparar.
+  if (!nome || !tipoCliente) {
+    return { erro: "Nome e tipo de cliente são obrigatórios." };
   }
 
   // Mesma checagem de duplicidade que o portal do corretor já faz — o admin
@@ -270,26 +259,23 @@ export async function atualizarClienteAction(_prev: unknown, formData: FormData)
 
   const tipoClienteEditado = texto(formData, "tipo_cliente");
 
-  // Mesma checagem de alinhamento aplicada na criação — também vale pra
-  // edição, já que cadastros antigos importados sem esses campos são
-  // justamente o problema que o usuário apontou ("sempre vem faltando
-  // informações").
-  const erroObrigatorioEditado = validarClienteObrigatorio({
+  // Mesma validação via Zod aplicada na criação (ver lib/clientes/schema.ts)
+  // — também vale pra edição, já que cadastros antigos importados sem esses
+  // campos são justamente o problema que o usuário apontou ("sempre vem
+  // faltando informações"). exigirLoja: false porque cadastro antigo sem
+  // loja continua editável normalmente (mesma regra de sempre — só cadastro
+  // NOVO exige loja).
+  const erroValidacaoEditado = validarClienteZod({
     tipoCliente: tipoClienteEditado,
     nome: texto(formData, "nome") ?? antes.nome,
     cpf: texto(formData, "cpf"),
     cnpj: texto(formData, "cnpj"),
     sexo: texto(formData, "sexo"),
-    telefone: texto(formData, "telefone")
+    telefone: texto(formData, "telefone"),
+    lojaId: texto(formData, "loja_id"),
+    exigirLoja: false
   });
-  if (erroObrigatorioEditado) return { erro: erroObrigatorioEditado };
-
-  const docDigitadoEditado =
-    tipoClienteEditado === "Pessoa Jurídica" ? texto(formData, "cnpj") : texto(formData, "cpf");
-  if (docDigitadoEditado) {
-    const erroDoc = validarCpfCnpj(docDigitadoEditado);
-    if (erroDoc) return { erro: erroDoc };
-  }
+  if (erroValidacaoEditado) return { erro: erroValidacaoEditado };
 
   try {
     const depois = await prisma.clientes

@@ -14,7 +14,8 @@ import {
   TIPOS_CONTA,
   TIPOS_PIX,
   TIPOS_CLIENTE,
-  SEXO_OPCOES
+  SEXO_OPCOES,
+  CAT_PROFISSAO_OPCOES
 } from "@/lib/clientes/opcoes";
 import { validarCpfCnpj } from "@/lib/clientes/validacao";
 import { buscarCep, UF_PARA_ESTADO } from "@/lib/enderecos";
@@ -110,14 +111,19 @@ type PessoaLinha = {
   tipoCliente: string;
   nome: string;
   rg: string;
+  // Preenchida junto com RG — mesmo campo do cadastro completo de PF do
+  // admin (19/08/2026, padronização Gold Standard).
+  expedicao: string;
   cpfCnpj: string;
   // Só perguntado quando Pessoa Física — pedido do usuário (09/08/2026,
   // "alinhamento do cadastro de cliente"): Sexo obrigatório em todo
   // formulário, não só no cadastro administrativo.
   sexo: string;
-  // Endereço de Pessoa Física é dividido (CEP/logradouro/número/complemento/
-  // bairro/cidade/estado); Pessoa Jurídica usa "endereco" como Sede em texto
-  // livre solto.
+  dataNascimento: string;
+  // Endereço estruturado (CEP/logradouro/número/complemento/bairro/cidade/
+  // estado) vale pros dois tipos agora — PF ("Endereço") e PJ ("Sede"),
+  // mesmo padrão do cadastro de Clientes do admin (19/08/2026, antes PJ
+  // usava só texto livre solto em `endereco`).
   endereco: string;
   cep: string;
   rua: string;
@@ -134,6 +140,9 @@ type PessoaLinha = {
   // estadoCivil é um dos que pedem (ver ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL).
   uniaoEstavel: string;
   profissao: string;
+  catProfissao: string;
+  tipoServidor: string;
+  rendaBruta: string;
   email: string;
   telefone: string;
   // Dados bancários — mesmo cadastro completo do administrativo (ver
@@ -153,8 +162,10 @@ function pessoaVazia(): PessoaLinha {
     tipoCliente: "",
     nome: "",
     rg: "",
+    expedicao: "",
     cpfCnpj: "",
     sexo: "",
+    dataNascimento: "",
     endereco: "",
     cep: "",
     rua: "",
@@ -169,6 +180,9 @@ function pessoaVazia(): PessoaLinha {
     estadoCivil: "",
     uniaoEstavel: "",
     profissao: "",
+    catProfissao: "",
+    tipoServidor: "",
+    rendaBruta: "",
     email: "",
     telefone: "",
     bancoId: "",
@@ -187,8 +201,10 @@ function pessoaDeClienteExistente(c: ClienteBuscaResultado): PessoaLinha {
     tipoCliente: "",
     nome: c.nome,
     rg: "",
+    expedicao: "",
     cpfCnpj: c.cpfCnpj ?? "",
     sexo: "",
+    dataNascimento: "",
     endereco: "",
     cep: "",
     rua: "",
@@ -203,6 +219,9 @@ function pessoaDeClienteExistente(c: ClienteBuscaResultado): PessoaLinha {
     estadoCivil: "",
     uniaoEstavel: "",
     profissao: "",
+    catProfissao: "",
+    tipoServidor: "",
+    rendaBruta: "",
     email: c.email ?? "",
     telefone: c.telefone ?? "",
     bancoId: "",
@@ -408,10 +427,20 @@ function BlocoPessoas({
                     <input className={CAMPO} value={p.nome} onChange={(e) => atualizar(index, "nome", e.target.value)} />
                   </div>
                   {p.tipoCliente !== "Pessoa Jurídica" && (
-                    <div>
-                      <label className={LABEL}>RG</label>
-                      <input className={CAMPO} value={p.rg} onChange={(e) => atualizar(index, "rg", e.target.value)} />
-                    </div>
+                    <>
+                      <div>
+                        <label className={LABEL}>RG</label>
+                        <input className={CAMPO} value={p.rg} onChange={(e) => atualizar(index, "rg", e.target.value)} />
+                      </div>
+                      <div>
+                        <label className={LABEL}>Expedição</label>
+                        <input
+                          className={CAMPO}
+                          value={p.expedicao}
+                          onChange={(e) => atualizar(index, "expedicao", e.target.value)}
+                        />
+                      </div>
+                    </>
                   )}
                   <div>
                     <label className={LABEL}>{p.tipoCliente === "Pessoa Jurídica" ? "CNPJ *" : "CPF *"}</label>
@@ -425,79 +454,73 @@ function BlocoPessoas({
                       }}
                     />
                   </div>
-                  {p.tipoCliente === "Pessoa Jurídica" ? (
-                    <div className="md:col-span-2">
-                      <label className={LABEL}>Sede (endereço completo)</label>
-                      <input className={CAMPO} value={p.endereco} onChange={(e) => atualizar(index, "endereco", e.target.value)} />
-                    </div>
-                  ) : (
-                    <>
-                      <div>
-                        <label className={LABEL}>CEP</label>
-                        <input
-                          className={CAMPO}
-                          value={p.cep}
-                          onChange={(e) => atualizar(index, "cep", e.target.value)}
-                          onBlur={() => buscarEnderecoPorCep(index)}
-                        />
-                      </div>
-                      <div>
-                        <label className={LABEL}>Logradouro</label>
-                        <input className={CAMPO} value={p.rua} onChange={(e) => atualizar(index, "rua", e.target.value)} />
-                      </div>
-                      <div>
-                        <label className={LABEL}>Número predial</label>
-                        <input
-                          className={CAMPO}
-                          value={p.nPredial}
-                          onChange={(e) => atualizar(index, "nPredial", e.target.value)}
-                        />
-                      </div>
-                      <div>
-                        <label className={LABEL}>Complemento</label>
-                        <input
-                          className={CAMPO}
-                          value={p.complemento}
-                          onChange={(e) => atualizar(index, "complemento", e.target.value)}
-                        />
-                      </div>
-                      <div>
-                        <label className={LABEL}>Bairro</label>
-                        <input className={CAMPO} value={p.bairro} onChange={(e) => atualizar(index, "bairro", e.target.value)} />
-                      </div>
-                      <div>
-                        <label className={LABEL}>Estado</label>
-                        <select
-                          className={CAMPO}
-                          value={p.estadoId}
-                          onChange={(e) => {
-                            atualizar(index, "estadoId", e.target.value);
-                            atualizar(index, "cidadeId", "");
-                          }}
-                        >
-                          <option value="">—</option>
-                          {estados.map((e) => (
-                            <option key={e.id} value={e.id}>
-                              {e.nome}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className={LABEL}>Cidade</label>
-                        <select className={CAMPO} value={p.cidadeId} onChange={(e) => atualizar(index, "cidadeId", e.target.value)}>
-                          <option value="">—</option>
-                          {cidades
-                            .filter((c) => c.estado_id === p.estadoId)
-                            .map((c) => (
-                              <option key={c.id} value={c.id}>
-                                {c.nome}
-                              </option>
-                            ))}
-                        </select>
-                      </div>
-                    </>
-                  )}
+                  {/* Endereço estruturado (CEP/rua/número/complemento/bairro/estado/
+                      cidade) vale pros dois tipos — PF ("Endereço") e PJ ("Sede"),
+                      mesmo padrão do cadastro de Clientes do admin (19/08/2026). */}
+                  <div>
+                    <label className={LABEL}>CEP</label>
+                    <input
+                      className={CAMPO}
+                      value={p.cep}
+                      onChange={(e) => atualizar(index, "cep", e.target.value)}
+                      onBlur={() => buscarEnderecoPorCep(index)}
+                    />
+                  </div>
+                  <div>
+                    <label className={LABEL}>Logradouro</label>
+                    <input className={CAMPO} value={p.rua} onChange={(e) => atualizar(index, "rua", e.target.value)} />
+                  </div>
+                  <div>
+                    <label className={LABEL}>Número predial</label>
+                    <input
+                      className={CAMPO}
+                      value={p.nPredial}
+                      onChange={(e) => atualizar(index, "nPredial", e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className={LABEL}>Complemento</label>
+                    <input
+                      className={CAMPO}
+                      value={p.complemento}
+                      onChange={(e) => atualizar(index, "complemento", e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className={LABEL}>Bairro</label>
+                    <input className={CAMPO} value={p.bairro} onChange={(e) => atualizar(index, "bairro", e.target.value)} />
+                  </div>
+                  <div>
+                    <label className={LABEL}>Estado</label>
+                    <select
+                      className={CAMPO}
+                      value={p.estadoId}
+                      onChange={(e) => {
+                        atualizar(index, "estadoId", e.target.value);
+                        atualizar(index, "cidadeId", "");
+                      }}
+                    >
+                      <option value="">—</option>
+                      {estados.map((e) => (
+                        <option key={e.id} value={e.id}>
+                          {e.nome}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={LABEL}>Cidade</label>
+                    <select className={CAMPO} value={p.cidadeId} onChange={(e) => atualizar(index, "cidadeId", e.target.value)}>
+                      <option value="">—</option>
+                      {cidades
+                        .filter((c) => c.estado_id === p.estadoId)
+                        .map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.nome}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
                   {p.tipoCliente !== "Pessoa Jurídica" && (
                     <>
                       <div>
@@ -510,6 +533,15 @@ function BlocoPessoas({
                             </option>
                           ))}
                         </select>
+                      </div>
+                      <div>
+                        <label className={LABEL}>Data de nascimento</label>
+                        <input
+                          type="date"
+                          className={CAMPO}
+                          value={p.dataNascimento}
+                          onChange={(e) => atualizar(index, "dataNascimento", e.target.value)}
+                        />
                       </div>
                       <div>
                         <label className={LABEL}>Nome da mãe</label>
@@ -565,6 +597,38 @@ function BlocoPessoas({
                           className={CAMPO}
                           value={p.profissao}
                           onChange={(e) => atualizar(index, "profissao", e.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <label className={LABEL}>Categoria de profissão</label>
+                        <select
+                          className={CAMPO}
+                          value={p.catProfissao}
+                          onChange={(e) => atualizar(index, "catProfissao", e.target.value)}
+                        >
+                          <option value="">—</option>
+                          {CAT_PROFISSAO_OPCOES.map((o) => (
+                            <option key={o} value={o}>
+                              {o}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className={LABEL}>Tipo de servidor</label>
+                        <input
+                          className={CAMPO}
+                          value={p.tipoServidor}
+                          onChange={(e) => atualizar(index, "tipoServidor", e.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <label className={LABEL}>Renda bruta (R$)</label>
+                        <input
+                          className={CAMPO}
+                          placeholder="2.500,00"
+                          value={p.rendaBruta}
+                          onChange={(e) => atualizar(index, "rendaBruta", e.target.value)}
                         />
                       </div>
                     </>

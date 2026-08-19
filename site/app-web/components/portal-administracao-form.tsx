@@ -8,7 +8,8 @@ import {
   TIPOS_CONTA,
   TIPOS_PIX,
   TIPOS_CLIENTE,
-  SEXO_OPCOES
+  SEXO_OPCOES,
+  CAT_PROFISSAO_OPCOES
 } from "@/lib/clientes/opcoes";
 import { validarCpfCnpj } from "@/lib/clientes/validacao";
 import { buscarCep, UF_PARA_ESTADO } from "@/lib/enderecos";
@@ -32,14 +33,19 @@ type ClienteLinha = {
   tipoCliente: string;
   nome: string;
   rg: string;
+  // Preenchida junto com RG — mesmo campo do cadastro completo de PF do
+  // admin (19/08/2026, padronização Gold Standard).
+  expedicao: string;
   cpfCnpj: string;
   // Só perguntado quando Pessoa Física — pedido do usuário (09/08/2026,
   // "alinhamento do cadastro de cliente"): Sexo obrigatório em todo
   // formulário, não só no cadastro administrativo.
   sexo: string;
-  // Endereço de Pessoa Física é dividido (CEP/logradouro/número/complemento/
-  // bairro/cidade/estado); Pessoa Jurídica usa "endereco" como Sede em texto
-  // livre solto.
+  dataNascimento: string;
+  // Endereço estruturado (CEP/logradouro/número/complemento/bairro/cidade/
+  // estado) vale pros dois tipos agora — PF ("Endereço") e PJ ("Sede"),
+  // mesmo padrão do cadastro de Clientes do admin (19/08/2026, antes PJ
+  // usava só texto livre solto em `endereco`).
   endereco: string;
   cep: string;
   rua: string;
@@ -56,6 +62,9 @@ type ClienteLinha = {
   // estadoCivil é um dos que pedem (ver ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL).
   uniaoEstavel: string;
   profissao: string;
+  catProfissao: string;
+  tipoServidor: string;
+  rendaBruta: string;
   email: string;
   telefone: string;
   // Dados bancários — mesmo cadastro completo do administrativo (ver
@@ -102,8 +111,10 @@ function clienteVazio(): ClienteLinha {
     tipoCliente: "",
     nome: "",
     rg: "",
+    expedicao: "",
     cpfCnpj: "",
     sexo: "",
+    dataNascimento: "",
     endereco: "",
     cep: "",
     rua: "",
@@ -118,6 +129,9 @@ function clienteVazio(): ClienteLinha {
     estadoCivil: "",
     uniaoEstavel: "",
     profissao: "",
+    catProfissao: "",
+    tipoServidor: "",
+    rendaBruta: "",
     email: "",
     telefone: "",
     bancoId: "",
@@ -524,8 +538,10 @@ export function PortalAdministracaoForm({
               tipoCliente: "",
               nome: encontrado.nome,
               rg: encontrado.rg,
+              expedicao: "",
               cpfCnpj: encontrado.cpfCnpj,
               sexo: "",
+              dataNascimento: "",
               endereco: encontrado.endereco,
               cep: "",
               rua: "",
@@ -540,6 +556,9 @@ export function PortalAdministracaoForm({
               estadoCivil: encontrado.estadoCivil,
               uniaoEstavel: "",
               profissao: "",
+              catProfissao: "",
+              tipoServidor: "",
+              rendaBruta: "",
               email: encontrado.email,
               telefone: encontrado.telefone,
               bancoId: "",
@@ -848,10 +867,20 @@ export function PortalAdministracaoForm({
                     <input className={CAMPO} value={c.nome} onChange={(e) => atualizarCliente(index, "nome", e.target.value)} />
                   </div>
                   {c.tipoCliente !== "Pessoa Jurídica" && (
-                    <div>
-                      <label className={LABEL}>RG</label>
-                      <input className={CAMPO} value={c.rg} onChange={(e) => atualizarCliente(index, "rg", e.target.value)} />
-                    </div>
+                    <>
+                      <div>
+                        <label className={LABEL}>RG</label>
+                        <input className={CAMPO} value={c.rg} onChange={(e) => atualizarCliente(index, "rg", e.target.value)} />
+                      </div>
+                      <div>
+                        <label className={LABEL}>Expedição</label>
+                        <input
+                          className={CAMPO}
+                          value={c.expedicao}
+                          onChange={(e) => atualizarCliente(index, "expedicao", e.target.value)}
+                        />
+                      </div>
+                    </>
                   )}
                   <div>
                     <label className={LABEL}>{c.tipoCliente === "Pessoa Jurídica" ? "CNPJ *" : "CPF *"}</label>
@@ -865,83 +894,77 @@ export function PortalAdministracaoForm({
                       }}
                     />
                   </div>
-                  {c.tipoCliente === "Pessoa Jurídica" ? (
-                    <div className="md:col-span-2">
-                      <label className={LABEL}>Sede (endereço completo)</label>
-                      <input className={CAMPO} value={c.endereco} onChange={(e) => atualizarCliente(index, "endereco", e.target.value)} />
-                    </div>
-                  ) : (
-                    <>
-                      <div>
-                        <label className={LABEL}>CEP</label>
-                        <input
-                          className={CAMPO}
-                          value={c.cep}
-                          onChange={(e) => atualizarCliente(index, "cep", e.target.value)}
-                          onBlur={() => buscarEnderecoClientePorCep(index)}
-                        />
-                      </div>
-                      <div>
-                        <label className={LABEL}>Logradouro</label>
-                        <input className={CAMPO} value={c.rua} onChange={(e) => atualizarCliente(index, "rua", e.target.value)} />
-                      </div>
-                      <div>
-                        <label className={LABEL}>Número predial</label>
-                        <input
-                          className={CAMPO}
-                          value={c.nPredial}
-                          onChange={(e) => atualizarCliente(index, "nPredial", e.target.value)}
-                        />
-                      </div>
-                      <div>
-                        <label className={LABEL}>Complemento</label>
-                        <input
-                          className={CAMPO}
-                          value={c.complemento}
-                          onChange={(e) => atualizarCliente(index, "complemento", e.target.value)}
-                        />
-                      </div>
-                      <div>
-                        <label className={LABEL}>Bairro</label>
-                        <input className={CAMPO} value={c.bairro} onChange={(e) => atualizarCliente(index, "bairro", e.target.value)} />
-                      </div>
-                      <div>
-                        <label className={LABEL}>Estado</label>
-                        <select
-                          className={CAMPO}
-                          value={c.estadoId}
-                          onChange={(e) => {
-                            atualizarCliente(index, "estadoId", e.target.value);
-                            atualizarCliente(index, "cidadeId", "");
-                          }}
-                        >
-                          <option value="">—</option>
-                          {estados.map((e) => (
-                            <option key={e.id} value={e.id}>
-                              {e.nome}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className={LABEL}>Cidade</label>
-                        <select
-                          className={CAMPO}
-                          value={c.cidadeId}
-                          onChange={(e) => atualizarCliente(index, "cidadeId", e.target.value)}
-                        >
-                          <option value="">—</option>
-                          {cidades
-                            .filter((cid) => cid.estado_id === c.estadoId)
-                            .map((cid) => (
-                              <option key={cid.id} value={cid.id}>
-                                {cid.nome}
-                              </option>
-                            ))}
-                        </select>
-                      </div>
-                    </>
-                  )}
+                  {/* Endereço estruturado (CEP/rua/número/complemento/bairro/estado/
+                      cidade) vale pros dois tipos — PF ("Endereço") e PJ ("Sede"),
+                      mesmo padrão do cadastro de Clientes do admin (19/08/2026). */}
+                  <div>
+                    <label className={LABEL}>CEP</label>
+                    <input
+                      className={CAMPO}
+                      value={c.cep}
+                      onChange={(e) => atualizarCliente(index, "cep", e.target.value)}
+                      onBlur={() => buscarEnderecoClientePorCep(index)}
+                    />
+                  </div>
+                  <div>
+                    <label className={LABEL}>Logradouro</label>
+                    <input className={CAMPO} value={c.rua} onChange={(e) => atualizarCliente(index, "rua", e.target.value)} />
+                  </div>
+                  <div>
+                    <label className={LABEL}>Número predial</label>
+                    <input
+                      className={CAMPO}
+                      value={c.nPredial}
+                      onChange={(e) => atualizarCliente(index, "nPredial", e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className={LABEL}>Complemento</label>
+                    <input
+                      className={CAMPO}
+                      value={c.complemento}
+                      onChange={(e) => atualizarCliente(index, "complemento", e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className={LABEL}>Bairro</label>
+                    <input className={CAMPO} value={c.bairro} onChange={(e) => atualizarCliente(index, "bairro", e.target.value)} />
+                  </div>
+                  <div>
+                    <label className={LABEL}>Estado</label>
+                    <select
+                      className={CAMPO}
+                      value={c.estadoId}
+                      onChange={(e) => {
+                        atualizarCliente(index, "estadoId", e.target.value);
+                        atualizarCliente(index, "cidadeId", "");
+                      }}
+                    >
+                      <option value="">—</option>
+                      {estados.map((e) => (
+                        <option key={e.id} value={e.id}>
+                          {e.nome}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={LABEL}>Cidade</label>
+                    <select
+                      className={CAMPO}
+                      value={c.cidadeId}
+                      onChange={(e) => atualizarCliente(index, "cidadeId", e.target.value)}
+                    >
+                      <option value="">—</option>
+                      {cidades
+                        .filter((cid) => cid.estado_id === c.estadoId)
+                        .map((cid) => (
+                          <option key={cid.id} value={cid.id}>
+                            {cid.nome}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
                   {c.tipoCliente !== "Pessoa Jurídica" && (
                     <>
                       <div>
@@ -958,6 +981,15 @@ export function PortalAdministracaoForm({
                             </option>
                           ))}
                         </select>
+                      </div>
+                      <div>
+                        <label className={LABEL}>Data de nascimento</label>
+                        <input
+                          type="date"
+                          className={CAMPO}
+                          value={c.dataNascimento}
+                          onChange={(e) => atualizarCliente(index, "dataNascimento", e.target.value)}
+                        />
                       </div>
                       <div>
                         <label className={LABEL}>Nome da mãe</label>
@@ -1013,6 +1045,38 @@ export function PortalAdministracaoForm({
                           className={CAMPO}
                           value={c.profissao}
                           onChange={(e) => atualizarCliente(index, "profissao", e.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <label className={LABEL}>Categoria de profissão</label>
+                        <select
+                          className={CAMPO}
+                          value={c.catProfissao}
+                          onChange={(e) => atualizarCliente(index, "catProfissao", e.target.value)}
+                        >
+                          <option value="">—</option>
+                          {CAT_PROFISSAO_OPCOES.map((o) => (
+                            <option key={o} value={o}>
+                              {o}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className={LABEL}>Tipo de servidor</label>
+                        <input
+                          className={CAMPO}
+                          value={c.tipoServidor}
+                          onChange={(e) => atualizarCliente(index, "tipoServidor", e.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <label className={LABEL}>Renda bruta (R$)</label>
+                        <input
+                          className={CAMPO}
+                          placeholder="2.500,00"
+                          value={c.rendaBruta}
+                          onChange={(e) => atualizarCliente(index, "rendaBruta", e.target.value)}
                         />
                       </div>
                     </>

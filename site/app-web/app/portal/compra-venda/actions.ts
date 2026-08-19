@@ -149,8 +149,10 @@ type ClienteDigitado = {
   tipoCliente: string;
   nome: string;
   rg: string;
+  expedicao: string;
   cpfCnpj: string;
   sexo: string;
+  dataNascimento: string;
   endereco: string;
   cep: string;
   rua: string;
@@ -165,6 +167,9 @@ type ClienteDigitado = {
   estadoCivil: string;
   uniaoEstavel: string;
   profissao: string;
+  catProfissao: string;
+  tipoServidor: string;
+  rendaBruta: string;
   email: string;
   telefone: string;
   bancoId: string;
@@ -188,8 +193,10 @@ function parseClientes(formData: FormData, campo: string): ClienteDigitado[] {
         tipoCliente: String(c?.tipoCliente ?? "").trim(),
         nome: String(c?.nome ?? "").trim(),
         rg: String(c?.rg ?? "").trim(),
+        expedicao: String(c?.expedicao ?? "").trim(),
         cpfCnpj: String(c?.cpfCnpj ?? "").trim(),
         sexo: String(c?.sexo ?? "").trim(),
+        dataNascimento: String(c?.dataNascimento ?? "").trim(),
         endereco: String(c?.endereco ?? "").trim(),
         cep: String(c?.cep ?? "").trim(),
         rua: String(c?.rua ?? "").trim(),
@@ -204,6 +211,9 @@ function parseClientes(formData: FormData, campo: string): ClienteDigitado[] {
         estadoCivil: String(c?.estadoCivil ?? "").trim(),
         uniaoEstavel: String(c?.uniaoEstavel ?? "").trim(),
         profissao: String(c?.profissao ?? "").trim(),
+        catProfissao: String(c?.catProfissao ?? "").trim(),
+        tipoServidor: String(c?.tipoServidor ?? "").trim(),
+        rendaBruta: String(c?.rendaBruta ?? "").trim(),
         email: String(c?.email ?? "").trim(),
         telefone: String(c?.telefone ?? "").trim(),
         bancoId: String(c?.bancoId ?? "").trim(),
@@ -261,16 +271,18 @@ async function criarCliente(c: ClienteDigitado, parceiroId: string) {
   // campo preenchido.
   const ehCnpj = c.tipoCliente === "Pessoa Jurídica" || (!c.tipoCliente && (doc?.length ?? 0) === 14);
 
-  const endereco = ehCnpj
-    ? c.endereco || null
-    : await montarEnderecoPF({
-        rua: c.rua || null,
-        nPredial: c.nPredial || null,
-        complemento: c.complemento || null,
-        bairro: c.bairro || null,
-        cidadeId: c.cidadeId || null,
-        estadoId: c.estadoId || null
-      });
+  // Endereço estruturado vale pros dois tipos agora — PF ("Endereço") e PJ
+  // ("Sede"), mesmo padrão do cadastro de Clientes do admin (19/08/2026,
+  // antes PJ usava só texto livre solto em `endereco`).
+  const endereco = await montarEnderecoPF({
+    rua: c.rua || null,
+    nPredial: c.nPredial || null,
+    complemento: c.complemento || null,
+    bairro: c.bairro || null,
+    cidadeId: c.cidadeId || null,
+    estadoId: c.estadoId || null
+  });
+  const dataNasc = c.dataNascimento ? new Date(c.dataNascimento) : null;
 
   return prisma.clientes.create({
     data: {
@@ -278,23 +290,28 @@ async function criarCliente(c: ClienteDigitado, parceiroId: string) {
       id_legado: await gerarProximoIdCliente(),
       tipo_cliente: ehCnpj ? "Pessoa Jurídica" : "Pessoa Física",
       rg: !ehCnpj ? c.rg || null : null,
+      expedicao: !ehCnpj ? c.expedicao || null : null,
       cpf: !ehCnpj ? doc : null,
       cnpj: ehCnpj ? doc : null,
       sexo: !ehCnpj ? c.sexo || null : null,
+      data_nascimento: !ehCnpj && dataNasc && !Number.isNaN(dataNasc.getTime()) ? dataNasc : null,
       nome_mae: !ehCnpj ? c.nomeMae || null : null,
       nome_pai: !ehCnpj ? c.nomePai || null : null,
-      cep: !ehCnpj ? digitos(c.cep) : null,
-      rua: !ehCnpj ? c.rua || null : null,
-      n_predial: !ehCnpj ? c.nPredial || null : null,
-      complemento: !ehCnpj ? c.complemento || null : null,
-      bairro: !ehCnpj ? c.bairro || null : null,
-      estado_id: !ehCnpj ? c.estadoId || null : null,
-      cidade_id: !ehCnpj ? c.cidadeId || null : null,
+      cep: digitos(c.cep),
+      rua: c.rua || null,
+      n_predial: c.nPredial || null,
+      complemento: c.complemento || null,
+      bairro: c.bairro || null,
+      estado_id: c.estadoId || null,
+      cidade_id: c.cidadeId || null,
       endereco,
       nacionalidade: c.nacionalidade || null,
       estado_civil: !ehCnpj ? c.estadoCivil || null : null,
       uniao_estavel: !ehCnpj ? booleanoTri(c.uniaoEstavel) : null,
       profissao: !ehCnpj ? c.profissao || null : null,
+      cat_profissao: !ehCnpj ? c.catProfissao || null : null,
+      tipo_servidor: !ehCnpj ? c.tipoServidor || null : null,
+      renda_bruta: !ehCnpj && c.rendaBruta ? valorEditavelParaDecimal(c.rendaBruta) : null,
       email: c.email || null,
       telefone: digitos(c.telefone),
       banco_id: c.bancoId || null,

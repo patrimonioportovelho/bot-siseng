@@ -360,6 +360,13 @@ export type ResultadoSocio = { erro: string } | { ok: true } | undefined;
 // (SocioForm, lê direto do FormData) ou a lista pendente montada no próprio
 // formulário de criação da PJ (JSON serializado — ver socios_pendentes_json
 // abaixo). As duas convergem pra este mesmo formato antes de resolver.
+//
+// Cadastro completo de PF (19/08/2026 — pedido do usuário: "já tem mas
+// quando aperta em cadastrar novo o formulário é superficial, precisa ser
+// completo") — mesmo conjunto de campos que o cadastro de cliente PF
+// principal, só que todos opcionais aqui (só nome continua obrigatório,
+// pra não travar quem só quer registrar o sócio rapidamente e completar
+// depois abrindo o cadastro dele em Clientes).
 type SocioDigitado = {
   modo: "existente" | "novo";
   clienteId: string | null;
@@ -367,6 +374,32 @@ type SocioDigitado = {
   cpf: string | null;
   telefone: string | null;
   email: string | null;
+  rg: string | null;
+  expedicao: string | null;
+  sexo: string | null;
+  estadoCivil: string | null;
+  uniaoEstavel: boolean | null;
+  dataNascimento: string | null;
+  nomeMae: string | null;
+  nomePai: string | null;
+  cep: string | null;
+  rua: string | null;
+  nPredial: string | null;
+  complemento: string | null;
+  bairro: string | null;
+  estadoId: string | null;
+  cidadeId: string | null;
+  profissao: string | null;
+  catProfissao: string | null;
+  tipoServidor: string | null;
+  rendaBruta: string | null;
+  bancoId: string | null;
+  codigoBanco: string | null;
+  agencia: string | null;
+  conta: string | null;
+  tipoConta: string | null;
+  tipoPix: string | null;
+  pix: string | null;
 };
 
 // Resolve o cliente Pessoa Física de um sócio: se "existente", só valida;
@@ -397,6 +430,16 @@ async function resolverSocioClienteId(entrada: SocioDigitado): Promise<{ id: str
     : null;
   if (existente) return { id: existente.id };
 
+  const enderecoSocio = await montarEnderecoPF({
+    rua: entrada.rua,
+    nPredial: entrada.nPredial,
+    complemento: entrada.complemento,
+    bairro: entrada.bairro,
+    cidadeId: entrada.cidadeId,
+    estadoId: entrada.estadoId
+  });
+  const dataNasc = entrada.dataNascimento ? new Date(entrada.dataNascimento) : null;
+
   const novo = await prisma.clientes
     .create({
       data: {
@@ -404,7 +447,34 @@ async function resolverSocioClienteId(entrada: SocioDigitado): Promise<{ id: str
         tipo_cliente: "Pessoa Física",
         cpf: cpfDigitos,
         telefone: entrada.telefone?.replace(/\D/g, "") || null,
-        email: entrada.email
+        email: entrada.email,
+        rg: entrada.rg,
+        expedicao: entrada.expedicao,
+        sexo: entrada.sexo,
+        estado_civil: entrada.estadoCivil,
+        uniao_estavel: entrada.uniaoEstavel,
+        data_nascimento: dataNasc && !Number.isNaN(dataNasc.getTime()) ? dataNasc : null,
+        nome_mae: entrada.nomeMae,
+        nome_pai: entrada.nomePai,
+        cep: entrada.cep?.replace(/\D/g, "") || null,
+        rua: entrada.rua,
+        n_predial: entrada.nPredial,
+        complemento: entrada.complemento,
+        bairro: entrada.bairro,
+        estado_id: entrada.estadoId,
+        cidade_id: entrada.cidadeId,
+        endereco: enderecoSocio,
+        profissao: entrada.profissao,
+        cat_profissao: entrada.catProfissao,
+        tipo_servidor: entrada.tipoServidor,
+        renda_bruta: entrada.rendaBruta ? valorEditavelParaDecimal(entrada.rendaBruta) : null,
+        banco_id: entrada.bancoId,
+        codigo_banco: entrada.codigoBanco,
+        agencia: entrada.agencia,
+        conta: entrada.conta,
+        tipo_conta: entrada.tipoConta,
+        tipo_pix: entrada.tipoPix,
+        pix: entrada.pix
       }
     })
     .catch((erro) => registrarEJogarErro({ entidadeTipo: "clientes", acao: "criar_via_socio_pj", erro }));
@@ -457,7 +527,33 @@ export async function adicionarSocioAction(_prev: unknown, formData: FormData): 
     nome: texto(formData, "socio_nome"),
     cpf: texto(formData, "socio_cpf"),
     telefone: texto(formData, "socio_telefone"),
-    email: texto(formData, "socio_email")
+    email: texto(formData, "socio_email"),
+    rg: texto(formData, "socio_rg"),
+    expedicao: texto(formData, "socio_expedicao"),
+    sexo: texto(formData, "socio_sexo"),
+    estadoCivil: texto(formData, "socio_estado_civil"),
+    uniaoEstavel: booleanoTri(formData, "socio_uniao_estavel"),
+    dataNascimento: texto(formData, "socio_data_nascimento"),
+    nomeMae: texto(formData, "socio_nome_mae"),
+    nomePai: texto(formData, "socio_nome_pai"),
+    cep: texto(formData, "socio_cep"),
+    rua: texto(formData, "socio_rua"),
+    nPredial: texto(formData, "socio_n_predial"),
+    complemento: texto(formData, "socio_complemento"),
+    bairro: texto(formData, "socio_bairro"),
+    estadoId: texto(formData, "socio_estado_id"),
+    cidadeId: texto(formData, "socio_cidade_id"),
+    profissao: texto(formData, "socio_profissao"),
+    catProfissao: texto(formData, "socio_cat_profissao"),
+    tipoServidor: texto(formData, "socio_tipo_servidor"),
+    rendaBruta: texto(formData, "socio_renda_bruta"),
+    bancoId: texto(formData, "socio_banco_id"),
+    codigoBanco: texto(formData, "socio_codigo_banco"),
+    agencia: texto(formData, "socio_agencia"),
+    conta: texto(formData, "socio_conta"),
+    tipoConta: texto(formData, "socio_tipo_conta"),
+    tipoPix: texto(formData, "socio_tipo_pix"),
+    pix: texto(formData, "socio_pix")
   });
   if ("erro" in resolvido) return resolvido;
 
@@ -468,6 +564,13 @@ export async function adicionarSocioAction(_prev: unknown, formData: FormData): 
 // existir um id — vem como JSON no campo escondido socios_pendentes_json
 // (ver componente cliente-form.tsx). Formato tolerante a lixo: qualquer
 // entrada mal-formada é descartada em vez de derrubar a criação da PJ.
+// Helper pra ler um campo string opcional de dentro do JSON bruto dos
+// sócios pendentes, sem repetir a checagem de tipo/trim 25 vezes.
+function campoStr(s: Record<string, unknown>, chave: string): string | null {
+  const v = s[chave];
+  return typeof v === "string" && v.trim() ? v.trim() : null;
+}
+
 function parseSociosPendentes(formData: FormData): SocioDigitado[] {
   const bruto = texto(formData, "socios_pendentes_json");
   if (!bruto) return [];
@@ -480,11 +583,37 @@ function parseSociosPendentes(formData: FormData): SocioDigitado[] {
         const modo = s.modo === "existente" ? "existente" : "novo";
         return {
           modo,
-          clienteId: typeof s.clienteId === "string" && s.clienteId.trim() ? s.clienteId.trim() : null,
-          nome: typeof s.nome === "string" && s.nome.trim() ? s.nome.trim() : null,
-          cpf: typeof s.cpf === "string" && s.cpf.trim() ? s.cpf.trim() : null,
-          telefone: typeof s.telefone === "string" && s.telefone.trim() ? s.telefone.trim() : null,
-          email: typeof s.email === "string" && s.email.trim() ? s.email.trim() : null
+          clienteId: campoStr(s, "clienteId"),
+          nome: campoStr(s, "nome"),
+          cpf: campoStr(s, "cpf"),
+          telefone: campoStr(s, "telefone"),
+          email: campoStr(s, "email"),
+          rg: campoStr(s, "rg"),
+          expedicao: campoStr(s, "expedicao"),
+          sexo: campoStr(s, "sexo"),
+          estadoCivil: campoStr(s, "estadoCivil"),
+          uniaoEstavel: s.uniaoEstavel === true ? true : s.uniaoEstavel === false ? false : null,
+          dataNascimento: campoStr(s, "dataNascimento"),
+          nomeMae: campoStr(s, "nomeMae"),
+          nomePai: campoStr(s, "nomePai"),
+          cep: campoStr(s, "cep"),
+          rua: campoStr(s, "rua"),
+          nPredial: campoStr(s, "nPredial"),
+          complemento: campoStr(s, "complemento"),
+          bairro: campoStr(s, "bairro"),
+          estadoId: campoStr(s, "estadoId"),
+          cidadeId: campoStr(s, "cidadeId"),
+          profissao: campoStr(s, "profissao"),
+          catProfissao: campoStr(s, "catProfissao"),
+          tipoServidor: campoStr(s, "tipoServidor"),
+          rendaBruta: campoStr(s, "rendaBruta"),
+          bancoId: campoStr(s, "bancoId"),
+          codigoBanco: campoStr(s, "codigoBanco"),
+          agencia: campoStr(s, "agencia"),
+          conta: campoStr(s, "conta"),
+          tipoConta: campoStr(s, "tipoConta"),
+          tipoPix: campoStr(s, "tipoPix"),
+          pix: campoStr(s, "pix")
         };
       })
       .filter((s): s is SocioDigitado => s !== null);

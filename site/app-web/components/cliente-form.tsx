@@ -297,6 +297,12 @@ export function ClienteForm({
   // servidor cria o vínculo logo depois de criar a PJ (ver
   // processarSociosPendentes em app/clientes/actions.ts). Evita o antigo
   // "salva primeiro, depois abre de novo pra adicionar sócio".
+  // Cadastro completo de PF pro sócio adicionado ANTES da PJ existir (mesmo
+  // padrão do widget pós-criação em components/socio-form.tsx — 19/08/2026,
+  // pedido do usuário: "quando aperta em cadastrar novo o formulário é
+  // superficial, precisa ser completo"). Só nome é obrigatório aqui, o
+  // resto dá pra completar depois abrindo o cadastro do sócio direto em
+  // Clientes.
   type SocioPendente = {
     modo: "existente" | "novo";
     clienteId?: string;
@@ -304,16 +310,130 @@ export function ClienteForm({
     cpf: string;
     telefone: string;
     email: string;
+    rg?: string;
+    expedicao?: string;
+    sexo?: string;
+    estadoCivil?: string;
+    uniaoEstavel?: boolean | null;
+    dataNascimento?: string;
+    nomeMae?: string;
+    nomePai?: string;
+    cep?: string;
+    rua?: string;
+    nPredial?: string;
+    complemento?: string;
+    bairro?: string;
+    estadoId?: string;
+    cidadeId?: string;
+    profissao?: string;
+    catProfissao?: string;
+    tipoServidor?: string;
+    rendaBruta?: string;
+    bancoId?: string;
+    codigoBanco?: string;
+    agencia?: string;
+    conta?: string;
+    tipoConta?: string;
+    tipoPix?: string;
+    pix?: string;
+  };
+  const RASCUNHO_SOCIO_VAZIO = {
+    nome: "",
+    cpf: "",
+    telefone: "",
+    email: "",
+    rg: "",
+    expedicao: "",
+    sexo: "",
+    estadoCivil: "",
+    uniaoEstavel: "",
+    dataNascimento: "",
+    nomeMae: "",
+    nomePai: "",
+    cep: "",
+    rua: "",
+    nPredial: "",
+    complemento: "",
+    bairro: "",
+    estadoId: "",
+    cidadeId: "",
+    profissao: "",
+    catProfissao: "",
+    tipoServidor: "",
+    rendaBruta: "",
+    bancoId: "",
+    codigoBanco: "",
+    agencia: "",
+    conta: "",
+    tipoConta: "",
+    tipoPix: "",
+    pix: ""
   };
   const [sociosPendentes, setSociosPendentes] = useState<SocioPendente[]>([]);
   const [modoSocioPendente, setModoSocioPendente] = useState<"existente" | "novo">("existente");
   const [buscaSocioPendente, setBuscaSocioPendente] = useState("");
   const [listaSocioPendenteAberta, setListaSocioPendenteAberta] = useState(false);
   const [socioPendenteSelecionado, setSocioPendenteSelecionado] = useState<ClientePF | null>(null);
-  const [socioPendenteNome, setSocioPendenteNome] = useState("");
-  const [socioPendenteCpf, setSocioPendenteCpf] = useState("");
-  const [socioPendenteTelefone, setSocioPendenteTelefone] = useState("");
-  const [socioPendenteEmail, setSocioPendenteEmail] = useState("");
+  const [rascunhoSocio, setRascunhoSocio] = useState(RASCUNHO_SOCIO_VAZIO);
+  const [mostrarSocioCompleto, setMostrarSocioCompleto] = useState(false);
+  const [buscandoCepSocio, setBuscandoCepSocio] = useState(false);
+  const [cepAvisoCidadeSocio, setCepAvisoCidadeSocio] = useState<string | null>(null);
+  const [bancoIdSocio, setBancoIdSocio] = useState("");
+
+  function atualizarRascunhoSocio<K extends keyof typeof RASCUNHO_SOCIO_VAZIO>(campo: K, valor: string) {
+    setRascunhoSocio((atual) => ({ ...atual, [campo]: valor }));
+  }
+
+  const pedeUniaoEstavelSocio = ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL.includes(rascunhoSocio.estadoCivil);
+  const cidadesDoEstadoSocio = useMemo(
+    () => cidades.filter((cid) => cid.estado_id === rascunhoSocio.estadoId),
+    [cidades, rascunhoSocio.estadoId]
+  );
+
+  async function aoSairDoCepSocio() {
+    const digitos = rascunhoSocio.cep.replace(/\D/g, "");
+    if (digitos.length !== 8) return;
+    setBuscandoCepSocio(true);
+    setCepAvisoCidadeSocio(null);
+    try {
+      const encontrado = await buscarCep(digitos);
+      if (!encontrado) {
+        setCepAvisoCidadeSocio("CEP não encontrado — preencha o endereço manualmente.");
+        return;
+      }
+      setRascunhoSocio((atual) => ({
+        ...atual,
+        rua: encontrado.logradouro || atual.rua,
+        bairro: encontrado.bairro || atual.bairro
+      }));
+      const nomeEstado = UF_PARA_ESTADO[encontrado.uf] ?? "";
+      const estadoEncontrado = estados.find((e) => e.nome.toLowerCase() === nomeEstado.toLowerCase());
+      if (estadoEncontrado) {
+        const cidadeEncontrada = cidades.find(
+          (cid) => cid.estado_id === estadoEncontrado.id && cid.nome.toLowerCase() === encontrado.localidade.toLowerCase()
+        );
+        setRascunhoSocio((atual) => ({
+          ...atual,
+          estadoId: estadoEncontrado.id,
+          cidadeId: cidadeEncontrada?.id ?? ""
+        }));
+        if (!cidadeEncontrada) {
+          setCepAvisoCidadeSocio(`Cidade "${encontrado.localidade}" não está cadastrada — selecione manualmente abaixo.`);
+        }
+      } else {
+        setCepAvisoCidadeSocio("Selecione o estado e a cidade manualmente abaixo.");
+      }
+    } finally {
+      setBuscandoCepSocio(false);
+    }
+  }
+
+  function selecionarBancoSocio(id: string) {
+    setBancoIdSocio(id);
+    const banco = bancos.find((b) => b.id === id);
+    atualizarRascunhoSocio("bancoId", id);
+    if (banco?.codigo) atualizarRascunhoSocio("codigoBanco", banco.codigo);
+  }
 
   const idsJaAdicionados = useMemo(
     () => new Set(sociosPendentes.filter((s) => s.clienteId).map((s) => s.clienteId)),
@@ -344,21 +464,19 @@ export function ClienteForm({
       setBuscaSocioPendente("");
       return;
     }
-    if (!socioPendenteNome.trim()) return;
+    if (!rascunhoSocio.nome.trim()) return;
     setSociosPendentes((atual) => [
       ...atual,
       {
         modo: "novo",
-        nome: socioPendenteNome.trim(),
-        cpf: socioPendenteCpf,
-        telefone: socioPendenteTelefone,
-        email: socioPendenteEmail
+        ...rascunhoSocio,
+        nome: rascunhoSocio.nome.trim(),
+        uniaoEstavel: rascunhoSocio.uniaoEstavel === "true" ? true : rascunhoSocio.uniaoEstavel === "false" ? false : null
       }
     ]);
-    setSocioPendenteNome("");
-    setSocioPendenteCpf("");
-    setSocioPendenteTelefone("");
-    setSocioPendenteEmail("");
+    setRascunhoSocio(RASCUNHO_SOCIO_VAZIO);
+    setBancoIdSocio("");
+    setMostrarSocioCompleto(false);
   }
 
   function removerSocioPendente(indice: number) {
@@ -464,6 +582,9 @@ export function ClienteForm({
             pjClienteId={c.id}
             sociosAtuais={sociosAtuais ?? []}
             clientesPfDisponiveis={clientesPfDisponiveis ?? []}
+            estados={estados}
+            cidades={cidades}
+            bancos={bancos}
             adicionarAction={adicionarSocioAction}
             removerAction={removerSocioAction}
           />
@@ -978,42 +1099,351 @@ export function ClienteForm({
                   )}
                 </div>
               ) : (
-                <div className="grid md:grid-cols-2 gap-2">
-                  <div>
-                    <label className={LABEL}>Nome completo</label>
-                    <input
-                      className={CAMPO}
-                      value={socioPendenteNome}
-                      onChange={(e) => setSocioPendenteNome(e.target.value)}
-                    />
+                <div className="flex flex-col gap-3">
+                  <div className="grid md:grid-cols-2 gap-2">
+                    <div>
+                      <label className={LABEL}>Nome completo *</label>
+                      <input
+                        className={CAMPO}
+                        value={rascunhoSocio.nome}
+                        onChange={(e) => atualizarRascunhoSocio("nome", e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className={LABEL}>CPF</label>
+                      <input
+                        className={CAMPO}
+                        placeholder="000.000.000-00"
+                        value={rascunhoSocio.cpf}
+                        onChange={(e) => atualizarRascunhoSocio("cpf", e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className={LABEL}>Telefone</label>
+                      <input
+                        className={CAMPO}
+                        placeholder="(69) 99999-9999"
+                        value={rascunhoSocio.telefone}
+                        onChange={(e) => atualizarRascunhoSocio("telefone", e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className={LABEL}>E-mail</label>
+                      <input
+                        className={CAMPO}
+                        type="email"
+                        value={rascunhoSocio.email}
+                        onChange={(e) => atualizarRascunhoSocio("email", e.target.value)}
+                      />
+                    </div>
                   </div>
-                  <div>
-                    <label className={LABEL}>CPF</label>
-                    <input
-                      className={CAMPO}
-                      placeholder="000.000.000-00"
-                      value={socioPendenteCpf}
-                      onChange={(e) => setSocioPendenteCpf(e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <label className={LABEL}>Telefone</label>
-                    <input
-                      className={CAMPO}
-                      placeholder="(69) 99999-9999"
-                      value={socioPendenteTelefone}
-                      onChange={(e) => setSocioPendenteTelefone(e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <label className={LABEL}>E-mail</label>
-                    <input
-                      className={CAMPO}
-                      type="email"
-                      value={socioPendenteEmail}
-                      onChange={(e) => setSocioPendenteEmail(e.target.value)}
-                    />
-                  </div>
+
+                  {!mostrarSocioCompleto ? (
+                    <button
+                      type="button"
+                      onClick={() => setMostrarSocioCompleto(true)}
+                      className="text-[11px] text-primary font-semibold self-start hover:underline"
+                    >
+                      + Completar cadastro (RG, endereço, profissional, dados bancários)
+                    </button>
+                  ) : (
+                    <div className="flex flex-col gap-3 border-t border-gray-100 pt-3">
+                      <div className="grid md:grid-cols-2 gap-2">
+                        <div>
+                          <label className={LABEL}>RG</label>
+                          <input
+                            className={CAMPO}
+                            value={rascunhoSocio.rg}
+                            onChange={(e) => atualizarRascunhoSocio("rg", e.target.value)}
+                          />
+                        </div>
+                        <div>
+                          <label className={LABEL}>Expedição</label>
+                          <input
+                            className={CAMPO}
+                            value={rascunhoSocio.expedicao}
+                            onChange={(e) => atualizarRascunhoSocio("expedicao", e.target.value)}
+                          />
+                        </div>
+                        <div>
+                          <label className={LABEL}>Sexo</label>
+                          <select
+                            className={CAMPO}
+                            value={rascunhoSocio.sexo}
+                            onChange={(e) => atualizarRascunhoSocio("sexo", e.target.value)}
+                          >
+                            <option value="">—</option>
+                            {SEXO_OPCOES.map((s) => (
+                              <option key={s} value={s}>
+                                {s}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className={LABEL}>Estado civil</label>
+                          <select
+                            className={CAMPO + " capitalize"}
+                            value={rascunhoSocio.estadoCivil}
+                            onChange={(e) => atualizarRascunhoSocio("estadoCivil", e.target.value)}
+                          >
+                            <option value="">—</option>
+                            {ESTADOS_CIVIS.map((e) => (
+                              <option key={e} value={e} className="capitalize">
+                                {e}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        {pedeUniaoEstavelSocio && (
+                          <div>
+                            <label className={LABEL}>Convive em união estável?</label>
+                            <select
+                              className={CAMPO}
+                              value={rascunhoSocio.uniaoEstavel}
+                              onChange={(e) => atualizarRascunhoSocio("uniaoEstavel", e.target.value)}
+                            >
+                              <option value="">Não perguntado ainda</option>
+                              <option value="false">Não</option>
+                              <option value="true">Sim</option>
+                            </select>
+                          </div>
+                        )}
+                        <div>
+                          <label className={LABEL}>Data de nascimento</label>
+                          <input
+                            type="date"
+                            className={CAMPO}
+                            value={rascunhoSocio.dataNascimento}
+                            onChange={(e) => atualizarRascunhoSocio("dataNascimento", e.target.value)}
+                          />
+                        </div>
+                        <div>
+                          <label className={LABEL}>Nome da mãe</label>
+                          <input
+                            className={CAMPO}
+                            value={rascunhoSocio.nomeMae}
+                            onChange={(e) => atualizarRascunhoSocio("nomeMae", e.target.value)}
+                          />
+                        </div>
+                        <div>
+                          <label className={LABEL}>Nome do pai</label>
+                          <input
+                            className={CAMPO}
+                            value={rascunhoSocio.nomePai}
+                            onChange={(e) => atualizarRascunhoSocio("nomePai", e.target.value)}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="text-xs font-semibold text-gray-600">Endereço</div>
+                      <div className="grid md:grid-cols-2 gap-2">
+                        <div>
+                          <label className={LABEL}>CEP</label>
+                          <input
+                            className={CAMPO}
+                            placeholder="76800-000"
+                            value={rascunhoSocio.cep}
+                            onChange={(e) => atualizarRascunhoSocio("cep", formatCep(e.target.value))}
+                            onBlur={aoSairDoCepSocio}
+                          />
+                          {buscandoCepSocio && (
+                            <p className="text-[11px] text-gray-400 mt-1">Buscando endereço pelo CEP...</p>
+                          )}
+                          {cepAvisoCidadeSocio && (
+                            <p className="text-[11px] text-amber-600 mt-1">{cepAvisoCidadeSocio}</p>
+                          )}
+                        </div>
+                        <div>
+                          <label className={LABEL}>Logradouro</label>
+                          <input
+                            className={CAMPO}
+                            value={rascunhoSocio.rua}
+                            onChange={(e) => atualizarRascunhoSocio("rua", e.target.value)}
+                          />
+                        </div>
+                        <div>
+                          <label className={LABEL}>Número predial</label>
+                          <input
+                            className={CAMPO}
+                            value={rascunhoSocio.nPredial}
+                            onChange={(e) => atualizarRascunhoSocio("nPredial", e.target.value)}
+                          />
+                        </div>
+                        <div>
+                          <label className={LABEL}>Complemento</label>
+                          <input
+                            className={CAMPO}
+                            value={rascunhoSocio.complemento}
+                            onChange={(e) => atualizarRascunhoSocio("complemento", e.target.value)}
+                          />
+                        </div>
+                        <div>
+                          <label className={LABEL}>Bairro</label>
+                          <input
+                            className={CAMPO}
+                            value={rascunhoSocio.bairro}
+                            onChange={(e) => atualizarRascunhoSocio("bairro", e.target.value)}
+                          />
+                        </div>
+                        <div>
+                          <label className={LABEL}>Estado</label>
+                          <select
+                            className={CAMPO}
+                            value={rascunhoSocio.estadoId}
+                            onChange={(e) => {
+                              atualizarRascunhoSocio("estadoId", e.target.value);
+                              atualizarRascunhoSocio("cidadeId", "");
+                            }}
+                          >
+                            <option value="">—</option>
+                            {estados.map((e) => (
+                              <option key={e.id} value={e.id}>
+                                {e.nome}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className={LABEL}>Cidade</label>
+                          <select
+                            className={CAMPO}
+                            value={rascunhoSocio.cidadeId}
+                            onChange={(e) => atualizarRascunhoSocio("cidadeId", e.target.value)}
+                          >
+                            <option value="">—</option>
+                            {cidadesDoEstadoSocio.map((cid) => (
+                              <option key={cid.id} value={cid.id}>
+                                {cid.nome}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="text-xs font-semibold text-gray-600">Profissional</div>
+                      <div className="grid md:grid-cols-2 gap-2">
+                        <div>
+                          <label className={LABEL}>Profissão</label>
+                          <input
+                            className={CAMPO}
+                            value={rascunhoSocio.profissao}
+                            onChange={(e) => atualizarRascunhoSocio("profissao", e.target.value)}
+                          />
+                        </div>
+                        <div>
+                          <label className={LABEL}>Categoria de profissão</label>
+                          <select
+                            className={CAMPO}
+                            value={rascunhoSocio.catProfissao}
+                            onChange={(e) => atualizarRascunhoSocio("catProfissao", e.target.value)}
+                          >
+                            <option value="">—</option>
+                            {CAT_PROFISSAO_OPCOES.map((o) => (
+                              <option key={o} value={o}>
+                                {o}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className={LABEL}>Tipo de servidor</label>
+                          <input
+                            className={CAMPO}
+                            value={rascunhoSocio.tipoServidor}
+                            onChange={(e) => atualizarRascunhoSocio("tipoServidor", e.target.value)}
+                          />
+                        </div>
+                        <div>
+                          <label className={LABEL}>Renda bruta (R$)</label>
+                          <input
+                            className={CAMPO}
+                            placeholder="2.500,00"
+                            value={rascunhoSocio.rendaBruta}
+                            onChange={(e) => atualizarRascunhoSocio("rendaBruta", e.target.value)}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="text-xs font-semibold text-gray-600">Dados bancários</div>
+                      <div className="grid md:grid-cols-2 gap-2">
+                        <div>
+                          <label className={LABEL}>Banco</label>
+                          <select className={CAMPO} value={bancoIdSocio} onChange={(e) => selecionarBancoSocio(e.target.value)}>
+                            <option value="">—</option>
+                            {bancos.map((b) => (
+                              <option key={b.id} value={b.id}>
+                                {b.nome}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className={LABEL}>Código do banco</label>
+                          <input
+                            className={CAMPO}
+                            value={rascunhoSocio.codigoBanco}
+                            onChange={(e) => atualizarRascunhoSocio("codigoBanco", e.target.value)}
+                            placeholder="Preenchido ao escolher o banco"
+                          />
+                        </div>
+                        <div>
+                          <label className={LABEL}>Agência</label>
+                          <input
+                            className={CAMPO}
+                            value={rascunhoSocio.agencia}
+                            onChange={(e) => atualizarRascunhoSocio("agencia", e.target.value)}
+                          />
+                        </div>
+                        <div>
+                          <label className={LABEL}>Conta</label>
+                          <input
+                            className={CAMPO}
+                            value={rascunhoSocio.conta}
+                            onChange={(e) => atualizarRascunhoSocio("conta", e.target.value)}
+                          />
+                        </div>
+                        <div>
+                          <label className={LABEL}>Tipo de conta</label>
+                          <select
+                            className={CAMPO}
+                            value={rascunhoSocio.tipoConta}
+                            onChange={(e) => atualizarRascunhoSocio("tipoConta", e.target.value)}
+                          >
+                            <option value="">—</option>
+                            {TIPOS_CONTA.map((t) => (
+                              <option key={t} value={t}>
+                                {t}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className={LABEL}>Tipo de PIX</label>
+                          <select
+                            className={CAMPO}
+                            value={rascunhoSocio.tipoPix}
+                            onChange={(e) => atualizarRascunhoSocio("tipoPix", e.target.value)}
+                          >
+                            <option value="">—</option>
+                            {TIPOS_PIX.map((t) => (
+                              <option key={t} value={t}>
+                                {t}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="md:col-span-2">
+                          <label className={LABEL}>Chave PIX</label>
+                          <input
+                            className={CAMPO}
+                            value={rascunhoSocio.pix}
+                            onChange={(e) => atualizarRascunhoSocio("pix", e.target.value)}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1063,6 +1493,9 @@ export function ClienteForm({
           pjClienteId={c.id}
           sociosAtuais={sociosAtuais ?? []}
           clientesPfDisponiveis={clientesPfDisponiveis ?? []}
+          estados={estados}
+          cidades={cidades}
+          bancos={bancos}
           adicionarAction={adicionarSocioAction}
           removerAction={removerSocioAction}
         />

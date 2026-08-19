@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireAdminSession, requireAdm, logAlteracao } from "@/lib/auth";
 import { registrarEJogarErro } from "@/lib/erros";
+import { valorEditavelParaDecimal } from "@/lib/format";
 import { enviarEmail } from "@/lib/email";
 import { gerarProximoIdCliente } from "@/lib/clientes/id-legado";
 import { gerarProximoIdAvaliacao } from "@/lib/avaliacoes/id-legado";
@@ -84,9 +85,19 @@ async function resolverClienteId(
   const nomeNovo = texto(formData, "cliente_nome_busca");
   if (!nomeNovo) return null;
 
-  // Cadastro completo do cliente novo (Sexo, endereço, filiação) — pedido do
-  // usuário, 09/08/2026: "alinhamento do cadastro de cliente em todos os
-  // pontos de entrada". Ver componentes novos em components/avaliacao-form.tsx.
+  // Cadastro completo do cliente novo — pedido do usuário (09/08/2026,
+  // "alinhamento do cadastro de cliente em todos os pontos de entrada"; e
+  // 19/08/2026, Gold Standard: "precisamos do cadastro lá PF e PJ"). PF ou
+  // PJ conforme o campo tipo_cliente do formulário (antes era sempre PF).
+  // Ver componentes novos em components/avaliacao-form.tsx.
+  const tipoCliente = texto(formData, "tipo_cliente") === "Pessoa Jurídica" ? "Pessoa Jurídica" : "Pessoa Física";
+  const ehCnpj = tipoCliente === "Pessoa Jurídica";
+  const dataNasc = texto(formData, "data_nascimento");
+  const dataNascParsed = dataNasc ? new Date(dataNasc) : null;
+  const rendaBrutaTxt = texto(formData, "renda_bruta");
+
+  // Endereço estruturado vale pros dois tipos — PF ("Endereço") e PJ
+  // ("Sede"), mesmo padrão do cadastro de Clientes do admin.
   const endereco = await montarEnderecoPF({
     rua: texto(formData, "rua"),
     nPredial: texto(formData, "n_predial"),
@@ -98,14 +109,25 @@ async function resolverClienteId(
 
   const criado = await prisma.clientes.create({
     data: {
-      tipo_cliente: "Pessoa Física",
+      tipo_cliente: tipoCliente,
       nome: nomeNovo,
       id_legado: await gerarProximoIdCliente(),
-      sexo: texto(formData, "sexo"),
-      cpf: dados.cpf,
+      sexo: !ehCnpj ? texto(formData, "sexo") : null,
+      cpf: !ehCnpj ? dados.cpf : null,
+      cnpj: ehCnpj ? dados.cpf : null,
+      rg: !ehCnpj ? texto(formData, "rg") : null,
+      expedicao: !ehCnpj ? texto(formData, "expedicao") : null,
+      data_nascimento: !ehCnpj && dataNascParsed && !Number.isNaN(dataNascParsed.getTime()) ? dataNascParsed : null,
       telefone: dados.telefone,
-      nome_mae: texto(formData, "nome_mae"),
-      nome_pai: texto(formData, "nome_pai"),
+      email: texto(formData, "email"),
+      nome_mae: !ehCnpj ? texto(formData, "nome_mae") : null,
+      nome_pai: !ehCnpj ? texto(formData, "nome_pai") : null,
+      estado_civil: !ehCnpj ? texto(formData, "estado_civil") : null,
+      uniao_estavel: !ehCnpj ? booleanoTri(texto(formData, "uniao_estavel")) : null,
+      profissao: !ehCnpj ? texto(formData, "profissao") : null,
+      cat_profissao: !ehCnpj ? texto(formData, "cat_profissao") : null,
+      tipo_servidor: !ehCnpj ? texto(formData, "tipo_servidor") : null,
+      renda_bruta: !ehCnpj && rendaBrutaTxt ? valorEditavelParaDecimal(rendaBrutaTxt) : null,
       cep: somenteDigitos(formData, "cep"),
       rua: texto(formData, "rua"),
       n_predial: texto(formData, "n_predial"),
@@ -114,11 +136,26 @@ async function resolverClienteId(
       estado_id: texto(formData, "estado_id"),
       cidade_id: texto(formData, "cidade_id"),
       endereco,
+      banco_id: texto(formData, "banco_cliente_id"),
+      codigo_banco: texto(formData, "codigo_banco_cliente"),
+      agencia: texto(formData, "agencia_cliente"),
+      conta: texto(formData, "conta_cliente"),
+      tipo_conta: texto(formData, "tipo_conta_cliente"),
+      tipo_pix: texto(formData, "tipo_pix_cliente"),
+      pix: texto(formData, "pix_cliente"),
       parceiro_id: dados.parceiroId,
       status_cadastro: dados.cpf ? "Completo" : "Rascunho"
     }
   });
   return criado.id;
+}
+
+// "" (não perguntado) vira NULL, "true"/"false" viram booleano de verdade —
+// usado no campo uniao_estavel (só existe quando estado_civil pede).
+function booleanoTri(v: string | null): boolean | null {
+  if (v === "true") return true;
+  if (v === "false") return false;
+  return null;
 }
 
 function camposAvaliacao(formData: FormData, clienteId: string | null) {
@@ -169,17 +206,19 @@ export async function prepararUploadImagemConsultaAction(
   }
 }
 
-// Tipo de cliente (sempre Pessoa Física aqui), Nome, CPF, Sexo e Telefone
-// obrigatórios em todo cliente NOVO cadastrado por esta tela — pedido do
-// usuário, 09/08/2026 ("alinhamento do cadastro de cliente em todos os
-// pontos de entrada"). Cliente já cadastrado (cliente_id presente) não passa
-// por essa checagem, é só reaproveitado.
+// Tipo de cliente (Pessoa Física ou Jurídica — 19/08/2026, antes só existia
+// Pessoa Física aqui), Nome, CPF/CNPJ, Sexo (só PF) e Telefone obrigatórios
+// em todo cliente NOVO cadastrado por esta tela — pedido do usuário,
+// 09/08/2026 ("alinhamento do cadastro de cliente em todos os pontos de
+// entrada"). Cliente já cadastrado (cliente_id presente) não passa por essa
+// checagem, é só reaproveitado.
 function validarClienteNovoObrigatorio(formData: FormData, sexo: string | null, telefone: string | null, cpf: string | null) {
   const clienteId = texto(formData, "cliente_id");
   const nomeNovo = texto(formData, "cliente_nome_busca");
   if (clienteId || !nomeNovo) return;
-  if (!cpf) throw new Error("Informe o CPF do cliente — obrigatório em todo cadastro novo.");
-  if (!sexo) throw new Error("Informe o sexo do cliente — obrigatório em todo cadastro novo.");
+  const ehCnpj = texto(formData, "tipo_cliente") === "Pessoa Jurídica";
+  if (!cpf) throw new Error(ehCnpj ? "Informe o CNPJ do cliente — obrigatório em todo cadastro novo." : "Informe o CPF do cliente — obrigatório em todo cadastro novo.");
+  if (!ehCnpj && !sexo) throw new Error("Informe o sexo do cliente — obrigatório em todo cadastro novo.");
   if (!telefone) throw new Error("Informe o telefone do cliente — obrigatório em todo cadastro novo.");
 }
 

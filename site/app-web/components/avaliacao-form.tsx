@@ -18,7 +18,16 @@ import {
   formatDataHora,
   formatValorEditavel
 } from "@/lib/format";
-import { SEXO_OPCOES } from "@/lib/clientes/opcoes";
+import {
+  SEXO_OPCOES,
+  TIPOS_CLIENTE,
+  ESTADOS_CIVIS,
+  ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL,
+  CAT_PROFISSAO_OPCOES,
+  TIPOS_CONTA,
+  TIPOS_PIX
+} from "@/lib/clientes/opcoes";
+import { validarCpfCnpj } from "@/lib/clientes/validacao";
 import { buscarCep, UF_PARA_ESTADO } from "@/lib/enderecos";
 import { prepararUploadImagemConsultaAction } from "@/app/financiamento/actions";
 import { supabaseBrowser, BUCKET_AVALIACOES_IMAGENS } from "@/lib/supabase-browser";
@@ -378,9 +387,24 @@ export function AvaliacaoForm({
   // está criando um cliente novo aqui (nenhum clienteId selecionado) — um
   // cliente já cadastrado é só reaproveitado, edição fica na Central de
   // Clientes. Mesmo padrão de campos/CEP de components/portal-avaliacao-cpf-form.tsx.
+  // Tipo de cliente (Pessoa Física ou Jurídica) — pedido do usuário
+  // (19/08/2026, Gold Standard: "precisamos do cadastro lá PF e PJ"), antes
+  // esta tela só cadastrava Pessoa Física.
+  const [tipoClienteNovo, setTipoClienteNovo] = useState("Pessoa Física");
+  const ehPessoaJuridicaNovo = tipoClienteNovo === "Pessoa Jurídica";
   const [sexo, setSexo] = useState("");
+  const [rg, setRg] = useState("");
+  const [expedicao, setExpedicao] = useState("");
+  const [dataNascimento, setDataNascimento] = useState("");
   const [nomeMae, setNomeMae] = useState("");
   const [nomePai, setNomePai] = useState("");
+  const [estadoCivil, setEstadoCivil] = useState("");
+  const [uniaoEstavel, setUniaoEstavel] = useState("");
+  const [profissao, setProfissao] = useState("");
+  const [catProfissao, setCatProfissao] = useState("");
+  const [tipoServidor, setTipoServidor] = useState("");
+  const [rendaBruta, setRendaBruta] = useState("");
+  const [emailClienteNovo, setEmailClienteNovo] = useState("");
   const [cep, setCep] = useState("");
   const [rua, setRua] = useState("");
   const [nPredial, setNPredial] = useState("");
@@ -388,6 +412,13 @@ export function AvaliacaoForm({
   const [bairro, setBairro] = useState("");
   const [estadoId, setEstadoId] = useState("");
   const [cidadeId, setCidadeId] = useState("");
+  const [bancoClienteId, setBancoClienteId] = useState("");
+  const [codigoBancoCliente, setCodigoBancoCliente] = useState("");
+  const [agenciaCliente, setAgenciaCliente] = useState("");
+  const [contaCliente, setContaCliente] = useState("");
+  const [tipoContaCliente, setTipoContaCliente] = useState("");
+  const [tipoPixCliente, setTipoPixCliente] = useState("");
+  const [pixCliente, setPixCliente] = useState("");
   const cidadesDoEstado = useMemo(() => cidades.filter((c) => c.estado_id === estadoId), [cidades, estadoId]);
 
   async function buscarEnderecoPorCep() {
@@ -491,10 +522,10 @@ export function AvaliacaoForm({
       const telefoneDigitado = new FormData(form).get("telefone");
       const telefoneOk = typeof telefoneDigitado === "string" && telefoneDigitado.replace(/\D/g, "").length > 0;
       if (!cpfOk) {
-        alert("Informe o CPF do cliente — obrigatório em todo cadastro novo.");
+        alert(ehPessoaJuridicaNovo ? "Informe o CNPJ do cliente — obrigatório em todo cadastro novo." : "Informe o CPF do cliente — obrigatório em todo cadastro novo.");
         return;
       }
-      if (!sexo) {
+      if (!ehPessoaJuridicaNovo && !sexo) {
         alert("Informe o sexo do cliente — obrigatório em todo cadastro novo.");
         return;
       }
@@ -637,13 +668,19 @@ export function AvaliacaoForm({
             />
           </div>
           <div>
-            <label className={LABEL}>CPF {!clienteId && <span className="text-amber-600">*</span>}</label>
+            <label className={LABEL}>
+              {ehPessoaJuridicaNovo ? "CNPJ" : "CPF"} {!clienteId && <span className="text-amber-600">*</span>}
+            </label>
             <input
               ref={cpfRef}
               className={CAMPO}
               name="cpf"
-              placeholder="000.000.000-00"
+              placeholder={ehPessoaJuridicaNovo ? "00.000.000/0000-00" : "000.000.000-00"}
               defaultValue={a?.cpf ? formatCpf(a.cpf) : ""}
+              onBlur={(e) => {
+                const erro = e.target.value ? validarCpfCnpj(e.target.value) : null;
+                if (erro) alert(erro);
+              }}
             />
           </div>
         </div>
@@ -657,23 +694,104 @@ export function AvaliacaoForm({
             <div className="text-[11px] font-semibold text-gray-500 mb-2">Cadastro completo do cliente novo</div>
             <div className="grid md:grid-cols-2 gap-3">
               <div>
-                <label className={LABEL}>Sexo *</label>
-                <select className={CAMPO} name="sexo" value={sexo} onChange={(e) => setSexo(e.target.value)}>
-                  <option value="">Selecione...</option>
-                  {SEXO_OPCOES.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
+                <label className={LABEL}>Tipo de cliente</label>
+                <select
+                  className={CAMPO}
+                  name="tipo_cliente"
+                  value={tipoClienteNovo}
+                  onChange={(e) => setTipoClienteNovo(e.target.value)}
+                >
+                  {TIPOS_CLIENTE.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
                     </option>
                   ))}
                 </select>
               </div>
+              {!ehPessoaJuridicaNovo && (
+                <>
+                  <div>
+                    <label className={LABEL}>Sexo *</label>
+                    <select className={CAMPO} name="sexo" value={sexo} onChange={(e) => setSexo(e.target.value)}>
+                      <option value="">Selecione...</option>
+                      {SEXO_OPCOES.map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={LABEL}>RG</label>
+                    <input className={CAMPO} name="rg" value={rg} onChange={(e) => setRg(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className={LABEL}>Expedição</label>
+                    <input className={CAMPO} name="expedicao" value={expedicao} onChange={(e) => setExpedicao(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className={LABEL}>Data de nascimento</label>
+                    <input
+                      type="date"
+                      className={CAMPO}
+                      name="data_nascimento"
+                      value={dataNascimento}
+                      onChange={(e) => setDataNascimento(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className={LABEL}>Nome da mãe</label>
+                    <input className={CAMPO} name="nome_mae" value={nomeMae} onChange={(e) => setNomeMae(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className={LABEL}>Nome do pai</label>
+                    <input className={CAMPO} name="nome_pai" value={nomePai} onChange={(e) => setNomePai(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className={LABEL}>Estado civil</label>
+                    <select
+                      className={CAMPO}
+                      name="estado_civil"
+                      value={estadoCivil}
+                      onChange={(e) => {
+                        setEstadoCivil(e.target.value);
+                        if (!ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL.includes(e.target.value)) setUniaoEstavel("");
+                      }}
+                    >
+                      <option value="">—</option>
+                      {ESTADOS_CIVIS.map((op) => (
+                        <option key={op} value={op}>
+                          {op}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  {ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL.includes(estadoCivil) && (
+                    <div>
+                      <label className={LABEL}>Convive em união estável?</label>
+                      <select
+                        className={CAMPO}
+                        name="uniao_estavel"
+                        value={uniaoEstavel}
+                        onChange={(e) => setUniaoEstavel(e.target.value)}
+                      >
+                        <option value="">Não perguntado ainda</option>
+                        <option value="false">Não</option>
+                        <option value="true">Sim</option>
+                      </select>
+                    </div>
+                  )}
+                </>
+              )}
               <div>
-                <label className={LABEL}>Nome da mãe</label>
-                <input className={CAMPO} name="nome_mae" value={nomeMae} onChange={(e) => setNomeMae(e.target.value)} />
-              </div>
-              <div>
-                <label className={LABEL}>Nome do pai</label>
-                <input className={CAMPO} name="nome_pai" value={nomePai} onChange={(e) => setNomePai(e.target.value)} />
+                <label className={LABEL}>E-mail</label>
+                <input
+                  className={CAMPO}
+                  type="email"
+                  name="email"
+                  value={emailClienteNovo}
+                  onChange={(e) => setEmailClienteNovo(e.target.value)}
+                />
               </div>
               <div>
                 <label className={LABEL}>CEP</label>
@@ -731,6 +849,122 @@ export function AvaliacaoForm({
                     </option>
                   ))}
                 </select>
+              </div>
+              {!ehPessoaJuridicaNovo && (
+                <>
+                  <div>
+                    <label className={LABEL}>Profissão</label>
+                    <input className={CAMPO} name="profissao" value={profissao} onChange={(e) => setProfissao(e.target.value)} />
+                  </div>
+                  <div>
+                    <label className={LABEL}>Categoria de profissão</label>
+                    <select
+                      className={CAMPO}
+                      name="cat_profissao"
+                      value={catProfissao}
+                      onChange={(e) => setCatProfissao(e.target.value)}
+                    >
+                      <option value="">—</option>
+                      {CAT_PROFISSAO_OPCOES.map((o) => (
+                        <option key={o} value={o}>
+                          {o}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={LABEL}>Tipo de servidor</label>
+                    <input
+                      className={CAMPO}
+                      name="tipo_servidor"
+                      value={tipoServidor}
+                      onChange={(e) => setTipoServidor(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className={LABEL}>Renda bruta (R$)</label>
+                    <input
+                      className={CAMPO}
+                      name="renda_bruta"
+                      placeholder="2.500,00"
+                      value={rendaBruta}
+                      onChange={(e) => setRendaBruta(e.target.value)}
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="text-[11px] font-semibold text-gray-500 mt-4 mb-2">Dados bancários</div>
+            <div className="grid md:grid-cols-2 gap-3">
+              <div>
+                <label className={LABEL}>Banco</label>
+                <select
+                  className={CAMPO}
+                  name="banco_cliente_id"
+                  value={bancoClienteId}
+                  onChange={(e) => setBancoClienteId(e.target.value)}
+                >
+                  <option value="">—</option>
+                  {bancos.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.nome}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className={LABEL}>Código do banco</label>
+                <input
+                  className={CAMPO}
+                  name="codigo_banco_cliente"
+                  value={codigoBancoCliente}
+                  onChange={(e) => setCodigoBancoCliente(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className={LABEL}>Agência</label>
+                <input className={CAMPO} name="agencia_cliente" value={agenciaCliente} onChange={(e) => setAgenciaCliente(e.target.value)} />
+              </div>
+              <div>
+                <label className={LABEL}>Conta</label>
+                <input className={CAMPO} name="conta_cliente" value={contaCliente} onChange={(e) => setContaCliente(e.target.value)} />
+              </div>
+              <div>
+                <label className={LABEL}>Tipo de conta</label>
+                <select
+                  className={CAMPO}
+                  name="tipo_conta_cliente"
+                  value={tipoContaCliente}
+                  onChange={(e) => setTipoContaCliente(e.target.value)}
+                >
+                  <option value="">—</option>
+                  {TIPOS_CONTA.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className={LABEL}>Tipo de PIX</label>
+                <select
+                  className={CAMPO}
+                  name="tipo_pix_cliente"
+                  value={tipoPixCliente}
+                  onChange={(e) => setTipoPixCliente(e.target.value)}
+                >
+                  <option value="">—</option>
+                  {TIPOS_PIX.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="md:col-span-2">
+                <label className={LABEL}>Chave PIX</label>
+                <input className={CAMPO} name="pix_cliente" value={pixCliente} onChange={(e) => setPixCliente(e.target.value)} />
               </div>
             </div>
           </div>

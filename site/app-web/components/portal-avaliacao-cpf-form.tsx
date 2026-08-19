@@ -583,66 +583,61 @@ export function PortalAvaliacaoCpfForm({
                   <label className={LABEL}>E-mail</label>
                   <input className={CAMPO} type="email" value={cliente.email} onChange={(e) => atualizar("email", e.target.value)} />
                 </div>
-                {!mostrarCpf ? (
-                  <div className="md:col-span-2">
-                    <label className={LABEL}>Sede (endereço completo)</label>
-                    <input className={CAMPO} value={cliente.endereco} onChange={(e) => atualizar("endereco", e.target.value)} />
-                  </div>
-                ) : (
-                  <>
-                    <div>
-                      <label className={LABEL}>CEP</label>
-                      <input className={CAMPO} value={cliente.cep} onChange={(e) => atualizar("cep", e.target.value)} onBlur={buscarEnderecoPorCep} />
-                    </div>
-                    <div>
-                      <label className={LABEL}>Logradouro</label>
-                      <input className={CAMPO} value={cliente.rua} onChange={(e) => atualizar("rua", e.target.value)} />
-                    </div>
-                    <div>
-                      <label className={LABEL}>Número predial</label>
-                      <input className={CAMPO} value={cliente.nPredial} onChange={(e) => atualizar("nPredial", e.target.value)} />
-                    </div>
-                    <div>
-                      <label className={LABEL}>Complemento</label>
-                      <input className={CAMPO} value={cliente.complemento} onChange={(e) => atualizar("complemento", e.target.value)} />
-                    </div>
-                    <div>
-                      <label className={LABEL}>Bairro</label>
-                      <input className={CAMPO} value={cliente.bairro} onChange={(e) => atualizar("bairro", e.target.value)} />
-                    </div>
-                    <div>
-                      <label className={LABEL}>Estado</label>
-                      <select
-                        className={CAMPO}
-                        value={cliente.estadoId}
-                        onChange={(e) => {
-                          atualizar("estadoId", e.target.value);
-                          atualizar("cidadeId", "");
-                        }}
-                      >
-                        <option value="">—</option>
-                        {estados.map((e) => (
-                          <option key={e.id} value={e.id}>
-                            {e.nome}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className={LABEL}>Cidade</label>
-                      <select className={CAMPO} value={cliente.cidadeId} onChange={(e) => atualizar("cidadeId", e.target.value)}>
-                        <option value="">—</option>
-                        {cidades
-                          .filter((c) => c.estado_id === cliente.estadoId)
-                          .map((c) => (
-                            <option key={c.id} value={c.id}>
-                              {c.nome}
-                            </option>
-                          ))}
-                      </select>
-                    </div>
-                  </>
-                )}
+                {/* Endereço estruturado (CEP/rua/número/complemento/bairro/
+                    estado/cidade) vale pros dois tipos — PF ("Endereço") e PJ
+                    ("Sede"), mesmo padrão do cadastro de Clientes do admin
+                    (19/08/2026). */}
+                <div>
+                  <label className={LABEL}>CEP</label>
+                  <input className={CAMPO} value={cliente.cep} onChange={(e) => atualizar("cep", e.target.value)} onBlur={buscarEnderecoPorCep} />
+                </div>
+                <div>
+                  <label className={LABEL}>Logradouro</label>
+                  <input className={CAMPO} value={cliente.rua} onChange={(e) => atualizar("rua", e.target.value)} />
+                </div>
+                <div>
+                  <label className={LABEL}>Número predial</label>
+                  <input className={CAMPO} value={cliente.nPredial} onChange={(e) => atualizar("nPredial", e.target.value)} />
+                </div>
+                <div>
+                  <label className={LABEL}>Complemento</label>
+                  <input className={CAMPO} value={cliente.complemento} onChange={(e) => atualizar("complemento", e.target.value)} />
+                </div>
+                <div>
+                  <label className={LABEL}>Bairro</label>
+                  <input className={CAMPO} value={cliente.bairro} onChange={(e) => atualizar("bairro", e.target.value)} />
+                </div>
+                <div>
+                  <label className={LABEL}>Estado</label>
+                  <select
+                    className={CAMPO}
+                    value={cliente.estadoId}
+                    onChange={(e) => {
+                      atualizar("estadoId", e.target.value);
+                      atualizar("cidadeId", "");
+                    }}
+                  >
+                    <option value="">—</option>
+                    {estados.map((e) => (
+                      <option key={e.id} value={e.id}>
+                        {e.nome}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className={LABEL}>Cidade</label>
+                  <select className={CAMPO} value={cliente.cidadeId} onChange={(e) => atualizar("cidadeId", e.target.value)}>
+                    <option value="">—</option>
+                    {cidades
+                      .filter((c) => c.estado_id === cliente.estadoId)
+                      .map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.nome}
+                        </option>
+                      ))}
+                  </select>
+                </div>
               </div>
             </div>
 

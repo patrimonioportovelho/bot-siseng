@@ -206,16 +206,17 @@ async function criarClienteCompleto(c: ClienteAvaliacaoDigitado, parceiroId: str
   const ehCnpj = c.tipoCliente === "Pessoa Jurídica";
   const dataNasc = c.dataNascimento ? new Date(c.dataNascimento) : null;
 
-  const endereco = ehCnpj
-    ? c.endereco || null
-    : await montarEnderecoPF({
-        rua: c.rua || null,
-        nPredial: c.nPredial || null,
-        complemento: c.complemento || null,
-        bairro: c.bairro || null,
-        cidadeId: c.cidadeId || null,
-        estadoId: c.estadoId || null
-      });
+  // Endereço estruturado vale pros dois tipos agora — PF ("Endereço") e PJ
+  // ("Sede"), mesmo padrão do cadastro de Clientes do admin (19/08/2026,
+  // antes PJ usava só texto livre solto em `endereco`).
+  const endereco = await montarEnderecoPF({
+    rua: c.rua || null,
+    nPredial: c.nPredial || null,
+    complemento: c.complemento || null,
+    bairro: c.bairro || null,
+    cidadeId: c.cidadeId || null,
+    estadoId: c.estadoId || null
+  });
 
   return prisma.clientes.create({
     data: {
@@ -238,13 +239,13 @@ async function criarClienteCompleto(c: ClienteAvaliacaoDigitado, parceiroId: str
       tipo_servidor: c.tipoServidor || null,
       profissao: c.profissao || null,
       renda_bruta: c.rendaBruta ? valorEditavelParaDecimal(c.rendaBruta) : null,
-      cep: !ehCnpj ? digitos(c.cep) : null,
-      rua: !ehCnpj ? c.rua || null : null,
-      n_predial: !ehCnpj ? c.nPredial || null : null,
-      complemento: !ehCnpj ? c.complemento || null : null,
-      bairro: !ehCnpj ? c.bairro || null : null,
-      estado_id: !ehCnpj ? c.estadoId || null : null,
-      cidade_id: !ehCnpj ? c.cidadeId || null : null,
+      cep: digitos(c.cep),
+      rua: c.rua || null,
+      n_predial: c.nPredial || null,
+      complemento: c.complemento || null,
+      bairro: c.bairro || null,
+      estado_id: c.estadoId || null,
+      cidade_id: c.cidadeId || null,
       endereco,
       observacao: c.observacao || null,
       banco_id: c.bancoId || null,

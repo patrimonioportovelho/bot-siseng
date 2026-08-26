@@ -100,6 +100,26 @@ export const TIPOS_META: TipoMetaOpcao[] = [
     natureza: "quantidade",
     ajuda: "Quantidade de clientes novos cadastrados no período (de qualquer origem — admin ou portal).",
     acaoSugerida: "cadastrar um cliente novo"
+  },
+  {
+    chave: "quantidade_transacoes",
+    label: "Quantidade de transações (Locação + Compra e Venda)",
+    unidadePadrao: "transação",
+    unidadePlural: "transações",
+    natureza: "quantidade",
+    ajuda:
+      "Quantidade de contratos de Locação e Compra e Venda com Data de assinatura dentro do período (não conta canceladas/distrato). Numa meta de corretor específico, cada lado da transação conta separado — se ele foi o captador do proprietário E também o corretor da contraparte na mesma transação, conta as duas.",
+    acaoSugerida: "fechar mais uma Locação ou Compra e Venda"
+  },
+  {
+    chave: "vgh",
+    label: "VGH — Valor Geral de Honorários",
+    unidadePadrao: "valor (R$)",
+    unidadePlural: "valor (R$)",
+    natureza: "valor",
+    ajuda:
+      "Soma do valor de honorário gerado em contratos de Locação e Compra e Venda com Data de assinatura dentro do período (valor da transação × % de honorário, descontada a parceria externa quando houver — não conta canceladas/distrato). Numa meta de corretor específico, conta só a fração de honorário dele em cada transação; se ele participou dos dois lados da mesma transação (captador do proprietário e corretor da contraparte), soma as duas frações.",
+    acaoSugerida: "fechar mais uma Locação ou Compra e Venda"
   }
 ];
 

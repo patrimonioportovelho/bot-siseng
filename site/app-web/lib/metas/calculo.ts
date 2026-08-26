@@ -12,8 +12,15 @@ const TIPOS_COM_LOJA = new Set([
   "locacoes_fechadas",
   "administracoes_captadas",
   "administracoes_locadas",
-  "clientes_cadastrados"
+  "clientes_cadastrados",
+  "quantidade_transacoes",
+  "vgh"
 ]);
+
+// Compra e Venda + Locação juntos — usado pelos dois tipos novos que somam
+// as duas modalidades no mesmo total (VGH e Quantidade de transações),
+// diferente dos tipos antigos que são separados por modalidade.
+const TIPOS_TRANSACAO_CONTRATO = ["Compra e Venda", "Locação"];
 
 export type MetaParaCalculo = {
   tipo_meta: string;
@@ -147,6 +154,77 @@ export async function calcularAlcancado(meta: MetaParaCalculo): Promise<number> 
           ...(meta.parceiro_id ? { parceiro_id: meta.parceiro_id } : {})
         }
       });
+
+    // Junta Locação + Compra e Venda (diferente de vendas_fechadas/
+    // locacoes_fechadas, que são separados por modalidade). Meta Geral conta
+    // o total de contratos assinados; meta de corretor específico conta cada
+    // LADO (proprietário/captador e contraparte) separado — por isso são
+    // duas contagens somadas em vez de um único count com OR, senão um
+    // corretor que fechou os dois lados da mesma transação (captou do
+    // proprietário e trouxe o comprador/locatário) contaria só 1 em vez de 2.
+    case "quantidade_transacoes": {
+      const filtroBase = {
+        tipo: { in: TIPOS_TRANSACAO_CONTRATO },
+        excluido: false,
+        data_assinatura: rangeData(meta.periodo_inicio, meta.periodo_fim),
+        ...lojaFiltro
+      };
+      if (!meta.parceiro_id) {
+        return prisma.transacoes.count({ where: filtroBase });
+      }
+      const [comoProprietario, comoContraparte] = await Promise.all([
+        prisma.transacoes.count({ where: { ...filtroBase, corretor_proprietario_id: meta.parceiro_id } }),
+        prisma.transacoes.count({ where: { ...filtroBase, corretor_contraparte_id: meta.parceiro_id } })
+      ]);
+      return comoProprietario + comoContraparte;
+    }
+
+    // VGH (Valor Geral de Honorários) — mesma conta em cascata de
+    // lib/financeiro/previsao-comissao.ts (honorarioTotal = valor_transacao ×
+    // porc_honorario, descontada a parceria externa quando houver), só que
+    // aqui é sobre o honorário JÁ GERADO (transação assinada no período), não
+    // uma previsão de recebimento futuro — por isso não filtra por condição
+    // de pagamento nem por status_honorario. Meta Geral soma o honorário
+    // inteiro de cada transação; meta de corretor específico soma só a
+    // fração dele, somando os dois lados quando ele participou dos dois
+    // (mesmo raciocínio de quantidade_transacoes acima). Não dá pra fazer
+    // isso com um _sum do Prisma porque é produto de duas colunas — por isso
+    // busca as linhas e soma em JS.
+    case "vgh": {
+      const filtroBase = {
+        tipo: { in: TIPOS_TRANSACAO_CONTRATO },
+        excluido: false,
+        data_assinatura: rangeData(meta.periodo_inicio, meta.periodo_fim),
+        ...lojaFiltro
+      };
+      const linhas = await prisma.transacoes.findMany({
+        where: { ...filtroBase, ...corretorTransacao },
+        select: {
+          valor_transacao: true,
+          porc_honorario: true,
+          tem_parceria: true,
+          porc_parceria: true,
+          porc_corretor_proprietario: true,
+          porc_corretor_contraparte: true,
+          corretor_proprietario_id: true,
+          corretor_contraparte_id: true
+        }
+      });
+      let total = 0;
+      for (const t of linhas) {
+        const honorarioTotal = Number(t.valor_transacao) * Number(t.porc_honorario);
+        const valorParceria = t.tem_parceria ? honorarioTotal * Number(t.porc_parceria) : 0;
+        const restante = honorarioTotal - valorParceria;
+        if (!meta.parceiro_id) {
+          total += restante;
+          continue;
+        }
+        const fracaoProprietario = t.corretor_proprietario_id === meta.parceiro_id ? Number(t.porc_corretor_proprietario) : 0;
+        const fracaoContraparte = t.corretor_contraparte_id === meta.parceiro_id ? Number(t.porc_corretor_contraparte) : 0;
+        total += restante * (fracaoProprietario + fracaoContraparte);
+      }
+      return Math.round(total * 100) / 100;
+    }
 
     default:
       return 0;

@@ -52,7 +52,11 @@ const PBKDF2_ITERACOES_LEGADO = 100_000;
 
 async function derivarBits(senha: string, salt: Uint8Array, iteracoes: number): Promise<ArrayBuffer> {
   const chave = await crypto.subtle.importKey("raw", new TextEncoder().encode(senha), "PBKDF2", false, ["deriveBits"]);
-  return crypto.subtle.deriveBits({ name: "PBKDF2", salt, iterations: iteracoes, hash: "SHA-256" }, chave, 256);
+  // Cast só de tipo (sem efeito em runtime) — o lib.dom.d.ts do TS atual
+  // ficou mais estrito sobre o generic de Uint8Array vs BufferSource
+  // (ArrayBufferLike inclui SharedArrayBuffer, que BufferSource não aceita).
+  // A Web Crypto API sempre aceitou um Uint8Array normal aqui.
+  return crypto.subtle.deriveBits({ name: "PBKDF2", salt: salt as BufferSource, iterations: iteracoes, hash: "SHA-256" }, chave, 256);
 }
 
 export async function hashSenha(senha: string): Promise<string> {

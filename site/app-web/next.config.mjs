@@ -1,26 +1,27 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  // TEMPORÁRIO: lib/documentos/gerar.ts referencia prisma.documentos_gerados,
-  // mas prisma/schema.prisma ainda não tem nenhum model (só existirá depois
-  // de rodar `npx prisma db pull` contra o banco real do Supabase). Isso
-  // quebra o type-check do build. Remover esta linha assim que o db pull
-  // for feito e o schema.prisma tiver os models de verdade.
-  typescript: {
-    ignoreBuildErrors: true
-  },
+  // Removido em 29/08/2026 (achado "Alto" da auditoria): o motivo original
+  // (schema.prisma sem os models reais) não existe mais há tempos, e a
+  // flag estava mascarando o type-check do build inteiro — inclusive
+  // possíveis erros novos introduzidos depois. Rodado `npx tsc --noEmit`
+  // antes de remover: só havia 1 erro pendente (lib/auth.ts, Uint8Array vs
+  // BufferSource — typing puro do lib.dom.d.ts, sem efeito em runtime),
+  // corrigido com um cast de tipo. Se aparecer erro novo daqui pra frente,
+  // o build vai travar de propósito — é o comportamento certo.
   experimental: {
     serverActions: {
-      // Os formulários do portal (Compra e Venda, Gestão, Administração)
-      // anexam documentos (PDF/foto) direto no FormData de uma Server
-      // Action. O limite padrão do Next é 1MB — qualquer anexo real
-      // estourava isso, e o corretor via só "An unexpected response was
-      // received from the server." sem mais explicação (o Next rejeita a
-      // requisição antes até de rodar a action, então nem cai no try/catch
-      // de lib/erros.ts). 25mb cobre o limite de 15MB de anexos do
-      // formulário (components/portal-compra-venda-form.tsx) já contando a
-      // codificação base64 do multipart, com folga.
-      bodySizeLimit: "25mb"
+      // ATUALIZADO em 29/08/2026 (achado "menor" da auditoria): todo upload
+      // de arquivo (documentos do portal, fotos de evento/publicação/parceiro)
+      // hoje sobe DIRETO pro Supabase Storage via URL assinada
+      // (uploadToSignedUrl) — o Storage não passa mais pelo corpo da Server
+      // Action, só o caminho/nome do arquivo (texto). Isso já era necessário
+      // de qualquer forma por causa do limite fixo de 4,5MB da própria
+      // Vercel (bem menor que os 25mb configurados aqui, que nunca protegiam
+      // contra esse teto). O limite abaixo cobre só o JSON/texto que ainda
+      // vai nas Server Actions (listas de sócios, compradores, documentos
+      // etc.) — 2mb é folgado pra isso.
+      bodySizeLimit: "2mb"
     }
   },
   // Headers de segurança (achado "Baixo" da auditoria de 01/08/2026).

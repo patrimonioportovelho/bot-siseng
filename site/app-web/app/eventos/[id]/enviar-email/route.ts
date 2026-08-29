@@ -82,7 +82,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         ${horarioTexto ? `<strong>Horário:</strong> ${horarioTexto}<br/>` : ""}
         ${evento.local ? `<strong>Local:</strong> ${evento.local}<br/>` : ""}
       </p>
-      ${evento.descricao ? `<p>${evento.descricao}<\p>` : ""}
+      ${evento.descricao ? `<p>${evento.descricao}</p>` : ""}
       <p style="color:#6b7280; font-size:13px;">Por favor, confirme sua presença no painel — acesse o Portal do Corretor e vá em "Eventos".</p>
     </div>
   `;

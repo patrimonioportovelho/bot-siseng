@@ -6,7 +6,12 @@ import { createClient } from "@supabase/supabase-js";
 // repetir createClient(...) com as mesmas envs em cada arquivo que precisa
 // falar com Storage.
 export function supabaseAdmin() {
-  return createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+  const url = process.env.SUPABASE_URL;
+  const chave = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !chave) {
+    throw new Error("SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY não configurados no .env");
+  }
+  return createClient(url, chave);
 }
 
 const BUCKET_PUBLICACOES = "publicacoes";

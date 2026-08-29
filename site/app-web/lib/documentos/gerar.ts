@@ -174,13 +174,27 @@ async function preencherTemplate(
   return doc.getZip().generate({ type: "nodebuffer" });
 }
 
+// Timeout de 30s — achado "menor" da auditoria de 29/08/2026: sem isso, se o
+// Gotenberg no Railway travar ou ficar sem resposta, a geração de documento
+// ficava pendurada até o timeout da própria Vercel (bem mais longo e sem
+// mensagem clara pro usuário). Com o timeout aqui, cai no catch de
+// gerarDocumento() e mostra um erro entendível.
 async function converterParaPdf(docxBuffer: Buffer): Promise<{ buffer: Buffer; extensao: "pdf" }> {
   const form = new FormData();
   form.append("files", new Blob([new Uint8Array(docxBuffer)]), "documento.docx");
-  const resposta = await fetch(`${DOCUMENT_CONVERTER_URL}/forms/libreoffice/convert`, {
-    method: "POST",
-    body: form
-  });
+  let resposta: Response;
+  try {
+    resposta = await fetch(`${DOCUMENT_CONVERTER_URL}/forms/libreoffice/convert`, {
+      method: "POST",
+      body: form,
+      signal: AbortSignal.timeout(30_000)
+    });
+  } catch (erro) {
+    if (erro instanceof Error && erro.name === "TimeoutError") {
+      throw new Error("O conversor de PDF demorou demais para responder. Tente novamente em instantes.");
+    }
+    throw erro;
+  }
   if (!resposta.ok) {
     throw new Error(`Falha ao converter para PDF (status ${resposta.status})`);
   }

@@ -44,11 +44,14 @@ export type CepEncontrado = {
 // passar pelo nosso servidor). Devolve null em qualquer situação de CEP
 // não encontrado/erro de rede, para o formulário simplesmente não
 // preencher nada automaticamente (usuário sempre pode digitar manual).
+// Timeout de 8s (achado "menor" da auditoria de 29/08/2026) — sem isso, se o
+// ViaCEP ficar fora do ar, o campo de CEP ficava "carregando" indefinidamente
+// em vez de simplesmente desistir e deixar o usuário preencher na mão.
 export async function buscarCep(cep: string): Promise<CepEncontrado | null> {
   const d = cep.replace(/\D/g, "");
   if (d.length !== 8) return null;
   try {
-    const resp = await fetch(`https://viacep.com.br/ws/${d}/json/`);
+    const resp = await fetch(`https://viacep.com.br/ws/${d}/json/`, { signal: AbortSignal.timeout(8_000) });
     if (!resp.ok) return null;
     const json = await resp.json();
     if (json?.erro) return null;

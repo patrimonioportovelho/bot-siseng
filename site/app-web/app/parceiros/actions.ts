@@ -9,6 +9,7 @@ import { FUNCOES_EQUIPE } from "@/lib/parceiros/opcoes";
 import { registrarEJogarErro } from "@/lib/erros";
 import { montarEnderecoPF } from "@/lib/clientes/endereco";
 import { buscarParceiroDuplicado, mensagemParceiroDuplicado } from "@/lib/parceiros/duplicidade";
+import { criarUploadAssinadoFotoParceiro, publicUrlFotoParceiro, apagarFotoParceiro } from "@/lib/supabase-admin";
 
 function texto(formData: FormData, campo: string): string | null {
   const v = formData.get(campo);
@@ -147,8 +148,25 @@ function mensagemDe(erro: unknown): string {
   return erro instanceof Error ? erro.message : String(erro);
 }
 
+// Prepara a URL assinada pro navegador subir a foto do Corretor direto pro
+// Storage (mesmo esquema de Eventos/Publicações) — só ADM pode chamar
+// (pedido explícito do usuário 29/08/2026: "só quem vai poder subir a foto é
+// o ADM"), o formulário já esconde o campo pra quem não é, isso aqui é a
+// segunda trava (no servidor).
+export async function prepararUploadFotoParceiroAction(
+  nomeArquivo: string
+): Promise<{ ok: true; caminho: string; token: string } | { ok: false; erro: string }> {
+  await requireAdm();
+  try {
+    const { caminho, token } = await criarUploadAssinadoFotoParceiro(nomeArquivo);
+    return { ok: true, caminho, token };
+  } catch (erro) {
+    return { ok: false, erro: erro instanceof Error ? erro.message : "Falha ao preparar o upload da foto." };
+  }
+}
+
 export async function criarParceiroAction(_prev: unknown, formData: FormData): Promise<ResultadoFormulario> {
-  await requireAdminSession();
+  const session = await requireAdminSession();
 
   const nome = texto(formData, "nome");
   const funcao = texto(formData, "funcao");
@@ -176,6 +194,13 @@ export async function criarParceiroAction(_prev: unknown, formData: FormData): P
     }
   }
 
+  // Foto só é aceita de sessão ADM (ver prepararUploadFotoParceiroAction) —
+  // de quem não é, o campo nem chega a aparecer no formulário, mas ignora
+  // silenciosamente aqui também em vez de dar erro (segunda trava, não uma
+  // superfície de erro nova pro usuário comum).
+  const fotoCaminho = session.isAdm ? texto(formData, "foto_caminho") : null;
+  const foto_url = fotoCaminho ? publicUrlFotoParceiro(fotoCaminho) : null;
+
   let novo: { id: string; nome: string; funcao: string };
   try {
     novo = await prisma.parceiros
@@ -183,7 +208,8 @@ export async function criarParceiroAction(_prev: unknown, formData: FormData): P
         data: {
           nome,
           ...(await camposEditaveis(formData)),
-          funcao
+          funcao,
+          foto_url
         }
       })
       .catch((erro) => registrarEJogarErro({ entidadeTipo: "parceiros", acao: "criar", erro }));
@@ -203,7 +229,7 @@ export async function criarParceiroAction(_prev: unknown, formData: FormData): P
 }
 
 export async function atualizarParceiroAction(_prev: unknown, formData: FormData): Promise<ResultadoFormulario> {
-  await requireAdminSession();
+  const session = await requireAdminSession();
 
   const id = texto(formData, "parceiroId");
   if (!id) return { erro: "Parceiro inválido." };
@@ -212,6 +238,25 @@ export async function atualizarParceiroAction(_prev: unknown, formData: FormData
   if (!antes) return { erro: "Parceiro não encontrado." };
 
   const campos = await camposEditaveis(formData);
+
+  // Foto do Corretor — só ADM (ver prepararUploadFotoParceiroAction e o
+  // comentário em criarParceiroAction). Três cenários, mesmo padrão de
+  // app/eventos/actions.ts: (1) subiu foto nova — troca e apaga a antiga;
+  // (2) marcou "remover foto" sem escolher outra — só apaga; (3) sessão sem
+  // isAdm, ou não mexeu — mantém a que já estava, intocada (`undefined` faz o
+  // Prisma nem incluir o campo no update).
+  let foto_url: string | null | undefined;
+  if (session.isAdm) {
+    const fotoCaminho = texto(formData, "foto_caminho");
+    const removerFoto = formData.get("remover_foto") === "on";
+    if (fotoCaminho) {
+      foto_url = publicUrlFotoParceiro(fotoCaminho);
+      await apagarFotoParceiro(antes.foto_url);
+    } else if (removerFoto) {
+      await apagarFotoParceiro(antes.foto_url);
+      foto_url = null;
+    }
+  }
 
   // Quando Administrativo/Corretor/Corretor Estagiário muda para Inativo, a
   // função sai automaticamente da equipe: vira Corretor Externo se tiver
@@ -231,7 +276,7 @@ export async function atualizarParceiroAction(_prev: unknown, formData: FormData
     depois = await prisma.parceiros
       .update({
         where: { id },
-        data: campos
+        data: { ...campos, ...(foto_url !== undefined ? { foto_url } : {}) }
       })
       .catch((erro) => registrarEJogarErro({ entidadeTipo: "parceiros", entidadeId: id, acao: "editar", erro }));
   } catch (erro) {

@@ -166,6 +166,69 @@ export async function apagarImagemEvento(imagemUrl: string | null | undefined): 
   await supabase.storage.from(BUCKET_EVENTOS).remove([caminho]);
 }
 
+// ==================== Foto do Corretor (ranking de honorários) ====================
+// Mesmo esquema de upload direto pro Storage via URL assinada usado em
+// Eventos/Publicações acima — bucket público próprio (a foto aparece no
+// dashboard externo, /login, sem autenticação) porque o retrato do corretor
+// (1080x1920, formato Story) é bem diferente do quadrado das publicações e
+// do banner de eventos.
+const BUCKET_PARCEIROS_FOTOS = "parceiros-fotos";
+
+async function garantirBucketParceirosFotos(): Promise<void> {
+  const supabase = supabaseAdmin();
+  const { data: buckets, error } = await supabase.storage.listBuckets();
+  if (error) throw new Error(`Não consegui verificar o armazenamento: ${error.message}`);
+  if (buckets?.some((b) => b.name === BUCKET_PARCEIROS_FOTOS)) return;
+
+  const { error: erroCriar } = await supabase.storage.createBucket(BUCKET_PARCEIROS_FOTOS, {
+    public: true,
+    fileSizeLimit: "10MB"
+  });
+  // Corrida entre duas requisições criando o bucket ao mesmo tempo não é um
+  // erro de verdade — só a segunda perde a corrida.
+  if (erroCriar && !erroCriar.message.toLowerCase().includes("already exists")) {
+    throw new Error(`Não consegui preparar o armazenamento: ${erroCriar.message}`);
+  }
+}
+
+export async function criarUploadAssinadoFotoParceiro(
+  nomeArquivo: string
+): Promise<{ caminho: string; token: string }> {
+  const extensaoBruta = extensaoDoNome(nomeArquivo).toLowerCase();
+  const extensao = EXTENSOES_IMAGEM_ACEITAS.has(extensaoBruta) ? extensaoBruta : null;
+  if (!extensao) {
+    throw new Error("Formato de imagem não suportado. Envie um JPG, PNG, WEBP ou GIF.");
+  }
+
+  await garantirBucketParceirosFotos();
+  const caminho = `${randomUUID()}.${extensao}`;
+  const supabase = supabaseAdmin();
+  const { data, error } = await supabase.storage.from(BUCKET_PARCEIROS_FOTOS).createSignedUploadUrl(caminho);
+  if (error || !data) {
+    throw new Error(`Não consegui preparar o upload da foto: ${error?.message ?? "erro desconhecido"}`);
+  }
+  return { caminho, token: data.token };
+}
+
+export function publicUrlFotoParceiro(caminho: string): string {
+  const supabase = supabaseAdmin();
+  const { data } = supabase.storage.from(BUCKET_PARCEIROS_FOTOS).getPublicUrl(caminho);
+  return data.publicUrl;
+}
+
+export async function apagarFotoParceiro(fotoUrl: string | null | undefined): Promise<void> {
+  if (!fotoUrl) return;
+  const marcador = `/storage/v1/object/public/${BUCKET_PARCEIROS_FOTOS}/`;
+  const indice = fotoUrl.indexOf(marcador);
+  if (indice === -1) return;
+
+  const caminho = fotoUrl.slice(indice + marcador.length);
+  if (!caminho) return;
+
+  const supabase = supabaseAdmin();
+  await supabase.storage.from(BUCKET_PARCEIROS_FOTOS).remove([caminho]);
+}
+
 // Documentos anexados nos formulários do portal do corretor (Compra e
 // Venda) — RG, comprovante, contrato assinado etc. Bucket separado do
 // "publicacoes" (privado, não é conteúdo do site).

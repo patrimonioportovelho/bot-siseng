@@ -139,6 +139,7 @@ export default async function ParceiroDetalhePage({
         estados={estados}
         cidades={cidades}
         action={atualizarParceiroAction}
+        isAdm={session?.isAdm ?? false}
       />
 
       <div className="grid lg:grid-cols-2 gap-4 mt-6 mb-4">

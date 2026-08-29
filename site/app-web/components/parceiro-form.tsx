@@ -11,6 +11,51 @@ import {
 } from "@/lib/parceiros/opcoes";
 import { formatCpf, formatTelefone, formatPercentual, formatMoeda, formatDataCalendario } from "@/lib/format";
 import { buscarCep, UF_PARA_ESTADO } from "@/lib/enderecos";
+import { prepararUploadFotoParceiroAction } from "@/app/parceiros/actions";
+import { supabaseBrowser, BUCKET_PARCEIROS_FOTOS } from "@/lib/supabase-browser";
+
+// Só função "Corretor" (não Corretor Estagiário) entra no ranking de
+// honorários do dashboard externo — pedido explícito do usuário 29/08/2026.
+const FUNCAO_COM_FOTO_RANKING = "Corretor";
+
+// Sempre recorta e redimensiona a foto pra exatamente 1080x1920 (retrato,
+// formato Story) — mesma lógica de paraQuadrado1080 em components/
+// evento-form.tsx, só que generalizada pra qualquer proporção alvo em vez de
+// só quadrado. Recorte central "cover" (usa o maior retângulo 9:16 possível
+// no meio da imagem, sem distorcer) e redesenha no tamanho final. Roda no
+// navegador antes do upload.
+async function paraRetrato1080x1920(arquivo: File): Promise<File> {
+  const bitmap = await createImageBitmap(arquivo);
+  const ALVO_LARGURA = 1080;
+  const ALVO_ALTURA = 1920;
+  const razaoAlvo = ALVO_LARGURA / ALVO_ALTURA;
+  const razaoOrigem = bitmap.width / bitmap.height;
+
+  let recorteLargura: number;
+  let recorteAltura: number;
+  if (razaoOrigem > razaoAlvo) {
+    recorteAltura = bitmap.height;
+    recorteLargura = recorteAltura * razaoAlvo;
+  } else {
+    recorteLargura = bitmap.width;
+    recorteAltura = recorteLargura / razaoAlvo;
+  }
+  const origemX = (bitmap.width - recorteLargura) / 2;
+  const origemY = (bitmap.height - recorteAltura) / 2;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = ALVO_LARGURA;
+  canvas.height = ALVO_ALTURA;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return arquivo;
+  ctx.drawImage(bitmap, origemX, origemY, recorteLargura, recorteAltura, 0, 0, ALVO_LARGURA, ALVO_ALTURA);
+
+  const blob: Blob | null = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.9));
+  if (!blob) return arquivo;
+
+  const nomeBase = arquivo.name.replace(/\.[^.]+$/, "");
+  return new File([blob], `${nomeBase}.jpg`, { type: "image/jpeg" });
+}
 
 // % Proprietário / % Interessado (renomeado de "% compra"/"% venda" em
 // 16/08/2026 — pedido do usuário: "na verdade deveria ser interessado e
@@ -69,6 +114,7 @@ type ParceiroExistente = {
   tipo_pix: string | null;
   pix: string | null;
   link_drive: string | null;
+  foto_url: string | null;
 };
 
 function inputDate(d: Date | null) {
@@ -127,6 +173,16 @@ function Ficha({ parceiro, onEditar }: { parceiro: ParceiroExistente; onEditar: 
   return (
     <div className="flex flex-col gap-4">
       <Cartao titulo="Identificação" acao={BotaoEditar}>
+        {p.foto_url && (
+          <div className="mb-3">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={p.foto_url}
+              alt={`Foto de ${p.nome}`}
+              className="w-20 aspect-[9/16] object-cover rounded-lg border border-gray-200"
+            />
+          </div>
+        )}
         <div className="grid md:grid-cols-2 gap-3">
           <Linha label="Nome completo" valor={p.nome} />
           <Linha label="CPF" valor={p.cpf ? formatCpf(p.cpf) : null} />
@@ -206,7 +262,8 @@ export function ParceiroForm({
   bancos,
   estados,
   cidades,
-  action
+  action,
+  isAdm
 }: {
   parceiro: ParceiroExistente | null;
   lojas: Loja[];
@@ -214,9 +271,49 @@ export function ParceiroForm({
   estados: EstadoOpcao[];
   cidades: CidadeOpcao[];
   action: (prevState: unknown, formData: FormData) => Promise<{ erro: string; duplicado?: boolean } | undefined | void>;
+  // Foto do Corretor: só ADM pode subir/trocar/remover (pedido do usuário
+  // 29/08/2026). Quem não é ADM nem vê o campo — a segunda trava fica no
+  // servidor (ver atualizarParceiroAction em app/parceiros/actions.ts).
+  isAdm: boolean;
 }) {
   const p = parceiro;
   const [resultado, formAction] = useActionState(action, undefined);
+  const podeEditarFoto = isAdm && (!p || p.funcao === FUNCAO_COM_FOTO_RANKING);
+  const [fotoPreview, setFotoPreview] = useState<string | null>(p?.foto_url ?? null);
+  const [fotoCaminho, setFotoCaminho] = useState("");
+  const [removerFoto, setRemoverFoto] = useState(false);
+  const [enviandoFoto, setEnviandoFoto] = useState(false);
+  const [erroFoto, setErroFoto] = useState<string | null>(null);
+
+  async function aoSelecionarFoto(e: React.ChangeEvent<HTMLInputElement>) {
+    const arquivo = e.target.files?.[0];
+    e.target.value = "";
+    if (!arquivo) return;
+    setErroFoto(null);
+    setEnviandoFoto(true);
+    try {
+      const arquivoRecortado = await paraRetrato1080x1920(arquivo);
+      const preparo = await prepararUploadFotoParceiroAction(arquivoRecortado.name);
+      if (!preparo.ok) throw new Error(preparo.erro);
+      const { error: erroUpload } = await supabaseBrowser()
+        .storage.from(BUCKET_PARCEIROS_FOTOS)
+        .uploadToSignedUrl(preparo.caminho, preparo.token, arquivoRecortado, { contentType: arquivoRecortado.type });
+      if (erroUpload) throw new Error(`Falha ao enviar a foto: ${erroUpload.message}`);
+      setFotoCaminho(preparo.caminho);
+      setRemoverFoto(false);
+      setFotoPreview(URL.createObjectURL(arquivoRecortado));
+    } catch (erro) {
+      setErroFoto(erro instanceof Error ? erro.message : "Falha ao enviar a foto.");
+    } finally {
+      setEnviandoFoto(false);
+    }
+  }
+
+  function removerFotoAtual() {
+    setRemoverFoto(true);
+    setFotoCaminho("");
+    setFotoPreview(null);
+  }
   // Cadastro novo já nasce em modo de edição (não tem ficha pra mostrar
   // ainda). Cadastro existente abre em modo visualização — só entra em
   // edição clicando em "Editar" (mesmo padrão do AppSheet: side-by-side,
@@ -600,6 +697,51 @@ export function ParceiroForm({
             <div>
               <label className={LABEL}>Dia do fee</label>
               <input className={CAMPO} name="dia_fee" defaultValue={p?.dia_fee ?? ""} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {podeEditarFoto && (
+        <div className="bg-white border border-gray-200 rounded-xl p-4">
+          <div className="text-sm font-bold text-gray-800 mb-1">Foto (ranking de honorários)</div>
+          <p className="text-[11px] text-gray-400 mb-3">
+            Visível apenas para função Corretor, e só o ADM pode subir/trocar/remover. Formato retrato (Story),
+            1080x1920 — recortada automaticamente ao escolher a imagem. Aparece no ranking de honorários do site
+            público quando ele estiver entre os 3 que mais receberam honorário no mês.
+          </p>
+          <input type="hidden" name="foto_caminho" value={fotoCaminho} />
+          <input type="hidden" name="remover_foto" value={removerFoto ? "on" : ""} />
+          <div className="flex items-start gap-4">
+            <div className="w-24 aspect-[9/16] rounded-lg overflow-hidden bg-gray-100 border border-gray-200 shrink-0">
+              {fotoPreview ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={fotoPreview} alt="Foto do corretor" className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-[10px] text-gray-400 text-center px-1">
+                  Sem foto
+                </div>
+              )}
+            </div>
+            <div className="flex flex-col gap-2">
+              <input
+                type="file"
+                accept="image/*"
+                onChange={aoSelecionarFoto}
+                disabled={enviandoFoto}
+                className="text-xs"
+              />
+              {enviandoFoto && <span className="text-[11px] text-gray-400">Enviando...</span>}
+              {erroFoto && <span className="text-[11px] text-red-600">{erroFoto}</span>}
+              {fotoPreview && (
+                <button
+                  type="button"
+                  onClick={removerFotoAtual}
+                  className="text-[11px] text-red-600 hover:underline self-start"
+                >
+                  Remover foto
+                </button>
+              )}
             </div>
           </div>
         </div>

@@ -883,6 +883,15 @@ model parceiros {
   // transação nova — o administrativo continua podendo editar depois.
   porc_proprietario                                                           Decimal?                  @db.Decimal(6, 4)
   porc_interessado                                                            Decimal?                  @db.Decimal(6, 4)
+  // Foto do Corretor (só função "Corretor") pro ranking de honorários do
+  // dashboard externo (29/08/2026, pedido do usuário) — retrato 1080x1920
+  // (formato Story), recortado no navegador antes do upload. Só o ADM
+  // (isAdm) pode subir/trocar/remover, ver requireAdm() em
+  // atualizarFotoParceiroAction (app/parceiros/actions.ts). URL pública do
+  // bucket "parceiros-fotos" (lib/supabase-admin.ts), mesmo esquema de
+  // upload direto pro Storage via URL assinada já usado em Eventos/
+  // Publicações/Avaliações.
+  foto_url                                                                    String?
   dia_fee                                                                     Int?                      @db.SmallInt
   banco_id                                                                    String?                   @db.Uuid
   codigo_banco                                                                String?

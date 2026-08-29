@@ -7,7 +7,9 @@ import { PortalLoginPanel } from "@/components/site/portal-login-panel";
 import { ShareButton } from "@/components/site/share-button";
 import { PublicacaoCard } from "@/components/site/publicacao-card";
 import { EventoCard } from "@/components/site/evento-card";
+import { RankingHonorarios } from "@/components/site/ranking-honorarios";
 import { proximaOcorrencia } from "@/lib/eventos/ocorrencias";
+import { buscarRankingHonorariosMes } from "@/lib/parceiros/ranking-honorarios";
 
 export const dynamic = "force-dynamic";
 
@@ -43,6 +45,12 @@ export default async function LoginPage({
   }>;
 }) {
   const { erro, next, sac_ok, sac_erro, erro_portal, email_portal } = await searchParams;
+
+  // Ranking de honorários do mês (29/08/2026) — pedido do usuário, ver
+  // lib/parceiros/ranking-honorarios.ts. RankingHonorarios já não renderiza
+  // nada quando ninguém recebeu honorário ainda no mês (normal logo no
+  // início do mês, antes de qualquer repasse ser marcado como pago).
+  const rankingHonorarios = await buscarRankingHonorariosMes();
 
   const publicacoes = await prisma.publicacoes_site.findMany({
     // Checklist é conteúdo interno (só circula no Portal do Corretor e por
@@ -193,6 +201,8 @@ export default async function LoginPage({
             </div>
           </section>
         )}
+
+        <RankingHonorarios ranking={rankingHonorarios} />
 
         {/* SAC */}
         <section id="sac" className="mb-16">

@@ -41,3 +41,7 @@ export const BUCKET_AVALIACOES_IMAGENS = "avaliacoes-imagens";
 // Precisa bater com BUCKET_EVENTOS em lib/supabase-admin.ts — upload direto
 // da imagem de capa dos Eventos.
 export const BUCKET_EVENTOS = "eventos";
+
+// Precisa bater com BUCKET_PARCEIROS_FOTOS em lib/supabase-admin.ts —
+// upload direto da foto do Corretor (ranking de honorários).
+export const BUCKET_PARCEIROS_FOTOS = "parceiros-fotos";

@@ -2,11 +2,13 @@ import Link from "next/link";
 import { Topbar } from "@/components/topbar";
 import { prisma } from "@/lib/prisma";
 import { ParceiroForm } from "@/components/parceiro-form";
+import { requireAdminSession } from "@/lib/auth";
 import { criarParceiroAction } from "../actions";
 
 export const dynamic = "force-dynamic";
 
 export default async function NovoParceiroPage() {
+  const session = await requireAdminSession();
   const [lojas, bancos, estados, cidades] = await Promise.all([
     prisma.lojas.findMany({ orderBy: { nome: "asc" } }),
     prisma.bancos.findMany({ orderBy: { nome: "asc" } }),
@@ -31,6 +33,7 @@ export default async function NovoParceiroPage() {
         estados={estados}
         cidades={cidades}
         action={criarParceiroAction}
+        isAdm={session.isAdm}
       />
     </div>
   );

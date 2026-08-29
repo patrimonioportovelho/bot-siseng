@@ -13,6 +13,8 @@ import { formatMoeda, situacaoVencimento, hojePortoVelho, STATUS_TRANSACAO_EM_AB
 import { STATUS_AVALIACAO_ATIVOS, STATUS_AVALIACAO_ENCERRADOS } from "@/lib/financiamento/opcoes";
 import { calcularAlcancado, avaliarMeta } from "@/lib/metas/calculo";
 import { PortalMetasPainel } from "@/components/portal-metas-painel";
+import { buscarRankingHonorariosMes, avaliarRankingCorretor } from "@/lib/parceiros/ranking-honorarios";
+import { PortalRankingHonorarioBanner } from "@/components/portal-ranking-honorario-banner";
 
 const IMOBVIEW_URL = "https://www.imobview.pro/login";
 
@@ -329,6 +331,12 @@ export default async function PortalPage() {
     metasAtivas.map(async (m) => ({ meta: m, avaliacao: avaliarMeta(m, await calcularAlcancado(m)) }))
   );
 
+  // Ranking de honorários do mês (29/08/2026) — só função Corretor entra
+  // (Corretor Estagiário fica de fora, pedido do usuário). Ver
+  // lib/parceiros/ranking-honorarios.ts.
+  const situacaoRanking =
+    parceiroFuncao?.funcao === "Corretor" ? avaliarRankingCorretor(await buscarRankingHonorariosMes(), pid) : null;
+
   return (
     <div className="min-h-screen bg-gray-50">
       <PortalHeader nome={session.nome} />
@@ -353,6 +361,8 @@ export default async function PortalPage() {
             Toque pra ver →
           </Link>
         )}
+
+        {situacaoRanking && <PortalRankingHonorarioBanner situacao={situacaoRanking} />}
 
         <PortalMetasPainel metas={metasComProgresso} />
 

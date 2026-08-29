@@ -102,11 +102,16 @@ export default async function ConfiguracoesPage({
     // Sócios em destaque no dashboard externo (/login) — reaproveita a foto e
     // o nome do próprio Parceiro (ver socios_dashboard no schema). Ordenado
     // por criado_em: é assim que a ordem de exibição é decidida (sem tela de
-    // reordenar por enquanto).
-    prisma.socios_dashboard.findMany({
-      orderBy: { criado_em: "asc" },
-      include: { parceiros: { select: { nome: true, foto_url: true } } }
-    }),
+    // reordenar por enquanto). .catch(() => []) de propósito — ver mesmo
+    // comentário em app/login/page.tsx: sem isso, essa query sozinha
+    // derrubava a tela de Configurações inteira (Promise.all falha tudo se
+    // uma falhar) enquanto a tabela socios_dashboard ainda não existisse.
+    prisma.socios_dashboard
+      .findMany({
+        orderBy: { criado_em: "asc" },
+        include: { parceiros: { select: { nome: true, foto_url: true } } }
+      })
+      .catch(() => []),
     prisma.lojas.findMany({ orderBy: { nome: "asc" } }),
     prisma.logs_acesso.findMany({
       orderBy: { criado_em: "desc" },

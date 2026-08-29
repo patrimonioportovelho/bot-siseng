@@ -54,12 +54,19 @@ export default async function LoginPage({
   const rankingHonorarios = await buscarRankingHonorariosMes();
 
   // Sócios em destaque, logo abaixo do Ranking — ver Configurações > Sócios
-  // (só ADM cadastra) e components/site/socios-secao.tsx.
-  const sociosDashboard = await prisma.socios_dashboard.findMany({
-    orderBy: { criado_em: "asc" },
-    take: 3,
-    include: { parceiros: { select: { nome: true, foto_url: true } } }
-  });
+  // (só ADM cadastra) e components/site/socios-secao.tsx. .catch(() => [])
+  // de propósito: essa tabela é nova (socios_dashboard) e o deploy do código
+  // (git push) e da tabela (npx prisma db push) não são atômicos — sem essa
+  // rede de segurança, um "git push" feito antes do "db push" derrubava a
+  // página pública inteira (erro "relation does not exist"), não só a seção
+  // de sócios.
+  const sociosDashboard = await prisma.socios_dashboard
+    .findMany({
+      orderBy: { criado_em: "asc" },
+      take: 3,
+      include: { parceiros: { select: { nome: true, foto_url: true } } }
+    })
+    .catch(() => []);
 
   const publicacoes = await prisma.publicacoes_site.findMany({
     // Checklist é conteúdo interno (só circula no Portal do Corretor e por

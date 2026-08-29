@@ -340,13 +340,20 @@ export default async function DashboardPage({
     // inclusive pros Andamentos vinculados (por isso eles vêm aninhados aqui,
     // em vez de uma query separada filtrando por Data de conclusão).
     prisma.avaliacoes.findMany({
-      where: { data_avaliacao: { gte: inicio, lt: fimExclusivo }, ...whereLojaFiltroParceiro(lojasFiltro) },
+      where: {
+        excluido: false,
+        data_avaliacao: { gte: inicio, lt: fimExclusivo },
+        ...whereLojaFiltroParceiro(lojasFiltro)
+      },
       select: {
         status: true,
         valor_aprovado: true,
         data_avaliacao: true,
         parceiro_id: true,
-        andamentos: { select: { status_andamento: true, data_conclusao: true, valor_financiado: true } }
+        andamentos: {
+          where: { excluido: false },
+          select: { status_andamento: true, data_conclusao: true, valor_financiado: true }
+        }
       }
     }),
     // Gráfico "Evolução do período" (hero do dashboard, pedido do usuário):
@@ -358,7 +365,7 @@ export default async function DashboardPage({
       where: {
         pago: true,
         data_pagamento: { gte: inicio, lt: fimExclusivo },
-        transacoes: { tipo: { in: ["Compra e Venda", "Locação"] }, loja_id: { in: lojasFiltro } }
+        transacoes: { tipo: { in: ["Compra e Venda", "Locação"] }, loja_id: { in: lojasFiltro }, excluido: false }
       },
       select: { tipo: true, valor: true, data_pagamento: true }
     }),
@@ -368,7 +375,7 @@ export default async function DashboardPage({
           where: {
             pago: true,
             data_pagamento: { gte: inicioAnterior, lt: fimAnteriorExclusivo },
-            transacoes: { tipo: { in: ["Compra e Venda", "Locação"] }, loja_id: { in: lojasFiltro } }
+            transacoes: { tipo: { in: ["Compra e Venda", "Locação"] }, loja_id: { in: lojasFiltro }, excluido: false }
           },
           select: { tipo: true, valor: true, data_pagamento: true }
         })
@@ -1388,7 +1395,7 @@ export default async function DashboardPage({
         </div>
       </div>
 
-      <DashboardSaude />
+      <DashboardSaude lojasFiltro={lojasFiltro} />
 
       <div className="bg-white border border-gray-200 rounded-xl p-4 mt-5">
         <div className="flex items-center justify-between mb-1 flex-wrap gap-2">
@@ -1629,8 +1636,9 @@ export default async function DashboardPage({
           </Link>
         </div>
         <p className="text-[11px] text-gray-400 mb-4">
-          Foto do pipeline agora — {todasOrdensMarketing.length} Ordem(ns) ativa(s). Não é filtrado pelo período
-          selecionado acima (mesmo critério do "Perfil de Clientes e Imóveis").
+          Foto do pipeline agora — {todasOrdensMarketing.length} Ordem(ns) no total (inclui já publicadas/com
+          resultado, só exclui as apagadas). Não é filtrado pelo período selecionado acima (mesmo critério do
+          "Perfil de Clientes e Imóveis").
         </p>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">

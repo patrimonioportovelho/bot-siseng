@@ -74,9 +74,15 @@ export function whereLojaFiltroObrigatorio(selecionadas: string[], campo: string
 // escondê-la. Só usar quando o `where` da consulta ainda não tiver um `OR`
 // próprio (senão essa chave sobrescreve o outro) — nesse caso, envolva os
 // dois num `AND`.
+//
+// Inclui `excluido: false` na transação (achado da auditoria de 29/08/2026):
+// apagar uma transação é sempre soft-delete e NÃO limpa/cancela as
+// movimentações vinculadas a ela — sem esse filtro, uma transação apagada
+// continuava puxando dinheiro pros totais de Recebido/Pago/Vencido do
+// Dashboard e do Financeiro.
 export function whereLojaFiltroMovimentacao(selecionadas: string[]) {
   return {
-    OR: [{ transacao_id: null }, { transacoes: { loja_id: { in: selecionadas } } }]
+    OR: [{ transacao_id: null }, { transacoes: { loja_id: { in: selecionadas }, excluido: false } }]
   };
 }
 

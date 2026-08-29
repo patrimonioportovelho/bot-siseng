@@ -1,7 +1,14 @@
 import Link from "next/link";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { formatMoeda } from "@/lib/format";
+import { formatMoeda, hojePortoVelho, STATUS_TRANSACAO_EM_ABERTO } from "@/lib/format";
 import { STATUS_AVALIACAO_OPCOES } from "@/lib/financiamento/opcoes";
+import {
+  whereLojaFiltro,
+  whereLojaFiltroObrigatorio,
+  whereLojaFiltroParceiro,
+  whereLojaFiltroMovimentacao
+} from "@/lib/lojas/filtro";
 
 // Seção "Saúde da operação" do Dashboard — nasceu da revisão geral de
 // 21/07/2026 (ver RELATORIO_REVISAO_SISTEMA_2026-07-21.md): consolida os
@@ -17,20 +24,8 @@ import { STATUS_AVALIACAO_OPCOES } from "@/lib/financiamento/opcoes";
 // page.tsx já tem 1300+ linhas e um "Promise.all" gigante; isso aqui roda as
 // próprias queries e pode ser movido/reordenado sem mexer no resto.
 
-const STATUS_TRANSACAO_ATIVAS = [
-  "Elaboração do Contrato de Compra e Venda",
-  "Elaboração de Contrato de Locação",
-  "Imóvel em Locação"
-];
-
-function hojeSemHora(): Date {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-export async function DashboardSaude() {
-  const hoje = hojeSemHora();
+export async function DashboardSaude({ lojasFiltro }: { lojasFiltro: string[] }) {
+  const hoje = hojePortoVelho();
 
   const [
     movsVencidas,
@@ -47,7 +42,7 @@ export async function DashboardSaude() {
     condicoesComComissao
   ] = await Promise.all([
     prisma.movimentacoes.findMany({
-      where: { pago: false, vencimento: { lt: hoje } },
+      where: { pago: false, vencimento: { lt: hoje }, ...whereLojaFiltroMovimentacao(lojasFiltro) },
       select: {
         id: true,
         valor: true,
@@ -58,16 +53,30 @@ export async function DashboardSaude() {
       }
     }),
     prisma.transacoes.findMany({
-      where: { tipo: "Locação", status: "Imóvel em Locação" },
+      where: {
+        excluido: false,
+        tipo: "Locação",
+        status: "Imóvel em Locação",
+        ...whereLojaFiltroObrigatorio(lojasFiltro)
+      },
       select: { id: true, id_legado: true, imoveis: { select: { endereco: true } } }
     }),
+    // Sem filtro de loja aqui de propósito: só serve pra saber se um
+    // transacao_id específico (já filtrado por loja em locacoesAtivas acima)
+    // tem cobrança futura — uma movimentação de OUTRA loja nunca bate com um
+    // id de locacoesAtivas mesmo, então filtrar de novo aqui não mudaria nada.
     prisma.movimentacoes.findMany({
-      where: { pago: false, vencimento: { gte: hoje }, transacao_id: { not: null } },
+      where: { tipo: "Recebimento", pago: false, vencimento: { gte: hoje }, transacao_id: { not: null } },
       select: { transacao_id: true },
       distinct: ["transacao_id"]
     }),
     prisma.transacoes.findMany({
-      where: { tipo: "Compra e Venda", status: "Elaboração do Contrato de Compra e Venda" },
+      where: {
+        excluido: false,
+        tipo: "Compra e Venda",
+        status: "Elaboração do Contrato de Compra e Venda",
+        ...whereLojaFiltroObrigatorio(lojasFiltro)
+      },
       select: {
         id: true,
         id_legado: true,
@@ -76,7 +85,7 @@ export async function DashboardSaude() {
       }
     }),
     prisma.transacoes.findMany({
-      where: { status: { in: STATUS_TRANSACAO_ATIVAS } },
+      where: { excluido: false, status: STATUS_TRANSACAO_EM_ABERTO, ...whereLojaFiltroObrigatorio(lojasFiltro) },
       select: {
         id: true,
         id_legado: true,
@@ -89,24 +98,33 @@ export async function DashboardSaude() {
       }
     }),
     prisma.avaliacoes.findMany({
-      where: { excluido: false },
+      where: { excluido: false, ...whereLojaFiltroParceiro(lojasFiltro) },
       select: { status: true }
     }),
-    prisma.andamentos.findMany({ where: { excluido: false }, select: { status_andamento: true } }),
-    prisma.clientes.count({ where: { tipo_cliente: "Pessoa Física" } }),
-    prisma.clientes.count({ where: { tipo_cliente: "Pessoa Física", cpf: null } }),
-    prisma.clientes.count({ where: { tipo_cliente: "Pessoa Física", telefone: null } }),
+    prisma.andamentos.findMany({
+      where: { excluido: false, avaliacoes: { ...whereLojaFiltroParceiro(lojasFiltro) } },
+      select: { status_andamento: true }
+    }),
+    prisma.clientes.count({ where: { tipo_cliente: "Pessoa Física", ...whereLojaFiltro(lojasFiltro) } }),
+    prisma.clientes.count({ where: { tipo_cliente: "Pessoa Física", cpf: null, ...whereLojaFiltro(lojasFiltro) } }),
+    prisma.clientes.count({
+      where: { tipo_cliente: "Pessoa Física", telefone: null, ...whereLojaFiltro(lojasFiltro) }
+    }),
+    // Filtro de loja aqui aceita cliente sem loja definida (legado) OU dentro
+    // das lojas selecionadas — mesmo critério do whereLojaFiltro acima, só
+    // que escrito à mão porque é SQL puro (Prisma.join monta o "IN" com os
+    // parâmetros escapados, sem risco de injection).
     prisma.$queryRaw<Array<{ cpf_dup: bigint; nome_dup: bigint }>>`
       select
-        (select count(*) from (select cpf from clientes where cpf is not null group by cpf having count(*) > 1) a) as cpf_dup,
-        (select count(*) from (select lower(nome) from clientes group by lower(nome) having count(*) > 1) b) as nome_dup
+        (select count(*) from (select cpf from clientes where cpf is not null and (loja_id is null or loja_id in (${Prisma.join(lojasFiltro)})) group by cpf having count(*) > 1) a) as cpf_dup,
+        (select count(*) from (select lower(nome) from clientes where loja_id is null or loja_id in (${Prisma.join(lojasFiltro)}) group by lower(nome) having count(*) > 1) b) as nome_dup
     `,
     // Previsão de honorários — condições de pagamento marcadas como
     // "honorário devido aqui" (ver comissionamento na transação), pra saber
     // quando o dinheiro é esperado, mês a mês. Pedido do usuário: "termos no
     // dashboard as previsões conforme período".
     prisma.condicoes_pagamento.findMany({
-      where: { gera_comissao: true, transacoes: { excluido: false } },
+      where: { gera_comissao: true, transacoes: { excluido: false, ...whereLojaFiltroObrigatorio(lojasFiltro) } },
       select: {
         id: true,
         tipo: true,
@@ -256,7 +274,7 @@ export async function DashboardSaude() {
       <div className="text-sm font-bold text-gray-800 mb-1">Saúde da operação</div>
       <p className="text-[11px] text-gray-400 mb-4">
         Indicadores de acompanhamento calculados ao vivo — cada número aponta onde precisa de ação. Não dependem
-        do filtro de período acima: mostram a foto de hoje.
+        do filtro de período acima (mostram a foto de hoje), mas respeitam a Loja selecionada no topo.
       </p>
 
       <div className="grid md:grid-cols-2 gap-4">

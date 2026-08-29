@@ -12,6 +12,14 @@ type ParceiroComissao = {
   status_funcao: string;
   porcProprietario: number | null;
   porcInteressado: number | null;
+  // Sugestão recuperada do log de auditoria (só vem preenchida quando o
+  // campo real está vazio — ver lib/parceiros/recuperar-comissionamento.ts).
+  // Só serve pra pré-preencher o campo pro admin revisar; nada é salvo
+  // sozinho.
+  sugestaoProprietario?: number | null;
+  sugestaoInteressado?: number | null;
+  sugestaoFonteProprietario?: string | null;
+  sugestaoFonteInteressado?: string | null;
 };
 
 const CAMPO = "text-xs border border-gray-300 rounded-lg px-2 py-1 w-24 outline-none focus:border-primary bg-white";
@@ -26,8 +34,10 @@ export function ComissionamentoLoteForm({ parceiros }: { parceiros: ParceiroComi
   const [linhas, setLinhas] = useState(() =>
     parceiros.map((p) => ({
       id: p.id,
-      porc_proprietario: formatPercentual(p.porcProprietario),
-      porc_interessado: formatPercentual(p.porcInteressado)
+      // Se o campo real está vazio mas achou sugestão no histórico, pré-
+      // preenche com ela (o admin ainda pode apagar/corrigir antes de salvar).
+      porc_proprietario: formatPercentual(p.porcProprietario ?? p.sugestaoProprietario ?? null),
+      porc_interessado: formatPercentual(p.porcInteressado ?? p.sugestaoInteressado ?? null)
     }))
   );
   const [resultado, formAction] = useActionState(salvarComissionamentoLoteAction, undefined);
@@ -39,6 +49,7 @@ export function ComissionamentoLoteForm({ parceiros }: { parceiros: ParceiroComi
   }
 
   const semNenhumPercentual = (p: ParceiroComissao) => p.porcProprietario == null && p.porcInteressado == null;
+  const temSugestao = (p: ParceiroComissao) => p.sugestaoProprietario != null || p.sugestaoInteressado != null;
 
   return (
     <form action={formAction} className="flex flex-col gap-3">
@@ -56,30 +67,44 @@ export function ComissionamentoLoteForm({ parceiros }: { parceiros: ParceiroComi
           {parceiros.map((p, i) => (
             <div
               key={p.id}
-              className={`grid grid-cols-1 gap-2 md:grid-cols-[2fr_1.2fr_1fr_120px_120px] md:gap-3 md:items-center px-4 py-2.5 ${
-                semNenhumPercentual(p) ? "bg-amber-50/50" : ""
+              className={`grid grid-cols-1 gap-2 md:grid-cols-[2fr_1.2fr_1fr_120px_120px] md:gap-3 md:items-start px-4 py-2.5 ${
+                temSugestao(p) ? "bg-primary/5" : semNenhumPercentual(p) ? "bg-amber-50/50" : ""
               }`}
             >
               <span className="text-xs font-medium text-gray-800">
                 {p.nome}
-                {semNenhumPercentual(p) && (
-                  <span className="ml-2 text-[10px] font-semibold text-amber-600 uppercase">sem comissionamento</span>
+                {temSugestao(p) ? (
+                  <span className="ml-2 text-[10px] font-semibold text-primary uppercase">histórico recuperado — confira</span>
+                ) : (
+                  semNenhumPercentual(p) && (
+                    <span className="ml-2 text-[10px] font-semibold text-amber-600 uppercase">sem comissionamento</span>
+                  )
                 )}
               </span>
               <span className="text-xs text-gray-500">{p.funcao}</span>
               <span className="text-xs text-gray-500">{p.status_funcao}</span>
-              <input
-                className={CAMPO}
-                placeholder="Ex.: 22,5"
-                value={linhas[i].porc_proprietario}
-                onChange={(e) => atualizar(p.id, "porc_proprietario", e.target.value)}
-              />
-              <input
-                className={CAMPO}
-                placeholder="Ex.: 25"
-                value={linhas[i].porc_interessado}
-                onChange={(e) => atualizar(p.id, "porc_interessado", e.target.value)}
-              />
+              <div>
+                <input
+                  className={CAMPO}
+                  placeholder="Ex.: 22,5"
+                  value={linhas[i].porc_proprietario}
+                  onChange={(e) => atualizar(p.id, "porc_proprietario", e.target.value)}
+                />
+                {p.sugestaoProprietario != null && (
+                  <div className="text-[10px] text-primary mt-0.5">↺ histórico{p.sugestaoFonteProprietario ? ` de ${p.sugestaoFonteProprietario}` : ""}</div>
+                )}
+              </div>
+              <div>
+                <input
+                  className={CAMPO}
+                  placeholder="Ex.: 25"
+                  value={linhas[i].porc_interessado}
+                  onChange={(e) => atualizar(p.id, "porc_interessado", e.target.value)}
+                />
+                {p.sugestaoInteressado != null && (
+                  <div className="text-[10px] text-primary mt-0.5">↺ histórico{p.sugestaoFonteInteressado ? ` de ${p.sugestaoFonteInteressado}` : ""}</div>
+                )}
+              </div>
             </div>
           ))}
         </div>

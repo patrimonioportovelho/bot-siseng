@@ -3,6 +3,7 @@ import { Topbar } from "@/components/topbar";
 import { prisma } from "@/lib/prisma";
 import { FUNCOES_CORRETOR } from "@/lib/transacoes/opcoes";
 import { ComissionamentoLoteForm } from "@/components/comissionamento-lote-form";
+import { buscarSugestoesComissionamento } from "@/lib/parceiros/recuperar-comissionamento";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +14,13 @@ export const dynamic = "force-dynamic";
 // cadastro que nunca teve o comissionamento preenchido (destacado em
 // amarelo) — usuário: "nem todos tem ainda pode ser erro de cadastro do
 // administrativo".
+//
+// 29/08/2026 — usuário pediu pra ir além: "veja quais já tiveram e traga de
+// volta". Pra quem está com campo vazio, buscamos no log de auditoria
+// (logs_alteracao) se algum valor antigo ficou preservado ali (ver
+// lib/parceiros/recuperar-comissionamento.ts) e PRÉ-PREENCHEMOS o campo como
+// sugestão — quem já tem valor no cadastro nunca é tocado/sugerido, e nada é
+// salvo até o administrativo revisar e clicar em "Salvar tudo".
 export default async function ComissionamentoPage({
   searchParams
 }: {
@@ -26,7 +34,7 @@ export default async function ComissionamentoPage({
     select: { id: true, nome: true, funcao: true, status_funcao: true, porc_proprietario: true, porc_interessado: true }
   });
 
-  const parceiros = parceirosBrutos.map((p) => ({
+  const parceirosBase = parceirosBrutos.map((p) => ({
     id: p.id,
     nome: p.nome,
     funcao: p.funcao,
@@ -35,7 +43,24 @@ export default async function ComissionamentoPage({
     porcInteressado: p.porc_interessado != null ? Number(p.porc_interessado) : null
   }));
 
+  const idsComFaltante = parceirosBase.filter((p) => p.porcProprietario == null || p.porcInteressado == null).map((p) => p.id);
+  const sugestoes = await buscarSugestoesComissionamento(idsComFaltante);
+
+  const parceiros = parceirosBase.map((p) => {
+    const sugestao = sugestoes.get(p.id);
+    return {
+      ...p,
+      // Só oferece sugestão pro campo que está vazio hoje — se já tem valor,
+      // sugestaoX fica null e o campo mostra só o valor real, sem rótulo.
+      sugestaoProprietario: p.porcProprietario == null ? (sugestao?.proprietario ?? null) : null,
+      sugestaoInteressado: p.porcInteressado == null ? (sugestao?.interessado ?? null) : null,
+      sugestaoFonteProprietario: p.porcProprietario == null ? (sugestao?.fonteProprietario ?? null) : null,
+      sugestaoFonteInteressado: p.porcInteressado == null ? (sugestao?.fonteInteressado ?? null) : null
+    };
+  });
+
   const semNenhum = parceiros.filter((p) => p.porcProprietario == null && p.porcInteressado == null).length;
+  const comSugestao = parceiros.filter((p) => p.sugestaoProprietario != null || p.sugestaoInteressado != null).length;
 
   return (
     <div>
@@ -51,6 +76,13 @@ export default async function ComissionamentoPage({
         quando ele é escolhido numa transação nova.
         {semNenhum > 0 && (
           <span className="text-amber-600 font-semibold"> {semNenhum} sem nenhum percentual preenchido ainda.</span>
+        )}
+        {comSugestao > 0 && (
+          <span className="text-primary font-semibold">
+            {" "}
+            {comSugestao} {comSugestao === 1 ? "tem" : "têm"} valor antigo recuperado do histórico abaixo — confira e clique em
+            &quot;Salvar tudo&quot; pra confirmar.
+          </span>
         )}
       </p>
 

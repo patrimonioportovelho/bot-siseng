@@ -8,6 +8,7 @@ import { ShareButton } from "@/components/site/share-button";
 import { PublicacaoCard } from "@/components/site/publicacao-card";
 import { EventoCard } from "@/components/site/evento-card";
 import { RankingHonorarios } from "@/components/site/ranking-honorarios";
+import { SociosSecao } from "@/components/site/socios-secao";
 import { proximaOcorrencia } from "@/lib/eventos/ocorrencias";
 import { buscarRankingHonorariosMes } from "@/lib/parceiros/ranking-honorarios";
 
@@ -51,6 +52,14 @@ export default async function LoginPage({
   // nada quando ninguém recebeu honorário ainda no mês (normal logo no
   // início do mês, antes de qualquer repasse ser marcado como pago).
   const rankingHonorarios = await buscarRankingHonorariosMes();
+
+  // Sócios em destaque, logo abaixo do Ranking — ver Configurações > Sócios
+  // (só ADM cadastra) e components/site/socios-secao.tsx.
+  const sociosDashboard = await prisma.socios_dashboard.findMany({
+    orderBy: { criado_em: "asc" },
+    take: 3,
+    include: { parceiros: { select: { nome: true, foto_url: true } } }
+  });
 
   const publicacoes = await prisma.publicacoes_site.findMany({
     // Checklist é conteúdo interno (só circula no Portal do Corretor e por
@@ -203,6 +212,8 @@ export default async function LoginPage({
         )}
 
         <RankingHonorarios ranking={rankingHonorarios} />
+
+        <SociosSecao socios={sociosDashboard} />
 
         {/* SAC */}
         <section id="sac" className="mb-16">

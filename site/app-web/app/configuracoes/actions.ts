@@ -268,6 +268,72 @@ export async function atualizarStatusSacAction(formData: FormData) {
   revalidatePath("/configuracoes");
 }
 
+// Sócios em destaque no dashboard externo (/login), logo abaixo do Ranking de
+// honorários — ver model socios_dashboard no schema. Reaproveita foto/nome de
+// um Parceiro já cadastrado: só ADM escolhe o parceiro e digita a função
+// dentro da imobiliária (ex. "Sócio-diretor"). Sem tela de reordenar — a
+// ordem de exibição é a ordem de cadastro (criado_em); pra reordenar, remove
+// e cadastra de novo.
+export async function criarSocioDashboardAction(formData: FormData) {
+  await requireAdm();
+
+  const parceiroId = String(formData.get("parceiroId") ?? "").trim();
+  const funcao = String(formData.get("funcao") ?? "").trim();
+  if (!parceiroId || !funcao) {
+    redirect(`/configuracoes?erro=${encodeURIComponent("Selecione o parceiro e digite a função.")}`);
+  }
+
+  const jaExiste = await prisma.socios_dashboard.findUnique({ where: { parceiro_id: parceiroId } });
+  if (jaExiste) {
+    redirect(`/configuracoes?erro=${encodeURIComponent("Esse parceiro já está na lista de sócios.")}`);
+  }
+
+  const total = await prisma.socios_dashboard.count();
+  if (total >= 3) {
+    redirect(
+      `/configuracoes?erro=${encodeURIComponent("Já tem 3 sócios cadastrados (o máximo exibido no site). Remova um antes de adicionar outro.")}`
+    );
+  }
+
+  const criado = await prisma.socios_dashboard
+    .create({ data: { parceiro_id: parceiroId, funcao } })
+    .catch((erro) => registrarEJogarErro({ entidadeTipo: "socios_dashboard", acao: "criar", erro }));
+
+  await logAlteracao({
+    entidadeTipo: "socios_dashboard",
+    entidadeId: criado.id,
+    acao: "criar",
+    dadosDepois: { parceiro_id: parceiroId, funcao }
+  });
+
+  revalidatePath("/configuracoes");
+  revalidatePath("/login");
+  redirect("/configuracoes?salvo_socio=1");
+}
+
+export async function removerSocioDashboardAction(formData: FormData) {
+  await requireAdm();
+  const id = String(formData.get("socioId") ?? "");
+  if (!id) return;
+
+  const antes = await prisma.socios_dashboard.findUnique({ where: { id } });
+  if (!antes) return;
+
+  await prisma.socios_dashboard
+    .delete({ where: { id } })
+    .catch((erro) => registrarEJogarErro({ entidadeTipo: "socios_dashboard", entidadeId: id, acao: "excluir", erro }));
+
+  await logAlteracao({
+    entidadeTipo: "socios_dashboard",
+    entidadeId: id,
+    acao: "excluir",
+    dadosAntes: { parceiro_id: antes.parceiro_id, funcao: antes.funcao }
+  });
+
+  revalidatePath("/configuracoes");
+  revalidatePath("/login");
+}
+
 // Erros de cadastro (logs_erro) — cada erro de salvamento (ex.: constraint do
 // banco rejeitando um valor) fica registrado aqui pra dar pra consultar
 // depois; "marcar visto" só tira da contagem de pendentes, não apaga nada.

@@ -834,7 +834,7 @@ model parceiros {
   nome                                                                        String
   // Já existia no schema original (sem uso até então) — reaproveitado
   // 29/08/2026 pro ranking de honorários (só função "Corretor") pro
-  // dashboard externo: retrato 1080x1920 (formato Story), recortado no
+  // dashboard externo: retrato 1080x1350 (formato post), recortado no
   // navegador antes do upload. Só o ADM (isAdm) pode subir/trocar/remover —
   // ver o bloco de foto em atualizarParceiroAction/criarParceiroAction
   // (app/parceiros/actions.ts). URL pública do bucket "parceiros-fotos"
@@ -919,6 +919,7 @@ model parceiros {
   noticias                                                                    noticias[]
   pagamentos                                                                  pagamentos[]
   publicacoes_site                                                           publicacoes_site[]
+  socios_dashboard                                                           socios_dashboard?
   mensagens_sac                                                              mensagens_sac[]
   logs_erro                                                                  logs_erro[]
   manutencoes                                                                manutencoes[]
@@ -1010,6 +1011,22 @@ model publicacoes_site {
 
   @@index([ativo, publicado_em], map: "idx_publicacoes_site_ativo")
   @@index([portal_corretor, ativo, publicado_em], map: "idx_publicacoes_site_portal")
+}
+
+/// Sócios da imobiliária em destaque no dashboard externo (/login), logo
+/// abaixo do Ranking de honorários — pedido do usuário 29/08/2026. Reaproveita
+/// foto e nome de um Parceiro já cadastrado (não tem foto própria: o admin só
+/// escolhe o parceiro numa lista e digita a função dentro da imobiliária, ex.
+/// "Sócio-diretor") — @unique em parceiro_id porque cada parceiro só pode
+/// aparecer uma vez na lista de sócios. Mostra no máximo 3 no site, na ordem
+/// de cadastro (criado_em) — sem tela de reordenar por enquanto: pra mudar a
+/// ordem, remove e cadastra de novo na ordem desejada.
+model socios_dashboard {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  parceiro_id String    @unique @db.Uuid
+  funcao      String
+  criado_em   DateTime  @default(now()) @db.Timestamptz(6)
+  parceiros   parceiros @relation(fields: [parceiro_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 }
 
 /// Mensagens do formulário de SAC da página pública — não envia e-mail

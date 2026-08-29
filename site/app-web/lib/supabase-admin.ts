@@ -175,8 +175,8 @@ export async function apagarImagemEvento(imagemUrl: string | null | undefined): 
 // Mesmo esquema de upload direto pro Storage via URL assinada usado em
 // Eventos/Publicações acima — bucket público próprio (a foto aparece no
 // dashboard externo, /login, sem autenticação) porque o retrato do corretor
-// (1080x1920, formato Story) é bem diferente do quadrado das publicações e
-// do banner de eventos.
+// (1080x1350, formato retrato/post) é bem diferente do quadrado das
+// publicações e do banner de eventos.
 const BUCKET_PARCEIROS_FOTOS = "parceiros-fotos";
 
 async function garantirBucketParceirosFotos(): Promise<void> {

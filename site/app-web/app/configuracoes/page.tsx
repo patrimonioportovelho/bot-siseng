@@ -12,7 +12,9 @@ import {
   atualizarPublicacaoAction,
   alternarAtivoPublicacaoAction,
   excluirPublicacaoAction,
-  marcarErroVistoAction
+  marcarErroVistoAction,
+  criarSocioDashboardAction,
+  removerSocioDashboardAction
 } from "./actions";
 import { limparErrosAntigos } from "@/lib/erros";
 import { limparNoticiasAntigas } from "@/lib/publicacoes/limpeza";
@@ -43,9 +45,10 @@ export default async function ConfiguracoesPage({
     aprovado?: string;
     rejeitado?: string;
     salvo_publicacao?: string;
+    salvo_socio?: string;
   }>;
 }) {
-  const { salvo, erro, aprovado, rejeitado, salvo_publicacao } = await searchParams;
+  const { salvo, erro, aprovado, rejeitado, salvo_publicacao, salvo_socio } = await searchParams;
   const session = await getAdminSession();
 
   if (!session) {
@@ -76,7 +79,8 @@ export default async function ConfiguracoesPage({
   await Promise.all([limparErrosAntigos(), limparNoticiasAntigas()]);
   const lojasFiltro = await lojasSelecionadas();
 
-  const [pendentes, parceirosAtivos, lojas, acessos, alteracoes, publicacoes, mensagensSac, errosCadastro] = await Promise.all([
+  const [pendentes, parceirosAtivos, sociosDashboard, lojas, acessos, alteracoes, publicacoes, mensagensSac, errosCadastro] =
+    await Promise.all([
     prisma.solicitacoes_acesso.findMany({
       where: {
         status: "pendente",
@@ -94,6 +98,14 @@ export default async function ConfiguracoesPage({
       where: { status_funcao: "Ativo" },
       orderBy: { nome: "asc" },
       select: { id: true, nome: true, funcao: true }
+    }),
+    // Sócios em destaque no dashboard externo (/login) — reaproveita a foto e
+    // o nome do próprio Parceiro (ver socios_dashboard no schema). Ordenado
+    // por criado_em: é assim que a ordem de exibição é decidida (sem tela de
+    // reordenar por enquanto).
+    prisma.socios_dashboard.findMany({
+      orderBy: { criado_em: "asc" },
+      include: { parceiros: { select: { nome: true, foto_url: true } } }
     }),
     prisma.lojas.findMany({ orderBy: { nome: "asc" } }),
     prisma.logs_acesso.findMany({
@@ -142,6 +154,11 @@ export default async function ConfiguracoesPage({
       {salvo_publicacao === "1" && (
         <div className="bg-green-50 border border-green-200 text-green-700 text-xs rounded-lg px-3 py-2 mb-4">
           Publicação salva com sucesso.
+        </div>
+      )}
+      {salvo_socio === "1" && (
+        <div className="bg-green-50 border border-green-200 text-green-700 text-xs rounded-lg px-3 py-2 mb-4">
+          Sócio adicionado com sucesso.
         </div>
       )}
       {erro && (
@@ -248,6 +265,88 @@ export default async function ConfiguracoesPage({
             Salvar
           </button>
         </form>
+      </div>
+
+      <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4">
+        <div className="text-sm font-bold text-gray-800 mb-1">Sócios (dashboard externo)</div>
+        <p className="text-xs text-gray-500 mb-3">
+          Aparecem logo abaixo do Ranking de honorários na página pública (
+          <Link href="/login" className="text-primary">
+            /login
+          </Link>
+          ), até no máximo 3 — foto e nome vêm automáticos do cadastro do Parceiro escolhido, só digite a função
+          dentro da imobiliária. A ordem de exibição é a ordem de cadastro; pra mudar, remova e cadastre de novo
+          na ordem que quiser.
+        </p>
+
+        {sociosDashboard.length > 0 && (
+          <div className="flex flex-col gap-1.5 mb-3">
+            {sociosDashboard.map((s) => (
+              <div
+                key={s.id}
+                className="flex items-center gap-2.5 border border-gray-100 rounded-lg px-2.5 py-1.5"
+              >
+                <div className="w-8 aspect-[4/5] rounded overflow-hidden bg-gray-100 border border-gray-200 shrink-0">
+                  {s.parceiros.foto_url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={s.parceiros.foto_url} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-[9px] text-gray-400">—</div>
+                  )}
+                </div>
+                <div className="flex-1 min-w-0 text-xs">
+                  <div className="font-medium text-gray-800 truncate">{s.parceiros.nome}</div>
+                  <div className="text-gray-400 truncate">{s.funcao}</div>
+                </div>
+                <form action={removerSocioDashboardAction}>
+                  <input type="hidden" name="socioId" value={s.id} />
+                  <button type="submit" className="text-xs border border-red-200 text-red-600 rounded-lg px-2 py-1 shrink-0">
+                    Remover
+                  </button>
+                </form>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {sociosDashboard.length >= 3 ? (
+          <p className="text-xs text-gray-400">Já tem 3 sócios cadastrados (o máximo exibido no site).</p>
+        ) : (
+          <form action={criarSocioDashboardAction} className="flex gap-2 items-end flex-wrap">
+            <div>
+              <label className="text-xs text-gray-600 block mb-1">Parceiro</label>
+              <select
+                name="parceiroId"
+                required
+                defaultValue=""
+                className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-72 outline-none focus:border-primary bg-white"
+              >
+                <option value="" disabled>
+                  Selecione...
+                </option>
+                {parceirosAtivos
+                  .filter((p) => !sociosDashboard.some((s) => s.parceiro_id === p.id))
+                  .map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.nome} — {p.funcao}
+                    </option>
+                  ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs text-gray-600 block mb-1">Função na imobiliária</label>
+              <input
+                name="funcao"
+                required
+                placeholder="ex: Sócio-diretor"
+                className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-56 outline-none focus:border-primary"
+              />
+            </div>
+            <button type="submit" className="text-xs bg-primary text-white rounded-lg px-3 py-1.5">
+              Adicionar
+            </button>
+          </form>
+        )}
       </div>
 
       <div className="grid md:grid-cols-2 gap-4 mb-4">

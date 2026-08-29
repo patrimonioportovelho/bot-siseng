@@ -18,16 +18,17 @@ import { supabaseBrowser, BUCKET_PARCEIROS_FOTOS } from "@/lib/supabase-browser"
 // honorários do dashboard externo — pedido explícito do usuário 29/08/2026.
 const FUNCAO_COM_FOTO_RANKING = "Corretor";
 
-// Sempre recorta e redimensiona a foto pra exatamente 1080x1920 (retrato,
-// formato Story) — mesma lógica de paraQuadrado1080 em components/
-// evento-form.tsx, só que generalizada pra qualquer proporção alvo em vez de
-// só quadrado. Recorte central "cover" (usa o maior retângulo 9:16 possível
-// no meio da imagem, sem distorcer) e redesenha no tamanho final. Roda no
-// navegador antes do upload.
-async function paraRetrato1080x1920(arquivo: File): Promise<File> {
+// Sempre recorta e redimensiona a foto pra exatamente 1080x1350 (retrato 4:5,
+// formato "post" — trocado de 1080x1920/Story em 29/08/2026 a pedido do
+// usuário, pra ficar do tamanho das outras partes/cartões do site) — mesma
+// lógica de paraQuadrado1080 em components/evento-form.tsx, só que
+// generalizada pra qualquer proporção alvo em vez de só quadrado. Recorte
+// central "cover" (usa o maior retângulo 4:5 possível no meio da imagem, sem
+// distorcer) e redesenha no tamanho final. Roda no navegador antes do upload.
+async function paraRetrato1080x1350(arquivo: File): Promise<File> {
   const bitmap = await createImageBitmap(arquivo);
   const ALVO_LARGURA = 1080;
-  const ALVO_ALTURA = 1920;
+  const ALVO_ALTURA = 1350;
   const razaoAlvo = ALVO_LARGURA / ALVO_ALTURA;
   const razaoOrigem = bitmap.width / bitmap.height;
 
@@ -179,7 +180,7 @@ function Ficha({ parceiro, onEditar }: { parceiro: ParceiroExistente; onEditar: 
             <img
               src={p.foto_url}
               alt={`Foto de ${p.nome}`}
-              className="w-20 aspect-[9/16] object-cover rounded-lg border border-gray-200"
+              className="w-20 aspect-[4/5] object-cover rounded-lg border border-gray-200"
             />
           </div>
         )}
@@ -292,7 +293,7 @@ export function ParceiroForm({
     setErroFoto(null);
     setEnviandoFoto(true);
     try {
-      const arquivoRecortado = await paraRetrato1080x1920(arquivo);
+      const arquivoRecortado = await paraRetrato1080x1350(arquivo);
       const preparo = await prepararUploadFotoParceiroAction(arquivoRecortado.name);
       if (!preparo.ok) throw new Error(preparo.erro);
       const { error: erroUpload } = await supabaseBrowser()
@@ -706,14 +707,14 @@ export function ParceiroForm({
         <div className="bg-white border border-gray-200 rounded-xl p-4">
           <div className="text-sm font-bold text-gray-800 mb-1">Foto (ranking de honorários)</div>
           <p className="text-[11px] text-gray-400 mb-3">
-            Visível apenas para função Corretor, e só o ADM pode subir/trocar/remover. Formato retrato (Story),
-            1080x1920 — recortada automaticamente ao escolher a imagem. Aparece no ranking de honorários do site
+            Visível apenas para função Corretor, e só o ADM pode subir/trocar/remover. Formato retrato,
+            1080x1350 — recortada automaticamente ao escolher a imagem. Aparece no ranking de honorários do site
             público quando ele estiver entre os 3 que mais receberam honorário no mês.
           </p>
           <input type="hidden" name="foto_caminho" value={fotoCaminho} />
           <input type="hidden" name="remover_foto" value={removerFoto ? "on" : ""} />
           <div className="flex items-start gap-4">
-            <div className="w-24 aspect-[9/16] rounded-lg overflow-hidden bg-gray-100 border border-gray-200 shrink-0">
+            <div className="w-24 aspect-[4/5] rounded-lg overflow-hidden bg-gray-100 border border-gray-200 shrink-0">
               {fotoPreview ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={fotoPreview} alt="Foto do corretor" className="w-full h-full object-cover" />

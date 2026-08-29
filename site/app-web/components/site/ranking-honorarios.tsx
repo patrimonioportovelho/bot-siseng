@@ -19,7 +19,7 @@ function CartaoCorretor({ linha, posicao }: { linha: LinhaRankingHonorario; posi
   return (
     <div className="flex flex-col items-center w-full max-w-[220px] sm:max-w-[280px]">
       <span className="text-4xl mb-2">{MEDALHA[posicao - 1]}</span>
-      <div className="w-full aspect-[9/16] rounded-xl overflow-hidden border border-gray-200 bg-gray-100 shadow-sm">
+      <div className="w-full aspect-[4/5] rounded-xl overflow-hidden border border-gray-200 bg-gray-100 shadow-sm">
         {linha.fotoUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={linha.fotoUrl} alt={linha.nome} className="w-full h-full object-cover" />

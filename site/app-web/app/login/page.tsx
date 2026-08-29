@@ -206,7 +206,7 @@ export default async function LoginPage({
 
         {/* SAC */}
         <section id="sac" className="mb-16">
-          <div className="bg-white border border-gray-200 rounded-xl p-6 max-w-xl mx-auto">
+          <div className="bg-white border border-gray-200 rounded-xl p-6">
             <div className="flex items-start justify-between gap-2 mb-1">
               <div className="text-lg font-bold text-gray-800">Fale conosco (SAC)</div>
               <ShareButton

@@ -27,6 +27,13 @@ import {
 export async function DashboardSaude({ lojasFiltro }: { lojasFiltro: string[] }) {
   const hoje = hojePortoVelho();
 
+  // Todo o corpo (queries + cálculo) protegido por try/catch — achado depois
+  // do deploy de 29/08/2026 (achado 3/4 da auditoria): uma das ~12 queries do
+  // Promise.all falhando (aconteceu com o filtro de loja no $queryRaw
+  // cru — ver comentário abaixo) derrubava a página inteira do Dashboard,
+  // não só esta seção. Com o try/catch, se algo aqui falhar de novo, essa
+  // seção mostra um aviso e o resto do Dashboard continua funcionando normal.
+  try {
   const [
     movsVencidas,
     locacoesAtivas,
@@ -113,11 +120,14 @@ export async function DashboardSaude({ lojasFiltro }: { lojasFiltro: string[] })
     // Filtro de loja aqui aceita cliente sem loja definida (legado) OU dentro
     // das lojas selecionadas — mesmo critério do whereLojaFiltro acima, só
     // que escrito à mão porque é SQL puro (Prisma.join monta o "IN" com os
-    // parâmetros escapados, sem risco de injection).
+    // parâmetros escapados, sem risco de injection). loja_id::text porque o
+    // parâmetro chega sem tipo definido pro driver — comparar direto contra
+    // a coluna uuid dava "operator does not exist: uuid = text" (achado
+    // depois do deploy, corrigido em 30/08/2026).
     prisma.$queryRaw<Array<{ cpf_dup: bigint; nome_dup: bigint }>>`
       select
-        (select count(*) from (select cpf from clientes where cpf is not null and (loja_id is null or loja_id in (${Prisma.join(lojasFiltro)})) group by cpf having count(*) > 1) a) as cpf_dup,
-        (select count(*) from (select lower(nome) from clientes where loja_id is null or loja_id in (${Prisma.join(lojasFiltro)}) group by lower(nome) having count(*) > 1) b) as nome_dup
+        (select count(*) from (select cpf from clientes where cpf is not null and (loja_id is null or loja_id::text in (${Prisma.join(lojasFiltro)})) group by cpf having count(*) > 1) a) as cpf_dup,
+        (select count(*) from (select lower(nome) from clientes where loja_id is null or loja_id::text in (${Prisma.join(lojasFiltro)}) group by lower(nome) having count(*) > 1) b) as nome_dup
     `,
     // Previsão de honorários — condições de pagamento marcadas como
     // "honorário devido aqui" (ver comissionamento na transação), pra saber
@@ -506,4 +516,16 @@ export async function DashboardSaude({ lojasFiltro }: { lojasFiltro: string[] })
       </div>
     </div>
   );
+  } catch (erro) {
+    console.error("Falha ao carregar 'Saúde da operação':", erro);
+    return (
+      <div className="bg-white border border-gray-200 rounded-xl p-4 mt-5">
+        <div className="text-sm font-bold text-gray-800 mb-1">Saúde da operação</div>
+        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
+          Não deu pra carregar essa seção agora. O resto do Dashboard continua normal — tente recarregar a
+          página em instantes.
+        </p>
+      </div>
+    );
+  }
 }

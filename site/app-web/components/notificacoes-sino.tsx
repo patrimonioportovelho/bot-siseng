@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import type { Notificacao } from "@/lib/notificacoes";
-import { dispensarNotificacaoAction } from "@/lib/notificacoes";
+import { dispensarNotificacaoAction } from "@/lib/notificacoes-actions";
 
 // apenasData=true (ver lib/notificacoes.ts#Notificacao) vem de uma coluna
 // @db.Date (meia-noite UTC, sem horário de verdade) — formatar com timeZone

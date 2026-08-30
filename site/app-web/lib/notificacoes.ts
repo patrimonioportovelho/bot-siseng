@@ -4,8 +4,6 @@ import { STATUS_AVALIACAO_ATIVOS } from "@/lib/financiamento/opcoes";
 import { slaDaOrdem, labelColuna as labelColunaMarketing } from "@/lib/marketing/opcoes";
 import { proximaOcorrencia } from "@/lib/eventos/ocorrencias";
 import { podeVerEvento } from "@/lib/eventos/opcoes";
-import { getAdminSession } from "@/lib/auth";
-import { getPortalSession } from "@/lib/portal-auth";
 
 // Sino de notificações do administrativo (Topbar) — pedido do usuário em
 // 08/08/2026. Junta tudo que precisa de atenção em um lugar só, sem
@@ -92,33 +90,12 @@ function lembreteDeEvento(ev: EventoParaLembrete, hoje: Date, href: string): Not
   };
 }
 
-// Dispensar notificação (fechar e não ver de novo) — pedido do usuário
-// 30/08/2026. Uma única action serve o sino do admin e o do Portal: tenta a
-// sessão de admin primeiro, senão a de portal — funciona em qualquer um dos
-// dois porque NotificacoesSino é o mesmo componente client nos dois lugares
-// (ver components/notificacoes-sino.tsx). "use server" direto na função (em
-// vez de um arquivo actions.ts próprio) porque essa ação é específica desta
-// lib, sem tela/formulário dedicado.
-export async function dispensarNotificacaoAction(notificacaoId: string): Promise<void> {
-  "use server";
-  if (!notificacaoId) return;
-
-  const admin = await getAdminSession();
-  const parceiroId = admin?.parceiroId ?? (await getPortalSession())?.parceiroId;
-  if (!parceiroId) return;
-
-  await prisma.notificacoes_dispensadas
-    .upsert({
-      where: { parceiro_id_notificacao_id: { parceiro_id: parceiroId, notificacao_id: notificacaoId } },
-      create: { parceiro_id: parceiroId, notificacao_id: notificacaoId },
-      update: {}
-    })
-    .catch(() => {});
-    // Idempotente de propósito (upsert + catch mudo): um duplo clique ou uma
-    // corrida entre abas não pode virar erro pro usuário — dispensar de novo
-    // algo que já está dispensado não muda nada.
-}
-
+// Dispensar notificação — a Server Action em si mora em
+// lib/notificacoes-actions.ts (arquivo próprio com "use server" no topo).
+// Movida daqui em 30/08/2026: "use server" inline dentro de uma função neste
+// módulo quebrava o build no Vercel, porque este arquivo é importado por um
+// Client Component (components/notificacoes-sino.tsx) e o Next.js não
+// permite essa combinação.
 async function buscarIdsDispensados(parceiroId: string | null): Promise<Set<string>> {
   if (!parceiroId) return new Set();
   const linhas = await prisma.notificacoes_dispensadas.findMany({

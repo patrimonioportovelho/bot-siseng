@@ -4,6 +4,8 @@ import { STATUS_AVALIACAO_ATIVOS } from "@/lib/financiamento/opcoes";
 import { slaDaOrdem, labelColuna as labelColunaMarketing } from "@/lib/marketing/opcoes";
 import { proximaOcorrencia } from "@/lib/eventos/ocorrencias";
 import { podeVerEvento } from "@/lib/eventos/opcoes";
+import { getAdminSession } from "@/lib/auth";
+import { getPortalSession } from "@/lib/portal-auth";
 
 // Sino de notificações do administrativo (Topbar) — pedido do usuário em
 // 08/08/2026. Junta tudo que precisa de atenção em um lugar só, sem
@@ -34,6 +36,14 @@ export type Notificacao = {
   // de ação (mensagem SAC nova, acesso pendente, avaliação já vencida).
   // Avaliação vencendo e cadastro novo são só aviso (âmbar/neutro).
   urgente: boolean;
+  // true quando `data` vem de uma coluna @db.Date (data_inicio de evento,
+  // data_validade de avaliação) — data pura, meia-noite UTC, sem horário de
+  // verdade. Achado da auditoria de 30/08/2026: o rodapé do sino formatava
+  // essas datas com timeZone "America/Porto_Velho", jogando meia-noite UTC
+  // pro dia anterior às 20h (off-by-one) — as outras categorias (criado_em/
+  // created_at, @db.Timestamptz de verdade) continuam formatadas com
+  // horário local normalmente. Ver formatDataHora em notificacoes-sino.tsx.
+  apenasData?: boolean;
 };
 
 type EventoParaLembrete = {
@@ -56,7 +66,7 @@ type EventoParaLembrete = {
 // antes" configurado (ex.: [5, 2] — aviso normal a partir de 5 dias, vira
 // urgente a partir de 2). Evento recorrente usa a PRÓXIMA ocorrência
 // (proximaOcorrencia), não a data_inicio original.
-function lembreteDeEvento(ev: EventoParaLembrete, hoje: Date): Notificacao | null {
+function lembreteDeEvento(ev: EventoParaLembrete, hoje: Date, href: string): Notificacao | null {
   if (ev.lembretes_dias_antes.length === 0) return null;
   const proxima = proximaOcorrencia(ev.data_inicio, ev.recorrencia, ev.recorrencia_ate, hoje);
   if (!proxima) return null;
@@ -75,13 +85,50 @@ function lembreteDeEvento(ev: EventoParaLembrete, hoje: Date): Notificacao | nul
         ? `Evento hoje — ${ev.nome}`
         : `Evento em ${diasParaEvento} dia${diasParaEvento > 1 ? "s" : ""} — ${ev.nome}`,
     detalhe: [dataTexto, ev.horario_inicio, ev.local].filter(Boolean).join(" · "),
-    href: `/eventos/${ev.id}`,
+    href,
     data: proxima,
-    urgente: diasParaEvento <= menorLimite
+    urgente: diasParaEvento <= menorLimite,
+    apenasData: true
   };
 }
 
-export async function obterNotificacoes(isAdm: boolean): Promise<Notificacao[]> {
+// Dispensar notificação (fechar e não ver de novo) — pedido do usuário
+// 30/08/2026. Uma única action serve o sino do admin e o do Portal: tenta a
+// sessão de admin primeiro, senão a de portal — funciona em qualquer um dos
+// dois porque NotificacoesSino é o mesmo componente client nos dois lugares
+// (ver components/notificacoes-sino.tsx). "use server" direto na função (em
+// vez de um arquivo actions.ts próprio) porque essa ação é específica desta
+// lib, sem tela/formulário dedicado.
+export async function dispensarNotificacaoAction(notificacaoId: string): Promise<void> {
+  "use server";
+  if (!notificacaoId) return;
+
+  const admin = await getAdminSession();
+  const parceiroId = admin?.parceiroId ?? (await getPortalSession())?.parceiroId;
+  if (!parceiroId) return;
+
+  await prisma.notificacoes_dispensadas
+    .upsert({
+      where: { parceiro_id_notificacao_id: { parceiro_id: parceiroId, notificacao_id: notificacaoId } },
+      create: { parceiro_id: parceiroId, notificacao_id: notificacaoId },
+      update: {}
+    })
+    .catch(() => {});
+    // Idempotente de propósito (upsert + catch mudo): um duplo clique ou uma
+    // corrida entre abas não pode virar erro pro usuário — dispensar de novo
+    // algo que já está dispensado não muda nada.
+}
+
+async function buscarIdsDispensados(parceiroId: string | null): Promise<Set<string>> {
+  if (!parceiroId) return new Set();
+  const linhas = await prisma.notificacoes_dispensadas.findMany({
+    where: { parceiro_id: parceiroId },
+    select: { notificacao_id: true }
+  });
+  return new Set(linhas.map((l) => l.notificacao_id));
+}
+
+export async function obterNotificacoes(isAdm: boolean, parceiroId: string | null = null): Promise<Notificacao[]> {
   const desde = new Date(Date.now() - DIAS_PARA_NOTIFICAR_CADASTRO * 24 * 60 * 60 * 1000);
   const whereAvaliacoesAtivas = {
     excluido: false,
@@ -201,7 +248,8 @@ export async function obterNotificacoes(isAdm: boolean): Promise<Notificacao[]> 
       detalhe: a.id_legado ?? "",
       href: `/financiamento/${a.id}`,
       data: a.data_validade!,
-      urgente: sit === "vencido"
+      urgente: sit === "vencido",
+      apenasData: true
     });
   }
 
@@ -250,19 +298,24 @@ export async function obterNotificacoes(isAdm: boolean): Promise<Notificacao[]> 
   if (isAdm) {
     const hoje = hojePortoVelho();
     for (const ev of eventosComLembrete) {
-      const item = lembreteDeEvento(ev, hoje);
+      const item = lembreteDeEvento(ev, hoje, `/eventos/${ev.id}`);
       if (item) itens.push(item);
     }
   }
 
+  // Notificações dispensadas (pedido do usuário 30/08/2026) — some da lista
+  // antes de ordenar, igual a qualquer outro item que deixou de existir.
+  const dispensados = await buscarIdsDispensados(parceiroId);
+  const itensVisiveis = dispensados.size > 0 ? itens.filter((i) => !dispensados.has(i.id)) : itens;
+
   // Urgente primeiro (precisa de ação), depois mais recente — mesma régua
   // de prioridade usada no card "Aprovados vencendo em 30d" do Financiamento.
-  itens.sort((x, y) => {
+  itensVisiveis.sort((x, y) => {
     if (x.urgente !== y.urgente) return x.urgente ? -1 : 1;
     return y.data.getTime() - x.data.getTime();
   });
 
-  return itens;
+  return itensVisiveis;
 }
 
 // Mesmo cálculo de lembrete de evento (ver lembreteDeEvento acima), mas pro
@@ -270,7 +323,7 @@ export async function obterNotificacoes(isAdm: boolean): Promise<Notificacao[]> 
 // sistema do corretor". Só considera evento aberto ao Portal
 // (portal_corretor) e que esse corretor específico pode ver (mesma regra de
 // elegibilidade de app/portal/eventos/page.tsx — podeVerEvento).
-export async function obterNotificacoesPortal(funcaoDoParceiro: string | null): Promise<Notificacao[]> {
+export async function obterNotificacoesPortal(funcaoDoParceiro: string | null, parceiroId: string): Promise<Notificacao[]> {
   const eventos = await prisma.eventos.findMany({
     where: { excluido: false, ativo: true, portal_corretor: true },
     select: {
@@ -284,21 +337,27 @@ export async function obterNotificacoesPortal(funcaoDoParceiro: string | null): 
       lembretes_dias_antes: true,
       visibilidade: true
     },
-    take: 100
+    // Teto de segurança pra não estourar sem limite — 500 é bem mais folgado
+    // que qualquer volume real de eventos ativos hoje (achado "menor" da
+    // auditoria de 30/08/2026: estava em 100).
+    take: 500
   });
 
   const hoje = hojePortoVelho();
   const itens: Notificacao[] = [];
   for (const ev of eventos) {
     if (!podeVerEvento(ev.visibilidade, funcaoDoParceiro)) continue;
-    const item = lembreteDeEvento(ev, hoje);
-    if (item) itens.push({ ...item, href: "/portal/eventos" });
+    const item = lembreteDeEvento(ev, hoje, "/portal/eventos");
+    if (item) itens.push(item);
   }
 
-  itens.sort((x, y) => {
+  const dispensados = await buscarIdsDispensados(parceiroId);
+  const itensVisiveis = dispensados.size > 0 ? itens.filter((i) => !dispensados.has(i.id)) : itens;
+
+  itensVisiveis.sort((x, y) => {
     if (x.urgente !== y.urgente) return x.urgente ? -1 : 1;
     return y.data.getTime() - x.data.getTime();
   });
 
-  return itens;
+  return itensVisiveis;
 }

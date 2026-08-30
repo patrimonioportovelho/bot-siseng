@@ -1,10 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import Link from "next/link";
 import type { Notificacao } from "@/lib/notificacoes";
+import { dispensarNotificacaoAction } from "@/lib/notificacoes";
 
-function formatDataHora(data: Date) {
+// apenasData=true (ver lib/notificacoes.ts#Notificacao) vem de uma coluna
+// @db.Date (meia-noite UTC, sem horário de verdade) — formatar com timeZone
+// America/Porto_Velho jogava a data pro dia anterior às 20h (off-by-one,
+// achado da auditoria de 30/08/2026). Nesse caso usa UTC e não mostra hora
+// nenhuma (não existe hora de verdade pra mostrar). As demais categorias
+// (criado_em/created_at, timestamp de verdade) continuam com hora local.
+function formatDataHora(data: Date, apenasData?: boolean) {
+  if (apenasData) {
+    return new Date(data).toLocaleDateString("pt-BR", { timeZone: "UTC", day: "2-digit", month: "2-digit" });
+  }
   return new Date(data).toLocaleString("pt-BR", {
     timeZone: "America/Porto_Velho",
     day: "2-digit",
@@ -18,9 +28,24 @@ function formatDataHora(data: Date) {
 // 08/08/2026. Mesmo padrão visual/interação do seletor de Loja
 // (components/loja-filtro-botao.tsx): botão + overlay pra fechar ao
 // clicar fora + painel absoluto, sem lib de popover.
-export function NotificacoesSino({ itens }: { itens: Notificacao[] }) {
+export function NotificacoesSino({ itens: itensIniciais }: { itens: Notificacao[] }) {
   const [aberto, setAberto] = useState(false);
+  // Cópia local (pedido do usuário 30/08/2026: "dispensar" a notificação) —
+  // o servidor só recalcula essa lista quando a página navega de novo; o
+  // dispensar precisa remover da tela na hora, sem esperar isso. A gravação
+  // de verdade (notificacoes_dispensadas) roda em background via
+  // useTransition; se falhar, o item só volta a aparecer na próxima
+  // navegação — não trava a interação.
+  const [itens, setItens] = useState(itensIniciais);
+  const [, iniciarTransicao] = useTransition();
   const urgentes = itens.filter((i) => i.urgente).length;
+
+  function dispensar(id: string) {
+    setItens((atual) => atual.filter((i) => i.id !== id));
+    iniciarTransicao(() => {
+      dispensarNotificacaoAction(id).catch(() => {});
+    });
+  }
 
   return (
     <div className="relative">
@@ -62,19 +87,32 @@ export function NotificacoesSino({ itens }: { itens: Notificacao[] }) {
             ) : (
               <div className="flex flex-col">
                 {itens.map((item) => (
-                  <Link
+                  <div
                     key={item.id}
-                    href={item.href}
-                    onClick={() => setAberto(false)}
-                    className="px-3 py-2 border-b border-gray-50 last:border-0 hover:bg-gray-50 flex flex-col gap-0.5"
+                    className="flex items-start gap-1 border-b border-gray-50 last:border-0 hover:bg-gray-50"
                   >
-                    <span className="flex items-center gap-1.5">
-                      {item.urgente && <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" />}
-                      <span className="text-xs font-medium text-gray-800 truncate">{item.titulo}</span>
-                    </span>
-                    {item.detalhe && <span className="text-[11px] text-gray-500 truncate">{item.detalhe}</span>}
-                    <span className="text-[10px] text-gray-400">{formatDataHora(item.data)}</span>
-                  </Link>
+                    <Link
+                      href={item.href}
+                      onClick={() => setAberto(false)}
+                      className="flex-1 min-w-0 px-3 py-2 flex flex-col gap-0.5"
+                    >
+                      <span className="flex items-center gap-1.5">
+                        {item.urgente && <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" />}
+                        <span className="text-xs font-medium text-gray-800 truncate">{item.titulo}</span>
+                      </span>
+                      {item.detalhe && <span className="text-[11px] text-gray-500 truncate">{item.detalhe}</span>}
+                      <span className="text-[10px] text-gray-400">{formatDataHora(item.data, item.apenasData)}</span>
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => dispensar(item.id)}
+                      className="shrink-0 text-gray-300 hover:text-gray-600 text-sm leading-none px-2 py-2"
+                      aria-label="Dispensar notificação"
+                      title="Dispensar"
+                    >
+                      ×
+                    </button>
+                  </div>
                 ))}
               </div>
             )}

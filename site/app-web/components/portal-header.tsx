@@ -24,7 +24,7 @@ export async function PortalHeader({ nome }: { nome: string }) {
     where: { id: session.parceiroId },
     select: { funcao: true }
   });
-  const notificacoes = await obterNotificacoesPortal(parceiro?.funcao ?? null);
+  const notificacoes = await obterNotificacoesPortal(parceiro?.funcao ?? null, session.parceiroId);
 
   return (
     <header className="bg-primary">

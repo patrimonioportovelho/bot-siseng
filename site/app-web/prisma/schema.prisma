@@ -920,6 +920,7 @@ model parceiros {
   pagamentos                                                                  pagamentos[]
   publicacoes_site                                                           publicacoes_site[]
   socios_dashboard                                                           socios_dashboard?
+  notificacoes_dispensadas                                                   notificacoes_dispensadas[]
   mensagens_sac                                                              mensagens_sac[]
   logs_erro                                                                  logs_erro[]
   manutencoes                                                                manutencoes[]
@@ -1027,6 +1028,25 @@ model socios_dashboard {
   funcao      String
   criado_em   DateTime  @default(now()) @db.Timestamptz(6)
   parceiros   parceiros @relation(fields: [parceiro_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+/// Controla quais notificações do sino (admin e Portal do Corretor) cada
+/// parceiro já dispensou (fechou e não quer ver de novo) — pedido do usuário
+/// 30/08/2026. notificacao_id é o mesmo id determinístico já usado em
+/// lib/notificacoes.ts (ex.: "sac-<id>", "evento-<id>-<data>") — não existe
+/// FK pra uma entidade só porque o id muda de formato conforme a categoria.
+/// Dispensar não apaga nem resolve nada na origem: só esconde aquele item
+/// específico do sino daquele parceiro; se a mesma condição gerar um id novo
+/// (ex.: evento recorrente no dia seguinte), volta a aparecer normalmente.
+model notificacoes_dispensadas {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  parceiro_id    String    @db.Uuid
+  notificacao_id String
+  dispensada_em  DateTime  @default(now()) @db.Timestamptz(6)
+  parceiros      parceiros @relation(fields: [parceiro_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([parceiro_id, notificacao_id])
+  @@index([parceiro_id])
 }
 
 /// Mensagens do formulário de SAC da página pública — não envia e-mail

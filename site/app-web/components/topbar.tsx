@@ -18,7 +18,7 @@ export async function Topbar() {
   const [lojas, selecionadas, notificacoes] = await Promise.all([
     listarLojas(),
     lojasSelecionadas(),
-    obterNotificacoes(Boolean(session?.isAdm))
+    obterNotificacoes(Boolean(session?.isAdm), session?.parceiroId ?? null)
   ]);
 
   return (

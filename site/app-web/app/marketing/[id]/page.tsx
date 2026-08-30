@@ -1,13 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Topbar } from "@/components/topbar";
+import { BotaoSubmit } from "@/components/botao-submit";
 import { prisma } from "@/lib/prisma";
 import { MarketingEditarForm } from "@/components/marketing-editar-form";
 import { MarketingChecklist } from "@/components/marketing-checklist";
 import { MarketingAtividades } from "@/components/marketing-atividades";
 import { MarketingProducoes } from "@/components/marketing-producoes";
 import { MarketingBriefingForm } from "@/components/marketing-briefing-form";
-import { BotaoSubmit } from "@/components/botao-submit";
 import { listarParceirosAdministrativos } from "@/lib/parceiros/administrativos";
 import { labelColuna, pilarImpactoDaColuna, PILAR_IMPACTO_COR, slaDaOrdem } from "@/lib/marketing/opcoes";
 import { formatData, formatDataHora } from "@/lib/format";
@@ -112,9 +112,9 @@ export default async function MarketingDetalhePage({
         {!ordem.excluido && (
           <form action={apagarOrdemAction}>
             <input type="hidden" name="ordemId" value={ordem.id} />
-            <button type="submit" className="text-xs border border-red-200 text-red-600 rounded-lg px-3 py-1.5 hover:bg-red-50">
+            <BotaoSubmit variante="perigo" carregandoTexto="Apagando..." className="text-xs border border-red-200 text-red-600 rounded-lg px-3 py-1.5 hover:bg-red-50">
               Apagar cadastro
-            </button>
+            </BotaoSubmit>
           </form>
         )}
       </div>

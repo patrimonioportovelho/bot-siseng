@@ -2,7 +2,7 @@
 
 import { useActionState, useMemo, useState } from "react";
 import { formatPercentual } from "@/lib/format";
-import { BotaoEnviar } from "@/components/botao-enviar";
+import { BotaoSubmit } from "@/components/botao-submit";
 import { salvarComissionamentoLoteAction } from "@/app/parceiros/actions";
 
 type ParceiroComissao = {
@@ -115,9 +115,9 @@ export function ComissionamentoLoteForm({ parceiros }: { parceiros: ParceiroComi
       )}
 
       <div className="flex justify-end">
-        <BotaoEnviar textoEnviando="Salvando..." className="text-xs bg-primary text-white rounded-lg px-4 py-2 font-semibold">
+        <BotaoSubmit carregandoTexto="Salvando..." className="text-xs bg-primary text-white rounded-lg px-4 py-2 font-semibold">
           Salvar tudo
-        </BotaoEnviar>
+        </BotaoSubmit>
       </div>
     </form>
   );

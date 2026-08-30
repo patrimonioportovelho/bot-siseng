@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requirePortalSession } from "@/lib/portal-auth";
 import { PortalHeader } from "@/components/portal-header";
+import { BotaoSubmit } from "@/components/botao-submit";
 import { formatMoeda, formatDataCalendario, formatDataHora, situacaoVencimento } from "@/lib/format";
 import { saldoDevido } from "@/lib/financeiro/pagamentos-pix";
 import { gerarPixCopiaECola } from "@/lib/pix";
@@ -122,9 +123,9 @@ export default async function PortalDividaPage({ params }: { params: Promise<{ i
                       </div>
                       <form action={cancelarPagamentoParcialAction} className="mt-2">
                         <input type="hidden" name="pagamentoPixId" value={p.id} />
-                        <button type="submit" className="text-[11px] text-gray-400 hover:text-red-600 underline">
+                        <BotaoSubmit variante="secundario" carregandoTexto="Cancelando..." className="text-[11px] text-gray-400 hover:text-red-600 underline">
                           Cancelar este Pix
-                        </button>
+                        </BotaoSubmit>
                       </form>
                     </>
                   )}

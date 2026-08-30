@@ -17,12 +17,17 @@ export function BotaoSubmit({
   children,
   carregandoTexto,
   className,
-  variante = "primario"
+  variante = "primario",
+  disabled
 }: {
   children: React.ReactNode;
   carregandoTexto?: string;
   className?: string;
   variante?: "primario" | "secundario" | "perigo";
+  // Condição extra de desabilitar vinda de fora (ex.: validação de campo
+  // ainda incompleta) — consolidado aqui em 30/08/2026 ao unificar com o
+  // então-duplicado components/botao-enviar.tsx, que só tinha essa prop.
+  disabled?: boolean;
 }) {
   const { pending } = useFormStatus();
 
@@ -32,9 +37,9 @@ export function BotaoSubmit({
   return (
     <button
       type="submit"
-      disabled={pending}
+      disabled={disabled || pending}
       aria-busy={pending}
-      className={`${className ?? ""} ${pending ? "opacity-70 cursor-wait" : ""} inline-flex items-center justify-center gap-1.5`}
+      className={`${className ?? ""} ${pending ? "opacity-70 cursor-wait" : disabled ? "opacity-60 cursor-not-allowed" : ""} inline-flex items-center justify-center gap-1.5`}
     >
       {pending && <span className={`w-3 h-3 border-2 rounded-full animate-spin shrink-0 ${corSpinner}`} />}
       {pending ? carregandoTexto ?? "Enviando..." : children}

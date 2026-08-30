@@ -1,6 +1,7 @@
 "use client";
 
-import { useRef, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
+import { BotaoSubmit } from "@/components/botao-submit";
 
 type ChecklistItem = { id: string; label: string; done: boolean };
 
@@ -18,33 +19,56 @@ export function ManutencaoChecklist({
   remover: (id: string, manutencaoId: string) => Promise<void>;
 }) {
   const [, startTransition] = useTransition();
+  // Item sendo marcado/removido agora (pedido do usuário 30/08/2026: mostrar
+  // carregamento em qualquer botão da tela) — antes o checkbox/"remover"
+  // não davam feedback nenhum enquanto a Server Action rodava.
+  const [idProcessando, setIdProcessando] = useState<string | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
+
+  function aoMarcar(id: string) {
+    setIdProcessando(id);
+    startTransition(async () => {
+      await marcar(id, manutencaoId);
+      setIdProcessando(null);
+    });
+  }
+
+  function aoRemover(id: string) {
+    setIdProcessando(id);
+    startTransition(async () => {
+      await remover(id, manutencaoId);
+      setIdProcessando(null);
+    });
+  }
 
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-4">
       <div className="text-sm font-bold text-gray-800 mb-3">Checklist</div>
 
       <div className="flex flex-col gap-1.5 mb-3">
-        {itens.map((item) => (
-          <div key={item.id} className="flex items-center gap-2 group">
-            <input
-              type="checkbox"
-              checked={item.done}
-              onChange={() => startTransition(() => marcar(item.id, manutencaoId))}
-              className="rounded"
-            />
-            <span className={`text-xs flex-1 ${item.done ? "line-through text-gray-400" : "text-gray-700"}`}>
-              {item.label}
-            </span>
-            <button
-              type="button"
-              onClick={() => startTransition(() => remover(item.id, manutencaoId))}
-              className="text-[11px] text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100"
-            >
-              remover
-            </button>
-          </div>
-        ))}
+        {itens.map((item) => {
+          const processando = idProcessando === item.id;
+          return (
+            <div key={item.id} className="flex items-center gap-2 group">
+              {processando ? (
+                <span className="w-3.5 h-3.5 border-2 rounded-full animate-spin border-gray-300 border-t-gray-600 shrink-0" />
+              ) : (
+                <input type="checkbox" checked={item.done} onChange={() => aoMarcar(item.id)} className="rounded" />
+              )}
+              <span className={`text-xs flex-1 ${item.done ? "line-through text-gray-400" : "text-gray-700"}`}>
+                {item.label}
+              </span>
+              <button
+                type="button"
+                onClick={() => aoRemover(item.id)}
+                disabled={processando}
+                className="text-[11px] text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 disabled:opacity-100 disabled:cursor-wait"
+              >
+                remover
+              </button>
+            </div>
+          );
+        })}
         {itens.length === 0 && <p className="text-xs text-gray-400">Nenhum item ainda.</p>}
       </div>
 
@@ -63,9 +87,9 @@ export function ManutencaoChecklist({
           className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 flex-1 outline-none focus:border-primary"
           required
         />
-        <button type="submit" className="text-xs bg-primary text-white rounded-lg px-3 py-1.5 font-semibold whitespace-nowrap">
+        <BotaoSubmit carregandoTexto="Adicionando..." className="text-xs bg-primary text-white rounded-lg px-3 py-1.5 font-semibold whitespace-nowrap">
           + Adicionar
-        </button>
+        </BotaoSubmit>
       </form>
     </div>
   );

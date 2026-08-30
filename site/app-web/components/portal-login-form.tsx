@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { verificarEmailPortalAction } from "@/app/portal/actions";
-import { BotaoEnviar } from "@/components/botao-enviar";
+import { BotaoSubmit } from "@/components/botao-submit";
 
 const CAMPO = "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none focus:border-primary";
 const LABEL = "text-xs text-gray-600 block mb-1";
@@ -127,13 +127,13 @@ export function PortalLoginForm({
             <p className="text-[11px] text-red-600 mt-1">As senhas não coincidem.</p>
           )}
 
-          <BotaoEnviar
+          <BotaoSubmit
             disabled={senha.length < 6 || senha !== confirmarSenha}
-            textoEnviando="Criando senha..."
+            carregandoTexto="Criando senha..."
             className="w-full bg-primary text-white rounded-lg py-2 text-sm font-semibold hover:opacity-90 mt-6"
           >
             Criar senha e entrar
-          </BotaoEnviar>
+          </BotaoSubmit>
         </>
       ) : (
         <>
@@ -144,12 +144,12 @@ export function PortalLoginForm({
           <label className={LABEL}>Senha</label>
           <input type="password" name="senha" required autoFocus className={`${CAMPO} mb-6`} placeholder="Sua senha" />
 
-          <BotaoEnviar
-            textoEnviando="Entrando..."
+          <BotaoSubmit
+            carregandoTexto="Entrando..."
             className="w-full bg-primary text-white rounded-lg py-2 text-sm font-semibold hover:opacity-90"
           >
             Entrar
-          </BotaoEnviar>
+          </BotaoSubmit>
         </>
       )}
 

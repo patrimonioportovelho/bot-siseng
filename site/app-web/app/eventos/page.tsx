@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Topbar } from "@/components/topbar";
+import { BotaoSubmit } from "@/components/botao-submit";
 import { prisma } from "@/lib/prisma";
 import { formatDataCalendario } from "@/lib/format";
 import { recorrenciaLabel, visibilidadeLabel } from "@/lib/eventos/opcoes";
@@ -129,9 +130,13 @@ export default async function EventosPage({
             </div>
             <form action={alternarAtivoEventoAction} className="shrink-0">
               <input type="hidden" name="eventoId" value={ev.id} />
-              <button type="submit" className="text-xs border border-gray-300 text-gray-600 rounded-lg px-2 py-1">
+              <BotaoSubmit
+                variante="secundario"
+                carregandoTexto={ev.ativo ? "Despublicando..." : "Publicando..."}
+                className="text-xs border border-gray-300 text-gray-600 rounded-lg px-2 py-1"
+              >
                 {ev.ativo ? "Despublicar" : "Publicar"}
-              </button>
+              </BotaoSubmit>
             </form>
           </div>
         ))}

@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { TIPOS_META, PERIODO_TIPO_OPCOES, tipoMetaOpcao, calcularPeriodo } from "@/lib/metas/opcoes";
 import { formatValorEditavel } from "@/lib/format";
+import { BotaoSubmit } from "@/components/botao-submit";
 
 type CorretorOpcao = { id: string; nome: string; funcao: string | null };
 type LojaOpcao = { id: string; nome: string };
@@ -250,9 +251,9 @@ export function MetaForm({
       </div>
 
       <div className="flex justify-end">
-        <button type="submit" className="bg-primary text-white rounded-lg px-5 py-2 text-sm font-semibold hover:opacity-90">
+        <BotaoSubmit carregandoTexto="Salvando..." className="bg-primary text-white rounded-lg px-5 py-2 text-sm font-semibold hover:opacity-90">
           {m ? "Salvar alterações" : "Cadastrar meta"}
-        </button>
+        </BotaoSubmit>
       </div>
     </form>
   );

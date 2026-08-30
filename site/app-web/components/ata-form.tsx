@@ -202,8 +202,9 @@ export function AtaForm({ eventoId }: { eventoId: string }) {
         type="button"
         onClick={gerar}
         disabled={gerando}
-        className="text-xs bg-primary text-white rounded-lg px-3 py-1.5 font-semibold disabled:opacity-60"
+        className="text-xs bg-primary text-white rounded-lg px-3 py-1.5 font-semibold disabled:opacity-60 disabled:cursor-wait inline-flex items-center gap-1.5"
       >
+        {gerando && <span className="w-3 h-3 border-2 rounded-full animate-spin border-white/40 border-t-white shrink-0" />}
         {gerando ? "Gerando..." : "Gerar e baixar Ata (.docx)"}
       </button>
     </div>

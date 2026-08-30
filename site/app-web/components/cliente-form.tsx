@@ -11,6 +11,7 @@ import {
   CAT_PROFISSAO_OPCOES
 } from "@/lib/clientes/opcoes";
 import { formatCpf, formatCnpj, formatTelefone, formatValorEditavel, formatMoeda, formatDataCalendario } from "@/lib/format";
+import { BotaoSubmit } from "@/components/botao-submit";
 import { validarCpfCnpj } from "@/lib/clientes/validacao";
 import { buscarCep, UF_PARA_ESTADO } from "@/lib/enderecos";
 import { SocioForm } from "@/components/socio-form";
@@ -1482,9 +1483,9 @@ export function ClienteForm({
               Cancelar
             </button>
           )}
-          <button type="submit" className="bg-primary text-white rounded-lg px-5 py-2 text-sm font-semibold hover:opacity-90">
+          <BotaoSubmit carregandoTexto="Salvando..." className="bg-primary text-white rounded-lg px-5 py-2 text-sm font-semibold hover:opacity-90">
             {c ? "Salvar alterações" : "Cadastrar cliente"}
-          </button>
+          </BotaoSubmit>
         </div>
       </form>
 

@@ -68,6 +68,31 @@ export function RouteLoadingBar() {
     return () => document.removeEventListener("click", aoClicar, { capture: true });
   }, []);
 
+  // Filtros de listagem (Buscar/Filtrar em Clientes, Imóveis, Parceiros etc.)
+  // são <form> comuns, sem action de Server Action — o Next não intercepta
+  // isso, é navegação de verdade (recarrega a página com os parâmetros de
+  // busca na URL). useFormStatus (usado pelo BotaoSubmit) não pega esse
+  // caso, porque só existe "pending" quando o form tem uma action função.
+  // Detecta pelo method: form de Server Action sempre sai como "post"; form
+  // de filtro sem action nasce "get" (padrão do HTML). Achado em 30/08/2026
+  // ao padronizar o carregamento do sistema inteiro.
+  useEffect(() => {
+    function aoSubmeter(evento: SubmitEvent) {
+      if (evento.defaultPrevented) return;
+      const form = evento.target as HTMLFormElement | null;
+      if (!form || form.method.toLowerCase() !== "get") return;
+
+      setCarregando(true);
+      setLargura(15);
+      // Sem trava de segurança aqui de propósito: form GET sem action é
+      // sempre navegação de página inteira (recarrega o documento), então o
+      // componente inteiro desmonta junto — não tem como ficar travado.
+    }
+
+    document.addEventListener("submit", aoSubmeter, { capture: true });
+    return () => document.removeEventListener("submit", aoSubmeter, { capture: true });
+  }, []);
+
   // "Anda" a barra devagar enquanto carrega, dando sensação de progresso
   // contínuo (nunca trava visualmente parada num mesmo ponto).
   useEffect(() => {

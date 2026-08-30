@@ -157,8 +157,9 @@ export function PublicacaoForm({
         <button
           type="submit"
           disabled={enviando}
-          className="text-xs bg-primary text-white rounded-lg px-3 py-1.5 font-semibold disabled:opacity-60"
+          className="text-xs bg-primary text-white rounded-lg px-3 py-1.5 font-semibold disabled:opacity-60 disabled:cursor-wait inline-flex items-center gap-1.5"
         >
+          {enviando && <span className="w-3 h-3 border-2 rounded-full animate-spin border-white/40 border-t-white shrink-0" />}
           {enviando ? "Enviando..." : p ? "Salvar alterações" : "Salvar publicação"}
         </button>
       </div>

@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { TIPOS_IMOVEL, STATUS_IMOVEL, TIPOS_OFERTA } from "@/lib/imoveis/opcoes";
 import { formatValorEditavel, formatInscricao } from "@/lib/format";
+import { BotaoSubmit } from "@/components/botao-submit";
 import { CampoLink } from "@/components/campo-link";
 import { buscarCep, UF_PARA_ESTADO } from "@/lib/enderecos";
 
@@ -458,9 +459,9 @@ export function ImovelForm({
       </div>
 
       <div className="flex justify-end">
-        <button type="submit" className="bg-primary text-white rounded-lg px-5 py-2 text-sm font-semibold hover:opacity-90">
+        <BotaoSubmit carregandoTexto="Salvando..." className="bg-primary text-white rounded-lg px-5 py-2 text-sm font-semibold hover:opacity-90">
           {i ? "Salvar alterações" : "Cadastrar imóvel"}
-        </button>
+        </BotaoSubmit>
       </div>
     </form>
   );

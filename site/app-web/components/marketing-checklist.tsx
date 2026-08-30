@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { BotaoSubmit } from "@/components/botao-submit";
 
 type ChecklistItem = { id: string; label: string; done: boolean };
@@ -30,6 +30,26 @@ export function MarketingChecklist({
   remover: (id: string, ordemId: string) => Promise<void>;
 }) {
   const [, startTransition] = useTransition();
+  // Item sendo marcado/removido agora — mesmo padrão de feedback aplicado
+  // em gestao-checklist.tsx/manutencao-checklist.tsx (pedido do usuário
+  // 30/08/2026).
+  const [idProcessando, setIdProcessando] = useState<string | null>(null);
+
+  function aoMarcar(id: string) {
+    setIdProcessando(id);
+    startTransition(async () => {
+      await marcar(id, ordemId);
+      setIdProcessando(null);
+    });
+  }
+
+  function aoRemover(id: string) {
+    setIdProcessando(id);
+    startTransition(async () => {
+      await remover(id, ordemId);
+      setIdProcessando(null);
+    });
+  }
   const formRef = useRef<HTMLFormElement>(null);
 
   return (
@@ -45,26 +65,29 @@ export function MarketingChecklist({
       </div>
 
       <div className="flex flex-col gap-1.5 mb-3">
-        {itens.map((item) => (
-          <div key={item.id} className="flex items-center gap-2 group">
-            <input
-              type="checkbox"
-              checked={item.done}
-              onChange={() => startTransition(() => marcar(item.id, ordemId))}
-              className="rounded"
-            />
-            <span className={`text-xs flex-1 ${item.done ? "line-through text-gray-400" : "text-gray-700"}`}>
-              {item.label}
-            </span>
-            <button
-              type="button"
-              onClick={() => startTransition(() => remover(item.id, ordemId))}
-              className="text-[11px] text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100"
-            >
-              remover
-            </button>
-          </div>
-        ))}
+        {itens.map((item) => {
+          const processando = idProcessando === item.id;
+          return (
+            <div key={item.id} className="flex items-center gap-2 group">
+              {processando ? (
+                <span className="w-3.5 h-3.5 border-2 rounded-full animate-spin border-gray-300 border-t-gray-600 shrink-0" />
+              ) : (
+                <input type="checkbox" checked={item.done} onChange={() => aoMarcar(item.id)} className="rounded" />
+              )}
+              <span className={`text-xs flex-1 ${item.done ? "line-through text-gray-400" : "text-gray-700"}`}>
+                {item.label}
+              </span>
+              <button
+                type="button"
+                onClick={() => aoRemover(item.id)}
+                disabled={processando}
+                className="text-[11px] text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 disabled:cursor-wait"
+              >
+                remover
+              </button>
+            </div>
+          );
+        })}
         {itens.length === 0 && <p className="text-xs text-gray-400">Nenhum item ainda.</p>}
       </div>
 

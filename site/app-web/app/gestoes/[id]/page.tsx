@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Topbar } from "@/components/topbar";
+import { BotaoSubmit } from "@/components/botao-submit";
 import { prisma } from "@/lib/prisma";
 import { resolverUrlDocumentoGerado } from "@/lib/supabase-admin";
 import { GestaoEditarForm } from "@/components/gestao-editar-form";
@@ -94,9 +95,9 @@ export default async function GestaoDetalhePage({
         {!gestao.excluido && (
           <form action={apagarGestaoAction}>
             <input type="hidden" name="gestaoId" value={gestao.id} />
-            <button type="submit" className="text-xs border border-red-200 text-red-600 rounded-lg px-3 py-1.5 hover:bg-red-50">
+            <BotaoSubmit variante="perigo" carregandoTexto="Apagando..." className="text-xs border border-red-200 text-red-600 rounded-lg px-3 py-1.5 hover:bg-red-50">
               Apagar cadastro
-            </button>
+            </BotaoSubmit>
           </form>
         )}
       </div>
@@ -172,9 +173,9 @@ export default async function GestaoDetalhePage({
               className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 flex-1 outline-none focus:border-primary"
               required
             />
-            <button type="submit" className="text-xs bg-primary text-white rounded-lg px-3 py-1.5 font-semibold whitespace-nowrap">
+            <BotaoSubmit carregandoTexto="Adicionando..." className="text-xs bg-primary text-white rounded-lg px-3 py-1.5 font-semibold whitespace-nowrap">
               + Adicionar nota
-            </button>
+            </BotaoSubmit>
           </form>
           <div className="flex flex-col gap-2">
             {gestao.notas.map((n) => (

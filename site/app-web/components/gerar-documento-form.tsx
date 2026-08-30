@@ -131,8 +131,9 @@ export function GerarDocumentoForm() {
           type="button"
           disabled={!selecionado || gerando}
           onClick={handleGerar}
-          className="text-xs bg-primary text-white rounded-lg px-4 py-2 font-semibold disabled:opacity-40"
+          className="text-xs bg-primary text-white rounded-lg px-4 py-2 font-semibold disabled:opacity-40 disabled:cursor-wait inline-flex items-center gap-1.5"
         >
+          {gerando && <span className="w-3 h-3 border-2 rounded-full animate-spin border-white/40 border-t-white shrink-0" />}
           {gerando ? "Gerando..." : "Gerar documento"}
         </button>
         {resultado?.ok && (

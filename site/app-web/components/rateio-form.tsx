@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useMemo, useState } from "react";
 import { formatMoeda, formatPercentual, hojeInputDate } from "@/lib/format";
+import { BotaoSubmit } from "@/components/botao-submit";
 
 type ResultadoRateio = { erro: string } | undefined;
 
@@ -417,9 +418,9 @@ export function RateioForm({
             rateio.
           </p>
         )}
-        <button type="submit" className="text-xs bg-primary text-white rounded-lg px-5 py-2 font-semibold">
+        <BotaoSubmit carregandoTexto="Salvando..." className="text-xs bg-primary text-white rounded-lg px-5 py-2 font-semibold">
           {algumaDespesaSeraGerada ? "Gerar rateio (lançar despesas)" : "Registrar rateio"}
-        </button>
+        </BotaoSubmit>
       </div>
     </form>
   );

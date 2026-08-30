@@ -4,6 +4,7 @@ import { listarLojas, lojasSelecionadas } from "@/lib/lojas/filtro";
 import { LojaFiltroBotao } from "@/components/loja-filtro-botao";
 import { obterNotificacoes } from "@/lib/notificacoes";
 import { NotificacoesSino } from "@/components/notificacoes-sino";
+import { BotaoSubmit } from "@/components/botao-submit";
 
 function iniciais(nome: string | undefined) {
   if (!nome) return "—";
@@ -33,9 +34,9 @@ export async function Topbar() {
           {session?.nome ?? "Não identificado"} {session?.isAdm ? "· ADM" : ""}
         </span>
         <form action={logoutAction}>
-          <button type="submit" className="text-xs text-gray-400 hover:text-gray-700">
+          <BotaoSubmit variante="secundario" carregandoTexto="Saindo..." className="text-xs text-gray-400 hover:text-gray-700">
             Sair
-          </button>
+          </BotaoSubmit>
         </form>
       </div>
     </div>

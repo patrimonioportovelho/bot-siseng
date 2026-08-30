@@ -11,6 +11,7 @@ import {
 } from "@/lib/parceiros/opcoes";
 import { formatCpf, formatTelefone, formatPercentual, formatMoeda, formatDataCalendario } from "@/lib/format";
 import { buscarCep, UF_PARA_ESTADO } from "@/lib/enderecos";
+import { BotaoSubmit } from "@/components/botao-submit";
 import { prepararUploadFotoParceiroAction } from "@/app/parceiros/actions";
 import { supabaseBrowser, BUCKET_PARCEIROS_FOTOS } from "@/lib/supabase-browser";
 
@@ -747,7 +748,12 @@ export function ParceiroForm({
                 disabled={enviandoFoto}
                 className="text-xs"
               />
-              {enviandoFoto && <span className="text-[11px] text-gray-400">Enviando...</span>}
+              {enviandoFoto && (
+                <span className="text-[11px] text-gray-400 inline-flex items-center gap-1.5">
+                  <span className="w-3 h-3 border-2 rounded-full animate-spin border-gray-300 border-t-gray-600 shrink-0" />
+                  Enviando...
+                </span>
+              )}
               {erroFoto && <span className="text-[11px] text-red-600">{erroFoto}</span>}
               {fotoPreview && (
                 <button
@@ -867,9 +873,9 @@ export function ParceiroForm({
             Cancelar
           </button>
         )}
-        <button type="submit" className="bg-primary text-white rounded-lg px-5 py-2 text-sm font-semibold hover:opacity-90">
+        <BotaoSubmit carregandoTexto="Salvando..." className="bg-primary text-white rounded-lg px-5 py-2 text-sm font-semibold hover:opacity-90">
           {p ? "Salvar alterações" : "Cadastrar parceiro"}
-        </button>
+        </BotaoSubmit>
       </div>
     </form>
   );

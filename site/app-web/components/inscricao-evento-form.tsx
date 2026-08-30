@@ -473,8 +473,11 @@ function EtapaEquipe({
                       type="button"
                       onClick={() => remover(c.id)}
                       disabled={removendoId === c.id}
-                      className="text-[10px] text-red-500 font-semibold hover:underline disabled:opacity-50"
+                      className="text-[10px] text-red-500 font-semibold hover:underline disabled:opacity-50 disabled:cursor-wait inline-flex items-center gap-1"
                     >
+                      {removendoId === c.id && (
+                        <span className="w-2.5 h-2.5 border-2 rounded-full animate-spin border-red-200 border-t-red-500 shrink-0" />
+                      )}
                       {removendoId === c.id ? "Removendo..." : "Remover"}
                     </button>
                   </div>
@@ -646,8 +649,11 @@ function EtapaExternoExistente({
             type="button"
             onClick={cancelar}
             disabled={removendo}
-            className="text-[10px] text-red-500 font-semibold hover:underline disabled:opacity-50"
+            className="text-[10px] text-red-500 font-semibold hover:underline disabled:opacity-50 disabled:cursor-wait inline-flex items-center gap-1"
           >
+            {removendo && (
+              <span className="w-2.5 h-2.5 border-2 rounded-full animate-spin border-red-200 border-t-red-500 shrink-0" />
+            )}
             {removendo ? "Cancelando..." : "Cancelar minha inscrição"}
           </button>
         </div>
@@ -801,8 +807,9 @@ function EtapaExternoNovo({
       <button
         type="submit"
         disabled={enviando}
-        className="text-xs bg-primary text-white rounded-lg px-3 py-1.5 font-semibold disabled:opacity-60 mt-1"
+        className="text-xs bg-primary text-white rounded-lg px-3 py-1.5 font-semibold disabled:opacity-60 mt-1 disabled:cursor-wait inline-flex items-center gap-1.5"
       >
+        {enviando && <span className="w-3 h-3 border-2 rounded-full animate-spin border-white/40 border-t-white shrink-0" />}
         {enviando ? "Enviando..." : "Confirmar inscrição"}
       </button>
     </form>

@@ -2,6 +2,7 @@
 
 import { useActionState, useMemo, useState } from "react";
 import { formatCpf, formatTelefone, formatValorEditavel } from "@/lib/format";
+import { BotaoSubmit } from "@/components/botao-submit";
 import {
   ESTADOS_CIVIS,
   ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL,
@@ -157,9 +158,9 @@ export function SocioForm({
               <form action={removerAction}>
                 <input type="hidden" name="vinculo_id" value={s.vinculoId} />
                 <input type="hidden" name="pj_cliente_id" value={pjClienteId} />
-                <button type="submit" className="text-gray-400 hover:text-red-600">
+                <BotaoSubmit variante="secundario" carregandoTexto="Removendo..." className="text-gray-400 hover:text-red-600">
                   remover
-                </button>
+                </BotaoSubmit>
               </form>
             </div>
           ))}

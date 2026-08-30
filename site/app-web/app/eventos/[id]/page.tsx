@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Topbar } from "@/components/topbar";
+import { BotaoSubmit } from "@/components/botao-submit";
 import { prisma } from "@/lib/prisma";
 import { getAdminSession } from "@/lib/auth";
 import { EventoForm } from "@/components/evento-form";
@@ -292,20 +293,24 @@ export default async function EventoDetalhePage({
                         {!c.isento && (
                           <form action={alternarPagoConfirmacaoAction}>
                             <input type="hidden" name="confirmacaoId" value={c.id} />
-                            <button type="submit" className="text-[10px] text-primary font-semibold hover:underline">
+                            <BotaoSubmit
+                              variante="secundario"
+                              carregandoTexto={c.pago ? "Desmarcando..." : "Marcando..."}
+                              className="text-[10px] text-primary font-semibold hover:underline"
+                            >
                               {c.pago ? "Desmarcar" : "Marcar pago"}
-                            </button>
+                            </BotaoSubmit>
                           </form>
                         )}
                         <form action={alternarIsencaoConfirmacaoAction}>
                           <input type="hidden" name="confirmacaoId" value={c.id} />
-                          <button type="submit" className="text-[10px] text-gray-400 font-semibold hover:underline">
+                          <BotaoSubmit variante="secundario" className="text-[10px] text-gray-400 font-semibold hover:underline">
                             {c.pago_isento === null
                               ? c.isento
                                 ? "Cobrar mesmo assim"
                                 : "Isentar"
                               : "Voltar à regra da função"}
-                          </button>
+                          </BotaoSubmit>
                         </form>
                       </div>
                     </div>
@@ -439,9 +444,13 @@ export default async function EventoDetalhePage({
                           {i.paga && (
                             <form action={alternarPagoInscricaoAction}>
                               <input type="hidden" name="inscricaoId" value={i.id} />
-                              <button type="submit" className="text-[10px] text-primary font-semibold hover:underline">
+                              <BotaoSubmit
+                                variante="secundario"
+                                carregandoTexto={i.pago ? "Desmarcando..." : "Marcando..."}
+                                className="text-[10px] text-primary font-semibold hover:underline"
+                              >
                                 {i.pago ? "Desmarcar" : "Marcar pago"}
-                              </button>
+                              </BotaoSubmit>
                             </form>
                           )}
                         </>
@@ -455,9 +464,9 @@ export default async function EventoDetalhePage({
                           confirmar se vão ou não, não podem ser apagados"). */}
                       <form action={apagarInscricaoAction}>
                         <input type="hidden" name="inscricaoId" value={i.id} />
-                        <button type="submit" className="text-[10px] text-red-500 font-semibold hover:underline">
+                        <BotaoSubmit variante="perigo" carregandoTexto="Apagando..." className="text-[10px] text-red-500 font-semibold hover:underline">
                           Apagar
-                        </button>
+                        </BotaoSubmit>
                       </form>
                     </div>
                   </div>

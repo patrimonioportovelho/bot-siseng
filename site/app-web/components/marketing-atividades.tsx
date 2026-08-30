@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { formatDataCalendario, hojeInputDate, hojePortoVelho } from "@/lib/format";
 import { TIPOS_ATIVIDADE, TIPO_ATIVIDADE_LABEL } from "@/lib/marketing/opcoes";
 import { BotaoSubmit } from "@/components/botao-submit";
@@ -40,8 +40,28 @@ export function MarketingAtividades({
   remover: (id: string, ordemId: string) => Promise<void>;
 }) {
   const [, startTransition] = useTransition();
+  // Item sendo marcado/removido agora — mesmo padrão de feedback aplicado
+  // em gestao-atividades.tsx/manutencao-atividades.tsx (pedido do usuário
+  // 30/08/2026).
+  const [idProcessando, setIdProcessando] = useState<string | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const agora = hojePortoVelho();
+
+  function aoMarcarFeita(id: string) {
+    setIdProcessando(id);
+    startTransition(async () => {
+      await marcarFeita(id, ordemId);
+      setIdProcessando(null);
+    });
+  }
+
+  function aoRemover(id: string) {
+    setIdProcessando(id);
+    startTransition(async () => {
+      await remover(id, ordemId);
+      setIdProcessando(null);
+    });
+  }
 
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-4">
@@ -95,13 +115,17 @@ export function MarketingAtividades({
                 a.cancelado ? "bg-red-50 border-red-200" : atrasada ? "bg-[#B14226]/5 border-[#B14226]/30" : "border-gray-100"
               }`}
             >
-              <input
-                type="checkbox"
-                checked={a.feito}
-                disabled={a.cancelado}
-                onChange={() => startTransition(() => marcarFeita(a.id, ordemId))}
-                className="rounded"
-              />
+              {idProcessando === a.id ? (
+                <span className="w-3.5 h-3.5 border-2 rounded-full animate-spin border-gray-300 border-t-gray-600 shrink-0" />
+              ) : (
+                <input
+                  type="checkbox"
+                  checked={a.feito}
+                  disabled={a.cancelado}
+                  onChange={() => aoMarcarFeita(a.id)}
+                  className="rounded"
+                />
+              )}
               <div className="flex-1 min-w-0">
                 <span
                   className={`text-xs ${
@@ -130,8 +154,9 @@ export function MarketingAtividades({
               </span>
               <button
                 type="button"
-                onClick={() => startTransition(() => remover(a.id, ordemId))}
-                className="text-[11px] text-gray-300 hover:text-red-500 opacity-100 md:opacity-0 md:group-hover:opacity-100"
+                onClick={() => aoRemover(a.id)}
+                disabled={idProcessando === a.id}
+                className="text-[11px] text-gray-300 hover:text-red-500 opacity-100 md:opacity-0 md:group-hover:opacity-100 disabled:cursor-wait"
               >
                 remover
               </button>

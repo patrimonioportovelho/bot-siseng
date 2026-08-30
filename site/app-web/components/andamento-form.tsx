@@ -7,6 +7,7 @@ import {
   TIPO_CONTRATO_ANDAMENTO_OPCOES
 } from "@/lib/financiamento/opcoes";
 import { formatMoeda, formatDataCalendario, formatValorEditavel, formatInscricao, formatProcesso } from "@/lib/format";
+import { BotaoSubmit } from "@/components/botao-submit";
 
 type Cliente = { id: string; nome: string };
 type Imovel = {
@@ -487,9 +488,9 @@ export function AndamentoForm({
             Cancelar
           </button>
         )}
-        <button type="submit" className="bg-primary text-white rounded-lg px-5 py-2 text-sm font-semibold hover:opacity-90">
+        <BotaoSubmit carregandoTexto="Salvando..." className="bg-primary text-white rounded-lg px-5 py-2 text-sm font-semibold hover:opacity-90">
           {n ? "Salvar alterações" : "Iniciar andamento"}
-        </button>
+        </BotaoSubmit>
       </div>
     </form>
   );

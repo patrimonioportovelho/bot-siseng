@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Topbar } from "@/components/topbar";
+import { BotaoSubmit } from "@/components/botao-submit";
 import { prisma } from "@/lib/prisma";
 import { AtividadesTabs } from "@/components/atividades-tabs";
 import { MarketingEmpreendimentoForm } from "@/components/marketing-empreendimento-form";
@@ -46,9 +47,9 @@ export default async function MarketingEmpreendimentoDetalhePage({
         {!empreendimento.excluido && (
           <form action={apagarEmpreendimentoAction}>
             <input type="hidden" name="empreendimentoId" value={empreendimento.id} />
-            <button type="submit" className="text-xs border border-red-200 text-red-600 rounded-lg px-3 py-1.5 hover:bg-red-50">
+            <BotaoSubmit variante="perigo" carregandoTexto="Apagando..." className="text-xs border border-red-200 text-red-600 rounded-lg px-3 py-1.5 hover:bg-red-50">
               Apagar cadastro
-            </button>
+            </BotaoSubmit>
           </form>
         )}
       </div>

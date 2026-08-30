@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { BotaoEnviar } from "@/components/botao-enviar";
+import { BotaoSubmit } from "@/components/botao-submit";
 import { gerarPagamentoParcialAction } from "@/app/portal/financeiro/actions";
 
 // Mini-formulário "gerar Pix de um pedaço da dívida" (Fase 8, 14/08/2026) —
@@ -30,12 +30,12 @@ export function PortalGerarPixParcial({ movimentacaoId, tetoDisponivel }: { movi
           className="text-xs border border-gray-300 rounded-lg px-2 py-1.5 w-full outline-none focus:border-primary bg-white"
         />
       </div>
-      <BotaoEnviar
-        textoEnviando="Gerando..."
+      <BotaoSubmit
+        carregandoTexto="Gerando..."
         className="text-xs bg-primary text-white rounded-lg px-3 py-1.5 font-semibold whitespace-nowrap"
       >
         Gerar Pix
-      </BotaoEnviar>
+      </BotaoSubmit>
       {resultado?.erro && <p className="text-[11px] text-red-600 basis-full">{resultado.erro}</p>}
     </form>
   );

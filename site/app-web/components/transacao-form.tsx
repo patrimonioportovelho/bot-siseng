@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useMemo, useRef, useState } from "react";
+import { BotaoSubmit } from "@/components/botao-submit";
 import {
   TIPOS_TRANSACAO,
   GARANTIA_OPCOES,
@@ -1456,9 +1457,9 @@ export function TransacaoForm({
       )}
 
       <div className="flex justify-end">
-        <button type="submit" className="bg-primary text-white rounded-lg px-5 py-2 text-sm font-semibold hover:opacity-90">
+        <BotaoSubmit carregandoTexto="Salvando..." className="bg-primary text-white rounded-lg px-5 py-2 text-sm font-semibold hover:opacity-90">
           {t ? "Salvar alterações" : "Cadastrar transação"}
-        </button>
+        </BotaoSubmit>
       </div>
     </form>
   );

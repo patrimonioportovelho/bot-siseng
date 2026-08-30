@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { formatValorEditavel } from "@/lib/format";
+import { BotaoSubmit } from "@/components/botao-submit";
 import {
   TIPOS_SERVICO,
   URGENCIAS,
@@ -218,9 +219,9 @@ export function ManutencaoEditarForm({
       </div>
 
       <div className="flex justify-end">
-        <button type="submit" className="text-xs bg-primary text-white rounded-lg px-5 py-2 font-semibold">
+        <BotaoSubmit carregandoTexto="Salvando..." className="text-xs bg-primary text-white rounded-lg px-5 py-2 font-semibold">
           Salvar alterações
-        </button>
+        </BotaoSubmit>
       </div>
     </form>
   );

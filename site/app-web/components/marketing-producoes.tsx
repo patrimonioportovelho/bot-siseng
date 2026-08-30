@@ -59,6 +59,34 @@ export function MarketingProducoes({
   const [, startTransition] = useTransition();
   const formRef = useRef<HTMLFormElement>(null);
   const [linksAbertos, setLinksAbertos] = useState<string | null>(null);
+  // Peça sendo processada agora (status/revisão/remover) — mesmo padrão de
+  // feedback aplicado nas outras listas com Server Action fora de <form>
+  // (pedido do usuário 30/08/2026).
+  const [idProcessando, setIdProcessando] = useState<string | null>(null);
+
+  function aoAtualizarStatus(id: string, status: string) {
+    setIdProcessando(id);
+    startTransition(async () => {
+      await atualizarStatus(id, ordemId, status);
+      setIdProcessando(null);
+    });
+  }
+
+  function aoIncrementarRevisao(id: string) {
+    setIdProcessando(id);
+    startTransition(async () => {
+      await incrementarRevisao(id, ordemId);
+      setIdProcessando(null);
+    });
+  }
+
+  function aoRemover(id: string) {
+    setIdProcessando(id);
+    startTransition(async () => {
+      await remover(id, ordemId);
+      setIdProcessando(null);
+    });
+  }
 
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-4">
@@ -117,10 +145,14 @@ export function MarketingProducoes({
                 {p.revisoes > 0 && <span className="text-[11px] text-[#A9822E]"> · {p.revisoes} revisão(ões)</span>}
               </div>
               <div className="flex items-center gap-1.5 shrink-0">
+                {idProcessando === p.id && (
+                  <span className="w-3 h-3 border-2 rounded-full animate-spin border-gray-300 border-t-gray-600 shrink-0" />
+                )}
                 <select
                   value={p.status}
-                  onChange={(e) => startTransition(() => atualizarStatus(p.id, ordemId, e.target.value))}
-                  className={`text-[10px] font-semibold rounded-full px-2 py-0.5 border ${STATUS_COR[p.status] ?? STATUS_COR.Pendente}`}
+                  disabled={idProcessando === p.id}
+                  onChange={(e) => aoAtualizarStatus(p.id, e.target.value)}
+                  className={`text-[10px] font-semibold rounded-full px-2 py-0.5 border ${STATUS_COR[p.status] ?? STATUS_COR.Pendente} disabled:opacity-60`}
                 >
                   {STATUS_PRODUCAO_OPCOES.map((s) => (
                     <option key={s} value={s}>
@@ -130,8 +162,9 @@ export function MarketingProducoes({
                 </select>
                 <button
                   type="button"
-                  onClick={() => startTransition(() => incrementarRevisao(p.id, ordemId))}
-                  className="text-[11px] text-gray-400 hover:text-[#A9822E]"
+                  onClick={() => aoIncrementarRevisao(p.id)}
+                  disabled={idProcessando === p.id}
+                  className="text-[11px] text-gray-400 hover:text-[#A9822E] disabled:cursor-wait"
                   title="Registrar uma rodada de alteração"
                 >
                   +1 revisão
@@ -145,8 +178,9 @@ export function MarketingProducoes({
                 </button>
                 <button
                   type="button"
-                  onClick={() => startTransition(() => remover(p.id, ordemId))}
-                  className="text-[11px] text-gray-300 hover:text-red-500"
+                  onClick={() => aoRemover(p.id)}
+                  disabled={idProcessando === p.id}
+                  className="text-[11px] text-gray-300 hover:text-red-500 disabled:cursor-wait"
                 >
                   remover
                 </button>

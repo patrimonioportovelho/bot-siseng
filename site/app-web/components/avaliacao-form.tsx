@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState, type ReactNode } from "react";
-import { useFormStatus } from "react-dom";
+import { BotaoSubmit } from "@/components/botao-submit";
 import {
   STATUS_AVALIACAO_OPCOES,
   TIPO_AVALIACAO_OPCOES,
@@ -120,22 +120,6 @@ function Linha({ label, valor }: { label: string; valor: ReactNode }) {
       <div className="text-[11px] text-gray-400">{label}</div>
       <div className="text-xs text-gray-800 font-medium mt-0.5 break-words">{valor ?? "—"}</div>
     </div>
-  );
-}
-
-// useFormStatus só enxerga o estado do <form> quando usado num componente
-// FILHO dele (não dá pra ler isso no mesmo componente que declara o
-// <form>) — por isso é um componente à parte, mesmo sendo pequeno.
-function BotaoEnviarImagem({ jaEnviado, podeEnviar }: { jaEnviado: boolean; podeEnviar: boolean }) {
-  const { pending } = useFormStatus();
-  return (
-    <button
-      type="submit"
-      disabled={pending || !podeEnviar}
-      className="text-xs bg-primary text-white rounded-lg px-3 py-1.5 font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
-    >
-      {pending ? "Enviando..." : jaEnviado ? "Reenviar ao corretor" : "Enviar ao corretor"}
-    </button>
   );
 }
 
@@ -292,7 +276,13 @@ function Ficha({
               <div className="flex items-center gap-3 pt-2 border-t border-gray-100">
                 <form action={actionEnviarImagem}>
                   <input type="hidden" name="avaliacaoId" value={a.id} />
-                  <BotaoEnviarImagem jaEnviado={!!a.imagem_consulta_enviada_em} podeEnviar={!!parceiroEmail} />
+                  <BotaoSubmit
+                    disabled={!parceiroEmail}
+                    carregandoTexto="Enviando..."
+                    className="text-xs bg-primary text-white rounded-lg px-3 py-1.5 font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {a.imagem_consulta_enviada_em ? "Reenviar ao corretor" : "Enviar ao corretor"}
+                  </BotaoSubmit>
                 </form>
                 {!parceiroEmail && (
                   <span className="text-[11px] text-amber-600">

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Topbar } from "@/components/topbar";
+import { BotaoSubmit } from "@/components/botao-submit";
 import { prisma } from "@/lib/prisma";
 import { getAdminSession } from "@/lib/auth";
 import { StatusSacSelect } from "@/components/configuracoes/status-sac-select";
@@ -210,15 +211,15 @@ export default async function ConfiguracoesPage({
                       <div className="flex gap-1.5">
                         <form action={aprovarAcessoAction}>
                           <input type="hidden" name="solicitacaoId" value={s.id} />
-                          <button type="submit" className="text-xs bg-primary text-white rounded-lg px-2 py-1">
+                          <BotaoSubmit carregandoTexto="Aprovando..." className="text-xs bg-primary text-white rounded-lg px-2 py-1">
                             Aprovar
-                          </button>
+                          </BotaoSubmit>
                         </form>
                         <form action={rejeitarAcessoAction}>
                           <input type="hidden" name="solicitacaoId" value={s.id} />
-                          <button type="submit" className="text-xs border border-gray-300 text-gray-600 rounded-lg px-2 py-1">
+                          <BotaoSubmit variante="secundario" carregandoTexto="Rejeitando..." className="text-xs border border-gray-300 text-gray-600 rounded-lg px-2 py-1">
                             Rejeitar
-                          </button>
+                          </BotaoSubmit>
                         </form>
                       </div>
                     </td>
@@ -266,9 +267,9 @@ export default async function ConfiguracoesPage({
               className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-40 outline-none focus:border-primary"
             />
           </div>
-          <button type="submit" className="text-xs bg-primary text-white rounded-lg px-3 py-1.5">
+          <BotaoSubmit carregandoTexto="Salvando..." className="text-xs bg-primary text-white rounded-lg px-3 py-1.5">
             Salvar
-          </button>
+          </BotaoSubmit>
         </form>
       </div>
 
@@ -305,9 +306,9 @@ export default async function ConfiguracoesPage({
                 </div>
                 <form action={removerSocioDashboardAction}>
                   <input type="hidden" name="socioId" value={s.id} />
-                  <button type="submit" className="text-xs border border-red-200 text-red-600 rounded-lg px-2 py-1 shrink-0">
+                  <BotaoSubmit variante="perigo" carregandoTexto="Removendo..." className="text-xs border border-red-200 text-red-600 rounded-lg px-2 py-1 shrink-0">
                     Remover
-                  </button>
+                  </BotaoSubmit>
                 </form>
               </div>
             ))}
@@ -347,9 +348,9 @@ export default async function ConfiguracoesPage({
                 className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-56 outline-none focus:border-primary"
               />
             </div>
-            <button type="submit" className="text-xs bg-primary text-white rounded-lg px-3 py-1.5">
+            <BotaoSubmit carregandoTexto="Adicionando..." className="text-xs bg-primary text-white rounded-lg px-3 py-1.5">
               Adicionar
-            </button>
+            </BotaoSubmit>
           </form>
         )}
       </div>
@@ -481,9 +482,9 @@ export default async function ConfiguracoesPage({
                     </form>
                     <form action={excluirPublicacaoAction}>
                       <input type="hidden" name="publicacaoId" value={p.id} />
-                      <button type="submit" className="text-xs border border-red-200 text-red-600 rounded-lg px-2 py-1">
+                      <BotaoSubmit variante="perigo" carregandoTexto="Excluindo..." className="text-xs border border-red-200 text-red-600 rounded-lg px-2 py-1">
                         Excluir
-                      </button>
+                      </BotaoSubmit>
                     </form>
                   </div>
                 </div>
@@ -580,9 +581,9 @@ export default async function ConfiguracoesPage({
                   {!e.visto && (
                     <form action={marcarErroVistoAction}>
                       <input type="hidden" name="erroId" value={e.id} />
-                      <button type="submit" className="text-xs border border-gray-300 text-gray-600 rounded-lg px-2 py-1">
+                      <BotaoSubmit variante="secundario" carregandoTexto="Marcando..." className="text-xs border border-gray-300 text-gray-600 rounded-lg px-2 py-1">
                         Marcar como visto
-                      </button>
+                      </BotaoSubmit>
                     </form>
                   )}
                 </div>

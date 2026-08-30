@@ -2,6 +2,7 @@
 
 import { useActionState, useMemo, useState } from "react";
 import { formatValorEditavel, hojeInputDate } from "@/lib/format";
+import { BotaoSubmit } from "@/components/botao-submit";
 import { CampoLink } from "@/components/campo-link";
 
 type CategoriaOpcao = { id: string; nome: string; tipo: string | null };
@@ -273,9 +274,9 @@ export function FinanceiroEditarForm({
       )}
 
       <div className="flex justify-end">
-        <button type="submit" className="text-xs bg-primary text-white rounded-lg px-5 py-2 font-semibold">
+        <BotaoSubmit carregandoTexto="Salvando..." className="text-xs bg-primary text-white rounded-lg px-5 py-2 font-semibold">
           Salvar alterações
-        </button>
+        </BotaoSubmit>
       </div>
     </form>
   );

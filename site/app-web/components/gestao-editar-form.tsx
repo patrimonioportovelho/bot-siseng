@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { formatValorEditavel, formatPercentual } from "@/lib/format";
+import { BotaoSubmit } from "@/components/botao-submit";
 import { COLUNAS_KANBAN, CHAVE_POSSE, CHAVE_POSSE_LABEL } from "@/lib/gestoes/opcoes";
 import { AdicionarProprietarioImovel } from "@/components/adicionar-proprietario-imovel";
 
@@ -127,9 +128,9 @@ export function GestaoEditarForm({
       </div>
 
       <div className="flex justify-end">
-        <button type="submit" className="text-xs bg-primary text-white rounded-lg px-5 py-2 font-semibold">
+        <BotaoSubmit carregandoTexto="Salvando..." className="text-xs bg-primary text-white rounded-lg px-5 py-2 font-semibold">
           Salvar alterações
-        </button>
+        </BotaoSubmit>
       </div>
     </form>
   );

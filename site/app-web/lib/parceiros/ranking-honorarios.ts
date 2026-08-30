@@ -24,11 +24,25 @@ export type LinhaRankingHonorario = {
   valor: number;
 };
 
-export async function buscarRankingHonorariosMes(referencia: Date = hojePortoVelho()): Promise<LinhaRankingHonorario[]> {
-  const inicioMes = new Date(referencia.getFullYear(), referencia.getMonth(), 1);
-  const fimMes = new Date(referencia.getFullYear(), referencia.getMonth() + 1, 1);
+// Extraído em 30/08/2026 (achado da auditoria comparando esse ranking com a
+// coluna "Recebido" do quadro Corretores no Dashboard admin): as duas telas
+// tinham cada uma sua própria lógica de "quanto o corretor recebeu", e a do
+// Dashboard media outra coisa (rateio de transação ASSINADA no período, não o
+// dinheiro que efetivamente ENTROU no período) e também classificava todo
+// rateio "pago direto" como "A Receber" pra sempre (pagamentos.status nunca
+// vira "Pago" em lugar nenhum do sistema — só nasce "Pendente"). Essa função
+// agora é a ÚNICA fonte de verdade de "honorário recebido num período",
+// reaproveitada tanto aqui (ranking, sem filtro de loja, só função Corretor)
+// quanto no Dashboard (com filtro de loja, Corretor + Corretor Estagiário).
+export async function buscarHonorariosRecebidosPorParceiro(
+  inicio: Date,
+  fimExclusivo: Date,
+  lojasFiltro?: string[]
+): Promise<Map<string, number>> {
+  const filtroLojaMovimentacao = lojasFiltro ? { transacoes: { loja_id: { in: lojasFiltro } } } : {};
+  const filtroLojaPagamento = lojasFiltro ? { transacoes: { loja_id: { in: lojasFiltro } } } : {};
 
-  const [repassesPagos, pagosDireto, corretores] = await Promise.all([
+  const [repassesPagos, pagosDireto] = await Promise.all([
     prisma.movimentacoes.groupBy({
       by: ["parceiro_id"],
       where: {
@@ -36,7 +50,8 @@ export async function buscarRankingHonorariosMes(referencia: Date = hojePortoVel
         pagamento_id: { not: null },
         pago: true,
         parceiro_id: { not: null },
-        data_pagamento: { gte: inicioMes, lt: fimMes }
+        data_pagamento: { gte: inicio, lt: fimExclusivo },
+        ...filtroLojaMovimentacao
       },
       _sum: { valor: true }
     }),
@@ -44,13 +59,10 @@ export async function buscarRankingHonorariosMes(referencia: Date = hojePortoVel
       by: ["parceiro_id"],
       where: {
         pago_direto: true,
-        created_at: { gte: inicioMes, lt: fimMes }
+        created_at: { gte: inicio, lt: fimExclusivo },
+        ...filtroLojaPagamento
       },
       _sum: { valor_parceiro: true }
-    }),
-    prisma.parceiros.findMany({
-      where: { funcao: "Corretor", status_funcao: { not: "Excluído" } },
-      select: { id: true, nome: true, foto_url: true }
     })
   ]);
 
@@ -62,6 +74,20 @@ export async function buscarRankingHonorariosMes(referencia: Date = hojePortoVel
   for (const p of pagosDireto) {
     totais.set(p.parceiro_id, (totais.get(p.parceiro_id) ?? 0) + Number(p._sum.valor_parceiro ?? 0));
   }
+  return totais;
+}
+
+export async function buscarRankingHonorariosMes(referencia: Date = hojePortoVelho()): Promise<LinhaRankingHonorario[]> {
+  const inicioMes = new Date(referencia.getFullYear(), referencia.getMonth(), 1);
+  const fimMes = new Date(referencia.getFullYear(), referencia.getMonth() + 1, 1);
+
+  const [totais, corretores] = await Promise.all([
+    buscarHonorariosRecebidosPorParceiro(inicioMes, fimMes),
+    prisma.parceiros.findMany({
+      where: { funcao: "Corretor", status_funcao: { not: "Excluído" } },
+      select: { id: true, nome: true, foto_url: true }
+    })
+  ]);
 
   return corretores
     .map((c) => ({ parceiroId: c.id, nome: c.nome, fotoUrl: c.foto_url, valor: totais.get(c.id) ?? 0 }))

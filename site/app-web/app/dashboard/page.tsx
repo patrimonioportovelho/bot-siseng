@@ -17,6 +17,7 @@ import {
   saudacaoPortoVelho
 } from "@/lib/format";
 import { FUNCOES_CORRETOR } from "@/lib/transacoes/opcoes";
+import { buscarHonorariosRecebidosPorParceiro } from "@/lib/parceiros/ranking-honorarios";
 import { COLUNAS_KANBAN as COLUNAS_MARKETING, labelColuna as labelColunaMarketing, slaDaOrdem, STATUS_PRODUCAO_OPCOES } from "@/lib/marketing/opcoes";
 import { getAdminSession } from "@/lib/auth";
 import { ultimoResetSessaoMs } from "@/lib/session";
@@ -149,6 +150,7 @@ export default async function DashboardPage({
     movimentacoesPagasPeriodo,
     corretoresAtivos,
     pagamentosCorretoresPeriodo,
+    honorariosRecebidosPorParceiro,
     avaliacoesPeriodo,
     movimentacoesNegocioPeriodo,
     movimentacoesNegocioAnterior,
@@ -331,10 +333,19 @@ export default async function DashboardPage({
       select: {
         parceiro_id: true,
         valor_parceiro: true,
-        status: true,
+        pago_direto: true,
         movimentacoes: { select: { pago: true } }
       }
     }),
+    // "Recebido" de verdade (achado da auditoria de 30/08/2026, comparando
+    // com o ranking externo — ver lib/parceiros/ranking-honorarios.ts): eixo
+    // de tempo é a Data de pagamento/geração do rateio, não a Data de
+    // assinatura da transação (o repasse costuma sair semanas depois da
+    // assinatura, então um corretor que assinou tudo mês passado mas foi
+    // pago agora aparecia zerado). pagamentosCorretoresPeriodo (acima)
+    // continua servindo só pra "A Receber" — pendências de transação
+    // assinada no período, uma métrica diferente de propósito.
+    buscarHonorariosRecebidosPorParceiro(inicio, fimExclusivo, lojasFiltro),
     // Financiamento: Avaliações levantadas dentro do período (por Data de
     // avaliação) — pedido do usuário é filtrar SEMPRE pela Data de avaliação,
     // inclusive pros Andamentos vinculados (por isso eles vêm aninhados aqui,
@@ -606,19 +617,27 @@ export default async function DashboardPage({
     .sort((a, b) => b[1] - a[1])
     .map(([label, valor]) => ({ label, valor }));
 
-  // Quadro Corretores: junta o cadastro (todo Corretor/Corretor Estagiário
-  // ativo) com o rateio gravado em `pagamentos` pra cada transação assinada
-  // no período. Se a Despesa vinculada existe, ela decide "pago" (é o que o
-  // Financeiro mexe no dia a dia); senão usa o status histórico que já veio
-  // da planilha (pagamentos.status).
-  const recebidoPorParceiro = new Map<string, number>();
+  // Quadro Corretores — duas métricas de propósito diferente (achado da
+  // auditoria de 30/08/2026, corrigido):
+  // "Recebido" = honorariosRecebidosPorParceiro (acima), pela Data real de
+  // pagamento/geração do rateio — mesma definição do ranking externo e do
+  // Financeiro do corretor no Portal.
+  // "A Receber" = rateio de transação ASSINADA no período que ainda não virou
+  // dinheiro: exclui "pago direto" (esse já conta como recebido na hora que
+  // o rateio é gerado, nunca fica pendente) e exclui o que já tem Despesa
+  // paga (esse já está contado em "Recebido", só que pela Data de pagamento,
+  // que pode cair fora deste período). NÃO usa mais pagamentos.status — esse
+  // campo nasce "Pendente" e nada no sistema nunca escreve "Pago" nele (é o
+  // mesmo achado que já tinha corrigido o Financeiro do corretor no Portal,
+  // Fase 8, 14/08/2026 — só não tinha chegado até aqui ainda).
+  const recebidoPorParceiro = honorariosRecebidosPorParceiro;
   const aReceberPorParceiro = new Map<string, number>();
   for (const p of pagamentosCorretoresPeriodo) {
+    if (p.pago_direto) continue;
     const despesaLigada = p.movimentacoes[0];
-    const pago = despesaLigada ? despesaLigada.pago : p.status === "Pago";
+    if (despesaLigada?.pago) continue;
     const valor = Number(p.valor_parceiro ?? 0);
-    const mapa = pago ? recebidoPorParceiro : aReceberPorParceiro;
-    mapa.set(p.parceiro_id, (mapa.get(p.parceiro_id) ?? 0) + valor);
+    aReceberPorParceiro.set(p.parceiro_id, (aReceberPorParceiro.get(p.parceiro_id) ?? 0) + valor);
   }
 
   // Colunas de quantidade do quadro Corretores (pedido do usuário): Clientes
@@ -1402,10 +1421,12 @@ export default async function DashboardPage({
           <div className="text-sm font-bold text-gray-800">Corretores</div>
         </div>
         <p className="text-[11px] text-gray-400 mb-3">
-          Tudo dentro do período selecionado acima (mesma régua do Vendas & Locação): Clientes Aprovados vem do
-          Financiamento (por Data de avaliação), Cliente e Imóveis contam quem/o que foi cadastrado por esse
-          corretor, Locação e Compra e Venda contam as transações assinadas. Recebido é o honorário já pago,
-          A Receber é o que ainda falta repassar.
+          Clientes Aprovados vem do Financiamento (por Data de avaliação), Cliente e Imóveis contam quem/o que foi
+          cadastrado por esse corretor, Locação e Compra e Venda contam as transações assinadas — essas colunas
+          seguem o período selecionado acima. <strong>Recebido</strong> é diferente: conta pela Data em que o
+          dinheiro entrou (pagamento do repasse, ou o dia em que o rateio foi gerado quando o vendedor pagou
+          direto), não pela Data de assinatura — pode incluir honorário de negócio assinado antes deste período.{" "}
+          <strong>A Receber</strong> é o rateio de transação assinada neste período que ainda não virou dinheiro.
         </p>
         <div className="overflow-x-auto">
           <table className="w-full text-xs min-w-[820px]">

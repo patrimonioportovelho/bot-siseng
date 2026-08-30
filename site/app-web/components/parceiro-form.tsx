@@ -174,34 +174,49 @@ function Ficha({ parceiro, onEditar }: { parceiro: ParceiroExistente; onEditar: 
   return (
     <div className="flex flex-col gap-4">
       <Cartao titulo="Identificação" acao={BotaoEditar}>
-        {p.foto_url && (
-          <div className="mb-3">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={p.foto_url}
-              alt={`Foto de ${p.nome}`}
-              className="w-20 aspect-[4/5] object-cover rounded-lg border border-gray-200"
-            />
+        {/* Foto ao lado dos campos (não em cima), com o topo alinhado com
+            Nome completo/CPF — padronizado em 30/08/2026 a pedido do
+            usuário. Sem foto cadastrada, mostra um espaço reservado com
+            avatar padrão em vez de simplesmente não aparecer nada, pra não
+            "pular" o card quando a foto for adicionada depois. */}
+        <div className="flex flex-col sm:flex-row gap-4">
+          <div className="w-20 aspect-[4/5] rounded-lg overflow-hidden bg-gray-100 border border-gray-200 shrink-0">
+            {p.foto_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={p.foto_url} alt={`Foto de ${p.nome}`} className="w-full h-full object-cover" />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center">
+                <svg viewBox="0 0 24 24" fill="none" className="w-9 h-9 text-gray-300">
+                  <circle cx="12" cy="8" r="3.5" stroke="currentColor" strokeWidth="1.6" />
+                  <path
+                    d="M4.5 19.5c1.2-3.4 4.2-5 7.5-5s6.3 1.6 7.5 5"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </div>
+            )}
           </div>
-        )}
-        <div className="grid md:grid-cols-2 gap-3">
-          <Linha label="Nome completo" valor={p.nome} />
-          <Linha label="CPF" valor={p.cpf ? formatCpf(p.cpf) : null} />
-          <Linha label="Função" valor={p.funcao} />
-          <Linha label="Status" valor={p.status_funcao} />
-          <Linha label="CRECI" valor={p.creci} />
-          <Linha label="Estado civil" valor={p.estado_civil} />
-          {pedeUniaoEstavel && (
-            <Linha
-              label="União estável"
-              valor={p.uniao_estavel === true ? "Sim" : p.uniao_estavel === false ? "Não" : "Não perguntado ainda"}
-            />
-          )}
-          <Linha label="Data de nascimento" valor={formatDataCalendario(p.data_nascimento)} />
-          <Linha label="Identidade (RG)" valor={p.identidade} />
-          <Linha label="Estado de expedição" valor={p.expedicao_estado} />
-          <Linha label="Data de entrada" valor={formatDataCalendario(p.data_entrada)} />
-          {mostrarDataSaida && <Linha label="Data de saída" valor={formatDataCalendario(p.data_saida)} />}
+          <div className="grid md:grid-cols-2 gap-3 flex-1">
+            <Linha label="Nome completo" valor={p.nome} />
+            <Linha label="CPF" valor={p.cpf ? formatCpf(p.cpf) : null} />
+            <Linha label="Função" valor={p.funcao} />
+            <Linha label="Status" valor={p.status_funcao} />
+            <Linha label="CRECI" valor={p.creci} />
+            <Linha label="Estado civil" valor={p.estado_civil} />
+            {pedeUniaoEstavel && (
+              <Linha
+                label="União estável"
+                valor={p.uniao_estavel === true ? "Sim" : p.uniao_estavel === false ? "Não" : "Não perguntado ainda"}
+              />
+            )}
+            <Linha label="Data de nascimento" valor={formatDataCalendario(p.data_nascimento)} />
+            <Linha label="Identidade (RG)" valor={p.identidade} />
+            <Linha label="Estado de expedição" valor={p.expedicao_estado} />
+            <Linha label="Data de entrada" valor={formatDataCalendario(p.data_entrada)} />
+            {mostrarDataSaida && <Linha label="Data de saída" valor={formatDataCalendario(p.data_saida)} />}
+          </div>
         </div>
       </Cartao>
 

@@ -1,6 +1,15 @@
 import { prisma } from "@/lib/prisma";
 import { hojePortoVelho, formatMoeda } from "@/lib/format";
 
+// Mesma categoria fixa usada em app/financeiro/actions.ts (constante
+// CATEGORIA_REPASSE_HONORARIO, já existe importada da planilha legada —
+// Cat0021 "Repasse de Honorários Transações" em categorias_financeiras,
+// tipo Despesa). Duplicada aqui como literal (não importada de lá) porque
+// aquele arquivo é "use server" — só pode exportar funções async, não
+// constantes. Se o nome dessa categoria mudar um dia, tem que mudar nos
+// dois lugares.
+const CATEGORIA_REPASSE_HONORARIO = "Repasse de Honorários Transações";
+
 // Ranking mensal de honorários RECEBIDOS por Corretor — pedido do usuário
 // (29/08/2026): "dashboard externo... ranking de quem mais recebeu
 // honorários, somando locação e compra e venda... deu pago em Financeiro
@@ -9,14 +18,30 @@ import { hojePortoVelho, formatMoeda } from "@/lib/format";
 // — só que aqui somada SÓ dentro do mês corrente (reseta todo dia 1º) e
 // agrupada por corretor pra ranquear:
 //   1) Despesa de repasse de honorário já marcada como paga em Financeiro
-//      (movimentacoes: tipo=Despesa, pagamento_id preenchido, pago=true),
-//      pela Data de pagamento.
+//      (movimentacoes: tipo=Despesa, categoria "Repasse de Honorários
+//      Transações", pago=true), pela Data de pagamento.
 //   2) Rateio "pago direto" (pagamentos.pago_direto=true — vendedor pagou o
 //      corretor sem passar pela nossa conta, não gera Despesa nenhuma pra
 //      marcar como paga) — contado assim que o rateio é gerado
 //      (created_at), já que não existe uma confirmação de "pago" separada
 //      pra esse caso.
 // Só função "Corretor" entra (não Corretor Estagiário — pedido do usuário).
+//
+// Correção de 31/08/2026 (usuário: "só puxou as pagas de locações, precisa
+// puxar todas do tipo Repasse de honorários de transações, paga — seja
+// compra e venda e/ou locação"): a query #1 antes exigia `pagamento_id`
+// preenchido, como se isso marcasse "é um repasse de verdade". Só que
+// `pagamento_id` só vem preenchido quando a despesa nasceu do fluxo
+// automático de rateio (gerarRateioAction, components/rateio-form.tsx) —
+// esse fluxo é usado o tempo todo em Locação (boleto mensal → rateio), mas
+// em Compra e Venda é comum o administrativo lançar o repasse manualmente
+// direto em Financeiro (components/financeiro-form.tsx já tem suporte
+// dedicado pra isso), e esse lançamento manual NUNCA preenche
+// `pagamento_id` — por isso os repasses manuais de Compra e Venda ficavam
+// de fora do ranking/Dashboard mesmo aparecendo certinho no filtro do
+// Financeiro (que nunca exigiu `pagamento_id`, só categoria + pago +
+// Data de pagamento). Troquei o filtro pra usar a categoria — a mesma
+// coisa que a tela de Financeiro usa — em vez de `pagamento_id`.
 export type LinhaRankingHonorario = {
   parceiroId: string;
   nome: string;
@@ -42,19 +67,29 @@ export async function buscarHonorariosRecebidosPorParceiro(
   const filtroLojaMovimentacao = lojasFiltro ? { transacoes: { loja_id: { in: lojasFiltro } } } : {};
   const filtroLojaPagamento = lojasFiltro ? { transacoes: { loja_id: { in: lojasFiltro } } } : {};
 
+  const categoriaRepasse = await prisma.categorias_financeiras.findFirst({
+    where: { nome: CATEGORIA_REPASSE_HONORARIO, tipo: "Despesa" },
+    select: { id: true }
+  });
+
   const [repassesPagos, pagosDireto] = await Promise.all([
-    prisma.movimentacoes.groupBy({
-      by: ["parceiro_id"],
-      where: {
-        tipo: "Despesa",
-        pagamento_id: { not: null },
-        pago: true,
-        parceiro_id: { not: null },
-        data_pagamento: { gte: inicio, lt: fimExclusivo },
-        ...filtroLojaMovimentacao
-      },
-      _sum: { valor: true }
-    }),
+    // Sem a categoria cadastrada não tem como somar nada com segurança —
+    // melhor voltar vazio (ranking zerado) do que arriscar somar despesas
+    // de outra categoria por engano.
+    categoriaRepasse
+      ? prisma.movimentacoes.groupBy({
+          by: ["parceiro_id"],
+          where: {
+            tipo: "Despesa",
+            categoria_id: categoriaRepasse.id,
+            pago: true,
+            parceiro_id: { not: null },
+            data_pagamento: { gte: inicio, lt: fimExclusivo },
+            ...filtroLojaMovimentacao
+          },
+          _sum: { valor: true }
+        })
+      : Promise.resolve([]),
     prisma.pagamentos.groupBy({
       by: ["parceiro_id"],
       where: {

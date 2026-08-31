@@ -73,6 +73,15 @@ export default async function PortalFinanceiroPage() {
   const session = await requirePortalSession();
   const pid = session.parceiroId;
 
+  // Mesma categoria fixa usada em app/financeiro/actions.ts, app/portal/
+  // page.tsx e lib/parceiros/ranking-honorarios.ts (Cat0021 "Repasse de
+  // Honorários Transações", tipo Despesa) — ver correção de 31/08/2026
+  // abaixo, no "Recebido"/"A receber".
+  const categoriaRepasse = await prisma.categorias_financeiras.findFirst({
+    where: { nome: "Repasse de Honorários Transações", tipo: "Despesa" },
+    select: { id: true }
+  });
+
   const [
     aPagar,
     despesasPagas,
@@ -87,14 +96,24 @@ export default async function PortalFinanceiroPage() {
       include: { categorias_financeiras: { select: { nome: true } }, pagamentos_pix: { orderBy: { criado_em: "desc" } } },
       orderBy: { vencimento: "asc" }
     }),
+    // Correção de 31/08/2026 (mesmo achado do ranking de honorários):
+    // filtrava por `pagamento_id: { not: null }` pra identificar "é uma
+    // despesa de repasse", mas isso só vem preenchido quando a despesa
+    // nasce do rateio automático — repasse lançado manualmente em
+    // Financeiro (comum em Compra e Venda) ficava de fora. Trocado pra
+    // filtrar pela categoria, mesmo sinal que a tela de Financeiro usa.
     prisma.movimentacoes.findMany({
-      where: { tipo: "Despesa", parceiro_id: pid, pagamento_id: { not: null }, pago: true },
+      where: categoriaRepasse
+        ? { tipo: "Despesa", parceiro_id: pid, categoria_id: categoriaRepasse.id, pago: true }
+        : { id: "" },
       include: { categorias_financeiras: { select: { nome: true } } },
       orderBy: { data_pagamento: "desc" },
       take: 30
     }),
     prisma.movimentacoes.findMany({
-      where: { tipo: "Despesa", parceiro_id: pid, pagamento_id: { not: null }, pago: false },
+      where: categoriaRepasse
+        ? { tipo: "Despesa", parceiro_id: pid, categoria_id: categoriaRepasse.id, pago: false }
+        : { id: "" },
       include: { categorias_financeiras: { select: { nome: true } } },
       orderBy: { vencimento: "asc" }
     }),

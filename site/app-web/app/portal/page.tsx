@@ -101,6 +101,15 @@ export default async function PortalPage() {
   // atrás (inclui o mês atual inteiro).
   const inicioGrafico = new Date(hoje.getFullYear(), hoje.getMonth() - (MESES_GRAFICO - 1), 1);
 
+  // Mesma categoria fixa usada em app/financeiro/actions.ts e em
+  // lib/parceiros/ranking-honorarios.ts (Cat0021 "Repasse de Honorários
+  // Transações", tipo Despesa) — buscada uma vez aqui fora do Promise.all
+  // abaixo porque duas das consultas dependem do id dela.
+  const categoriaRepasse = await prisma.categorias_financeiras.findFirst({
+    where: { nome: "Repasse de Honorários Transações", tipo: "Despesa" },
+    select: { id: true }
+  });
+
   const [
     pedidosAgendaRespondidos,
     metasAtivas,
@@ -212,17 +221,31 @@ export default async function PortalPage() {
     // pagamentos.status, que fica eternamente "Pendente" (nada no sistema
     // nunca escreve "Pago" nesse campo — achado ao construir o Financeiro do
     // corretor no Portal). O sinal confiável é movimentacoes.pago na Despesa
-    // de repasse gerada pelo rateio (pagamento_id aponta pra cá, ver
-    // gerarRateioAction em app/financeiro/actions.ts). "Pago direto" (vendedor
-    // pagou o corretor por fora, sem passar pela nossa conta — não gera
-    // Despesa nenhuma) conta como recebido na hora, separado abaixo.
+    // de repasse. "Pago direto" (vendedor pagou o corretor por fora, sem
+    // passar pela nossa conta — não gera Despesa nenhuma) conta como
+    // recebido na hora, separado abaixo.
+    //
+    // Correção de 31/08/2026: filtrava por `pagamento_id: { not: null }`
+    // pra identificar "é uma despesa de repasse", mas isso só vem
+    // preenchido quando a despesa nasce do rateio automático — repasse de
+    // honorário lançado manualmente em Financeiro (comum em Compra e
+    // Venda, ver components/financeiro-form.tsx) não passa por ali e
+    // ficava de fora da própria conta do corretor. Troquei pra filtrar
+    // pela categoria (mesmo sinal que a tela de Financeiro usa), igual ao
+    // fix aplicado em lib/parceiros/ranking-honorarios.ts.
+    // Categoria não encontrada (não deveria acontecer) — volta zerado em
+    // vez de arriscar somar despesas de qualquer categoria por engano.
     prisma.movimentacoes.aggregate({
-      where: { tipo: "Despesa", parceiro_id: pid, pagamento_id: { not: null }, pago: true },
+      where: categoriaRepasse
+        ? { tipo: "Despesa", parceiro_id: pid, categoria_id: categoriaRepasse.id, pago: true }
+        : { id: "" },
       _sum: { valor: true },
       _count: true
     }),
     prisma.movimentacoes.aggregate({
-      where: { tipo: "Despesa", parceiro_id: pid, pagamento_id: { not: null }, pago: false },
+      where: categoriaRepasse
+        ? { tipo: "Despesa", parceiro_id: pid, categoria_id: categoriaRepasse.id, pago: false }
+        : { id: "" },
       _sum: { valor: true },
       _count: true
     }),

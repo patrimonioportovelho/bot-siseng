@@ -852,6 +852,18 @@ model parceiros {
   // via índice funcional criado direto no banco) + senha_hash (PBKDF2, ver
   // lib/auth.ts). cpf continua existindo só como dado cadastral/de contrato.
   senha_hash                                                                  String?
+  // Acesso completo ao administrativo (aprovar/rejeitar acesso, apagar
+  // parceiro, definir senha de qualquer um, sócios do dashboard externo,
+  // status de SAC, log de erros) — pedido do usuário 31/08/2026: antes só
+  // dava pra conceder isso editando ADM_PARCEIRO_IDS no servidor (variável
+  // de ambiente), sem tela nenhuma. Agora dá pra escolher quem tem em
+  // Configurações > Acesso completo (só entre função Administrativo e
+  // Corretor). ADM_PARCEIRO_IDS continua funcionando por cima disso como
+  // rede de segurança (ver isAdmDoParceiro em lib/auth.ts) — garante que
+  // sempre tem pelo menos um jeito de entrar com acesso total mesmo que
+  // esse campo seja mexido errado. Só tem efeito depois de um novo login
+  // (fica gravado dentro da sessão assinada, não é checado a cada clique).
+  acesso_completo                                                             Boolean                   @default(false)
   data_nascimento                                                             DateTime?                 @db.Date
   identidade                                                                  String?
   expedicao_estado                                                            String?

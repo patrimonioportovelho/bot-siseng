@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Topbar } from "@/components/topbar";
 import { BotaoSubmit } from "@/components/botao-submit";
 import { prisma } from "@/lib/prisma";
-import { getAdminSession } from "@/lib/auth";
+import { getAdminSession, idsAcessoCompletoFixo } from "@/lib/auth";
 import { StatusSacSelect } from "@/components/configuracoes/status-sac-select";
 import { PublicacaoForm } from "@/components/publicacao-form";
 import {
@@ -15,7 +15,8 @@ import {
   excluirPublicacaoAction,
   marcarErroVistoAction,
   criarSocioDashboardAction,
-  removerSocioDashboardAction
+  removerSocioDashboardAction,
+  alternarAcessoCompletoAction
 } from "./actions";
 import { limparErrosAntigos } from "@/lib/erros";
 import { limparNoticiasAntigas } from "@/lib/publicacoes/limpeza";
@@ -64,6 +65,7 @@ export default async function ConfiguracoesPage({
   }
 
   const isAdm = session.isAdm;
+  const idsAcessoFixo = idsAcessoCompletoFixo();
 
   // Notícias, editais e checklists ficam abertos a qualquer administrativo
   // logado — pedido explícito do usuário. O resto da tela (aprovação de
@@ -98,7 +100,7 @@ export default async function ConfiguracoesPage({
     prisma.parceiros.findMany({
       where: { status_funcao: "Ativo" },
       orderBy: { nome: "asc" },
-      select: { id: true, nome: true, funcao: true }
+      select: { id: true, nome: true, funcao: true, acesso_completo: true }
     }),
     // Sócios em destaque no dashboard externo (/login) — reaproveita a foto e
     // o nome do próprio Parceiro (ver socios_dashboard no schema). Ordenado
@@ -271,6 +273,68 @@ export default async function ConfiguracoesPage({
             Salvar
           </BotaoSubmit>
         </form>
+      </div>
+
+      <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4">
+        <div className="text-sm font-bold text-gray-800 mb-1">Acesso completo</div>
+        <p className="text-xs text-gray-500 mb-3">
+          Quem tem acesso completo pode aprovar/rejeitar solicitações, apagar cadastro de parceiro,
+          definir senha de qualquer um, gerenciar sócios do dashboard externo, mudar status de SAC
+          e ver o log de erros. Só aparecem aqui quem tem função <strong>Administrativo</strong> ou{" "}
+          <strong>Corretor</strong>. Quem não está marcado continua com acesso controlado — usa o
+          sistema no dia a dia sem essas ações.
+        </p>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs min-w-[420px]">
+            <thead>
+              <tr className="text-left text-gray-500">
+                <th className="font-normal py-1.5 border-b border-gray-100">Nome</th>
+                <th className="font-normal py-1.5 border-b border-gray-100">Função</th>
+                <th className="font-normal py-1.5 border-b border-gray-100 w-44">Acesso</th>
+              </tr>
+            </thead>
+            <tbody>
+              {parceirosAtivos
+                .filter((p) => p.funcao === "Administrativo" || p.funcao === "Corretor")
+                .map((p) => {
+                  const fixo = idsAcessoFixo.includes(p.id);
+                  const completo = fixo || p.acesso_completo;
+                  return (
+                    <tr key={p.id}>
+                      <td className="py-2 border-b border-gray-50 font-medium text-gray-800">{p.nome}</td>
+                      <td className="py-2 border-b border-gray-50 text-gray-500">{p.funcao}</td>
+                      <td className="py-2 border-b border-gray-50">
+                        {fixo ? (
+                          <span
+                            className="text-[11px] text-gray-400"
+                            title="Definido no servidor (ADM_PARCEIRO_IDS), não dá pra tirar por aqui"
+                          >
+                            Completo (fixo)
+                          </span>
+                        ) : (
+                          <form action={alternarAcessoCompletoAction}>
+                            <input type="hidden" name="parceiroId" value={p.id} />
+                            <input type="hidden" name="acesso_completo" value={completo ? "false" : "true"} />
+                            <BotaoSubmit
+                              variante={completo ? "perigo" : "secundario"}
+                              carregandoTexto="Salvando..."
+                              className={`text-xs rounded-lg px-2 py-1 border ${
+                                completo
+                                  ? "border-red-200 text-red-600"
+                                  : "border-gray-300 text-gray-600"
+                              }`}
+                            >
+                              {completo ? "Completo — tornar controlado" : "Controlado — dar completo"}
+                            </BotaoSubmit>
+                          </form>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4">

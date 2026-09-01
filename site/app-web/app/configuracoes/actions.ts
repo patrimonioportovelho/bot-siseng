@@ -47,6 +47,56 @@ export async function definirSenhaParceiroAction(formData: FormData) {
   redirect("/configuracoes?salvo=1");
 }
 
+// Escolher quem tem "acesso completo" — pedido do usuário 31/08/2026: antes
+// só dava pra conceder isso mexendo na variável de ambiente ADM_PARCEIRO_IDS
+// no servidor, sem tela nenhuma. Só entre função Administrativo e Corretor
+// (pedido explícito do usuário) — validado aqui de novo, não só escondido na
+// lista da tela (ver prisma/schema.prisma#parceiros.acesso_completo pro
+// resto do raciocínio, inclusive por que ADM_PARCEIRO_IDS continua existindo
+// como rede de segurança por cima disso).
+export async function alternarAcessoCompletoAction(formData: FormData) {
+  const admin = await requireAdm();
+
+  const parceiroId = String(formData.get("parceiroId") ?? "");
+  const novoValor = formData.get("acesso_completo") === "true";
+  if (!parceiroId) {
+    redirect(`/configuracoes?erro=${encodeURIComponent("Parceiro inválido.")}`);
+  }
+
+  // Ninguém tira o próprio acesso completo por aqui — evita se trancar fora
+  // sem querer (a sessão atual continua valendo até expirar de qualquer
+  // jeito, mas do próximo login em diante ficaria sem acesso nenhum pra
+  // desfazer). Peça pra outro admin completo remover, se for o caso.
+  if (parceiroId === admin.parceiroId && !novoValor) {
+    redirect(`/configuracoes?erro=${encodeURIComponent("Você não pode remover o próprio acesso completo — peça para outro administrador.")}`);
+  }
+
+  const parceiro = await prisma.parceiros.findUnique({
+    where: { id: parceiroId },
+    select: { funcao: true }
+  });
+  if (!parceiro || !["Administrativo", "Corretor"].includes(parceiro.funcao)) {
+    redirect(
+      `/configuracoes?erro=${encodeURIComponent("Só é possível dar acesso completo para função Administrativo ou Corretor.")}`
+    );
+  }
+
+  await prisma.parceiros
+    .update({ where: { id: parceiroId }, data: { acesso_completo: novoValor } })
+    .catch((erro) =>
+      registrarEJogarErro({ entidadeTipo: "parceiros", entidadeId: parceiroId, acao: "alternar_acesso_completo", erro })
+    );
+
+  await logAlteracao({
+    entidadeTipo: "parceiros",
+    entidadeId: parceiroId,
+    acao: novoValor ? "conceder_acesso_completo" : "remover_acesso_completo"
+  });
+
+  revalidatePath("/configuracoes");
+  redirect("/configuracoes?salvo=1");
+}
+
 export async function aprovarAcessoAction(formData: FormData) {
   const id = String(formData.get("solicitacaoId") ?? "");
   if (!id) return;

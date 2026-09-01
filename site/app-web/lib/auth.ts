@@ -21,6 +21,27 @@ function admIds() {
     .filter(Boolean);
 }
 
+// Acesso completo (isAdm) = está na lista fixa do servidor (ADM_PARCEIRO_IDS
+// — rede de segurança, sempre funciona mesmo que o campo abaixo seja mexido
+// errado) OU tem parceiros.acesso_completo marcado (editável em
+// Configurações > Acesso completo, pedido do usuário 31/08/2026 — antes só
+// dava pra conceder isso mexendo na variável de ambiente).
+async function isAdmDoParceiro(parceiroId: string): Promise<boolean> {
+  if (admIds().includes(parceiroId)) return true;
+  const parceiro = await prisma.parceiros.findUnique({
+    where: { id: parceiroId },
+    select: { acesso_completo: true }
+  });
+  return parceiro?.acesso_completo ?? false;
+}
+
+// Exportado só pra tela de Configurações mostrar, ao lado de cada parceiro,
+// quando o acesso completo dele vem fixo do servidor (ADM_PARCEIRO_IDS) em
+// vez do campo editável ali — pra não confundir quem for mexer na lista.
+export function idsAcessoCompletoFixo(): string[] {
+  return admIds();
+}
+
 export type AdminSession = {
   parceiroId: string;
   nome: string;
@@ -216,7 +237,7 @@ async function concederAcesso(parceiroId: string, nome: string): Promise<LoginRe
   const payload: AdminSession = {
     parceiroId,
     nome,
-    isAdm: admIds().includes(parceiroId),
+    isAdm: await isAdmDoParceiro(parceiroId),
     iat: now,
     exp: now + SESSION_TTL_MS
   };

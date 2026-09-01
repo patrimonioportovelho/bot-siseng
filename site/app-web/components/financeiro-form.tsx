@@ -150,6 +150,11 @@ export function FinanceiroForm({
   const [parteRepasse, setParteRepasse] = useState<string>("");
   const [descontoRepasseTexto, setDescontoRepasseTexto] = useState("");
   const [parceiroId, setParceiroId] = useState("");
+  // Achado de auditoria (31/08/2026, caso CV-0015): clicar numa sugestão de
+  // parte (proprietário/contraparte) sem corretor vinculado na transação
+  // deixava o campo Parceiro vazio, em silêncio, com o Valor já preenchido
+  // — dava pra salvar a despesa "órfã" (com valor, sem dono) sem perceber.
+  const [avisoParceiroFaltando, setAvisoParceiroFaltando] = useState(false);
 
   const transacaoSelecionadaParaCascata = transacoes.find((tr) => tr.id === transacaoId) ?? null;
   const cascataRepasse = useMemo(() => {
@@ -198,7 +203,13 @@ export function FinanceiroForm({
         : parte === "proprietario" || parte === "combinado"
           ? transacaoSelecionadaParaCascata.corretorProprietarioId
           : (cascataRepasse.extras.find((e) => e.chave === parte)?.id ?? null);
-    if (corretorId) setParceiroId(corretorId);
+    if (corretorId) {
+      setParceiroId(corretorId);
+      setAvisoParceiroFaltando(false);
+    } else {
+      setParceiroId("");
+      setAvisoParceiroFaltando(true);
+    }
     setValor(formatValorEditavel(base));
   }
 
@@ -627,7 +638,15 @@ export function FinanceiroForm({
 
           <div>
             <label className={LABEL}>Parceiro</label>
-            <select className={CAMPO} name="parceiro_id" value={parceiroId} onChange={(e) => setParceiroId(e.target.value)}>
+            <select
+              className={CAMPO}
+              name="parceiro_id"
+              value={parceiroId}
+              onChange={(e) => {
+                setParceiroId(e.target.value);
+                if (e.target.value) setAvisoParceiroFaltando(false);
+              }}
+            >
               <option value="">—</option>
               {parceiros.map((p) => (
                 <option key={p.id} value={p.id}>
@@ -635,6 +654,12 @@ export function FinanceiroForm({
                 </option>
               ))}
             </select>
+            {avisoParceiroFaltando && (
+              <p className="text-[11px] text-red-600 mt-1">
+                Essa parte não tem corretor vinculado na transação — selecione o parceiro manualmente aqui, ou
+                corrija o vínculo em Editar transação, antes de salvar.
+              </p>
+            )}
           </div>
         </div>
       </div>

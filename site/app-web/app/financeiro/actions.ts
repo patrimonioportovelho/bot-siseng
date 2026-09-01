@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { randomUUID } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { requireAdminSession, logAlteracao } from "@/lib/auth";
-import { valorEditavelParaDecimal, somarMeses } from "@/lib/format";
+import { valorEditavelParaDecimal, somarMeses, formatMoeda } from "@/lib/format";
 import { registrarEJogarErro } from "@/lib/erros";
 import { saldoDevido } from "@/lib/financeiro/pagamentos-pix";
 import { mensagemDeErro as mensagemDe } from "@/lib/forms/resultado";
@@ -67,12 +67,31 @@ export async function criarMovimentacaoAction(_prev: unknown, formData: FormData
     return { erro: "Tipo, categoria e vencimento são obrigatórios." };
   }
 
+  const parceiroId = texto(formData, "parceiro_id");
+
+  // Achado de auditoria (31/08/2026, caso CV-0015): dava pra lançar uma
+  // Despesa de "Repasse de Honorários Transações" manualmente sem
+  // escolher o parceiro (corretor) — a despesa era criada com valor e sem
+  // dono, e como o rateio automático (gerarRateioAction) não passa por
+  // aqui, nada mais no sistema pegava esse caso. Essa despesa "órfã" nunca
+  // entrava no ranking/Dashboard de ninguém. Único ponto por onde todo
+  // lançamento manual de movimentação passa — bloqueado aqui.
+  if (tipo === "Despesa") {
+    const categoria = await prisma.categorias_financeiras.findUnique({
+      where: { id: categoriaId },
+      select: { nome: true }
+    });
+    if (categoria?.nome === "Repasse de Honorários Transações" && !parceiroId) {
+      return { erro: "Repasse de honorário precisa de um parceiro (corretor) vinculado — selecione antes de salvar." };
+    }
+  }
+
   const base = {
     tipo,
     categoria_id: categoriaId,
     cliente_interessado_id: texto(formData, "cliente_interessado_id"),
     cliente_proprietario_id: texto(formData, "cliente_proprietario_id"),
-    parceiro_id: texto(formData, "parceiro_id"),
+    parceiro_id: parceiroId,
     transacao_id: texto(formData, "transacao_id"),
     descricao: texto(formData, "descricao"),
     comprovante_url: texto(formData, "comprovante_url"),
@@ -216,9 +235,25 @@ export async function atualizarMovimentacaoAction(_prev: unknown, formData: Form
   const antes = await prisma.movimentacoes.findUnique({ where: { id } });
   if (!antes) return { erro: "Movimentação não encontrada." };
 
+  const campos = camposEditaveis(formData);
+
+  // Mesma trava de criarMovimentacaoAction (achado de auditoria de
+  // 31/08/2026) — aqui pro caso de editar uma Despesa de repasse já
+  // vinculada e sem querer limpar o parceiro.
+  if (antes.tipo === "Despesa") {
+    const categoriaIdFinal = campos.categoria_id ?? antes.categoria_id;
+    const categoria = await prisma.categorias_financeiras.findUnique({
+      where: { id: categoriaIdFinal },
+      select: { nome: true }
+    });
+    if (categoria?.nome === "Repasse de Honorários Transações" && !campos.parceiro_id) {
+      return { erro: "Repasse de honorário precisa de um parceiro (corretor) vinculado — selecione antes de salvar." };
+    }
+  }
+
   try {
     const depois = await prisma.movimentacoes
-      .update({ where: { id }, data: camposEditaveis(formData) })
+      .update({ where: { id }, data: campos })
       .catch((erro) => registrarEJogarErro({ entidadeTipo: "movimentacoes", entidadeId: id, acao: "editar", erro }));
 
     await logAlteracao({
@@ -451,6 +486,20 @@ export async function gerarRateioAction(_prev: unknown, formData: FormData): Pro
   }
   if (!Array.isArray(linhas) || linhas.length === 0) {
     return { erro: "Nenhuma linha de rateio informada." };
+  }
+
+  // Achado de auditoria (31/08/2026, caso CV-0015): o loop abaixo pulava
+  // (`continue`) em silêncio qualquer linha com valor mas sem parceiro_id
+  // — o rateio confirmava "sucesso" com uma parte inteira faltando, sem
+  // avisar o admin. components/rateio-form.tsx não deveria mandar uma
+  // linha assim (só monta linha quando tem corretor/parceiro), mas
+  // validado aqui de novo porque é a Server Action, o único lugar que
+  // garante isso de verdade — não dá pra confiar só no client.
+  const linhaOrfa = linhas.find((l) => l.valor_final > 0 && !l.parceiro_id);
+  if (linhaOrfa) {
+    return {
+      erro: `A linha "${linhaOrfa.parte || "sem nome"}" tem valor (${formatMoeda(linhaOrfa.valor_final)}) mas nenhum parceiro vinculado — corrija antes de gerar o rateio.`
+    };
   }
 
   try {

@@ -411,6 +411,7 @@ export function TransacaoForm({
   const saldoCondicoes = valorTransacaoNum - somaCondicoes;
 
   const [porcHonorarioTexto, setPorcHonorarioTexto] = useState(formatPercentual(t?.porc_honorario));
+  const [parceiroExternoId, setParceiroExternoId] = useState(t?.parceiro_externo_id ?? "");
   const [porcParceriaTexto, setPorcParceriaTexto] = useState(formatPercentual(t?.porc_parceria));
   const [porcCorretorProprietarioTexto, setPorcCorretorProprietarioTexto] = useState(
     formatPercentual(t?.porc_corretor_proprietario)
@@ -1280,7 +1281,15 @@ export function TransacaoForm({
           {temParceria && (
             <div>
               <label className={LABEL}>Parceiro externo</label>
-              <select className={CAMPO} name="parceiro_externo_id" defaultValue={t?.parceiro_externo_id ?? ""}>
+              <select
+                className={CAMPO}
+                name="parceiro_externo_id"
+                value={parceiroExternoId}
+                onChange={(e) => {
+                  setParceiroExternoId(e.target.value);
+                  if (!e.target.value) setPorcParceriaTexto("");
+                }}
+              >
                 <option value="">—</option>
                 {parceiros.map((p) => (
                   <option key={p.id} value={p.id}>
@@ -1294,36 +1303,49 @@ export function TransacaoForm({
             <div>
               <label className={LABEL}>% da parceria (sobre o honorário total)</label>
               <input
-                className={CAMPO}
+                className={`${CAMPO} disabled:bg-gray-50 disabled:text-gray-400`}
                 name="porc_parceria"
                 placeholder="20"
                 value={porcParceriaTexto}
+                disabled={!parceiroExternoId}
                 onChange={(e) => setPorcParceriaTexto(e.target.value)}
               />
-              <p className="text-[11px] text-gray-500 mt-1">{formatMoeda(valorParceriaRS)}</p>
+              <p className="text-[11px] text-gray-500 mt-1">
+                {!parceiroExternoId ? "Selecione o parceiro externo ao lado para poder definir a %." : formatMoeda(valorParceriaRS)}
+              </p>
             </div>
           )}
           <div>
             <label className={LABEL}>% corretor do proprietário</label>
             <input
-              className={CAMPO}
+              className={`${CAMPO} disabled:bg-gray-50 disabled:text-gray-400`}
               name="porc_corretor_proprietario"
               placeholder="50"
               value={porcCorretorProprietarioTexto}
+              disabled={!corretorProprietarioId}
               onChange={(e) => setPorcCorretorProprietarioTexto(e.target.value)}
             />
-            <p className="text-[11px] text-gray-500 mt-1">{formatMoeda(valorCorretorProprietarioRS)}</p>
+            <p className="text-[11px] text-gray-500 mt-1">
+              {!corretorProprietarioId
+                ? "Selecione o corretor do proprietário acima para poder definir a %."
+                : formatMoeda(valorCorretorProprietarioRS)}
+            </p>
           </div>
           <div>
             <label className={LABEL}>% corretor da contraparte</label>
             <input
-              className={CAMPO}
+              className={`${CAMPO} disabled:bg-gray-50 disabled:text-gray-400`}
               name="porc_corretor_contraparte"
               placeholder="0"
               value={porcCorretorContraparteTexto}
+              disabled={!corretorContraparteId}
               onChange={(e) => setPorcCorretorContraparteTexto(e.target.value)}
             />
-            <p className="text-[11px] text-gray-500 mt-1">{formatMoeda(valorCorretorContraparteRS)}</p>
+            <p className="text-[11px] text-gray-500 mt-1">
+              {!corretorContraparteId
+                ? "Selecione o corretor da contraparte acima para poder definir a %."
+                : formatMoeda(valorCorretorContraparteRS)}
+            </p>
           </div>
           <div>
             <label className={LABEL}>% imobiliária</label>

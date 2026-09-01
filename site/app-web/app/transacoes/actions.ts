@@ -134,6 +134,32 @@ function camposEditaveis(formData: FormData) {
   };
 }
 
+// Achado de auditoria (31/08/2026, caso CV-0015): dava pra digitar uma %
+// de comissão pro corretor do proprietário/contraparte SEM selecionar o
+// corretor no seletor ao lado (campos desacoplados no formulário — ver
+// components/transacao-form.tsx) e o formulário salvava normalmente: %
+// > 0 com corretor_*_id null. Isso derruba silenciosamente a linha do
+// corretor no rateio automático (rateio-form.tsx só gera linha quando
+// `transacao.corretor_* && valor > 0`) e, se o admin lança o repasse
+// manualmente em Financeiro depois, pode sair sem parceiro_id vinculado
+// (despesa "órfã", sem dono). Mesmo raciocínio pra parceria externa
+// (tem_parceria/porc_parceria/parceiro_externo_id). Bloqueado aqui, na
+// Server Action — é o único ponto por onde toda criação/edição de
+// transação passa, então protege tanto o formulário quanto qualquer
+// chamada futura.
+function validarComissoesTransacao(campos: ReturnType<typeof camposEditaveis>): string | null {
+  if (campos.porc_corretor_proprietario > 0 && !campos.corretor_proprietario_id) {
+    return "Há % de comissão para o corretor do proprietário, mas nenhum corretor foi selecionado — selecione o corretor ou zere a %.";
+  }
+  if (campos.porc_corretor_contraparte > 0 && !campos.corretor_contraparte_id) {
+    return "Há % de comissão para o corretor da contraparte, mas nenhum corretor foi selecionado — selecione o corretor ou zere a %.";
+  }
+  if (campos.tem_parceria && (campos.porc_parceria ?? 0) > 0 && !campos.parceiro_externo_id) {
+    return "Há % de parceria informada, mas nenhum parceiro externo foi selecionado — selecione o parceiro ou zere a %.";
+  }
+  return null;
+}
+
 // O(s) Cliente(s) Interessado(s) (comprador/locatário) pode ser mais de um
 // — mesma lógica dos proprietários de Imóvel. cliente_contraparte_id
 // continua guardando o primeiro da lista, pra compatibilidade com o resto
@@ -295,6 +321,10 @@ export async function criarTransacaoAction(_prev: unknown, formData: FormData): 
     return { erro: "Adicione ao menos um Cliente Interessado." };
   }
 
+  const campos = camposEditaveis(formData);
+  const erroComissao = validarComissoesTransacao(campos);
+  if (erroComissao) return { erro: erroComissao };
+
   let novoId: string;
   try {
     // Antes de exigir um proprietário já cadastrado: se o admin adicionou
@@ -304,7 +334,6 @@ export async function criarTransacaoAction(_prev: unknown, formData: FormData): 
     await sincronizarVinculosConjuge(formData);
     const clienteId = await proprietarioDoImovel(imovelId);
     const idLegado = await gerarProximoId(tipo);
-    const campos = camposEditaveis(formData);
     const ehCompraVenda = tipo === "Compra e Venda";
 
     const novo = await prisma.transacoes
@@ -362,11 +391,14 @@ export async function atualizarTransacaoAction(_prev: unknown, formData: FormDat
   const antes = await prisma.transacoes.findUnique({ where: { id } });
   if (!antes) return { erro: "Transação não encontrada." };
 
+  const campos = camposEditaveis(formData);
+  const erroComissao = validarComissoesTransacao(campos);
+  if (erroComissao) return { erro: erroComissao };
+
   try {
     await sincronizarProprietariosExtra(imovelId, formData);
     await sincronizarVinculosConjuge(formData);
     const clienteId = await proprietarioDoImovel(imovelId);
-    const campos = camposEditaveis(formData);
     const ehCompraVenda = antes.tipo === "Compra e Venda";
 
     const depois = await prisma.transacoes

@@ -129,6 +129,25 @@ export function RateioForm({
   const valorCorretorProprietario = restante * porcCorretorProprietario;
   const valorCorretorContraparte = restante * porcCorretorContraparte;
 
+  // Achado de auditoria (31/08/2026, caso CV-0015): quando a transação tem
+  // % de comissão pro corretor mas o vínculo do corretor está vazio (bug
+  // já bloqueado na origem em app/transacoes/actions.ts, mas dados antigos
+  // podem ter ficado assim), essa % simplesmente sumia do rateio — a linha
+  // nem era gerada, sem nenhum aviso. Agora mostra um alerta visível em
+  // vez de omitir em silêncio, pra ninguém fechar o rateio achando que
+  // rateou tudo.
+  const avisosOrfaos: string[] = [];
+  if (!transacao.corretor_proprietario && valorCorretorProprietario > 0) {
+    avisosOrfaos.push(
+      `A transação tem ${formatPercentual(porcCorretorProprietario)}% de comissão pro corretor do proprietário (${formatMoeda(valorCorretorProprietario)}), mas nenhum corretor está vinculado — essa parte NÃO vai entrar no rateio. Corrija o vínculo em Editar transação antes de continuar.`
+    );
+  }
+  if (!transacao.corretor_contraparte && valorCorretorContraparte > 0) {
+    avisosOrfaos.push(
+      `A transação tem ${formatPercentual(porcCorretorContraparte)}% de comissão pro corretor da contraparte (${formatMoeda(valorCorretorContraparte)}), mas nenhum corretor está vinculado — essa parte NÃO vai entrar no rateio. Corrija o vínculo em Editar transação antes de continuar.`
+    );
+  }
+
   const linhasBase = useMemo(() => {
     const linhas: Linha[] = [];
     if (transacao.corretor_proprietario && valorCorretorProprietario > 0) {
@@ -248,9 +267,19 @@ export function RateioForm({
     return (
       <div className="bg-white border border-gray-200 rounded-xl p-4">
         <div className="text-sm font-bold text-gray-800 mb-2">Rateio de pagamentos</div>
-        <p className="text-xs text-gray-400">
-          Essa transação não tem corretor/parceiro com percentual de comissionamento cadastrado — nada pra ratear.
-        </p>
+        {avisosOrfaos.length > 0 ? (
+          <div className="flex flex-col gap-2">
+            {avisosOrfaos.map((aviso, i) => (
+              <p key={i} className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                {aviso}
+              </p>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-gray-400">
+            Essa transação não tem corretor/parceiro com percentual de comissionamento cadastrado — nada pra ratear.
+          </p>
+        )}
       </div>
     );
   }
@@ -268,6 +297,16 @@ export function RateioForm({
           Honorário desta fatia: <span className="font-semibold text-gray-700">{formatMoeda(honorarioTotal)}</span>
         </div>
       </div>
+
+      {avisosOrfaos.length > 0 && (
+        <div className="flex flex-col gap-2 mb-3">
+          {avisosOrfaos.map((aviso, i) => (
+            <p key={i} className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+              {aviso}
+            </p>
+          ))}
+        </div>
+      )}
 
       <div className="mb-3 max-w-xs">
         <label className="text-xs text-gray-600 block mb-1">Vencimento das despesas geradas</label>

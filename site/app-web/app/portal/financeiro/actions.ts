@@ -22,10 +22,14 @@ export async function gerarPagamentoParcialAction(
 
   const movimentacaoId = String(formData.get("movimentacaoId") ?? "");
   const valorTexto = String(formData.get("valor") ?? "").replace(",", ".");
-  const valor = Number(valorTexto);
+  const valorBruto = Number(valorTexto);
 
   if (!movimentacaoId) return { erro: "Dívida inválida." };
-  if (!Number.isFinite(valor) || valor <= 0) return { erro: "Informe um valor válido." };
+  if (!Number.isFinite(valorBruto) || valorBruto <= 0) return { erro: "Informe um valor válido." };
+  // Arredonda pra 2 casas — "50,999" ou dízima de divisão não deve virar
+  // centavo fracionado no banco.
+  const valor = Math.round(valorBruto * 100) / 100;
+  if (valor <= 0) return { erro: "Informe um valor válido." };
 
   // Confere que a dívida é mesmo dele (não deixa montar o formulário à mão
   // com o id de outro corretor) e que ainda está em aberto.

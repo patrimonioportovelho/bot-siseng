@@ -12,6 +12,7 @@ export type MovimentacaoTransacao = {
   valor: unknown;
   vencimento: Date | string | null;
   pago: boolean;
+  status_pagamento: string;
   data_pagamento: Date | string | null;
   forma_pagamento: string | null;
   parcelas: number | null;
@@ -91,22 +92,27 @@ export function MovimentacoesTransacaoLista({ movimentacoes }: { movimentacoes: 
                     ? "bg-amber-50/60 hover:bg-amber-50"
                     : "hover:bg-gray-50";
               const temParcelas = (m.parcelas ?? 0) > 1;
+              const conferido = m.status_pagamento === "Conferido";
               const rotuloSituacao = m.pago
                 ? m.tipo === "Despesa"
                   ? "Pago"
                   : "Recebido"
-                : situacao === "vencido"
-                  ? "Vencido"
-                  : m.tipo === "Despesa"
-                    ? "A pagar"
-                    : "A receber";
+                : conferido
+                  ? "Conferido"
+                  : situacao === "vencido"
+                    ? "Vencido"
+                    : m.tipo === "Despesa"
+                      ? "A pagar"
+                      : "A receber";
               const corSituacao = m.pago
                 ? "text-green-700"
-                : situacao === "vencido"
-                  ? "text-red-700"
-                  : situacao === "alerta"
-                    ? "text-amber-700"
-                    : "text-gray-500";
+                : conferido
+                  ? "text-blue-700"
+                  : situacao === "vencido"
+                    ? "text-red-700"
+                    : situacao === "alerta"
+                      ? "text-amber-700"
+                      : "text-gray-500";
 
               return (
                 <Link

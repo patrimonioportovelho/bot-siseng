@@ -3,12 +3,55 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { randomUUID } from "crypto";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireAdminSession, logAlteracao } from "@/lib/auth";
-import { valorEditavelParaDecimal, somarMeses, formatMoeda } from "@/lib/format";
+import { valorEditavelParaDecimal, somarMeses, formatMoeda, hojePortoVelho } from "@/lib/format";
 import { registrarEJogarErro } from "@/lib/erros";
 import { saldoDevido } from "@/lib/financeiro/pagamentos-pix";
+import {
+  ehStatusPagamento,
+  transicaoValida,
+  mensagemTransicaoInvalida,
+  autoConferirRepassesDoRecebimento,
+  reverterAutoConferirRepasses
+} from "@/lib/financeiro/status-pagamento";
 import { mensagemDeErro as mensagemDe } from "@/lib/forms/resultado";
+
+// Deriva os 4 campos de status (status_pagamento + espelho `pago` + metadados)
+// a partir de um alvo. quemFez = parceiro que fez a ação (Conferir/Pagar); em
+// auto-conferir passa null. Usado por criar/atualizar/marcarStatus.
+function camposDeStatusPagamento(alvo: string, quemFezId: string | null) {
+  const agora = new Date();
+  if (alvo === "Pago") {
+    return {
+      status_pagamento: "Pago",
+      pago: true,
+      data_pagamento: hojePortoVelho(),
+      conferido_em: agora,
+      conferido_por_parceiro_id: quemFezId,
+      pago_por_parceiro_id: quemFezId
+    };
+  }
+  if (alvo === "Conferido") {
+    return {
+      status_pagamento: "Conferido",
+      pago: false,
+      data_pagamento: null,
+      conferido_em: agora,
+      conferido_por_parceiro_id: quemFezId,
+      pago_por_parceiro_id: null
+    };
+  }
+  return {
+    status_pagamento: "Pendente",
+    pago: false,
+    data_pagamento: null,
+    conferido_em: null,
+    conferido_por_parceiro_id: null,
+    pago_por_parceiro_id: null
+  };
+}
 
 function texto(formData: FormData, campo: string): string | null {
   const v = formData.get(campo);
@@ -28,10 +71,6 @@ function valorMonetario(formData: FormData, campo: string): number | null {
   const t = texto(formData, campo);
   if (t === null) return null;
   return valorEditavelParaDecimal(t);
-}
-
-function booleano(formData: FormData, campo: string): boolean {
-  return formData.get(campo) === "on" || formData.get(campo) === "true";
 }
 
 function data(formData: FormData, campo: string): Date | null {
@@ -56,7 +95,7 @@ import type { ResultadoFormulario } from "@/lib/forms/resultado";
 export type { ResultadoFormulario } from "@/lib/forms/resultado";
 
 export async function criarMovimentacaoAction(_prev: unknown, formData: FormData): Promise<ResultadoFormulario> {
-  await requireAdminSession();
+  const sessao = await requireAdminSession();
 
   const tipo = texto(formData, "tipo");
   const categoriaId = texto(formData, "categoria_id");
@@ -178,8 +217,13 @@ export async function criarMovimentacaoAction(_prev: unknown, formData: FormData
   } else {
     const valor = valorMonetario(formData, "valor");
     if (!valor) return { erro: "Informe o valor." };
-    const pago = booleano(formData, "pago");
-    const dataPagamento = pago ? data(formData, "data_pagamento") : null;
+    // Situação inicial: o formulário manda status_pagamento (Pendente/
+    // Conferido/Pago). Na criação as 3 são livres — quem cadastra está
+    // dizendo explicitamente em que pé a conta está (a trava "conferir antes
+    // de pagar" vale só pra mudar o status de uma movimentação já existente).
+    const statusInicial = texto(formData, "status_pagamento") ?? "Pendente";
+    if (!ehStatusPagamento(statusInicial)) return { erro: "Situação de pagamento inválida." };
+    const campos = camposDeStatusPagamento(statusInicial, sessao.parceiroId);
 
     const criada = await prisma.movimentacoes
       .create({
@@ -187,8 +231,7 @@ export async function criarMovimentacaoAction(_prev: unknown, formData: FormData
           ...base,
           valor,
           vencimento: new Date(vencimentoBase + "T00:00:00"),
-          pago,
-          data_pagamento: dataPagamento
+          ...campos
         }
       })
       .catch((erro) => registrarEJogarErro({ entidadeTipo: "movimentacoes", acao: "criar", erro }));
@@ -210,7 +253,6 @@ export async function criarMovimentacaoAction(_prev: unknown, formData: FormData
 }
 
 function camposEditaveis(formData: FormData) {
-  const pago = booleano(formData, "pago");
   return {
     categoria_id: texto(formData, "categoria_id") ?? undefined,
     cliente_interessado_id: texto(formData, "cliente_interessado_id"),
@@ -220,14 +262,12 @@ function camposEditaveis(formData: FormData) {
     comprovante_url: texto(formData, "comprovante_url"),
     valor: valorMonetario(formData, "valor") ?? undefined,
     vencimento: data(formData, "vencimento") ?? undefined,
-    pago,
-    data_pagamento: pago ? data(formData, "data_pagamento") : null,
     updated_at: new Date()
   };
 }
 
 export async function atualizarMovimentacaoAction(_prev: unknown, formData: FormData): Promise<ResultadoFormulario> {
-  await requireAdminSession();
+  const sessao = await requireAdminSession();
 
   const id = texto(formData, "movimentacaoId");
   if (!id) return { erro: "Movimentação inválida." };
@@ -236,6 +276,27 @@ export async function atualizarMovimentacaoAction(_prev: unknown, formData: Form
   if (!antes) return { erro: "Movimentação não encontrada." };
 
   const campos = camposEditaveis(formData);
+
+  // A situação de pagamento normalmente é mudada pelos botões do detalhe
+  // (atualizarStatusPagamentoAction). Este formulário não manda mais
+  // status_pagamento — mas se mandar (compat.), só anda uma etapa por vez e
+  // NÃO mexe nos metadados (quem conferiu/pagou) quando o status não muda.
+  const alvoStatus = texto(formData, "status_pagamento") ?? antes.status_pagamento;
+  if (!ehStatusPagamento(alvoStatus)) return { erro: "Situação de pagamento inválida." };
+  const statusMudou = alvoStatus !== antes.status_pagamento;
+  if (statusMudou && !transicaoValida(antes.status_pagamento, alvoStatus)) {
+    return { erro: mensagemTransicaoInvalida(antes.status_pagamento, alvoStatus, antes.tipo) };
+  }
+  const camposStatus = statusMudou ? camposDeStatusPagamento(alvoStatus, sessao.parceiroId) : {};
+  if (
+    statusMudou &&
+    alvoStatus === "Pago" &&
+    antes.status_pagamento === "Conferido" &&
+    antes.conferido_por_parceiro_id
+  ) {
+    (camposStatus as Record<string, unknown>).conferido_por_parceiro_id = antes.conferido_por_parceiro_id;
+    (camposStatus as Record<string, unknown>).conferido_em = antes.conferido_em ?? new Date();
+  }
 
   // Mesma trava de criarMovimentacaoAction (achado de auditoria de
   // 31/08/2026) — aqui pro caso de editar uma Despesa de repasse já
@@ -252,9 +313,16 @@ export async function atualizarMovimentacaoAction(_prev: unknown, formData: Form
   }
 
   try {
-    const depois = await prisma.movimentacoes
-      .update({ where: { id }, data: campos })
-      .catch((erro) => registrarEJogarErro({ entidadeTipo: "movimentacoes", entidadeId: id, acao: "editar", erro }));
+    const depois = await prisma.$transaction(async (tx) => {
+      const atualizada = await tx.movimentacoes.update({
+        where: { id },
+        data: { ...campos, ...camposStatus }
+      });
+      if (statusMudou) {
+        await sincronizarEfeitosStatus(tx as unknown as Prisma.TransactionClient, antes, alvoStatus);
+      }
+      return atualizada;
+    });
 
     await logAlteracao({
       entidadeTipo: "movimentacoes",
@@ -264,12 +332,47 @@ export async function atualizarMovimentacaoAction(_prev: unknown, formData: Form
       dadosDepois: depois
     });
   } catch (erro) {
+    await registrarEJogarErro({ entidadeTipo: "movimentacoes", entidadeId: id, acao: "editar", erro }).catch(
+      () => undefined
+    );
     return { erro: mensagemDe(erro) };
   }
 
   revalidatePath(`/financeiro/${id}`);
   revalidatePath("/financeiro");
   redirect(`/financeiro/${id}?salvo=1`);
+}
+
+// Efeitos colaterais de uma mudança de status_pagamento, sempre dentro da
+// mesma transação da atualização da movimentação:
+//  - repasse de honorário (Despesa com pagamento_id) que chega em "Pago" ->
+//    a linha em `pagamentos` também vira status "Pago" (antes ficava parada
+//    em "Pendente" pra sempre, o que deixava o pago_direto travado em "a
+//    receber" no Dashboard); sai de "Pago" -> volta pra "Pendente".
+//  - Recebimento que chega em "Pago" -> auto-confere os repasses ligados;
+//    sai de "Pago" -> desfaz só os que tinham sido conferidos automaticamente.
+async function sincronizarEfeitosStatus(
+  tx: Prisma.TransactionClient,
+  antes: { id: string; tipo: string; pagamento_id: string | null; status_pagamento: string },
+  alvo: string
+) {
+  const eraPago = antes.status_pagamento === "Pago";
+  const viraPago = alvo === "Pago";
+
+  if (antes.pagamento_id && antes.tipo === "Despesa" && eraPago !== viraPago) {
+    await tx.pagamentos.update({
+      where: { id: antes.pagamento_id },
+      data: viraPago
+        ? { status: "Pago", data_recebimento: hojePortoVelho() }
+        : { status: "Pendente", data_recebimento: null }
+    });
+  }
+
+  if (antes.tipo === "Recebimento" && !eraPago && viraPago) {
+    await autoConferirRepassesDoRecebimento(tx, antes.id);
+  } else if (antes.tipo === "Recebimento" && eraPago && !viraPago) {
+    await reverterAutoConferirRepasses(tx, antes.id);
+  }
 }
 
 // Exclui de vez uma movimentação (Despesa ou Recebimento) — pedido pra
@@ -288,21 +391,38 @@ export async function excluirMovimentacaoAction(formData: FormData) {
   try {
     if (!id) throw new Error("Movimentação inválida.");
 
-    const antes = await prisma.movimentacoes.findUnique({ where: { id } });
+    const antes = await prisma.movimentacoes.findUnique({
+      where: { id },
+      include: { pagamentos: { select: { id: true, pago_direto: true } } }
+    });
     if (!antes) throw new Error("Movimentação não encontrada.");
     tipoMovimentacao = antes.tipo;
 
-    await prisma.movimentacoes
-      .delete({ where: { id } })
-      .catch((erro) => registrarEJogarErro({ entidadeTipo: "movimentacoes", entidadeId: id, acao: "excluir", erro }));
+    // Se é uma Despesa de repasse gerada pelo rateio (tem pagamento_id e NÃO é
+    // "pago direto"), apaga a linha de `pagamentos` junto — senão o rateio
+    // fica "meio gerado": a Despesa some mas o `pagamentos` continua, e o
+    // gerarRateioAction bloqueia regerar pra sempre (jaExiste). Só faz isso
+    // pro par 1:1 despesa<->pagamento não-direto (pago_direto não tem Despesa).
+    const pagamentoLigado = antes.pagamentos && !antes.pagamentos.pago_direto ? antes.pagamentos.id : null;
+
+    await prisma.$transaction(async (tx) => {
+      await tx.movimentacoes.delete({ where: { id } });
+      if (pagamentoLigado) {
+        await tx.pagamentos.delete({ where: { id: pagamentoLigado } });
+      }
+    });
 
     await logAlteracao({
       entidadeTipo: "movimentacoes",
       entidadeId: id,
       acao: "excluir",
-      dadosAntes: antes
+      dadosAntes: antes,
+      dadosDepois: pagamentoLigado ? { pagamento_rateio_removido: pagamentoLigado } : undefined
     });
   } catch (erro) {
+    await registrarEJogarErro({ entidadeTipo: "movimentacoes", entidadeId: id ?? null, acao: "excluir", erro }).catch(
+      () => undefined
+    );
     redirect(`${voltarPara}?erro=${encodeURIComponent(mensagemDe(erro))}`);
   }
 
@@ -310,39 +430,57 @@ export async function excluirMovimentacaoAction(formData: FormData) {
   redirect(`/financeiro?tipo=${tipoMovimentacao === "Recebimento" ? "recebimento" : "despesa"}&excluido=1`);
 }
 
-// Marca/desmarca como Pago-Recebido direto da lista ou do detalhe, sem abrir
-// o formulário de edição inteiro — usado no botão rápido "Marcar como pago".
-export async function marcarPagoAction(formData: FormData) {
-  await requireAdminSession();
+// Move o status de pagamento de uma movimentação uma etapa por vez, direto do
+// detalhe (botões "Conferir" / "Marcar como pago" / "Desfazer"). Substituiu o
+// antigo marcarPagoAction (toggle pago true/false). Regras:
+//  - só anda uma etapa (transicaoValida) — Pendente -> Pago direto é barrado;
+//  - Conferir grava quem conferiu + quando; Pagar grava quem pagou;
+//  - efeitos colaterais (pagamentos.status, auto-conferir repasse) em
+//    sincronizarEfeitosStatus, na mesma transação.
+export async function atualizarStatusPagamentoAction(formData: FormData) {
+  const sessao = await requireAdminSession();
 
   const id = texto(formData, "movimentacaoId");
+  const alvo = texto(formData, "alvo");
   const voltarPara = id ? `/financeiro/${id}` : "/financeiro";
 
   try {
     if (!id) throw new Error("Movimentação inválida.");
+    if (!alvo || !ehStatusPagamento(alvo)) throw new Error("Situação de pagamento inválida.");
 
-    const antes = await prisma.movimentacoes.findUnique({ where: { id } });
+    const antes = await prisma.movimentacoes.findUnique({
+      where: { id },
+      select: { id: true, tipo: true, pagamento_id: true, status_pagamento: true, conferido_por_parceiro_id: true, conferido_em: true }
+    });
     if (!antes) throw new Error("Movimentação não encontrada.");
 
-    const pago = !antes.pago;
-    const dataPagamentoTexto = texto(formData, "data_pagamento");
-    const dataPagamento = pago ? (dataPagamentoTexto ? data(formData, "data_pagamento") : new Date()) : null;
+    if (!transicaoValida(antes.status_pagamento, alvo)) {
+      throw new Error(mensagemTransicaoInvalida(antes.status_pagamento, alvo, antes.tipo));
+    }
 
-    await prisma.movimentacoes
-      .update({
-        where: { id },
-        data: { pago, data_pagamento: dataPagamento, updated_at: new Date() }
-      })
-      .catch((erro) => registrarEJogarErro({ entidadeTipo: "movimentacoes", entidadeId: id, acao: "editar", erro }));
+    const camposStatus = camposDeStatusPagamento(alvo, sessao.parceiroId);
+    // Pagar não "rouba" a autoria da conferência de quem já tinha conferido.
+    if (alvo === "Pago" && antes.status_pagamento === "Conferido" && antes.conferido_por_parceiro_id) {
+      camposStatus.conferido_por_parceiro_id = antes.conferido_por_parceiro_id;
+      camposStatus.conferido_em = antes.conferido_em ?? camposStatus.conferido_em;
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.movimentacoes.update({ where: { id }, data: { ...camposStatus, updated_at: new Date() } });
+      await sincronizarEfeitosStatus(tx as unknown as Prisma.TransactionClient, antes, alvo);
+    });
 
     await logAlteracao({
       entidadeTipo: "movimentacoes",
       entidadeId: id,
-      acao: "editar",
-      dadosAntes: { pago: antes.pago },
-      dadosDepois: { pago }
+      acao: "status_pagamento",
+      dadosAntes: { status_pagamento: antes.status_pagamento },
+      dadosDepois: { status_pagamento: alvo, por: sessao.nome }
     });
   } catch (erro) {
+    await registrarEJogarErro({ entidadeTipo: "movimentacoes", entidadeId: id ?? null, acao: "status_pagamento", erro }).catch(
+      () => undefined
+    );
     redirect(`${voltarPara}?erro=${encodeURIComponent(mensagemDe(erro))}`);
   }
 
@@ -399,14 +537,34 @@ export async function alternarPagamentoParcialAction(formData: FormData) {
       const saldo = saldoDevido(Number(movimentacao.valor), parciais);
 
       if (saldo <= 0 && !movimentacao.pago) {
+        // Fechou pela soma dos parciais — pago_por_parceiro_id fica NULL de
+        // propósito (foi o sistema, não um sócio), pra o "desfazer" abaixo
+        // saber que pode reabrir sem risco.
         await tx.movimentacoes.update({
           where: { id: movimentacao.id },
-          data: { pago: true, data_pagamento: new Date(), updated_at: new Date() }
+          data: {
+            status_pagamento: "Pago",
+            pago: true,
+            data_pagamento: hojePortoVelho(),
+            pago_por_parceiro_id: null,
+            updated_at: new Date()
+          }
         });
-      } else if (saldo > 0 && movimentacao.pago) {
+      } else if (saldo > 0 && movimentacao.pago && movimentacao.pago_por_parceiro_id === null) {
+        // Só reabre se a conta tinha sido fechada PELOS PARCIAIS (pago_por =
+        // NULL). Se um sócio marcou "Pago" à mão (pago_por preenchido),
+        // confirmar/desfazer um parcial não mexe no status da conta —
+        // corrige o bug de "des-quitar" uma conta já paga por outro caminho.
         await tx.movimentacoes.update({
           where: { id: movimentacao.id },
-          data: { pago: false, data_pagamento: null, updated_at: new Date() }
+          data: {
+            status_pagamento: "Pendente",
+            pago: false,
+            data_pagamento: null,
+            conferido_em: null,
+            conferido_por_parceiro_id: null,
+            updated_at: new Date()
+          }
         });
       }
     });
@@ -544,7 +702,11 @@ export async function gerarRateioAction(_prev: unknown, formData: FormData): Pro
 
         const pagamento = await tx.pagamentos.create({
           data: {
-            status: "Pendente",
+            // Pago direto já foi recebido pelo corretor por fora — nasce como
+            // "Pago" (sem isso ficava preso em "Pendente" pra sempre e o
+            // Dashboard nunca contava esse repasse no "Recebido" do corretor).
+            status: pagoDireto ? "Pago" : "Pendente",
+            data_recebimento: pagoDireto ? hojePortoVelho() : null,
             transacao_id: transacaoId,
             recebimento_id: recebimentoId,
             condicao_pagamento_id: condicaoPagamentoId || null,

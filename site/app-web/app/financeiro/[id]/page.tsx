@@ -9,7 +9,7 @@ import {
   atualizarMovimentacaoAction,
   gerarRateioAction,
   excluirMovimentacaoAction,
-  marcarPagoAction,
+  atualizarStatusPagamentoAction,
   alternarPagamentoParcialAction
 } from "../actions";
 import { saldoDevido } from "@/lib/financeiro/pagamentos-pix";
@@ -65,6 +65,17 @@ export default async function MovimentacaoPage({
     }
   });
   if (!movimentacao) notFound();
+
+  // Nome de quem conferiu / quem pagou (mesmo padrão de resolução manual do
+  // Dashboard) — NULL nesses campos = feito automaticamente pelo sistema.
+  const idsStatus = [movimentacao.conferido_por_parceiro_id, movimentacao.pago_por_parceiro_id].filter(
+    (v): v is string => Boolean(v)
+  );
+  const parceirosStatus =
+    idsStatus.length > 0
+      ? await prisma.parceiros.findMany({ where: { id: { in: idsStatus } }, select: { id: true, nome: true } })
+      : [];
+  const nomeParceiroStatus = new Map(parceirosStatus.map((p) => [p.id, p.nome]));
 
   const [categorias, clientes, parceiros] = await Promise.all([
     prisma.categorias_financeiras.findMany({ orderBy: { nome: "asc" } }),
@@ -146,9 +157,6 @@ export default async function MovimentacaoPage({
         )
     : null;
 
-  // Mesma definição usada na lista /financeiro: despesa ainda não paga cujo
-  // Recebimento de origem já caiu na conta — "já entrou, falta repassar".
-  const pendenteRecebido = movimentacao.tipo === "Despesa" && !movimentacao.pago && recebimentoOrigem?.pago === true;
 
   const destinatarioRepasse =
     movimentacao.tipo === "Despesa" && movimentacao.parceiro_id && movimentacao.parceiros
@@ -340,8 +348,17 @@ export default async function MovimentacaoPage({
           parceiros={parceiros}
           action={atualizarMovimentacaoAction}
           excluirAction={excluirMovimentacaoAction}
-          marcarPagoAction={marcarPagoAction}
-          pendenteRecebido={pendenteRecebido}
+          atualizarStatusPagamentoAction={atualizarStatusPagamentoAction}
+          conferidoPorNome={
+            movimentacao.conferido_por_parceiro_id
+              ? nomeParceiroStatus.get(movimentacao.conferido_por_parceiro_id) ?? null
+              : null
+          }
+          pagoPorNome={
+            movimentacao.pago_por_parceiro_id
+              ? nomeParceiroStatus.get(movimentacao.pago_por_parceiro_id) ?? null
+              : null
+          }
         />
 
         {/* Pagamentos parciais via Pix gerados pelo corretor no Portal

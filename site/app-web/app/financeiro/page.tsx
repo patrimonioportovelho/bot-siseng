@@ -2,7 +2,9 @@ import Link from "next/link";
 import { Topbar } from "@/components/topbar";
 import { Pagination } from "@/components/pagination";
 import { prisma } from "@/lib/prisma";
-import { formatMoeda, formatDataCalendario, situacaoVencimento } from "@/lib/format";
+import { formatMoeda, formatDataCalendario, situacaoVencimento, hojePortoVelho } from "@/lib/format";
+import { lojasSelecionadas, whereLojaFiltroMovimentacao } from "@/lib/lojas/filtro";
+import { rotuloStatusPagamento } from "@/lib/financeiro/status-pagamento";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +26,7 @@ export default async function FinanceiroPage({
   searchParams: Promise<{
     tipo?: string;
     pago?: string;
+    situacao?: string;
     q?: string;
     page?: string;
     categoria?: string;
@@ -38,6 +41,7 @@ export default async function FinanceiroPage({
   const {
     tipo: tipoParam,
     pago: pagoParam,
+    situacao: situacaoParam,
     q,
     page: pageParam,
     categoria: categoriaParam,
@@ -52,13 +56,14 @@ export default async function FinanceiroPage({
   const termo = (q ?? "").trim();
   const page = Math.max(1, Number(pageParam ?? "1") || 1);
 
-  const hoje = new Date();
-  hoje.setHours(0, 0, 0, 0);
+  const hoje = hojePortoVelho();
+  const vencidas = situacaoParam === "vencidas";
+  const lojasFiltro = await lojasSelecionadas();
 
   // Vencimento e Data de pagamento são duas dimensões de tempo diferentes —
   // filtrando separado dá pra responder tanto "o que vence em julho" quanto
   // "o que eu já paguei/recebi em julho", sem uma pisar na outra.
-  const vencimentoFiltro: { gte?: Date; lte?: Date } = {};
+  const vencimentoFiltro: { gte?: Date; lte?: Date; lt?: Date } = {};
   if (vencDe) {
     const d = new Date(vencDe + "T00:00:00");
     if (!Number.isNaN(d.getTime())) vencimentoFiltro.gte = d;
@@ -67,6 +72,10 @@ export default async function FinanceiroPage({
     const d = new Date(vencAte + "T00:00:00");
     if (!Number.isNaN(d.getTime())) vencimentoFiltro.lte = d;
   }
+  // situacao=vencidas (cards "Despesas/Recebimentos vencidos" e o link do
+  // Dashboard "Saúde da operação"): tudo que ainda não foi pago e já passou
+  // do vencimento.
+  if (vencidas) vencimentoFiltro.lt = hoje;
 
   const pagamentoFiltro: { gte?: Date; lte?: Date } = {};
   if (pagDe) {
@@ -78,81 +87,93 @@ export default async function FinanceiroPage({
     if (!Number.isNaN(d.getTime())) pagamentoFiltro.lte = d;
   }
 
-  // "Pendente - recebido": despesa ainda não paga (pago=false) cujo
-  // pagamento está ligado (via recebimento_id, ver correção do rateio
-  // recorrente) a um Recebimento que já caiu na conta (pago=true) — dinheiro
-  // que já entrou mas ainda não foi repassado. Calculado aqui (não é um
-  // status salvo) pra alimentar tanto a pílula de filtro quanto o destaque
-  // azul nas linhas da lista.
-  const pagamentosComRecebimento = await prisma.pagamentos.findMany({
-    where: { recebimento_id: { not: null } },
-    select: { id: true, recebimento_id: true }
-  });
-  const recebimentoIdsCandidatos = pagamentosComRecebimento
-    .map((p) => p.recebimento_id)
-    .filter((v): v is string => Boolean(v));
-  const recebimentosPagos =
-    recebimentoIdsCandidatos.length > 0
-      ? await prisma.movimentacoes.findMany({ where: { id: { in: recebimentoIdsCandidatos }, pago: true }, select: { id: true } })
-      : [];
-  const recebimentosPagosSet = new Set(recebimentosPagos.map((r) => r.id));
-  const pagamentoIdsRecebidos = pagamentosComRecebimento
-    .filter((p) => p.recebimento_id && recebimentosPagosSet.has(p.recebimento_id))
-    .map((p) => p.id);
-  const pagamentoIdsRecebidosSet = new Set(pagamentoIdsRecebidos);
+  // Status de pagamento (3 etapas: Pendente -> Conferido -> Pago). "Em aberto"
+  // = tudo que ainda não foi pago (Pendente + Conferido). "Conferido" é a
+  // antiga pílula "Pendente - recebido", agora um status de verdade.
+  const statusWhere: Record<string, unknown> = vencidas
+    ? { status_pagamento: { not: "Pago" } }
+    : pagoParam === "pago"
+      ? { status_pagamento: "Pago" }
+      : pagoParam === "conferido"
+        ? { status_pagamento: "Conferido" }
+        : pagoParam === "todas"
+          ? {}
+          : { status_pagamento: { not: "Pago" } };
+
+  // Filtro de Loja (seletor no Topbar) — movimentacoes chega na loja pela
+  // transação vinculada; sem transação sempre aparece (despesa/receita geral
+  // da imobiliária). Envolvido em AND porque o `where` pode ter outro OR (busca).
+  const andFiltros: Record<string, unknown>[] = [whereLojaFiltroMovimentacao(lojasFiltro)];
+  if (termo) {
+    andFiltros.push({
+      OR: [
+        { descricao: { contains: termo, mode: "insensitive" as const } },
+        { contraparte_nome: { contains: termo, mode: "insensitive" as const } },
+        { clientes_interessado: { nome: { contains: termo, mode: "insensitive" as const } } },
+        { clientes_proprietario: { nome: { contains: termo, mode: "insensitive" as const } } },
+        { parceiros: { nome: { contains: termo, mode: "insensitive" as const } } },
+        { categorias_financeiras: { nome: { contains: termo, mode: "insensitive" as const } } }
+      ]
+    });
+  }
 
   const where = {
     tipo,
     ...(categoriaParam ? { categoria_id: categoriaParam } : {}),
-    ...(vencimentoFiltro.gte || vencimentoFiltro.lte ? { vencimento: vencimentoFiltro } : {}),
+    ...(vencimentoFiltro.gte || vencimentoFiltro.lte || vencimentoFiltro.lt ? { vencimento: vencimentoFiltro } : {}),
     ...(pagamentoFiltro.gte || pagamentoFiltro.lte ? { data_pagamento: pagamentoFiltro } : {}),
-    ...(pagoParam === "sim"
-      ? { pago: true }
-      : pagoParam === "recebido"
-        ? { pago: false, pagamento_id: { in: pagamentoIdsRecebidos } }
-        : pagoParam === "todas"
-          ? {}
-          : { pago: false }),
-    ...(termo
-      ? {
-          OR: [
-            { descricao: { contains: termo, mode: "insensitive" as const } },
-            { contraparte_nome: { contains: termo, mode: "insensitive" as const } },
-            { clientes_interessado: { nome: { contains: termo, mode: "insensitive" as const } } },
-            { clientes_proprietario: { nome: { contains: termo, mode: "insensitive" as const } } },
-            { parceiros: { nome: { contains: termo, mode: "insensitive" as const } } },
-            { categorias_financeiras: { nome: { contains: termo, mode: "insensitive" as const } } }
-          ]
-        }
-      : {})
+    ...statusWhere,
+    AND: andFiltros
   };
 
-  const [movimentacoes, total, totalDespesaAberto, totalRecebimentoAberto, vencidosDespesa, vencidosRecebimento, categorias] =
-    await Promise.all([
-      prisma.movimentacoes.findMany({
-        where,
-        orderBy: pagoParam === "sim" ? [{ data_pagamento: "desc" }] : [{ vencimento: "asc" }],
-        skip: (page - 1) * PAGE_SIZE,
-        take: PAGE_SIZE,
-        include: {
-          categorias_financeiras: true,
-          clientes_interessado: true,
-          clientes_proprietario: true,
-          parceiros: true
-        }
-      }),
-      prisma.movimentacoes.count({ where }),
-      prisma.movimentacoes.aggregate({ _sum: { valor: true }, where: { tipo: "Despesa", pago: false } }),
-      prisma.movimentacoes.aggregate({ _sum: { valor: true }, where: { tipo: "Recebimento", pago: false } }),
-      prisma.movimentacoes.count({ where: { tipo: "Despesa", pago: false, vencimento: { lt: hoje } } }),
-      prisma.movimentacoes.count({ where: { tipo: "Recebimento", pago: false, vencimento: { lt: hoje } } }),
-      prisma.categorias_financeiras.findMany({ where: { tipo }, orderBy: { nome: "asc" } })
-    ]);
+  const lojaFiltroWhere = whereLojaFiltroMovimentacao(lojasFiltro);
+
+  const [
+    movimentacoes,
+    total,
+    totalDespesaAberto,
+    totalRecebimentoAberto,
+    conferidoAguardando,
+    vencidosDespesa,
+    vencidosRecebimento,
+    categorias
+  ] = await Promise.all([
+    prisma.movimentacoes.findMany({
+      where,
+      orderBy: pagoParam === "pago" ? [{ data_pagamento: "desc" }] : [{ vencimento: "asc" }],
+      skip: (page - 1) * PAGE_SIZE,
+      take: PAGE_SIZE,
+      include: {
+        categorias_financeiras: true,
+        clientes_interessado: true,
+        clientes_proprietario: true,
+        parceiros: true
+      }
+    }),
+    prisma.movimentacoes.count({ where }),
+    prisma.movimentacoes.aggregate({
+      _sum: { valor: true },
+      where: { tipo: "Despesa", status_pagamento: { not: "Pago" }, ...lojaFiltroWhere }
+    }),
+    prisma.movimentacoes.aggregate({
+      _sum: { valor: true },
+      where: { tipo: "Recebimento", status_pagamento: { not: "Pago" }, ...lojaFiltroWhere }
+    }),
+    prisma.movimentacoes.count({
+      where: { tipo: "Despesa", status_pagamento: "Conferido", ...lojaFiltroWhere }
+    }),
+    prisma.movimentacoes.count({
+      where: { tipo: "Despesa", status_pagamento: { not: "Pago" }, vencimento: { lt: hoje }, ...lojaFiltroWhere }
+    }),
+    prisma.movimentacoes.count({
+      where: { tipo: "Recebimento", status_pagamento: { not: "Pago" }, vencimento: { lt: hoje }, ...lojaFiltroWhere }
+    }),
+    prisma.categorias_financeiras.findMany({ where: { tipo }, orderBy: { nome: "asc" } })
+  ]);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   const rotuloPago = tipo === "Despesa" ? "Pago" : "Recebido";
-  const rotuloPendente = tipo === "Despesa" ? "Pendente" : "Não recebido";
 
   // Filtros que precisam sobreviver tanto à troca de aba Despesa/Recebimento
   // quanto à paginação e à troca de pílula Em aberto/Pago/Todas — exceto
@@ -162,6 +183,7 @@ export default async function FinanceiroPage({
     const params = new URLSearchParams();
     params.set("tipo", t);
     if (pagoParam) params.set("pago", pagoParam);
+    if (situacaoParam) params.set("situacao", situacaoParam);
     if (vencDe) params.set("venc_de", vencDe);
     if (vencAte) params.set("venc_ate", vencAte);
     if (pagDe) params.set("pag_de", pagDe);
@@ -169,6 +191,7 @@ export default async function FinanceiroPage({
     return `/financeiro?${params.toString()}`;
   }
 
+  // Trocar de pílula sai da visão "vencidas" (situacao não é carregado).
   function hrefPago(p: string | null) {
     const params = new URLSearchParams();
     if (tipoParam) params.set("tipo", tipoParam);
@@ -180,6 +203,11 @@ export default async function FinanceiroPage({
     if (pagAte) params.set("pag_ate", pagAte);
     return `/financeiro?${params.toString()}`;
   }
+
+  const cardAtivo = (t: "despesa" | "recebimento", p?: string, s?: string) =>
+    tipo === (t === "despesa" ? "Despesa" : "Recebimento") &&
+    (p ?? undefined) === (pagoParam || undefined) &&
+    (s ?? undefined) === (situacaoParam || undefined);
 
   return (
     <div>
@@ -196,27 +224,53 @@ export default async function FinanceiroPage({
         </div>
       )}
 
+      {/* Cada card abre a lista já filtrada (pedido do usuário). */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4">
-        <div className="bg-white border border-gray-200 rounded-xl p-3">
+        <Link
+          href="/financeiro?tipo=despesa"
+          className={`bg-white border rounded-xl p-3 hover:bg-gray-50 transition-colors ${
+            cardAtivo("despesa") ? "border-primary" : "border-gray-200"
+          }`}
+        >
           <div className="text-xs text-gray-500">Despesas em aberto</div>
           <div className="text-lg font-bold mt-1 text-gray-900">{formatMoeda(totalDespesaAberto._sum.valor ?? 0)}</div>
-        </div>
-        <div className="bg-white border border-gray-200 rounded-xl p-3">
+        </Link>
+        <Link
+          href="/financeiro?tipo=recebimento"
+          className={`bg-white border rounded-xl p-3 hover:bg-gray-50 transition-colors ${
+            cardAtivo("recebimento") ? "border-primary" : "border-gray-200"
+          }`}
+        >
           <div className="text-xs text-gray-500">Recebimentos em aberto</div>
           <div className="text-lg font-bold mt-1 text-accent">{formatMoeda(totalRecebimentoAberto._sum.valor ?? 0)}</div>
-        </div>
-        <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
-          <div className="text-xs text-blue-600">Pendente - recebido</div>
-          <div className="text-lg font-bold mt-1 text-blue-700">{pagamentoIdsRecebidos.length}</div>
-        </div>
-        <div className="bg-white border border-gray-200 rounded-xl p-3">
+        </Link>
+        <Link
+          href="/financeiro?tipo=despesa&pago=conferido"
+          className={`bg-blue-50 border rounded-xl p-3 hover:bg-blue-100 transition-colors ${
+            cardAtivo("despesa", "conferido") ? "border-blue-500" : "border-blue-200"
+          }`}
+        >
+          <div className="text-xs text-blue-600">Conferido — aguardando pagamento</div>
+          <div className="text-lg font-bold mt-1 text-blue-700">{conferidoAguardando}</div>
+        </Link>
+        <Link
+          href="/financeiro?tipo=despesa&situacao=vencidas"
+          className={`bg-white border rounded-xl p-3 hover:bg-gray-50 transition-colors ${
+            cardAtivo("despesa", undefined, "vencidas") ? "border-red-400" : "border-gray-200"
+          }`}
+        >
           <div className="text-xs text-gray-500">Despesas vencidas</div>
           <div className="text-lg font-bold mt-1 text-red-600">{vencidosDespesa}</div>
-        </div>
-        <div className="bg-white border border-gray-200 rounded-xl p-3">
+        </Link>
+        <Link
+          href="/financeiro?tipo=recebimento&situacao=vencidas"
+          className={`bg-white border rounded-xl p-3 hover:bg-gray-50 transition-colors ${
+            cardAtivo("recebimento", undefined, "vencidas") ? "border-red-400" : "border-gray-200"
+          }`}
+        >
           <div className="text-xs text-gray-500">Recebimentos vencidos</div>
           <div className="text-lg font-bold mt-1 text-red-600">{vencidosRecebimento}</div>
-        </div>
+        </Link>
       </div>
 
       <div className="flex gap-2 mb-3">
@@ -323,21 +377,30 @@ export default async function FinanceiroPage({
           )}
         </form>
 
-        <div className="flex gap-2 mb-3">
+        <div className="flex gap-2 mb-3 flex-wrap">
           <a
             href={hrefPago(null)}
             className={
               "text-xs px-3 py-1 rounded-full border " +
-              (!pagoParam ? "bg-primary text-white border-primary" : "border-gray-200 text-gray-600")
+              (!pagoParam && !vencidas ? "bg-primary text-white border-primary" : "border-gray-200 text-gray-600")
             }
           >
             Em aberto
           </a>
           <a
-            href={hrefPago("sim")}
+            href={hrefPago("conferido")}
             className={
               "text-xs px-3 py-1 rounded-full border " +
-              (pagoParam === "sim" ? "bg-primary text-white border-primary" : "border-gray-200 text-gray-600")
+              (pagoParam === "conferido" ? "bg-blue-600 text-white border-blue-600" : "border-blue-200 text-blue-600")
+            }
+          >
+            Conferido
+          </a>
+          <a
+            href={hrefPago("pago")}
+            className={
+              "text-xs px-3 py-1 rounded-full border " +
+              (pagoParam === "pago" ? "bg-primary text-white border-primary" : "border-gray-200 text-gray-600")
             }
           >
             {rotuloPago}
@@ -351,16 +414,8 @@ export default async function FinanceiroPage({
           >
             Todas
           </a>
-          {tipo === "Despesa" && (
-            <a
-              href={hrefPago("recebido")}
-              className={
-                "text-xs px-3 py-1 rounded-full border " +
-                (pagoParam === "recebido" ? "bg-blue-600 text-white border-blue-600" : "border-blue-200 text-blue-600")
-              }
-            >
-              Pendente - recebido
-            </a>
+          {vencidas && (
+            <span className="text-xs px-3 py-1 rounded-full border bg-red-600 text-white border-red-600">Vencidas</span>
           )}
         </div>
 
@@ -378,16 +433,17 @@ export default async function FinanceiroPage({
 
         <div className="flex flex-col">
           {movimentacoes.map((m) => {
-            const situacao = situacaoVencimento(m.vencimento, m.pago, DIAS_ALERTA);
-            const pendenteRecebido = !m.pago && m.pagamento_id ? pagamentoIdsRecebidosSet.has(m.pagamento_id) : false;
-            const corLinha = pendenteRecebido
+            const jaPago = m.status_pagamento === "Pago";
+            const conferido = m.status_pagamento === "Conferido";
+            const situacao = situacaoVencimento(m.vencimento, jaPago, DIAS_ALERTA);
+            const corLinha = conferido
               ? "bg-blue-50 border border-blue-200 hover:bg-blue-100"
               : situacao === "vencido"
                 ? "bg-red-50 border border-red-200 hover:bg-red-100"
                 : situacao === "alerta"
                 ? "bg-amber-50 border border-amber-200 hover:bg-amber-100"
                 : "hover:bg-gray-50";
-            const corTexto = pendenteRecebido ? "text-blue-700" : situacao === "vencido" ? "text-red-700" : "text-gray-600";
+            const corTexto = conferido ? "text-blue-700" : situacao === "vencido" ? "text-red-700" : "text-gray-600";
             const temParcelas = (m.parcelas ?? 0) > 1;
 
             return (
@@ -406,9 +462,9 @@ export default async function FinanceiroPage({
                 <span className={`text-xs truncate ${corTexto}`}>{m.parceiros?.nome ?? "—"}</span>
                 <span
                   className={`text-xs font-medium whitespace-nowrap ${
-                    m.pago
+                    jaPago
                       ? "text-green-700"
-                      : pendenteRecebido
+                      : conferido
                         ? "text-blue-700"
                         : situacao === "vencido"
                           ? "text-red-700"
@@ -417,7 +473,7 @@ export default async function FinanceiroPage({
                             : "text-gray-500"
                   }`}
                 >
-                  {m.pago ? rotuloPago : pendenteRecebido ? "Pendente - Recebido" : rotuloPendente}
+                  {rotuloStatusPagamento(m.status_pagamento, m.tipo)}
                 </span>
                 <span className={`text-xs whitespace-nowrap ${situacao === "vencido" ? "text-red-800 font-medium" : "text-gray-700"}`}>
                   {formatMoeda(m.valor)}
@@ -442,6 +498,7 @@ export default async function FinanceiroPage({
           extraParams={{
             tipo: tipoParam,
             pago: pagoParam,
+            situacao: situacaoParam,
             categoria: categoriaParam,
             venc_de: vencDe,
             venc_ate: vencAte,

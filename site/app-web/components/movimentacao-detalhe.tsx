@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { FinanceiroEditarForm } from "@/components/financeiro-editar-form";
 import { BotaoComConfirmacao } from "@/components/botao-com-confirmacao";
-import { formatMoeda, formatDataCalendario } from "@/lib/format";
+import { formatMoeda, formatDataCalendario, formatDataHora } from "@/lib/format";
+import { rotuloStatusPagamento, corSeloStatusPagamento } from "@/lib/financeiro/status-pagamento";
 
 type CategoriaOpcao = { id: string; nome: string; tipo: string | null };
 type ClienteOpcao = { id: string; nome: string };
@@ -22,6 +23,8 @@ type MovimentacaoParaVisualizar = {
   valor: unknown;
   vencimento: Date | string;
   pago: boolean;
+  status_pagamento: string;
+  conferido_em: Date | string | null;
   data_pagamento: Date | string | null;
   parcelas: number | null;
   num_parcela: number | null;
@@ -52,8 +55,9 @@ export function MovimentacaoDetalhe({
   parceiros,
   action,
   excluirAction,
-  marcarPagoAction,
-  pendenteRecebido
+  atualizarStatusPagamentoAction,
+  conferidoPorNome,
+  pagoPorNome
 }: {
   movimentacao: MovimentacaoParaVisualizar;
   categorias: CategoriaOpcao[];
@@ -61,8 +65,9 @@ export function MovimentacaoDetalhe({
   parceiros: ParceiroOpcao[];
   action: (prevState: unknown, formData: FormData) => Promise<{ erro: string } | undefined | void>;
   excluirAction: (formData: FormData) => void;
-  marcarPagoAction: (formData: FormData) => void;
-  pendenteRecebido?: boolean;
+  atualizarStatusPagamentoAction: (formData: FormData) => void;
+  conferidoPorNome: string | null;
+  pagoPorNome: string | null;
 }) {
   const [editando, setEditando] = useState(false);
   const m = movimentacao;
@@ -91,9 +96,9 @@ export function MovimentacaoDetalhe({
     );
   }
 
-  const rotuloPago = m.tipo === "Despesa" ? "Pago" : "Recebido";
-  const rotuloPendente = m.tipo === "Despesa" ? "Pendente" : "Não recebido";
+  const rotuloPago = m.tipo === "Despesa" ? "pago" : "recebido";
   const temParcelas = (m.parcelas ?? 0) > 1;
+  const status = m.status_pagamento;
 
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-4">
@@ -133,38 +138,85 @@ export function MovimentacaoDetalhe({
         <Linha label="Vencimento" valor={formatDataCalendario(m.vencimento)} />
         <Linha label="Valor" valor={<span className="font-semibold">{formatMoeda(m.valor)}</span>} />
         <Linha
-          label="Pago?"
+          label="Situação do pagamento"
           valor={
-            <div className="flex items-center gap-2 flex-wrap">
-              <span
-                className={`font-semibold ${
-                  m.pago ? "text-[#3C7A57]" : pendenteRecebido ? "text-blue-700" : "text-gray-500"
-                }`}
-              >
-                {m.pago ? rotuloPago : pendenteRecebido ? "Pendente - Recebido" : rotuloPendente}
-              </span>
-              <form action={marcarPagoAction}>
-                <input type="hidden" name="movimentacaoId" value={m.id} />
-                <button
-                  type="submit"
-                  className={`text-xs rounded-lg border px-2.5 py-1 font-semibold ${
-                    m.pago
-                      ? "border-gray-300 text-gray-600 hover:bg-gray-50"
-                      : "bg-primary text-white border-primary hover:opacity-90"
-                  }`}
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span
+                  className={`text-[11px] font-bold rounded-full border px-2 py-0.5 ${corSeloStatusPagamento(status)}`}
                 >
-                  {m.pago ? `Marcar como ${rotuloPendente}` : `Marcar como ${rotuloPago}`}
-                </button>
-              </form>
+                  {rotuloStatusPagamento(status, m.tipo)}
+                </span>
+
+                {status === "Pendente" && (
+                  <form action={atualizarStatusPagamentoAction}>
+                    <input type="hidden" name="movimentacaoId" value={m.id} />
+                    <input type="hidden" name="alvo" value="Conferido" />
+                    <button
+                      type="submit"
+                      className="text-xs rounded-lg border border-blue-600 bg-blue-600 text-white px-2.5 py-1 font-semibold hover:opacity-90"
+                    >
+                      Conferir
+                    </button>
+                  </form>
+                )}
+
+                {status === "Conferido" && (
+                  <>
+                    <form action={atualizarStatusPagamentoAction}>
+                      <input type="hidden" name="movimentacaoId" value={m.id} />
+                      <input type="hidden" name="alvo" value="Pago" />
+                      <button
+                        type="submit"
+                        className="text-xs rounded-lg border border-primary bg-primary text-white px-2.5 py-1 font-semibold hover:opacity-90"
+                      >
+                        Marcar como {rotuloPago}
+                      </button>
+                    </form>
+                    <form action={atualizarStatusPagamentoAction}>
+                      <input type="hidden" name="movimentacaoId" value={m.id} />
+                      <input type="hidden" name="alvo" value="Pendente" />
+                      <button
+                        type="submit"
+                        className="text-xs rounded-lg border border-gray-300 text-gray-600 px-2.5 py-1 font-semibold hover:bg-gray-50"
+                      >
+                        Desfazer conferência
+                      </button>
+                    </form>
+                  </>
+                )}
+
+                {status === "Pago" && (
+                  <form action={atualizarStatusPagamentoAction}>
+                    <input type="hidden" name="movimentacaoId" value={m.id} />
+                    <input type="hidden" name="alvo" value="Conferido" />
+                    <button
+                      type="submit"
+                      className="text-xs rounded-lg border border-gray-300 text-gray-600 px-2.5 py-1 font-semibold hover:bg-gray-50"
+                    >
+                      Desfazer pagamento
+                    </button>
+                  </form>
+                )}
+              </div>
+
+              {(status === "Conferido" || status === "Pago") && (
+                <span className="text-[11px] text-gray-500">
+                  {conferidoPorNome
+                    ? `Conferido por ${conferidoPorNome}`
+                    : "Conferido automaticamente (o Recebimento de origem foi recebido)"}
+                  {m.conferido_em ? ` · ${formatDataHora(m.conferido_em)}` : ""}
+                </span>
+              )}
+              {status === "Pago" && (
+                <span className="text-[11px] text-gray-500">
+                  {pagoPorNome ? `Pago por ${pagoPorNome}` : "Pago (registro automático)"}
+                  {m.data_pagamento ? ` · ${formatDataCalendario(m.data_pagamento)}` : ""}
+                </span>
+              )}
             </div>
           }
         />
-        {pendenteRecebido && !m.pago && (
-          <p className="text-[11px] text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-2 py-1.5 mt-1 mb-1">
-            O dinheiro já caiu na conta (o Recebimento de origem está marcado como recebido) — falta só repassar.
-          </p>
-        )}
-        {m.pago && <Linha label="Data de pagamento" valor={m.data_pagamento ? formatDataCalendario(m.data_pagamento) : "—"} />}
         <Linha
           label="Comprovante"
           valor={

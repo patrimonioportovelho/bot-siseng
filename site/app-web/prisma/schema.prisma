@@ -700,6 +700,16 @@ model movimentacoes {
   num_parcela              Int?                   @db.SmallInt
   id_parcelamento          String?                @db.Uuid
   vencimento               DateTime               @db.Date
+  // Status de pagamento em 3 etapas: 'Pendente' -> 'Conferido' -> 'Pago'.
+  // `pago` (abaixo) e mantido como ESPELHO por marcarStatus/atualizar: sempre
+  // pago = (status_pagamento == 'Pago'). Todo o resto do sistema (dashboard,
+  // portal do corretor, ranking de honorarios) segue lendo `pago`.
+  // conferido_por_parceiro_id / pago_por_parceiro_id: NULL = feito pelo sistema
+  // (auto-conferir quando o Recebimento de origem cai); preenchido = uma pessoa.
+  status_pagamento         String                 @default("Pendente")
+  conferido_em             DateTime?              @db.Timestamptz(6)
+  conferido_por_parceiro_id String?               @db.Uuid
+  pago_por_parceiro_id     String?                @db.Uuid
   pago                     Boolean                @default(false)
   data_pagamento           DateTime?              @db.Date
   comprovante_url          String?

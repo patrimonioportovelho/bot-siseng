@@ -353,10 +353,23 @@ export function formatarPrazoContrato(meses: number | null): string {
 // depender de digitação manual.
 export function somarMeses(dataYYYYMMDD: string, meses: number | null): string {
   if (!dataYYYYMMDD || !meses) return "";
-  const d = new Date(dataYYYYMMDD + "T00:00:00");
-  if (Number.isNaN(d.getTime())) return "";
-  d.setMonth(d.getMonth() + meses);
-  return d.toISOString().slice(0, 10);
+  const [anoTxt, mesTxt, diaTxt] = dataYYYYMMDD.split("-");
+  const ano = Number(anoTxt);
+  const mes = Number(mesTxt); // 1-12
+  const dia = Number(diaTxt);
+  if (!Number.isFinite(ano) || !Number.isFinite(mes) || !Number.isFinite(dia)) return "";
+
+  // Calcula ano/mês alvo por aritmética direta — NUNCA usar Date.setMonth, que
+  // "transborda" (31/jan + 1 mês vira 3/mar, fevereiro sumido). O dia é fixado
+  // no menor entre o dia desejado e o último dia do mês alvo (31/jan + 1 mês =
+  // 28/fev ou 29/fev). Monta a string à mão pra não passar por toISOString(),
+  // que converteria pra UTC e poderia empurrar o dia em fuso negativo.
+  const totalMeses = (ano * 12 + (mes - 1)) + meses;
+  const anoAlvo = Math.floor(totalMeses / 12);
+  const mesAlvo = (totalMeses % 12) + 1; // 1-12
+  const ultimoDia = new Date(Date.UTC(anoAlvo, mesAlvo, 0)).getUTCDate();
+  const diaAlvo = Math.min(dia, ultimoDia);
+  return `${String(anoAlvo).padStart(4, "0")}-${String(mesAlvo).padStart(2, "0")}-${String(diaAlvo).padStart(2, "0")}`;
 }
 
 // Quantos dias faltam (ou já passaram, negativo) até a Data de vencimento

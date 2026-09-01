@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useMemo, useState } from "react";
-import { formatValorEditavel, hojeInputDate } from "@/lib/format";
+import { formatValorEditavel } from "@/lib/format";
 import { BotaoSubmit } from "@/components/botao-submit";
 import { CampoLink } from "@/components/campo-link";
 
@@ -54,7 +54,6 @@ export function FinanceiroEditarForm({
 }) {
   const [resultado, formAction] = useActionState(action, undefined);
   const m = movimentacao;
-  const rotuloPago = m.tipo === "Despesa" ? "pago" : "recebido";
 
   const categoriasFiltradas = useMemo(() => categorias.filter((c) => c.tipo === m.tipo), [categorias, m.tipo]);
   // Defensiva: se por algum motivo a categoria já salva na movimentação não
@@ -77,7 +76,6 @@ export function FinanceiroEditarForm({
   const [buscaClienteProprietario, setBuscaClienteProprietario] = useState(clienteProprietarioInicial?.nome ?? "");
   const [listaProprietarioAberta, setListaProprietarioAberta] = useState(false);
 
-  const [pago, setPago] = useState(m.pago);
 
   const clientesFiltradosInteressado = useMemo(() => {
     const t = buscaClienteInteressado.trim().toLowerCase();
@@ -236,22 +234,12 @@ export function FinanceiroEditarForm({
       </div>
 
       <div className="bg-white border border-gray-200 rounded-xl p-4">
-        <div className="text-sm font-bold text-gray-800 mb-3">Situação</div>
-        <label className="flex items-center gap-2 text-xs text-gray-700 mb-3">
-          <input type="checkbox" name="pago" checked={pago} onChange={(e) => setPago(e.target.checked)} className="rounded" />
-          Está {rotuloPago}
-        </label>
-        {pago && (
-          <div className="max-w-xs">
-            <label className={LABEL}>Data do pagamento</label>
-            <input
-              className={CAMPO}
-              type="date"
-              name="data_pagamento"
-              defaultValue={inputDate(m.data_pagamento) || hojeInputDate()}
-            />
-          </div>
-        )}
+        <div className="text-sm font-bold text-gray-800 mb-2">Situação do pagamento</div>
+        <p className="text-[11px] text-gray-500">
+          A situação ({m.tipo === "Despesa" ? "Pendente → Conferido → Pago" : "Pendente → Conferido → Recebido"}) é
+          alterada pelos botões na tela da movimentação — sai deste formulário de propósito, pra não pular etapa sem
+          querer.
+        </p>
       </div>
 
       <div className="bg-white border border-gray-200 rounded-xl p-4">

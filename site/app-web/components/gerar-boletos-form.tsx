@@ -35,15 +35,18 @@ const CATEGORIA_MENSAL = "Administração de Imóveis Locados";
 // Soma meses a uma data ISO (YYYY-MM-DD) e, se tiver um dia de vencimento
 // combinado no contrato, troca o dia do mês pra ele (limitado ao último dia
 // do mês de destino, pra não estourar em fevereiro etc.).
+// Usa somarMeses de lib/format (aritmética de ano/mês, sem Date.setMonth, que
+// transbordava — "31/jan + 1 mês" virava março e pulava fevereiro).
 function somarMesesComDia(dataISO: string, meses: number, diaVencimento: number | null): string {
-  const d = new Date(dataISO + "T00:00:00");
-  if (Number.isNaN(d.getTime())) return "";
-  d.setMonth(d.getMonth() + meses);
-  if (diaVencimento) {
-    const ultimoDiaDoMes = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
-    d.setDate(Math.min(diaVencimento, ultimoDiaDoMes));
-  }
-  return d.toISOString().slice(0, 10);
+  const base = meses === 0 ? dataISO : somarMeses(dataISO, meses);
+  if (!base) return "";
+  if (!diaVencimento) return base;
+  const [anoTxt, mesTxt] = base.split("-");
+  const ano = Number(anoTxt);
+  const mes = Number(mesTxt); // 1-12
+  const ultimoDiaDoMes = new Date(Date.UTC(ano, mes, 0)).getUTCDate();
+  const dia = Math.min(diaVencimento, ultimoDiaDoMes);
+  return `${anoTxt}-${mesTxt}-${String(dia).padStart(2, "0")}`;
 }
 
 // Monta a linha padrão pro índice global do boleto (1 = primeiro Recebimento

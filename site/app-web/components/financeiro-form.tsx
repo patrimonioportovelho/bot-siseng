@@ -103,7 +103,7 @@ export function FinanceiroForm({
   const [tipo, setTipo] = useState<"Despesa" | "Recebimento">("Despesa");
   const [categoriaId, setCategoriaId] = useState("");
   const [formaPagamento, setFormaPagamento] = useState<"À vista" | "Parcelado" | "Recorrente">("À vista");
-  const [pago, setPago] = useState(false);
+  const [statusPagamento, setStatusPagamento] = useState("Pendente");
 
   const [valor, setValor] = useState("");
   const [parcelasQtd, setParcelasQtd] = useState("");
@@ -797,29 +797,18 @@ export function FinanceiroForm({
 
       {formaPagamento === "À vista" && (
         <div className="bg-white border border-gray-200 rounded-xl p-4">
-          <div className="text-sm font-bold text-gray-800 mb-3">Situação</div>
-          <label className="flex items-center gap-2 text-xs text-gray-700 mb-3">
-            <input
-              type="checkbox"
-              name="pago"
-              checked={pago}
-              onChange={(e) => setPago(e.target.checked)}
-              className="rounded"
-            />
-            Já está {tipo === "Despesa" ? "pago" : "recebido"}
-          </label>
-          {!pago && (
-            <p className="text-[11px] text-gray-400">
-              Fica registrado como Pendente — dá pra marcar como {tipo === "Despesa" ? "pago" : "recebido"} depois, no
-              detalhe.
-            </p>
-          )}
-          {pago && (
-            <div className="max-w-xs">
-              <label className={LABEL}>Data do pagamento</label>
-              <input className={CAMPO} type="date" name="data_pagamento" defaultValue={hojeInputDate()} />
-            </div>
-          )}
+          <div className="text-sm font-bold text-gray-800 mb-3">Situação do pagamento</div>
+          <div className="max-w-xs">
+            <select className={CAMPO} name="status_pagamento" value={statusPagamento} onChange={(e) => setStatusPagamento(e.target.value)}>
+              <option value="Pendente">Pendente</option>
+              <option value="Conferido">Conferido (aprovado, ainda não {tipo === "Despesa" ? "pago" : "recebido"})</option>
+              <option value="Pago">{tipo === "Despesa" ? "Pago" : "Recebido"}</option>
+            </select>
+          </div>
+          <p className="text-[11px] text-gray-400 mt-2">
+            Depois, no detalhe da movimentação, a situação anda uma etapa por vez (sempre &quot;Conferir&quot; antes de{" "}
+            {tipo === "Despesa" ? "pagar" : "receber"}).
+          </p>
         </div>
       )}
 

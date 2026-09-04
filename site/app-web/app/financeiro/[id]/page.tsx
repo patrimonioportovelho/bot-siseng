@@ -77,7 +77,7 @@ export default async function MovimentacaoPage({
       : [];
   const nomeParceiroStatus = new Map(parceirosStatus.map((p) => [p.id, p.nome]));
 
-  const [categorias, clientes, parceiros] = await Promise.all([
+  const [categorias, clientes, parceiros, transacoes] = await Promise.all([
     prisma.categorias_financeiras.findMany({ orderBy: { nome: "asc" } }),
     prisma.clientes.findMany({
       where: { OR: [{ status_cadastro: null }, { status_cadastro: { not: "Arquivado" } }] },
@@ -88,6 +88,15 @@ export default async function MovimentacaoPage({
       where: { status_funcao: "Ativo" },
       orderBy: { nome: "asc" },
       select: { id: true, nome: true }
+    }),
+    // Lista enxuta (sem a cascata de comissionamento — essa é só pra
+    // vincular/corrigir o transacao_id na edição, não pra sugerir valor) pro
+    // buscador de "Transação vinculada" no formulário de edição — ver
+    // achado de auditoria de 04/09/2026 no comentário de FinanceiroEditarForm.
+    prisma.transacoes.findMany({
+      where: { excluido: false },
+      orderBy: { created_at: "desc" },
+      select: { id: true, id_legado: true, tipo: true }
     })
   ]);
 
@@ -346,6 +355,7 @@ export default async function MovimentacaoPage({
           categorias={categorias}
           clientes={clientes}
           parceiros={parceiros}
+          transacoes={transacoes}
           action={atualizarMovimentacaoAction}
           excluirAction={excluirMovimentacaoAction}
           atualizarStatusPagamentoAction={atualizarStatusPagamentoAction}

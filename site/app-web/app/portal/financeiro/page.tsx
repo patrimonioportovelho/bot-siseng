@@ -87,6 +87,7 @@ export default async function PortalFinanceiroPage() {
     despesasPagas,
     despesasPendentes,
     pagosDireto,
+    repassesJaLancados,
     transacoesAbertas,
     administracoesSemLocacao,
     comissaoPadraoCorretor
@@ -122,6 +123,24 @@ export default async function PortalFinanceiroPage() {
       orderBy: { created_at: "desc" },
       take: 30
     }),
+    // Achado de auditoria de 04/09/2026: a previsão abaixo (previsaoComissaoTransacao)
+    // só sabe que um negócio "já teve o rateio gerado" olhando a tabela
+    // `pagamentos` — mas um repasse lançado manualmente em Financeiro (sem
+    // passar por "Gerar rateio") nunca cria linha em `pagamentos`, só em
+    // `movimentacoes`. Resultado: o negócio continuava contando como
+    // "previsão, rateio ainda não gerado" pra sempre, mesmo já pago (o
+    // corretor via "já foi pago" no extrato do admin, mas o Portal continuava
+    // mostrando o mesmo valor em A receber — nunca "baixava"). Qualquer
+    // repasse (pago ou não) já lançado manualmente pra este parceiro nesta
+    // transação tira o negócio inteiro da previsão — o que já foi lançado
+    // aparece certinho em despesasPendentes/despesasPagas acima, não precisa
+    // (e não deve) ser previsto de novo aqui.
+    categoriaRepasse
+      ? prisma.movimentacoes.findMany({
+          where: { tipo: "Despesa", parceiro_id: pid, categoria_id: categoriaRepasse.id, transacao_id: { not: null } },
+          select: { transacao_id: true }
+        })
+      : Promise.resolve([]),
     // Negócio assinado (aberto) vinculado a ele — como corretor de qualquer
     // um dos dois lados, ou como participante extra do rateio — pra prever
     // a comissão de um jeito que ainda não teve o rateio gerado (ex.: recém
@@ -189,38 +208,49 @@ export default async function PortalFinanceiroPage() {
   const totalRecebidoDireto = pagosDireto.reduce((soma, p) => soma + Number(p.valor_parceiro ?? 0), 0);
   const totalRecebido = totalRecebidoDespesas + totalRecebidoDireto;
 
-  const previsoesTransacao: PrevisaoComissao[] = transacoesAbertas.flatMap((t) => {
-    const temCondicoes = t.condicoes_pagamento.length > 0;
-    const condicoesPendentes = t.condicoes_pagamento
-      .filter((c) => c.pagamentos.length === 0)
-      .map((c) => ({ id: c.id, porc_comissao: c.porc_comissao ? Number(c.porc_comissao) : null, data_pagamento: c.data_pagamento }));
-    const semCondicaoJaGerado = t.pagamentos.length > 0;
-    const fracaoExtra = t.transacoes_comissao_extra[0] ? Number(t.transacoes_comissao_extra[0].porcentagem) : 0;
+  // Ver comentário na query repassesJaLancados acima: transação que já tem
+  // QUALQUER repasse (pago ou não) lançado pra este parceiro não entra mais
+  // na previsão "ainda sem rateio" — já está contabilizada em
+  // despesasPendentes/despesasPagas, sem isso ficava contada duas vezes (ou
+  // nunca saía do "a receber" mesmo depois de paga).
+  const transacoesComRepasseLancado = new Set(
+    repassesJaLancados.map((m) => m.transacao_id).filter((v): v is string => Boolean(v))
+  );
 
-    return previsaoComissaoTransacao({
-      transacao: {
-        id: t.id,
-        id_legado: t.id_legado,
-        tipo: t.tipo,
-        valor_transacao: Number(t.valor_transacao),
-        porc_honorario: Number(t.porc_honorario),
-        tem_parceria: t.tem_parceria,
-        porc_parceria: Number(t.porc_parceria ?? 0),
-        porc_corretor_proprietario: Number(t.porc_corretor_proprietario),
-        porc_corretor_contraparte: Number(t.porc_corretor_contraparte),
-        corretor_proprietario_id: t.corretor_proprietario_id,
-        corretor_contraparte_id: t.corretor_contraparte_id,
-        data_pagamento: t.data_pagamento
-      },
-      parceiroId: pid,
-      temCondicoes,
-      condicoesPendentes,
-      semCondicaoJaGerado,
-      fracaoExtra,
-      porcPadraoProprietario: comissaoPadraoCorretor?.porc_proprietario != null ? Number(comissaoPadraoCorretor.porc_proprietario) : null,
-      porcPadraoInteressado: comissaoPadraoCorretor?.porc_interessado != null ? Number(comissaoPadraoCorretor.porc_interessado) : null
+  const previsoesTransacao: PrevisaoComissao[] = transacoesAbertas
+    .filter((t) => !transacoesComRepasseLancado.has(t.id))
+    .flatMap((t) => {
+      const temCondicoes = t.condicoes_pagamento.length > 0;
+      const condicoesPendentes = t.condicoes_pagamento
+        .filter((c) => c.pagamentos.length === 0)
+        .map((c) => ({ id: c.id, porc_comissao: c.porc_comissao ? Number(c.porc_comissao) : null, data_pagamento: c.data_pagamento }));
+      const semCondicaoJaGerado = t.pagamentos.length > 0;
+      const fracaoExtra = t.transacoes_comissao_extra[0] ? Number(t.transacoes_comissao_extra[0].porcentagem) : 0;
+
+      return previsaoComissaoTransacao({
+        transacao: {
+          id: t.id,
+          id_legado: t.id_legado,
+          tipo: t.tipo,
+          valor_transacao: Number(t.valor_transacao),
+          porc_honorario: Number(t.porc_honorario),
+          tem_parceria: t.tem_parceria,
+          porc_parceria: Number(t.porc_parceria ?? 0),
+          porc_corretor_proprietario: Number(t.porc_corretor_proprietario),
+          porc_corretor_contraparte: Number(t.porc_corretor_contraparte),
+          corretor_proprietario_id: t.corretor_proprietario_id,
+          corretor_contraparte_id: t.corretor_contraparte_id,
+          data_pagamento: t.data_pagamento
+        },
+        parceiroId: pid,
+        temCondicoes,
+        condicoesPendentes,
+        semCondicaoJaGerado,
+        fracaoExtra,
+        porcPadraoProprietario: comissaoPadraoCorretor?.porc_proprietario != null ? Number(comissaoPadraoCorretor.porc_proprietario) : null,
+        porcPadraoInteressado: comissaoPadraoCorretor?.porc_interessado != null ? Number(comissaoPadraoCorretor.porc_interessado) : null
+      });
     });
-  });
 
   const administracoesEstimativa = administracoesSemLocacao
     .filter((a) => a.transacoes.length === 0 && a.valor_transacao && a.porc_honorario)

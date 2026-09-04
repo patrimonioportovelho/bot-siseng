@@ -9,6 +9,7 @@ import { rotuloStatusPagamento, corSeloStatusPagamento } from "@/lib/financeiro/
 type CategoriaOpcao = { id: string; nome: string; tipo: string | null };
 type ClienteOpcao = { id: string; nome: string };
 type ParceiroOpcao = { id: string; nome: string };
+type TransacaoOpcao = { id: string; id_legado: string | null; tipo: string };
 
 type MovimentacaoParaVisualizar = {
   id: string;
@@ -17,6 +18,7 @@ type MovimentacaoParaVisualizar = {
   cliente_interessado_id: string | null;
   cliente_proprietario_id: string | null;
   parceiro_id: string | null;
+  transacao_id: string | null;
   contraparte_nome: string | null;
   descricao: string | null;
   comprovante_url: string | null;
@@ -53,6 +55,7 @@ export function MovimentacaoDetalhe({
   categorias,
   clientes,
   parceiros,
+  transacoes,
   action,
   excluirAction,
   atualizarStatusPagamentoAction,
@@ -63,6 +66,7 @@ export function MovimentacaoDetalhe({
   categorias: CategoriaOpcao[];
   clientes: ClienteOpcao[];
   parceiros: ParceiroOpcao[];
+  transacoes: TransacaoOpcao[];
   action: (prevState: unknown, formData: FormData) => Promise<{ erro: string } | undefined | void>;
   excluirAction: (formData: FormData) => void;
   atualizarStatusPagamentoAction: (formData: FormData) => void;
@@ -90,6 +94,7 @@ export function MovimentacaoDetalhe({
           categorias={categorias}
           clientes={clientes}
           parceiros={parceiros}
+          transacoes={transacoes}
           action={action}
         />
       </div>

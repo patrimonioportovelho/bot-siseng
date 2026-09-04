@@ -107,6 +107,7 @@ export async function criarMovimentacaoAction(_prev: unknown, formData: FormData
   }
 
   const parceiroId = texto(formData, "parceiro_id");
+  const transacaoIdForm = texto(formData, "transacao_id");
 
   // Achado de auditoria (31/08/2026, caso CV-0015): dava pra lançar uma
   // Despesa de "Repasse de Honorários Transações" manualmente sem
@@ -115,13 +116,32 @@ export async function criarMovimentacaoAction(_prev: unknown, formData: FormData
   // aqui, nada mais no sistema pegava esse caso. Essa despesa "órfã" nunca
   // entrava no ranking/Dashboard de ninguém. Único ponto por onde todo
   // lançamento manual de movimentação passa — bloqueado aqui.
+  //
+  // Achado de auditoria (04/09/2026, transação de Locação e6eba069): o
+  // mesmo problema existe pro campo Transação — o buscador de contrato
+  // (components/financeiro-form.tsx) é um campo de texto livre, sem
+  // `required`; digitar sem clicar numa sugestão da lista deixa
+  // transacao_id vazio silenciosamente. O repasse fica com parceiro e
+  // valor certos, mas invisível na aba "Movimentações" da própria
+  // transação (que filtra por transacao_id) — o admin só o encontra
+  // buscando pelo nome do corretor direto em /financeiro. Agora exigido
+  // igual ao parceiro, pro repasse ficar sempre ligado dos dois lados,
+  // não importa se foi lançado pelo Financeiro ou pela transação.
   if (tipo === "Despesa") {
     const categoria = await prisma.categorias_financeiras.findUnique({
       where: { id: categoriaId },
       select: { nome: true }
     });
-    if (categoria?.nome === "Repasse de Honorários Transações" && !parceiroId) {
-      return { erro: "Repasse de honorário precisa de um parceiro (corretor) vinculado — selecione antes de salvar." };
+    if (categoria?.nome === "Repasse de Honorários Transações") {
+      if (!parceiroId) {
+        return { erro: "Repasse de honorário precisa de um parceiro (corretor) vinculado — selecione antes de salvar." };
+      }
+      if (!transacaoIdForm) {
+        return {
+          erro:
+            "Repasse de honorário precisa da Transação vinculada — busque e clique numa opção da lista antes de salvar (não basta digitar)."
+        };
+      }
     }
   }
 
@@ -131,7 +151,7 @@ export async function criarMovimentacaoAction(_prev: unknown, formData: FormData
     cliente_interessado_id: texto(formData, "cliente_interessado_id"),
     cliente_proprietario_id: texto(formData, "cliente_proprietario_id"),
     parceiro_id: parceiroId,
-    transacao_id: texto(formData, "transacao_id"),
+    transacao_id: transacaoIdForm,
     descricao: texto(formData, "descricao"),
     comprovante_url: texto(formData, "comprovante_url"),
     forma_pagamento: formaPagamento
@@ -258,6 +278,10 @@ function camposEditaveis(formData: FormData) {
     cliente_interessado_id: texto(formData, "cliente_interessado_id"),
     cliente_proprietario_id: texto(formData, "cliente_proprietario_id"),
     parceiro_id: texto(formData, "parceiro_id"),
+    // Só mexe no vínculo com a transação se o formulário mandar o campo —
+    // undefined faz o Prisma ignorar (mantém o valor já salvo), pra nenhum
+    // formulário mais antigo/futuro sem esse campo apagar o vínculo à toa.
+    transacao_id: formData.has("transacao_id") ? texto(formData, "transacao_id") : undefined,
     descricao: texto(formData, "descricao"),
     comprovante_url: texto(formData, "comprovante_url"),
     valor: valorMonetario(formData, "valor") ?? undefined,
@@ -299,16 +323,27 @@ export async function atualizarMovimentacaoAction(_prev: unknown, formData: Form
   }
 
   // Mesma trava de criarMovimentacaoAction (achado de auditoria de
-  // 31/08/2026) — aqui pro caso de editar uma Despesa de repasse já
-  // vinculada e sem querer limpar o parceiro.
+  // 31/08/2026, estendida em 04/09/2026 pro vínculo com a Transação — ver
+  // comentário lá) — aqui pro caso de editar uma Despesa de repasse já
+  // vinculada e sem querer limpar o parceiro/a transação.
   if (antes.tipo === "Despesa") {
     const categoriaIdFinal = campos.categoria_id ?? antes.categoria_id;
     const categoria = await prisma.categorias_financeiras.findUnique({
       where: { id: categoriaIdFinal },
       select: { nome: true }
     });
-    if (categoria?.nome === "Repasse de Honorários Transações" && !campos.parceiro_id) {
-      return { erro: "Repasse de honorário precisa de um parceiro (corretor) vinculado — selecione antes de salvar." };
+    if (categoria?.nome === "Repasse de Honorários Transações") {
+      const parceiroFinal = campos.parceiro_id !== undefined ? campos.parceiro_id : antes.parceiro_id;
+      const transacaoFinal = campos.transacao_id !== undefined ? campos.transacao_id : antes.transacao_id;
+      if (!parceiroFinal) {
+        return { erro: "Repasse de honorário precisa de um parceiro (corretor) vinculado — selecione antes de salvar." };
+      }
+      if (!transacaoFinal) {
+        return {
+          erro:
+            "Repasse de honorário precisa da Transação vinculada — busque e clique numa opção da lista antes de salvar (não basta digitar)."
+        };
+      }
     }
   }
 

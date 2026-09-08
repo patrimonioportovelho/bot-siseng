@@ -69,7 +69,11 @@ async function montarLinksDocumentos(documentos: DocumentoEnviado[]): Promise<st
 // Mesmo orçamento de anexo real usado no Compra e Venda (ver comentário lá):
 // 18MB de bytes crus cabe com folga nos 25MB que o Gmail aceita por
 // mensagem, mesmo depois da inflação de ~33% do base64.
-const ORCAMENTO_ANEXOS_BYTES = 18 * 1024 * 1024;
+// Ver comentário completo em app/portal/locacao/actions.ts (achado de
+// 08/09/2026): 18 MB de anexo estourava o Gmail / o socketTimeout do SMTP na
+// função serverless e o e-mail falhava silenciosamente. 7 MB sobe rápido; o
+// que passar disso vai só como link assinado de 7 dias no corpo.
+const ORCAMENTO_ANEXOS_BYTES = 7 * 1024 * 1024;
 
 async function montarAnexosDocumentos(documentos: DocumentoEnviado[]): Promise<EmailAnexo[]> {
   const anexos: EmailAnexo[] = [];
@@ -388,12 +392,28 @@ export async function criarAvaliacaoCpfAction(
           </div>
         `;
 
+        // .trim(): ver comentário igual em app/portal/locacao/actions.ts.
+        const destinoEmail = (process.env.EMAIL_ADM_FINANCIAMENTO || "").trim() || EMAIL_DESTINO_PADRAO;
+
         const resultadoEmail = await enviarEmail({
-          to: process.env.EMAIL_ADM_FINANCIAMENTO || EMAIL_DESTINO_PADRAO,
+          to: destinoEmail,
           subject: `Avaliação de CPF — ${clienteNome}`,
           html,
           attachments: anexosDocumentos
         });
+
+        await logAlteracaoPortal({
+          parceiroId: session.parceiroId,
+          entidadeTipo: "avaliacoes",
+          entidadeId: novaAvaliacao.id,
+          acao: resultadoEmail.ok ? "email_avaliacao_cpf_enviado" : "email_avaliacao_cpf_falhou",
+          dadosDepois: {
+            para: destinoEmail,
+            anexos: anexosDocumentos.length,
+            docs_como_link: Math.max(0, documentosEnviados.length - anexosDocumentos.length),
+            erro: resultadoEmail.ok ? undefined : resultadoEmail.erro
+          }
+        }).catch(() => undefined);
 
         if (!resultadoEmail.ok) {
           await registrarEJogarErro({

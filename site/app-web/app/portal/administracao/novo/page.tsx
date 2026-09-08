@@ -9,7 +9,9 @@ export const dynamic = "force-dynamic";
 // Mesmo motivo do portal de Compra e Venda (ver comentário lá): cadastro
 // "tudo do zero" faz várias consultas em sequência e ainda gera o
 // documento — estende o tempo antes do timeout padrão da função.
-export const maxDuration = 30;
+// 60s: o cadastro (criar clientes/imóvel) + o after() que baixa os anexos e
+// manda o e-mail pro administrativo precisam caber com folga na mesma função.
+export const maxDuration = 60;
 
 // Formulário "Elaboração de Contrato de Administração" — só corretor logado
 // no portal (email @remax.com.br + função Corretor, ver lib/portal-auth.ts)

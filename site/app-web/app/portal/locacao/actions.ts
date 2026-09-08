@@ -76,7 +76,16 @@ async function montarLinksDocumentos(documentos: DocumentoEnviado[]): Promise<st
   return `<p>${documentos.length} documento(s) anexado(s) — link válido por 7 dias:</p><ul>${links.join("")}</ul>`;
 }
 
-const ORCAMENTO_ANEXOS_BYTES = 18 * 1024 * 1024;
+// Achado de 08/09/2026 ("Locação sem administração não envia e-mail quando
+// manda os documentos"): era 18 MB. Com base64 (+~33%) + overhead MIME, um
+// e-mail com ~15 MB de anexos vira uma mensagem de ~20 MB, que ou estoura o
+// limite do Gmail (25 MB) ou não termina de subir dentro do socketTimeout do
+// SMTP (lib/email.ts) rodando numa função serverless — o e-mail falha (fica
+// registrado em Configurações > Erros de cadastro) e o corretor acha que
+// "não enviou". 7 MB de anexo vira uma mensagem de ~9,5 MB, que sobe rápido e
+// com folga. O que passar disso vai como LINK assinado de 7 dias no corpo do
+// e-mail (montarLinksDocumentos), que sempre funcionou.
+const ORCAMENTO_ANEXOS_BYTES = 7 * 1024 * 1024;
 
 async function montarAnexosDocumentos(documentos: DocumentoEnviado[]): Promise<EmailAnexo[]> {
   const anexos: EmailAnexo[] = [];
@@ -84,7 +93,7 @@ async function montarAnexosDocumentos(documentos: DocumentoEnviado[]): Promise<E
   for (const d of documentos) {
     const conteudo = await baixarDocumentoPortal(d.caminho);
     if (!conteudo) continue;
-    if (usado + conteudo.length > ORCAMENTO_ANEXOS_BYTES) continue;
+    if (usado + conteudo.length > ORCAMENTO_ANEXOS_BYTES) continue; // não coube — vai só como link.
     anexos.push({ filename: d.nomeOriginal, content: conteudo });
     usado += conteudo.length;
   }
@@ -735,12 +744,34 @@ export async function gerarLocacaoAction(
           </div>
         `;
 
+        // .trim() de propósito: se a env vier com espaço/quebra de linha
+        // (colada errada no painel do Vercel) ela deixa de ser "vazia" e o
+        // `||` não cai no fallback — aí o e-mail vai pra um destino inválido
+        // e falha calado.
+        const destinoEmail = (process.env.EMAIL_ADM_LOCACAO || "").trim() || EMAIL_DESTINO_PADRAO;
+
         const resultadoEmail = await enviarEmail({
-          to: process.env.EMAIL_ADM_LOCACAO || EMAIL_DESTINO_PADRAO,
+          to: destinoEmail,
           subject: `Locação ${novo.id_legado ?? ""} — ${imovelInfo?.endereco ?? "imóvel sem endereço"}`,
           html,
           attachments: anexosDocumentos
         });
+
+        // Registra TODO envio (deu certo ou não) em Configurações > Logs —
+        // pra parar de ser adivinhação quando alguém diz "não recebi o
+        // e-mail". Só a falha continua indo pra Erros de cadastro também.
+        await logAlteracaoPortal({
+          parceiroId: session.parceiroId,
+          entidadeTipo: "transacoes",
+          entidadeId: novo.id,
+          acao: resultadoEmail.ok ? "email_locacao_enviado" : "email_locacao_falhou",
+          dadosDepois: {
+            para: destinoEmail,
+            anexos: anexosDocumentos.length,
+            docs_como_link: Math.max(0, documentosEnviados.length - anexosDocumentos.length),
+            erro: resultadoEmail.ok ? undefined : resultadoEmail.erro
+          }
+        }).catch(() => undefined);
 
         if (!resultadoEmail.ok) {
           await registrarEJogarErro({

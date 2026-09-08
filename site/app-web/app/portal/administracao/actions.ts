@@ -64,7 +64,11 @@ async function montarLinksDocumentos(documentos: DocumentoEnviado[]): Promise<st
   return `<p>${documentos.length} documento(s) anexado(s) — link válido por 7 dias:</p><ul>${links.join("")}</ul>`;
 }
 
-const ORCAMENTO_ANEXOS_BYTES = 18 * 1024 * 1024;
+// Ver comentário completo em app/portal/locacao/actions.ts (achado de
+// 08/09/2026): 18 MB de anexo estourava o Gmail / o socketTimeout do SMTP na
+// função serverless e o e-mail falhava silenciosamente. 7 MB sobe rápido; o
+// que passar disso vai só como link assinado de 7 dias no corpo.
+const ORCAMENTO_ANEXOS_BYTES = 7 * 1024 * 1024;
 
 async function montarAnexosDocumentos(documentos: DocumentoEnviado[]): Promise<EmailAnexo[]> {
   const anexos: EmailAnexo[] = [];
@@ -249,17 +253,15 @@ function validarCamposObrigatorios(clientesNovos: ClienteDigitado[]): string | n
 // próximo número sempre olha pra todos os registros com esse prefixo, não só
 // os criados por aqui.
 async function gerarProximoIdAdm(): Promise<string> {
-  const registros = await prisma.adm_imoveis.findMany({
-    where: { id_legado: { startsWith: "ADM-" } },
-    select: { id_legado: true }
-  });
-
-  let maior = 0;
-  for (const r of registros) {
-    const n = Number(r.id_legado?.replace("ADM-", ""));
-    if (Number.isFinite(n) && n > maior) maior = n;
-  }
-
+  // MAX direto no Postgres (era findMany + loop em JS) — mais leve conforme a
+  // base cresce e reduz a janela de corrida entre dois cadastros simultâneos,
+  // mesmo padrao de gerarProximoIdLocacao em app/portal/locacao/actions.ts.
+  const resultado = await prisma.$queryRaw<{ maior: number | null }[]>`
+    SELECT MAX(CAST(SUBSTRING(id_legado FROM 5) AS INTEGER)) AS maior
+    FROM adm_imoveis
+    WHERE id_legado LIKE 'ADM-%' AND id_legado ~ '^ADM-[0-9]+$'
+  `;
+  const maior = Number(resultado[0]?.maior ?? 0);
   return `ADM-${String(maior + 1).padStart(4, "0")}`;
 }
 
@@ -577,12 +579,28 @@ export async function cadastrarAdministracaoAction(
           </div>
         `;
 
+        // .trim(): ver comentário igual em app/portal/locacao/actions.ts.
+        const destinoEmail = (process.env.EMAIL_ADM_ADMINISTRACAO || "").trim() || EMAIL_DESTINO_PADRAO;
+
         const resultadoEmail = await enviarEmail({
-          to: process.env.EMAIL_ADM_ADMINISTRACAO || EMAIL_DESTINO_PADRAO,
+          to: destinoEmail,
           subject: `Administração ${novaAdministracao.id_legado ?? ""} — ${imovel.endereco ?? "imóvel sem endereço"}`,
           html,
           attachments: anexosDocumentos
         });
+
+        await logAlteracaoPortal({
+          parceiroId: session.parceiroId,
+          entidadeTipo: "adm_imoveis",
+          entidadeId: novaAdministracao.id,
+          acao: resultadoEmail.ok ? "email_administracao_enviado" : "email_administracao_falhou",
+          dadosDepois: {
+            para: destinoEmail,
+            anexos: anexosDocumentos.length,
+            docs_como_link: Math.max(0, documentosEnviados.length - anexosDocumentos.length),
+            erro: resultadoEmail.ok ? undefined : resultadoEmail.erro
+          }
+        }).catch(() => undefined);
 
         if (!resultadoEmail.ok) {
           await registrarEJogarErro({

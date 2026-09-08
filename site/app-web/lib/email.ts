@@ -29,16 +29,16 @@ function criarTransporter(user: string, pass: string) {
   return nodemailer.createTransport({
     service: "gmail",
     auth: { user, pass },
-    // Sem isso, um problema de rede/Gmail (ex.: bloqueio de saída SMTP,
-    // credencial inválida travando no handshake) deixa o envio pendurado
-    // até a função serverless do Vercel estourar o tempo máximo dela —
-    // e a transação/contrato já cadastrado nem chega a responder pro
-    // corretor (a tela fica parada, sem erro nenhum). Com os timeouts
-    // abaixo, um problema de conexão vira um erro em ~20s no máximo, que
-    // aí sim é capturado e devolvido pro formulário.
+    // connectionTimeout/greetingTimeout curtos (15s) pegam rápido uma
+    // conexão morta (bloqueio de saída SMTP, credencial travando no
+    // handshake). socketTimeout maior (45s): o envio agora roda em after()
+    // do Next (não trava mais o formulário do corretor), então um e-mail
+    // legítimo com alguns MB de anexo tem folga pra terminar de subir sem
+    // ser cortado — antes eram 20s e um e-mail com documento pesado batia
+    // nesse teto e falhava. Ver ORCAMENTO_ANEXOS_BYTES nos actions do portal.
     connectionTimeout: 15000,
     greetingTimeout: 15000,
-    socketTimeout: 20000,
+    socketTimeout: 45000,
     // Pool de conexões (12/08/2026): mantém no máximo `maxConnections`
     // conexões SMTP abertas em vez de uma nova por sendMail(). ATENÇÃO:
     // isto NÃO foi a causa do disparo de evento que só saiu ~12-13 de 31

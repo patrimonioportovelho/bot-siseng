@@ -9,7 +9,9 @@ export const dynamic = "force-dynamic";
 // Baixar e reanexar os documentos do cliente pro email pode levar alguns
 // segundos por arquivo — mesmo motivo do maxDuration em
 // app/portal/compra-venda/novo/page.tsx.
-export const maxDuration = 30;
+// 60s: o cadastro (criar clientes/imóvel) + o after() que baixa os anexos e
+// manda o e-mail pro administrativo precisam caber com folga na mesma função.
+export const maxDuration = 60;
 
 // "Avaliação de CPF" — porta de entrada, pelo portal do corretor, pra um
 // cliente que quer COMPRAR um imóvel. Cadastra o cliente completo (é o que o

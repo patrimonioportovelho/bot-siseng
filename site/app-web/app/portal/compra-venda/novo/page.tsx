@@ -13,7 +13,9 @@ export const dynamic = "force-dynamic";
 // Vercel isso podia estourar antes de terminar, e a tela ficava parada sem
 // avisar nada. Isso também estende o tempo pra Server Action chamada desta
 // página (gerarCompraVendaAction).
-export const maxDuration = 30;
+// 60s: o cadastro (criar clientes/imóvel) + o after() que baixa os anexos e
+// manda o e-mail pro administrativo precisam caber com folga na mesma função.
+export const maxDuration = 60;
 
 // Formulário "Elaboração de Compra e Venda" — o corretor puxa um imóvel já
 // captado (de qualquer corretor da imobiliária, não só o dele) e um ou mais

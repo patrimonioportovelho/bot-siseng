@@ -90,7 +90,11 @@ async function montarLinksDocumentos(documentos: DocumentoEnviado[]): Promise<st
 // vira ~24MB codificado, com folga pro resto do email). Documento que não
 // couber no orçamento não trava o envio: só fica de fora do anexo (o link
 // de download continua indo no corpo do email do mesmo jeito).
-const ORCAMENTO_ANEXOS_BYTES = 18 * 1024 * 1024;
+// Ver comentário completo em app/portal/locacao/actions.ts (achado de
+// 08/09/2026): 18 MB de anexo estourava o Gmail / o socketTimeout do SMTP na
+// função serverless e o e-mail falhava silenciosamente. 7 MB sobe rápido; o
+// que passar disso vai só como link assinado de 7 dias no corpo.
+const ORCAMENTO_ANEXOS_BYTES = 7 * 1024 * 1024;
 
 // Baixa os documentos já enviados pelo corretor (do Supabase Storage) e
 // devolve prontos como anexo de verdade do email — é isso que faltava: até
@@ -794,12 +798,30 @@ export async function gerarCompraVendaAction(
           </div>
         `;
 
+        // .trim(): env com espaço/quebra colada errada no Vercel deixa de
+        // ser "vazia" e o `||` não cai no fallback — ver comentário igual
+        // em app/portal/locacao/actions.ts.
+        const destinoEmail = (process.env.EMAIL_ADM_COMPRA_VENDA || "").trim() || EMAIL_DESTINO_PADRAO;
+
         const resultadoEmail = await enviarEmail({
-          to: process.env.EMAIL_ADM_COMPRA_VENDA || EMAIL_DESTINO_PADRAO,
+          to: destinoEmail,
           subject: `Compra e Venda ${novo.id_legado ?? ""} — ${imovelInfo?.endereco ?? "imóvel sem endereço"}`,
           html,
           attachments: anexosDocumentos
         });
+
+        await logAlteracaoPortal({
+          parceiroId: session.parceiroId,
+          entidadeTipo: "transacoes",
+          entidadeId: novo.id,
+          acao: resultadoEmail.ok ? "email_compra_venda_enviado" : "email_compra_venda_falhou",
+          dadosDepois: {
+            para: destinoEmail,
+            anexos: anexosDocumentos.length,
+            docs_como_link: Math.max(0, documentosEnviados.length - anexosDocumentos.length),
+            erro: resultadoEmail.ok ? undefined : resultadoEmail.erro
+          }
+        }).catch(() => undefined);
 
         if (!resultadoEmail.ok) {
           await registrarEJogarErro({

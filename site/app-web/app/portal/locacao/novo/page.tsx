@@ -10,7 +10,9 @@ export const dynamic = "force-dynamic";
 // Mesmo motivo dos outros formulários "tudo do zero" do portal (ver
 // comentário em app/portal/compra-venda/novo/page.tsx): várias consultas em
 // sequência + upload de documento + email podem passar do timeout padrão.
-export const maxDuration = 30;
+// 60s: o cadastro (criar clientes/imóvel) + o after() que baixa os anexos e
+// manda o e-mail pro administrativo precisam caber com folga na mesma função.
+export const maxDuration = 60;
 
 // Formulário "Elaboração de Locação" — duas origens possíveis pro
 // imóvel/proprietário:

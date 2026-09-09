@@ -217,7 +217,7 @@ export async function gerarPropostaAction(
 
       const duplicado = await buscarClienteDuplicado({ nome: clienteForm.nome, cpfCnpj: clienteForm.cpfCnpj });
       if (duplicado) {
-        return { ok: false, erro: mensagemClienteDuplicado(duplicado) };
+        return { ok: false, erro: mensagemClienteDuplicado(duplicado, session.parceiroId) };
       }
 
       const doc = digitos(clienteForm.cpfCnpj);

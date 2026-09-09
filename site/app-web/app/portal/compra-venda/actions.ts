@@ -515,7 +515,7 @@ export async function gerarCompraVendaAction(
     for (const c of todosNovos) {
       const duplicado = await buscarClienteDuplicado({ nome: c.nome, cpfCnpj: c.cpfCnpj, ignorarIds: idsExistentes });
       if (duplicado) {
-        return { ok: false, erro: mensagemClienteDuplicado(duplicado) };
+        return { ok: false, erro: mensagemClienteDuplicado(duplicado, session.parceiroId) };
       }
     }
 

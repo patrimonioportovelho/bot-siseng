@@ -27,11 +27,14 @@ export type ImovelBuscaResultado = {
 // Lista completa (sem filtro de texto — a busca em si é feita no cliente,
 // mesmo padrão do formulário de Transações do admin — components/transacao-form.tsx)
 // pra não precisar de ida-e-volta ao servidor a cada letra digitada.
+// SEM `take`: com um limite fixo, todo imóvel além do corte (ordem
+// alfabética) sumia do seletor — inclusive um imóvel reatribuído pelo
+// administrativo a outro corretor. São algumas centenas de linhas leves
+// (id/endereço/inscrição), cabe tranquilo no payload da página.
 export async function listarImoveisParaCompraVenda(parceiroIdAtual: string): Promise<ImovelBuscaResultado[]> {
   const imoveis = await prisma.imoveis.findMany({
     where: { excluido: false },
     orderBy: { endereco: "asc" },
-    take: 500,
     include: {
       imoveis_proprietarios: { include: { clientes: true }, orderBy: { ordem: "asc" } },
       gestoes: { where: { excluido: false }, orderBy: { created_at: "desc" }, take: 1, select: { id: true } }
@@ -64,9 +67,15 @@ export type ClienteBuscaResultado = {
 };
 
 export async function listarClientesParaCompraVenda(parceiroIdAtual: string): Promise<ClienteBuscaResultado[]> {
+  // SEM `take`: tinha `take: 1000` e a base já passou de 1.100 clientes —
+  // quem ficava depois do corte (ordem alfabética) simplesmente não
+  // aparecia no seletor de "cliente já cadastrado", mesmo sendo cliente do
+  // próprio corretor (caso real: cliente reatribuído pelo administrativo que
+  // o corretor via em "Meus clientes" mas não conseguia escolher numa nova
+  // avaliação/proposta). O payload é só nome + flags + contato redigido,
+  // ~1 KB por cliente — carregar todos é barato e a busca continua no cliente.
   const clientes = await prisma.clientes.findMany({
-    orderBy: { nome: "asc" },
-    take: 1000
+    orderBy: { nome: "asc" }
   });
 
   return clientes.map((c) => {

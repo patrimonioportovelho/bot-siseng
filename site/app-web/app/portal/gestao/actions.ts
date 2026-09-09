@@ -249,7 +249,7 @@ export async function gerarContratoGestaoAction(
         ignorarIds: idsExistentes
       });
       if (duplicado) {
-        return { ok: false, erro: mensagemClienteDuplicado(duplicado) };
+        return { ok: false, erro: mensagemClienteDuplicado(duplicado, session.parceiroId) };
       }
     }
 

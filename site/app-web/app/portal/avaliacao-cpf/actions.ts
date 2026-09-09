@@ -323,7 +323,7 @@ export async function criarAvaliacaoCpfAction(
 
       const duplicado = await buscarClienteDuplicado({ nome: cliente.nome, cpfCnpj: documentoDigitado });
       if (duplicado) {
-        return { ok: false, erro: mensagemClienteDuplicado(duplicado) };
+        return { ok: false, erro: mensagemClienteDuplicado(duplicado, session.parceiroId) };
       }
       const criado = await criarClienteCompleto(cliente, session.parceiroId).catch((erro) =>
         registrarEJogarErro({ entidadeTipo: "clientes", acao: "criar_via_portal_avaliacao_cpf", erro })

@@ -12,7 +12,8 @@ sistema troca pelos dados reais.
 
 | Arquivo | Gerado a partir de |
 |---|---|
-| `contrato_locacao.docx` | Transação (Locação) |
+| `contrato_locacao.docx` | Transação (Locação — com administração, status "Elaboração de Contrato de Locação") |
+| `contrato_locacao_sem_administracao.docx` | Transação (Locação — sem administração, status "Imóvel em locação sem administração") |
 | `contrato_compra_venda.docx` | Transação (Compra e Venda) |
 | `carta_preferencia.docx` | Transação |
 | `contrato_administracao.docx` | AdmImóvel |

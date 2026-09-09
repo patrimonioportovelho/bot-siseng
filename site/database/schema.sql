@@ -805,7 +805,8 @@ CREATE TABLE documentos_gerados (
                             )),
   entidade_id               UUID NOT NULL,
   tipo_documento            TEXT NOT NULL CHECK (tipo_documento IN (
-                                'contrato_locacao','contrato_compra_venda','carta_preferencia',
+                                'contrato_locacao','contrato_locacao_sem_administracao',
+                                'contrato_compra_venda','carta_preferencia',
                                 'contrato_administracao','contrato_associacao_corretor',
                                 'contrato_associacao_corretor_estagiario','termo_entrega_chaves',
                                 'recibo_honorarios','repasse_administracao','repasse_primeira_locacao',

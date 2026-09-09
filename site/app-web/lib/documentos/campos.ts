@@ -1,5 +1,6 @@
 export type TipoDocumento =
   | "contrato_locacao"
+  | "contrato_locacao_sem_administracao"
   | "contrato_compra_venda"
   | "carta_preferencia"
   | "contrato_administracao"
@@ -59,6 +60,50 @@ export const CAMPOS_DOCUMENTO: Record<TipoDocumento, CampoDocumento[]> = {
     { campo: "DataAssinaturaExtenso", descricao: "Data de assinatura por extenso" },
     { campo: "IdTransacao", descricao: "Id da transação (id_legado, ex.: LOC-0004), usado no rodapé" },
     { campo: "IdAdmImovel", descricao: "Id da administração vinculada, se houver (usado no rodapé)" }
+  ],
+  // Mesmo conjunto de campos do contrato_locacao (a busca em Documentos e o
+  // montarDadosTransacao são compartilhados), MAIS os 4 campos do LOCADOR
+  // (equivalentes aos ...Cliente1 do locatário) — o texto das cláusulas é que
+  // muda: aqui a JV só INTERMEDIA (não administra nem representa o locador
+  // depois da assinatura). Só aparece em Documentos pra transação de Locação
+  // com status "Imóvel em locação sem administração".
+  contrato_locacao_sem_administracao: [
+    { campo: "TipoCliente", descricao: "Qualificação completa do(s) Locador(es)" },
+    { campo: "TipoClienteCliente1", descricao: "Qualificação completa do(s) Locatário(s)" },
+    { campo: "Cliente", descricao: "Nome(s) do(s) Locador(es), separados por vírgula" },
+    { campo: "Cpf/Cnpj", descricao: "CPF/CNPJ do(s) Locador(es), separados por vírgula" },
+    { campo: "EstadoCivilCliente", descricao: "Estado civil do primeiro Locador da lista" },
+    { campo: "ProficaoCliente", descricao: "Profissão do primeiro Locador da lista" },
+    { campo: "EmailCliente", descricao: "E-mail do primeiro Locador da lista" },
+    { campo: "TelefoneCliente", descricao: "Telefone formatado do primeiro Locador da lista" },
+    { campo: "Cliente1", descricao: "Nome(s) do(s) Locatário(s), separados por vírgula" },
+    { campo: "Cpf/CnpjCliente1", descricao: "CPF/CNPJ do(s) Locatário(s), separados por vírgula" },
+    { campo: "EstadoCivilCliente1", descricao: "Estado civil do primeiro Locatário da lista" },
+    { campo: "ProficaoCliente1", descricao: "Profissão do primeiro Locatário da lista" },
+    { campo: "EmailCliente1", descricao: "E-mail do primeiro Locatário da lista" },
+    { campo: "TelefoneCliente1", descricao: "Telefone formatado do primeiro Locatário da lista" },
+    { campo: "TipoImovel", descricao: "Tipo do imóvel" },
+    { campo: "EnderecoImovel", descricao: "Endereço completo do imóvel" },
+    { campo: "Inscricao", descricao: "Inscrição imobiliária formatada" },
+    { campo: "Matricula", descricao: "Número de matrícula do imóvel" },
+    { campo: "UcEnergisa", descricao: "Medidor de energia (vazio numa locação sem administração)" },
+    { campo: "UcCaerd", descricao: "Medidor de água (vazio numa locação sem administração)" },
+    { campo: "Observacao", descricao: "Observação da transação" },
+    { campo: "TextoFinalidadeLocacao", descricao: "Residencial, Comercial ou Mista" },
+    { campo: "PrazoContrato", descricao: "Tempo de contrato em meses" },
+    { campo: "DataAssinatura", descricao: "Data de assinatura (dd/mm/aaaa)" },
+    { campo: "DataVencimento", descricao: "Data de término do contrato (dd/mm/aaaa)" },
+    { campo: "ValorTransacao", descricao: "Valor do aluguel em R$ (número)" },
+    { campo: "DiaVencimento", descricao: "Dia do mês de vencimento do aluguel" },
+    { campo: "FormaPagamento", descricao: "Pix ou Boleto" },
+    { campo: "Encargos", descricao: "Lista de encargos por conta do locatário" },
+    { campo: "Garantia", descricao: "Fiador, Caução, Seguro fiança ou Sem garantias" },
+    { campo: "ValorCaucao", descricao: "Valor da caução em R$, se houver" },
+    { campo: "PgCaucao", descricao: "Forma de pagamento da caução" },
+    { campo: "Loja", descricao: "Porto Velho ou Jaru (usada também no Foro)" },
+    { campo: "DataAssinaturaExtenso", descricao: "Data de assinatura por extenso" },
+    { campo: "IdTransacao", descricao: "Id da transação (id_legado, ex.: LOC-0004)" },
+    { campo: "IdAdmImovel", descricao: "Sempre vazio aqui (sem administração vinculada)" }
   ],
   // Vendedor(es) e Comprador(es) também podem ser mais de um — mesma lógica
   // de qualificação em JS (QualificacaoVendedor/QualificacaoComprador já

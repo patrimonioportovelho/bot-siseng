@@ -726,7 +726,9 @@ export async function gerarLocacaoAction(
           `<strong>Corretor que cadastrou:</strong> ${session.nome}`,
           `<strong>Imóvel:</strong> ${imovelInfo?.endereco ?? "—"}`,
           `<strong>Origem:</strong> ${
-            admImovelId ? "Através de Administração (status passou de Ativo para Locado)" : "Sem administração"
+            admImovelId
+              ? "Através de Administração (status passou de Ativo para Locado)"
+              : 'Sem administração — transação criada com status "Imóvel em locação sem administração". Em Documentos, gerar o modelo "Contrato de locação (sem administração)".'
           }`,
           `<strong>Cliente proprietário:</strong> ${proprietarioInfo?.nome ?? "—"}`,
           `<strong>Locatário(s):</strong> ${locatariosInfo.map((c) => c.nome).join(", ") || "—"}`,

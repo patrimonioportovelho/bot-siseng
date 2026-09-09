@@ -14,6 +14,7 @@ import { ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL } from "@/lib/clientes/opcoes";
 // templates/README.md para como criar/editar cada um.
 const ARQUIVO_TEMPLATE: Record<TipoDocumento, string> = {
   contrato_locacao: "contrato_locacao.docx",
+  contrato_locacao_sem_administracao: "contrato_locacao_sem_administracao.docx",
   contrato_compra_venda: "contrato_compra_venda.docx",
   carta_preferencia: "carta_preferencia.docx",
   contrato_administracao: "contrato_administracao.docx",
@@ -56,6 +57,7 @@ export type GerarDocumentoParams = {
 // em lib/documentos/actions.ts).
 export const ENTIDADE_POR_DOCUMENTO: Record<TipoDocumento, GerarDocumentoParams["entidadeTipo"]> = {
   contrato_locacao: "transacao",
+  contrato_locacao_sem_administracao: "transacao",
   contrato_compra_venda: "transacao",
   carta_preferencia: "gestao",
   contrato_administracao: "adm_imovel",
@@ -237,6 +239,7 @@ async function montarDadosDoMerge(
 ): Promise<Record<string, unknown>> {
   switch (tipoDocumento) {
     case "contrato_locacao":
+    case "contrato_locacao_sem_administracao":
     case "contrato_compra_venda":
       return montarDadosTransacao(tipoDocumento, entidadeId);
     case "carta_preferencia":
@@ -652,7 +655,7 @@ function valorComExtenso(valor: number): string {
 }
 
 async function montarDadosTransacao(
-  tipoDocumento: "contrato_locacao" | "contrato_compra_venda",
+  tipoDocumento: "contrato_locacao" | "contrato_locacao_sem_administracao" | "contrato_compra_venda",
   transacaoId: string
 ): Promise<Record<string, unknown>> {
   const t = await prisma.transacoes.findUnique({
@@ -700,13 +703,24 @@ async function montarDadosTransacao(
   const hoje = new Date();
   const idTransacao = t.id_legado ?? t.id;
 
-  if (tipoDocumento === "contrato_locacao") {
+  // Os dois contratos de locação (com e sem administração) usam o mesmo
+  // conjunto de dados — só o texto das cláusulas no .docx muda. O modelo
+  // "sem administração" usa, além disso, os 4 campos do LOCADOR
+  // (EstadoCivilCliente/ProficaoCliente/EmailCliente/TelefoneCliente) —
+  // incluídos aqui pros dois (o .docx "com administração" simplesmente não
+  // os referencia).
+  if (tipoDocumento !== "contrato_compra_venda") {
     const primeiroInteressado = interessados[0];
+    const primeiroProprietario = proprietarios[0];
     return {
       TipoCliente: listaComE(qualificacoesComConjuge(proprietarios)),
       TipoClienteCliente1: listaComE(qualificacoesComConjuge(interessados)),
       Cliente: proprietarios.map((c) => c.nome).join(", "),
       "Cpf/Cnpj": proprietarios.map(docTexto).join(", "),
+      EstadoCivilCliente: primeiroProprietario.estado_civil ?? "",
+      ProficaoCliente: primeiroProprietario.profissao ?? primeiroProprietario.cat_profissao ?? "",
+      EmailCliente: primeiroProprietario.email ?? "",
+      TelefoneCliente: formatTelefone(primeiroProprietario.telefone),
       Cliente1: interessados.map((c) => c.nome).join(", "),
       "Cpf/CnpjCliente1": interessados.map(docTexto).join(", "),
       EstadoCivilCliente1: primeiroInteressado.estado_civil ?? "",

@@ -5,7 +5,8 @@ import type { TipoDocumento } from "@/lib/documentos/campos";
 import { buscarRegistrosAction, gerarDocumentoAction, type OpcaoRegistro } from "@/lib/documentos/actions";
 
 const MODELOS: { valor: TipoDocumento; label: string }[] = [
-  { valor: "contrato_locacao", label: "Contrato de locação" },
+  { valor: "contrato_locacao", label: "Contrato de locação (com administração)" },
+  { valor: "contrato_locacao_sem_administracao", label: "Contrato de locação (sem administração)" },
   { valor: "contrato_compra_venda", label: "Contrato de compra e venda" },
   { valor: "carta_preferencia", label: "Carta de preferência" },
   { valor: "contrato_administracao", label: "Contrato de administração" },
@@ -22,6 +23,8 @@ const MODELOS: { valor: TipoDocumento; label: string }[] = [
 const DICA_BUSCA: Record<TipoDocumento, string> = {
   contrato_locacao:
     "Busque pelo Id, endereço do imóvel ou nome do proprietário/interessado — só aparece quem está em Elaboração de Contrato de Locação",
+  contrato_locacao_sem_administracao:
+    "Busque pelo Id, endereço do imóvel ou nome do proprietário/interessado — só aparece locação com status \"Imóvel em locação sem administração\" (a JV só intermedia)",
   contrato_compra_venda:
     "Busque pelo Id, endereço do imóvel ou nome do proprietário/interessado — só aparece quem está em Elaboração de Contrato de Compra e Venda",
   carta_preferencia: "Busque pelo endereço do imóvel ou nome do proprietário",

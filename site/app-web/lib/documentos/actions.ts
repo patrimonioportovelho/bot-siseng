@@ -25,11 +25,16 @@ export async function buscarRegistrosAction(
       // Contrato de locação/compra e venda só faz sentido pra transação que
       // ainda está em elaboração — depois de "Transação Finalizada" o
       // contrato já foi gerado, não tem por que aparecer de novo aqui.
+      // "sem administração": locação em que a JV só intermedia — nasce (pelo
+      // portal do corretor ou direto no admin) com status "Imóvel em locação
+      // sem administração", que o contrato_locacao normal NÃO lista.
       const filtroStatus =
         tipoDocumento === "contrato_compra_venda"
           ? { status: "Elaboração do Contrato de Compra e Venda" }
           : tipoDocumento === "contrato_locacao"
           ? { status: "Elaboração de Contrato de Locação" }
+          : tipoDocumento === "contrato_locacao_sem_administracao"
+          ? { tipo: "Locação", status: "Imóvel em locação sem administração" }
           : {};
       const rows = await prisma.transacoes.findMany({
         where: {

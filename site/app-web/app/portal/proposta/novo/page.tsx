@@ -67,10 +67,18 @@ export default async function PortalPropostaNovoPage() {
         </Link>
 
         <div className="text-lg font-bold text-gray-900 mb-1">Proposta de Compra e Venda</div>
-        <p className="text-xs text-gray-500 mb-6">
+        <p className="text-xs text-gray-500 mb-3">
           Preencha os dados do cliente e do imóvel. O imóvel não é cadastrado no sistema — é usado só
           para preencher o documento, já que a proposta normalmente é sobre um imóvel externo.
         </p>
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-[11px] text-amber-800 mb-6">
+          Isso gera só o <strong>documento de oferta</strong> pra você levar ao cliente — não avisa o
+          administrativo nem cadastra a transação. Se o negócio fechar de verdade, use a{" "}
+          <Link href="/portal/compra-venda/novo" className="underline font-semibold">
+            Elaboração de Compra e Venda
+          </Link>
+          .
+        </div>
 
         <PortalPropostaForm
           corretor={{ id: corretor.id, nome: corretor.nome, creci: corretor.creci, cpf: corretor.cpf }}

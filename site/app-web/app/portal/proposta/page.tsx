@@ -47,7 +47,15 @@ export default async function PortalPropostaPage() {
             + Nova proposta
           </Link>
         </div>
-        <p className="text-xs text-gray-500 mb-4">Suas propostas já geradas.</p>
+        <p className="text-xs text-gray-500 mb-2">Suas propostas já geradas.</p>
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-[11px] text-amber-800 mb-4">
+          A proposta é só o documento de oferta — não avisa o administrativo nem cadastra o negócio. Negócio
+          fechado entra em{" "}
+          <Link href="/portal/compra-venda/novo" className="underline font-semibold">
+            Elaboração de Compra e Venda
+          </Link>
+          .
+        </div>
 
         <div className="mb-4">
           <PortalRascunhoAviso chave="sis_rascunho_proposta" href="/portal/proposta/novo" label="proposta" />

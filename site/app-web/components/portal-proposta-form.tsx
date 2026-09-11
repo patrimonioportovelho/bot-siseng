@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import {
   ESTADOS_CIVIS,
   ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL,
@@ -870,6 +871,22 @@ export function PortalPropostaForm({
         )}
         {resultado && !resultado.ok && <span className="text-xs text-red-600">{resultado.erro}</span>}
       </div>
+
+      {/* Lembrete pra não confundir com a transação de verdade — a Proposta é
+          só um documento pro cliente, o administrativo não fica sabendo dela
+          nem ela aparece em Compra e Venda. Se o cliente aceitar, precisa
+          cadastrar a Elaboração de Compra e Venda separado; caso contrário o
+          negócio fica só nessa proposta, sem ninguém do administrativo saber. */}
+      {resultado?.ok && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-xs text-amber-800">
+          <strong>Importante:</strong> gerar a proposta não avisa o administrativo nem cadastra o negócio de
+          verdade — é só o documento pra apresentar ao cliente. Se ele aceitar, cadastre agora a{" "}
+          <Link href="/portal/compra-venda/novo" className="underline font-semibold">
+            Elaboração de Compra e Venda
+          </Link>{" "}
+          pra o administrativo dar seguimento (contrato, comissionamento etc.).
+        </div>
+      )}
     </div>
   );
 }

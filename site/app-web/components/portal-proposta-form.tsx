@@ -12,7 +12,7 @@ import {
 import { TIPO_CONDICAO_OPCOES, FORMA_PAGAMENTO_CONDICAO_OPCOES, MOMENTO_CONDICAO_OPCOES } from "@/lib/transacoes/opcoes";
 import { validarCpfCnpj } from "@/lib/clientes/validacao";
 import { buscarCep, UF_PARA_ESTADO } from "@/lib/enderecos";
-import { gerarPropostaAction } from "@/app/portal/proposta/actions";
+import { gerarPropostaAction, atualizarPropostaAction } from "@/app/portal/proposta/actions";
 
 type Banco = { id: string; nome: string; codigo: string | null };
 
@@ -69,6 +69,26 @@ type CondicaoPagamento = {
   parcelas: string;
   momento: string;
   data_pagamento: string;
+};
+
+// Valores pra pré-preencher o formulário em modo de edição (proposta já
+// existente) — ver app/portal/proposta/[id]/editar/page.tsx. `formaPagamento`
+// vem como texto livre porque a lista de condições que gerou esse texto na
+// criação não fica guardada em lugar nenhum pra reconstruir depois.
+type ValoresIniciaisProposta = {
+  clienteId: string;
+  clienteNome: string;
+  clienteCpfCnpj: string;
+  descricao: string;
+  rua: string;
+  numero: string;
+  complemento: string;
+  bairro: string;
+  cidade: string;
+  estado: string;
+  valorProposta: string;
+  formaPagamento: string;
+  dataFechamento: string;
 };
 
 function clienteVazio(): ClienteLinha {
@@ -141,30 +161,44 @@ export function PortalPropostaForm({
   clientesDoCorretor,
   bancos,
   estados,
-  cidades
+  cidades,
+  propostaId,
+  valoresIniciais
 }: {
   corretor: { id: string; nome: string; creci: string | null; cpf: string | null };
   clientesDoCorretor: ClienteDoCorretor[];
   bancos: Banco[];
   estados: { id: string; nome: string }[];
   cidades: { id: string; nome: string; estado_id: string }[];
+  // Presentes só na tela de edição (app/portal/proposta/[id]/editar) — sem
+  // eles o formulário se comporta exatamente como antes (criar proposta nova).
+  propostaId?: string;
+  valoresIniciais?: ValoresIniciaisProposta;
 }) {
-  const [cliente, setCliente] = useState<ClienteLinha>(clienteVazio());
+  const editando = Boolean(propostaId);
 
-  const [descricao, setDescricao] = useState("");
+  const [cliente, setCliente] = useState<ClienteLinha>(() =>
+    valoresIniciais
+      ? { ...clienteVazio(), clienteId: valoresIniciais.clienteId, nome: valoresIniciais.clienteNome, cpfCnpj: valoresIniciais.clienteCpfCnpj }
+      : clienteVazio()
+  );
+
+  const [descricao, setDescricao] = useState(valoresIniciais?.descricao ?? "");
   const [cep, setCep] = useState("");
-  const [rua, setRua] = useState("");
-  const [numero, setNumero] = useState("");
-  const [complemento, setComplemento] = useState("");
-  const [bairro, setBairro] = useState("");
-  const [cidade, setCidade] = useState("");
-  const [estado, setEstado] = useState("");
+  const [rua, setRua] = useState(valoresIniciais?.rua ?? "");
+  const [numero, setNumero] = useState(valoresIniciais?.numero ?? "");
+  const [complemento, setComplemento] = useState(valoresIniciais?.complemento ?? "");
+  const [bairro, setBairro] = useState(valoresIniciais?.bairro ?? "");
+  const [cidade, setCidade] = useState(valoresIniciais?.cidade ?? "");
+  const [estado, setEstado] = useState(valoresIniciais?.estado ?? "");
 
-  const [valorProposta, setValorProposta] = useState("");
-  const [dataFechamento, setDataFechamento] = useState(hojeISO());
+  const [valorProposta, setValorProposta] = useState(valoresIniciais?.valorProposta ?? "");
+  const [dataFechamento, setDataFechamento] = useState(valoresIniciais?.dataFechamento ?? hojeISO());
 
   const [condicoes, setCondicoes] = useState<CondicaoPagamento[]>([]);
   const [novaCondicao, setNovaCondicao] = useState<CondicaoPagamento>(condicaoVazia());
+  // Só usado em modo de edição — ver comentário no tipo ValoresIniciaisProposta.
+  const [formaPagamentoTexto, setFormaPagamentoTexto] = useState(valoresIniciais?.formaPagamento ?? "");
 
   const [enviando, setEnviando] = useState(false);
   const [resultado, setResultado] = useState<{ ok: true; url: string } | { ok: false; erro: string } | null>(null);
@@ -173,6 +207,10 @@ export function PortalPropostaForm({
   const [rascunhoSalvoAgora, setRascunhoSalvoAgora] = useState(false);
 
   useEffect(() => {
+    // Rascunho é só pra proposta nova — editando uma já existente, os dados
+    // vêm de valoresIniciais (o banco), não faz sentido oferecer restaurar
+    // um rascunho de outra hora por cima.
+    if (editando) return;
     try {
       const bruto = window.localStorage.getItem(RASCUNHO_KEY);
       if (bruto) setRascunhoEncontrado(JSON.parse(bruto));
@@ -201,6 +239,7 @@ export function PortalPropostaForm({
   }
 
   useEffect(() => {
+    if (editando) return;
     const temAlgumDado = cliente.nome.trim().length > 0 || rua.trim().length > 0;
     if (!temAlgumDado) return;
     try {
@@ -339,11 +378,17 @@ export function PortalPropostaForm({
       formData.set("estado", estado);
       formData.set("valor_proposta", valorProposta);
       formData.set("data_fechamento", dataFechamento);
-      formData.set("condicoesJson", JSON.stringify(condicoes));
 
-      const r = await gerarPropostaAction(formData);
+      let r: { ok: true; url: string } | { ok: false; erro: string };
+      if (editando && propostaId) {
+        formData.set("forma_pagamento", formaPagamentoTexto);
+        r = await atualizarPropostaAction(propostaId, formData);
+      } else {
+        formData.set("condicoesJson", JSON.stringify(condicoes));
+        r = await gerarPropostaAction(formData);
+      }
       setResultado(r);
-      if (r.ok) {
+      if (r.ok && !editando) {
         try {
           window.localStorage.removeItem(RASCUNHO_KEY);
         } catch {
@@ -367,7 +412,7 @@ export function PortalPropostaForm({
 
   return (
     <div className="flex flex-col gap-5">
-      {rascunhoEncontrado && (
+      {!editando && rascunhoEncontrado && (
         <div className="flex items-center justify-between gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex-wrap">
           <span className="text-xs text-amber-800">
             Você tem um rascunho salvo neste navegador em{" "}
@@ -716,112 +761,133 @@ export function PortalPropostaForm({
           </div>
         </div>
 
-        {condicoes.length > 0 && (
-          <div className="flex flex-col gap-2 mb-4">
-            {condicoes.map((c, index) => (
-              <div
-                key={index}
-                className="flex items-center justify-between gap-2 text-xs bg-gray-50 border border-gray-100 rounded-lg px-3 py-2"
-              >
-                <span className="text-gray-700">
-                  {c.tipo}: R$ {c.valor}
-                  {c.parcelas && <span className="text-gray-500"> · {c.parcelas}x</span>}
-                  {c.forma_pagamento && <span className="text-gray-500"> · {c.forma_pagamento}</span>}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => removerCondicao(index)}
-                  className="text-[11px] text-gray-400 hover:text-red-600"
-                >
-                  remover
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-
-        <div className="grid md:grid-cols-3 gap-3 items-end bg-gray-50/50 border border-dashed border-gray-200 rounded-lg p-3">
-          <div>
-            <label className={LABEL}>Tipo</label>
-            <select
-              className={CAMPO}
-              value={novaCondicao.tipo}
-              onChange={(e) => setNovaCondicao((a) => ({ ...a, tipo: e.target.value }))}
-            >
-              {TIPO_CONDICAO_OPCOES.map((op) => (
-                <option key={op} value={op}>
-                  {op}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className={LABEL}>Valor (R$)</label>
-            <input
-              className={CAMPO}
-              placeholder="35.000,00"
-              value={novaCondicao.valor}
-              onChange={(e) => setNovaCondicao((a) => ({ ...a, valor: e.target.value }))}
-            />
-          </div>
+        {editando ? (
+          // Modo de edição: a forma de pagamento já vem como texto pronto (a
+          // lista de condições que gerou esse texto na criação não fica
+          // guardada pra reconstruir) — edita direto, sem o construtor
+          // abaixo.
           <div>
             <label className={LABEL}>Forma de pagamento</label>
-            <select
-              className={CAMPO}
-              value={novaCondicao.forma_pagamento}
-              onChange={(e) => setNovaCondicao((a) => ({ ...a, forma_pagamento: e.target.value }))}
-            >
-              <option value="">—</option>
-              {FORMA_PAGAMENTO_CONDICAO_OPCOES.map((op) => (
-                <option key={op} value={op}>
-                  {op}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className={LABEL}>Parcelas</label>
-            <input
-              className={CAMPO}
-              placeholder="6"
-              value={novaCondicao.parcelas}
-              onChange={(e) => setNovaCondicao((a) => ({ ...a, parcelas: e.target.value }))}
+            <textarea
+              className={CAMPO + " min-h-24"}
+              value={formaPagamentoTexto}
+              onChange={(e) => setFormaPagamentoTexto(e.target.value)}
+              placeholder="Ex.: Sinal: R$ 35.000,00, forma de pagamento PIX, no momento da assinatura"
             />
+            <p className="text-[11px] text-gray-400 mt-1">
+              Texto livre — sai exatamente assim no documento, uma linha por condição.
+            </p>
           </div>
-          <div>
-            <label className={LABEL}>Momento</label>
-            <select
-              className={CAMPO}
-              value={novaCondicao.momento}
-              onChange={(e) => setNovaCondicao((a) => ({ ...a, momento: e.target.value }))}
-            >
-              <option value="">—</option>
-              {MOMENTO_CONDICAO_OPCOES.map((op) => (
-                <option key={op} value={op}>
-                  {op}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className={LABEL}>Data de pagamento</label>
-            <input
-              type="date"
-              className={CAMPO}
-              value={novaCondicao.data_pagamento}
-              onChange={(e) => setNovaCondicao((a) => ({ ...a, data_pagamento: e.target.value }))}
-            />
-          </div>
-          <div className="md:col-span-3">
-            <button
-              type="button"
-              onClick={adicionarCondicao}
-              className="text-xs bg-white border border-gray-300 text-gray-700 rounded-lg px-3 py-1.5 font-semibold"
-            >
-              + Adicionar condição
-            </button>
-          </div>
-        </div>
+        ) : (
+          <>
+            {condicoes.length > 0 && (
+              <div className="flex flex-col gap-2 mb-4">
+                {condicoes.map((c, index) => (
+                  <div
+                    key={index}
+                    className="flex items-center justify-between gap-2 text-xs bg-gray-50 border border-gray-100 rounded-lg px-3 py-2"
+                  >
+                    <span className="text-gray-700">
+                      {c.tipo}: R$ {c.valor}
+                      {c.parcelas && <span className="text-gray-500"> · {c.parcelas}x</span>}
+                      {c.forma_pagamento && <span className="text-gray-500"> · {c.forma_pagamento}</span>}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => removerCondicao(index)}
+                      className="text-[11px] text-gray-400 hover:text-red-600"
+                    >
+                      remover
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="grid md:grid-cols-3 gap-3 items-end bg-gray-50/50 border border-dashed border-gray-200 rounded-lg p-3">
+              <div>
+                <label className={LABEL}>Tipo</label>
+                <select
+                  className={CAMPO}
+                  value={novaCondicao.tipo}
+                  onChange={(e) => setNovaCondicao((a) => ({ ...a, tipo: e.target.value }))}
+                >
+                  {TIPO_CONDICAO_OPCOES.map((op) => (
+                    <option key={op} value={op}>
+                      {op}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className={LABEL}>Valor (R$)</label>
+                <input
+                  className={CAMPO}
+                  placeholder="35.000,00"
+                  value={novaCondicao.valor}
+                  onChange={(e) => setNovaCondicao((a) => ({ ...a, valor: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className={LABEL}>Forma de pagamento</label>
+                <select
+                  className={CAMPO}
+                  value={novaCondicao.forma_pagamento}
+                  onChange={(e) => setNovaCondicao((a) => ({ ...a, forma_pagamento: e.target.value }))}
+                >
+                  <option value="">—</option>
+                  {FORMA_PAGAMENTO_CONDICAO_OPCOES.map((op) => (
+                    <option key={op} value={op}>
+                      {op}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className={LABEL}>Parcelas</label>
+                <input
+                  className={CAMPO}
+                  placeholder="6"
+                  value={novaCondicao.parcelas}
+                  onChange={(e) => setNovaCondicao((a) => ({ ...a, parcelas: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label className={LABEL}>Momento</label>
+                <select
+                  className={CAMPO}
+                  value={novaCondicao.momento}
+                  onChange={(e) => setNovaCondicao((a) => ({ ...a, momento: e.target.value }))}
+                >
+                  <option value="">—</option>
+                  {MOMENTO_CONDICAO_OPCOES.map((op) => (
+                    <option key={op} value={op}>
+                      {op}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className={LABEL}>Data de pagamento</label>
+                <input
+                  type="date"
+                  className={CAMPO}
+                  value={novaCondicao.data_pagamento}
+                  onChange={(e) => setNovaCondicao((a) => ({ ...a, data_pagamento: e.target.value }))}
+                />
+              </div>
+              <div className="md:col-span-3">
+                <button
+                  type="button"
+                  onClick={adicionarCondicao}
+                  className="text-xs bg-white border border-gray-300 text-gray-700 rounded-lg px-3 py-1.5 font-semibold"
+                >
+                  + Adicionar condição
+                </button>
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       <div className="bg-white border border-gray-200 rounded-xl p-4">
@@ -849,15 +915,17 @@ export function PortalPropostaForm({
           className="bg-primary text-white rounded-lg px-5 py-2 text-sm font-semibold disabled:opacity-40 hover:opacity-90 disabled:cursor-wait inline-flex items-center justify-center gap-1.5"
         >
           {enviando && <span className="w-3 h-3 border-2 rounded-full animate-spin border-white/40 border-t-white shrink-0" />}
-          {enviando ? "Gerando..." : "Gerar proposta"}
+          {enviando ? "Salvando..." : editando ? "Salvar alterações" : "Gerar proposta"}
         </button>
-        <button
-          type="button"
-          onClick={salvarRascunhoManual}
-          className="text-xs text-gray-500 border border-gray-300 rounded-lg px-3 py-2 hover:bg-gray-50"
-        >
-          Salvar rascunho
-        </button>
+        {!editando && (
+          <button
+            type="button"
+            onClick={salvarRascunhoManual}
+            className="text-xs text-gray-500 border border-gray-300 rounded-lg px-3 py-2 hover:bg-gray-50"
+          >
+            Salvar rascunho
+          </button>
+        )}
         {rascunhoSalvoAgora && <span className="text-xs text-green-700">Rascunho salvo.</span>}
         {resultado?.ok && (
           <a
@@ -866,7 +934,7 @@ export function PortalPropostaForm({
             rel="noopener noreferrer"
             className="text-xs text-primary underline font-semibold"
           >
-            Baixar proposta gerada
+            {editando ? "Baixar proposta atualizada" : "Baixar proposta gerada"}
           </a>
         )}
         {resultado && !resultado.ok && <span className="text-xs text-red-600">{resultado.erro}</span>}

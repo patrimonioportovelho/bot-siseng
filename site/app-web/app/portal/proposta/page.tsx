@@ -73,7 +73,11 @@ export default async function PortalPropostaPage() {
                 [p.rua, p.numero].filter(Boolean).join(", ") + (p.bairro ? ` - ${p.bairro}` : "") ||
                 "Imóvel sem descrição";
               return (
-                <div key={p.id} className="bg-white border border-gray-200 rounded-xl p-4">
+                <Link
+                  key={p.id}
+                  href={`/portal/proposta/${p.id}`}
+                  className="block bg-white border border-gray-200 rounded-xl p-4 hover:border-primary transition-colors"
+                >
                   <div className="flex items-center justify-between gap-3 flex-wrap mb-1">
                     <span className="text-sm font-semibold text-gray-800">{enderecoImovel}</span>
                     <span className="text-[11px] font-semibold px-2 py-1 rounded-lg border bg-blue-50 text-blue-700 border-blue-200 whitespace-nowrap">
@@ -84,8 +88,9 @@ export default async function PortalPropostaPage() {
                     gerada em {formatDataCalendario(p.created_at)}
                     {p.clientes?.nome && <> · Cliente: {p.clientes.nome}</>}
                     {p.cidade && <> · {p.cidade}</>}
+                    <span className="text-primary font-semibold"> · ver detalhes / editar</span>
                   </div>
-                </div>
+                </Link>
               );
             })}
           </div>

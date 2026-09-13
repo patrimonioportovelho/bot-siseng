@@ -162,6 +162,89 @@ function linhaCondicaoDigitada(c: CondicaoDigitada): string {
   return partes.join(", ");
 }
 
+// Resolve o cliente (comprador/interessado) da proposta: reaproveita o já
+// cadastrado quando escolhido (evita duplicar) ou cria um novo — mesma
+// lógica pros dois pontos de entrada, criar proposta e editar proposta
+// (extraída daqui em 13/09/2026 quando a edição foi adicionada).
+async function resolverClienteDaProposta(
+  clienteForm: ClienteDigitado,
+  parceiroId: string
+): Promise<{ ok: true; cliente: { id: string; nome: string } } | { ok: false; erro: string }> {
+  if (clienteForm.clienteId) {
+    const cliente = await prisma.clientes.findFirst({
+      where: { id: clienteForm.clienteId, parceiro_id: parceiroId }
+    });
+    if (!cliente) {
+      return { ok: false, erro: "O cliente selecionado não pertence ao seu cadastro." };
+    }
+    return { ok: true, cliente };
+  }
+
+  // Mesma checagem do Contrato de Gestão: a lista de "cliente já
+  // cadastrado" só mostra os clientes do próprio corretor, então sem
+  // isso seria fácil duplicar sem querer o cadastro que outro corretor
+  // já fez pro mesmo cliente. Quem decide se transfere é o
+  // administrativo, não o corretor digitando por cima.
+  const erroDocumento = clienteForm.cpfCnpj ? validarCpfCnpj(clienteForm.cpfCnpj) : null;
+  if (erroDocumento) return { ok: false, erro: erroDocumento };
+
+  const duplicado = await buscarClienteDuplicado({ nome: clienteForm.nome, cpfCnpj: clienteForm.cpfCnpj });
+  if (duplicado) {
+    return { ok: false, erro: mensagemClienteDuplicado(duplicado, parceiroId) };
+  }
+
+  const doc = digitos(clienteForm.cpfCnpj);
+  // tipoCliente é sempre perguntado no formulário agora — o comprimento
+  // do documento só entra como reforço pra rascunhos antigos sem o campo.
+  const ehCnpj = clienteForm.tipoCliente === "Pessoa Jurídica" || (!clienteForm.tipoCliente && (doc?.length ?? 0) === 14);
+
+  const endereco = ehCnpj
+    ? clienteForm.endereco || null
+    : await montarEnderecoPF({
+        rua: clienteForm.rua || null,
+        nPredial: clienteForm.nPredial || null,
+        complemento: clienteForm.complemento || null,
+        bairro: clienteForm.bairro || null,
+        cidadeId: clienteForm.cidadeId || null,
+        estadoId: clienteForm.estadoId || null
+      });
+
+  const cliente = await prisma.clientes
+    .create({
+      data: {
+        nome: clienteForm.nome,
+        tipo_cliente: ehCnpj ? "Pessoa Jurídica" : "Pessoa Física",
+        rg: !ehCnpj ? clienteForm.rg || null : null,
+        cpf: !ehCnpj ? doc : null,
+        cnpj: ehCnpj ? doc : null,
+        nome_mae: !ehCnpj ? clienteForm.nomeMae || null : null,
+        nome_pai: !ehCnpj ? clienteForm.nomePai || null : null,
+        cep: !ehCnpj ? digitos(clienteForm.cep) : null,
+        rua: !ehCnpj ? clienteForm.rua || null : null,
+        n_predial: !ehCnpj ? clienteForm.nPredial || null : null,
+        complemento: !ehCnpj ? clienteForm.complemento || null : null,
+        bairro: !ehCnpj ? clienteForm.bairro || null : null,
+        estado_id: !ehCnpj ? clienteForm.estadoId || null : null,
+        cidade_id: !ehCnpj ? clienteForm.cidadeId || null : null,
+        endereco,
+        estado_civil: !ehCnpj ? clienteForm.estadoCivil || null : null,
+        uniao_estavel: !ehCnpj ? booleanoTri(clienteForm.uniaoEstavel) : null,
+        profissao: !ehCnpj ? clienteForm.profissao || null : null,
+        banco_id: clienteForm.bancoId || null,
+        codigo_banco: clienteForm.codigoBanco || null,
+        agencia: clienteForm.agencia || null,
+        conta: clienteForm.conta || null,
+        tipo_conta: clienteForm.tipoConta || null,
+        tipo_pix: clienteForm.tipoPix || null,
+        pix: clienteForm.pix || null,
+        parceiro_id: parceiroId
+      }
+    })
+    .catch((erro: unknown) => registrarEJogarErro({ entidadeTipo: "clientes", acao: "criar_via_portal_proposta", erro }));
+
+  return { ok: true, cliente };
+}
+
 // Gera a Proposta de Compra e Venda a partir do formulário do portal:
 // reaproveita o cliente já cadastrado quando escolhido (evita duplicar),
 // cria um novo se for o caso, grava a proposta (imóvel só em texto — NUNCA
@@ -198,77 +281,9 @@ export async function gerarPropostaAction(
     const condicoes = parseCondicoes(formData);
     const formaPagamento = condicoes.map(linhaCondicaoDigitada).join("\n");
 
-    let cliente: Awaited<ReturnType<typeof prisma.clientes.findFirst>>;
-    if (clienteForm.clienteId) {
-      cliente = await prisma.clientes.findFirst({
-        where: { id: clienteForm.clienteId, parceiro_id: session.parceiroId }
-      });
-      if (!cliente) {
-        return { ok: false, erro: "O cliente selecionado não pertence ao seu cadastro." };
-      }
-    } else {
-      // Mesma checagem do Contrato de Gestão: a lista de "cliente já
-      // cadastrado" só mostra os clientes do próprio corretor, então sem
-      // isso seria fácil duplicar sem querer o cadastro que outro corretor
-      // já fez pro mesmo cliente. Quem decide se transfere é o
-      // administrativo, não o corretor digitando por cima.
-      const erroDocumento = clienteForm.cpfCnpj ? validarCpfCnpj(clienteForm.cpfCnpj) : null;
-      if (erroDocumento) return { ok: false, erro: erroDocumento };
-
-      const duplicado = await buscarClienteDuplicado({ nome: clienteForm.nome, cpfCnpj: clienteForm.cpfCnpj });
-      if (duplicado) {
-        return { ok: false, erro: mensagemClienteDuplicado(duplicado, session.parceiroId) };
-      }
-
-      const doc = digitos(clienteForm.cpfCnpj);
-      // tipoCliente é sempre perguntado no formulário agora — o comprimento
-      // do documento só entra como reforço pra rascunhos antigos sem o campo.
-      const ehCnpj = clienteForm.tipoCliente === "Pessoa Jurídica" || (!clienteForm.tipoCliente && (doc?.length ?? 0) === 14);
-
-      const endereco = ehCnpj
-        ? clienteForm.endereco || null
-        : await montarEnderecoPF({
-            rua: clienteForm.rua || null,
-            nPredial: clienteForm.nPredial || null,
-            complemento: clienteForm.complemento || null,
-            bairro: clienteForm.bairro || null,
-            cidadeId: clienteForm.cidadeId || null,
-            estadoId: clienteForm.estadoId || null
-          });
-
-      cliente = await prisma.clientes
-        .create({
-          data: {
-            nome: clienteForm.nome,
-            tipo_cliente: ehCnpj ? "Pessoa Jurídica" : "Pessoa Física",
-            rg: !ehCnpj ? clienteForm.rg || null : null,
-            cpf: !ehCnpj ? doc : null,
-            cnpj: ehCnpj ? doc : null,
-            nome_mae: !ehCnpj ? clienteForm.nomeMae || null : null,
-            nome_pai: !ehCnpj ? clienteForm.nomePai || null : null,
-            cep: !ehCnpj ? digitos(clienteForm.cep) : null,
-            rua: !ehCnpj ? clienteForm.rua || null : null,
-            n_predial: !ehCnpj ? clienteForm.nPredial || null : null,
-            complemento: !ehCnpj ? clienteForm.complemento || null : null,
-            bairro: !ehCnpj ? clienteForm.bairro || null : null,
-            estado_id: !ehCnpj ? clienteForm.estadoId || null : null,
-            cidade_id: !ehCnpj ? clienteForm.cidadeId || null : null,
-            endereco,
-            estado_civil: !ehCnpj ? clienteForm.estadoCivil || null : null,
-            uniao_estavel: !ehCnpj ? booleanoTri(clienteForm.uniaoEstavel) : null,
-            profissao: !ehCnpj ? clienteForm.profissao || null : null,
-            banco_id: clienteForm.bancoId || null,
-            codigo_banco: clienteForm.codigoBanco || null,
-            agencia: clienteForm.agencia || null,
-            conta: clienteForm.conta || null,
-            tipo_conta: clienteForm.tipoConta || null,
-            tipo_pix: clienteForm.tipoPix || null,
-            pix: clienteForm.pix || null,
-            parceiro_id: session.parceiroId
-          }
-        })
-        .catch((erro: unknown) => registrarEJogarErro({ entidadeTipo: "clientes", acao: "criar_via_portal_proposta", erro }));
-    }
+    const resolvido = await resolverClienteDaProposta(clienteForm, session.parceiroId);
+    if (!resolvido.ok) return resolvido;
+    const { cliente } = resolvido;
 
     const proposta = await prisma.propostas
       .create({
@@ -300,6 +315,93 @@ export async function gerarPropostaAction(
       entidadeTipo: "propostas",
       entidadeId: proposta.id,
       acao: "gerar_proposta_compra_venda",
+      dadosDepois: { cliente: cliente.nome, valor: String(valorProposta), url }
+    });
+
+    return { ok: true, url };
+  } catch (erro) {
+    const mensagem = erro instanceof Error ? erro.message : String(erro);
+    return { ok: false, erro: mensagem };
+  }
+}
+
+// Edita uma proposta já gerada (13/09/2026 — pedido do usuário: a lista só
+// mostrava "poucos detalhes" e não dava pra corrigir nada depois de gerada,
+// só cadastrar outra do zero). Reaproveita a mesma resolução de cliente da
+// criação; a "forma de pagamento" aqui é texto livre direto (o formulário de
+// criação junta uma lista de condições numa string só, e essa lista não fica
+// guardada em lugar nenhum pra reconstruir depois — editar reaproveita a
+// própria string já salva). Sempre gera um novo arquivo (nunca sobrescreve o
+// anterior no Storage — mesmo padrão do resto do módulo de documentos).
+export async function atualizarPropostaAction(
+  propostaId: string,
+  formData: FormData
+): Promise<{ ok: true; url: string } | { ok: false; erro: string }> {
+  const session = await requirePortalSession();
+
+  try {
+    const propostaAtual = await prisma.propostas.findUnique({ where: { id: propostaId } });
+    if (!propostaAtual || propostaAtual.parceiro_id !== session.parceiroId) {
+      return { ok: false, erro: "Proposta não encontrada — atualize a página e tente de novo." };
+    }
+
+    const clienteForm = parseCliente(formData);
+    if (!clienteForm) {
+      return { ok: false, erro: "Informe o cliente (comprador/interessado) da proposta." };
+    }
+
+    const descricao = texto(formData, "descricao");
+    const rua = texto(formData, "rua");
+    const numero = texto(formData, "numero");
+    const complemento = texto(formData, "complemento");
+    const bairro = texto(formData, "bairro");
+    const cidade = texto(formData, "cidade");
+    const estado = texto(formData, "estado");
+    const dataFechamento = data(formData, "data_fechamento") ?? propostaAtual.data_fechamento;
+    const formaPagamento = texto(formData, "forma_pagamento");
+
+    const valorProposta = (() => {
+      const t = texto(formData, "valor_proposta");
+      return t ? valorEditavelParaDecimal(t) : null;
+    })();
+    if (!valorProposta) {
+      return { ok: false, erro: "Informe o valor da proposta." };
+    }
+
+    const resolvido = await resolverClienteDaProposta(clienteForm, session.parceiroId);
+    if (!resolvido.ok) return resolvido;
+    const { cliente } = resolvido;
+
+    const proposta = await prisma.propostas
+      .update({
+        where: { id: propostaId },
+        data: {
+          cliente_id: cliente.id,
+          descricao,
+          rua,
+          numero,
+          complemento,
+          bairro,
+          cidade,
+          estado,
+          valor_proposta: valorProposta,
+          forma_pagamento: formaPagamento,
+          data_fechamento: dataFechamento
+        }
+      })
+      .catch((erro: unknown) => registrarEJogarErro({ entidadeTipo: "propostas", acao: "editar_via_portal", erro }));
+
+    const url = await gerarDocumento({
+      tipoDocumento: "proposta_compra_venda",
+      entidadeTipo: "proposta",
+      entidadeId: proposta.id
+    });
+
+    await logAlteracaoPortal({
+      parceiroId: session.parceiroId,
+      entidadeTipo: "propostas",
+      entidadeId: proposta.id,
+      acao: "editar_proposta_compra_venda",
       dadosDepois: { cliente: cliente.nome, valor: String(valorProposta), url }
     });
 

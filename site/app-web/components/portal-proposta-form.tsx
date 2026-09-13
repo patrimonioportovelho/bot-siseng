@@ -72,9 +72,12 @@ type CondicaoPagamento = {
 };
 
 // Valores pra pré-preencher o formulário em modo de edição (proposta já
-// existente) — ver app/portal/proposta/[id]/editar/page.tsx. `formaPagamento`
-// vem como texto livre porque a lista de condições que gerou esse texto na
-// criação não fica guardada em lugar nenhum pra reconstruir depois.
+// existente) — ver app/portal/proposta/[id]/editar/page.tsx. `condicoes` vem
+// de `condicoes_json` (mesmo formato do construtor "+ Adicionar condição");
+// `formaPagamento` é só o texto já achatado, guardado à parte pra propostas
+// antigas (de antes de condicoes_json existir) que não têm lista nenhuma —
+// nesse caso mostra um aviso e preserva o texto se o corretor não montar
+// nenhuma condição nova (ver atualizarPropostaAction).
 type ValoresIniciaisProposta = {
   clienteId: string;
   clienteNome: string;
@@ -87,6 +90,7 @@ type ValoresIniciaisProposta = {
   cidade: string;
   estado: string;
   valorProposta: string;
+  condicoes: CondicaoPagamento[];
   formaPagamento: string;
   dataFechamento: string;
 };
@@ -195,10 +199,8 @@ export function PortalPropostaForm({
   const [valorProposta, setValorProposta] = useState(valoresIniciais?.valorProposta ?? "");
   const [dataFechamento, setDataFechamento] = useState(valoresIniciais?.dataFechamento ?? hojeISO());
 
-  const [condicoes, setCondicoes] = useState<CondicaoPagamento[]>([]);
+  const [condicoes, setCondicoes] = useState<CondicaoPagamento[]>(valoresIniciais?.condicoes ?? []);
   const [novaCondicao, setNovaCondicao] = useState<CondicaoPagamento>(condicaoVazia());
-  // Só usado em modo de edição — ver comentário no tipo ValoresIniciaisProposta.
-  const [formaPagamentoTexto, setFormaPagamentoTexto] = useState(valoresIniciais?.formaPagamento ?? "");
 
   const [enviando, setEnviando] = useState(false);
   const [resultado, setResultado] = useState<{ ok: true; url: string } | { ok: false; erro: string } | null>(null);
@@ -378,15 +380,12 @@ export function PortalPropostaForm({
       formData.set("estado", estado);
       formData.set("valor_proposta", valorProposta);
       formData.set("data_fechamento", dataFechamento);
+      formData.set("condicoesJson", JSON.stringify(condicoes));
 
-      let r: { ok: true; url: string } | { ok: false; erro: string };
-      if (editando && propostaId) {
-        formData.set("forma_pagamento", formaPagamentoTexto);
-        r = await atualizarPropostaAction(propostaId, formData);
-      } else {
-        formData.set("condicoesJson", JSON.stringify(condicoes));
-        r = await gerarPropostaAction(formData);
-      }
+      const r =
+        editando && propostaId
+          ? await atualizarPropostaAction(propostaId, formData)
+          : await gerarPropostaAction(formData);
       setResultado(r);
       if (r.ok && !editando) {
         try {
@@ -761,133 +760,127 @@ export function PortalPropostaForm({
           </div>
         </div>
 
-        {editando ? (
-          // Modo de edição: a forma de pagamento já vem como texto pronto (a
-          // lista de condições que gerou esse texto na criação não fica
-          // guardada pra reconstruir) — edita direto, sem o construtor
-          // abaixo.
-          <div>
-            <label className={LABEL}>Forma de pagamento</label>
-            <textarea
-              className={CAMPO + " min-h-24"}
-              value={formaPagamentoTexto}
-              onChange={(e) => setFormaPagamentoTexto(e.target.value)}
-              placeholder="Ex.: Sinal: R$ 35.000,00, forma de pagamento PIX, no momento da assinatura"
-            />
+        {editando && condicoes.length === 0 && valoresIniciais?.formaPagamento && (
+          // Proposta de antes de condicoes_json existir — só tem o texto já
+          // achatado, sem lista pra reabrir aqui. Mostra o texto (só leitura)
+          // e preserva ele automaticamente se nenhuma condição for montada
+          // abaixo (ver atualizarPropostaAction).
+          <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-4 text-xs text-gray-600">
+            <span className="font-semibold text-gray-700">Forma de pagamento já registrada: </span>
+            <span className="whitespace-pre-line">{valoresIniciais.formaPagamento}</span>
             <p className="text-[11px] text-gray-400 mt-1">
-              Texto livre — sai exatamente assim no documento, uma linha por condição.
+              Proposta antiga, sem condições estruturadas — esse texto continua valendo, a não ser que você monte
+              condições novas abaixo (aí ele é substituído por elas).
             </p>
           </div>
-        ) : (
-          <>
-            {condicoes.length > 0 && (
-              <div className="flex flex-col gap-2 mb-4">
-                {condicoes.map((c, index) => (
-                  <div
-                    key={index}
-                    className="flex items-center justify-between gap-2 text-xs bg-gray-50 border border-gray-100 rounded-lg px-3 py-2"
-                  >
-                    <span className="text-gray-700">
-                      {c.tipo}: R$ {c.valor}
-                      {c.parcelas && <span className="text-gray-500"> · {c.parcelas}x</span>}
-                      {c.forma_pagamento && <span className="text-gray-500"> · {c.forma_pagamento}</span>}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => removerCondicao(index)}
-                      className="text-[11px] text-gray-400 hover:text-red-600"
-                    >
-                      remover
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
+        )}
 
-            <div className="grid md:grid-cols-3 gap-3 items-end bg-gray-50/50 border border-dashed border-gray-200 rounded-lg p-3">
-              <div>
-                <label className={LABEL}>Tipo</label>
-                <select
-                  className={CAMPO}
-                  value={novaCondicao.tipo}
-                  onChange={(e) => setNovaCondicao((a) => ({ ...a, tipo: e.target.value }))}
-                >
-                  {TIPO_CONDICAO_OPCOES.map((op) => (
-                    <option key={op} value={op}>
-                      {op}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className={LABEL}>Valor (R$)</label>
-                <input
-                  className={CAMPO}
-                  placeholder="35.000,00"
-                  value={novaCondicao.valor}
-                  onChange={(e) => setNovaCondicao((a) => ({ ...a, valor: e.target.value }))}
-                />
-              </div>
-              <div>
-                <label className={LABEL}>Forma de pagamento</label>
-                <select
-                  className={CAMPO}
-                  value={novaCondicao.forma_pagamento}
-                  onChange={(e) => setNovaCondicao((a) => ({ ...a, forma_pagamento: e.target.value }))}
-                >
-                  <option value="">—</option>
-                  {FORMA_PAGAMENTO_CONDICAO_OPCOES.map((op) => (
-                    <option key={op} value={op}>
-                      {op}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className={LABEL}>Parcelas</label>
-                <input
-                  className={CAMPO}
-                  placeholder="6"
-                  value={novaCondicao.parcelas}
-                  onChange={(e) => setNovaCondicao((a) => ({ ...a, parcelas: e.target.value }))}
-                />
-              </div>
-              <div>
-                <label className={LABEL}>Momento</label>
-                <select
-                  className={CAMPO}
-                  value={novaCondicao.momento}
-                  onChange={(e) => setNovaCondicao((a) => ({ ...a, momento: e.target.value }))}
-                >
-                  <option value="">—</option>
-                  {MOMENTO_CONDICAO_OPCOES.map((op) => (
-                    <option key={op} value={op}>
-                      {op}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className={LABEL}>Data de pagamento</label>
-                <input
-                  type="date"
-                  className={CAMPO}
-                  value={novaCondicao.data_pagamento}
-                  onChange={(e) => setNovaCondicao((a) => ({ ...a, data_pagamento: e.target.value }))}
-                />
-              </div>
-              <div className="md:col-span-3">
+        {condicoes.length > 0 && (
+          <div className="flex flex-col gap-2 mb-4">
+            {condicoes.map((c, index) => (
+              <div
+                key={index}
+                className="flex items-center justify-between gap-2 text-xs bg-gray-50 border border-gray-100 rounded-lg px-3 py-2"
+              >
+                <span className="text-gray-700">
+                  {c.tipo}: R$ {c.valor}
+                  {c.parcelas && <span className="text-gray-500"> · {c.parcelas}x</span>}
+                  {c.forma_pagamento && <span className="text-gray-500"> · {c.forma_pagamento}</span>}
+                </span>
                 <button
                   type="button"
-                  onClick={adicionarCondicao}
-                  className="text-xs bg-white border border-gray-300 text-gray-700 rounded-lg px-3 py-1.5 font-semibold"
+                  onClick={() => removerCondicao(index)}
+                  className="text-[11px] text-gray-400 hover:text-red-600"
                 >
-                  + Adicionar condição
+                  remover
                 </button>
               </div>
-            </div>
-          </>
+            ))}
+          </div>
         )}
+
+        <div className="grid md:grid-cols-3 gap-3 items-end bg-gray-50/50 border border-dashed border-gray-200 rounded-lg p-3">
+          <div>
+            <label className={LABEL}>Tipo</label>
+            <select
+              className={CAMPO}
+              value={novaCondicao.tipo}
+              onChange={(e) => setNovaCondicao((a) => ({ ...a, tipo: e.target.value }))}
+            >
+              {TIPO_CONDICAO_OPCOES.map((op) => (
+                <option key={op} value={op}>
+                  {op}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className={LABEL}>Valor (R$)</label>
+            <input
+              className={CAMPO}
+              placeholder="35.000,00"
+              value={novaCondicao.valor}
+              onChange={(e) => setNovaCondicao((a) => ({ ...a, valor: e.target.value }))}
+            />
+          </div>
+          <div>
+            <label className={LABEL}>Forma de pagamento</label>
+            <select
+              className={CAMPO}
+              value={novaCondicao.forma_pagamento}
+              onChange={(e) => setNovaCondicao((a) => ({ ...a, forma_pagamento: e.target.value }))}
+            >
+              <option value="">—</option>
+              {FORMA_PAGAMENTO_CONDICAO_OPCOES.map((op) => (
+                <option key={op} value={op}>
+                  {op}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className={LABEL}>Parcelas</label>
+            <input
+              className={CAMPO}
+              placeholder="6"
+              value={novaCondicao.parcelas}
+              onChange={(e) => setNovaCondicao((a) => ({ ...a, parcelas: e.target.value }))}
+            />
+          </div>
+          <div>
+            <label className={LABEL}>Momento</label>
+            <select
+              className={CAMPO}
+              value={novaCondicao.momento}
+              onChange={(e) => setNovaCondicao((a) => ({ ...a, momento: e.target.value }))}
+            >
+              <option value="">—</option>
+              {MOMENTO_CONDICAO_OPCOES.map((op) => (
+                <option key={op} value={op}>
+                  {op}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className={LABEL}>Data de pagamento</label>
+            <input
+              type="date"
+              className={CAMPO}
+              value={novaCondicao.data_pagamento}
+              onChange={(e) => setNovaCondicao((a) => ({ ...a, data_pagamento: e.target.value }))}
+            />
+          </div>
+          <div className="md:col-span-3">
+            <button
+              type="button"
+              onClick={adicionarCondicao}
+              className="text-xs bg-white border border-gray-300 text-gray-700 rounded-lg px-3 py-1.5 font-semibold"
+            >
+              + Adicionar condição
+            </button>
+          </div>
+        </div>
       </div>
 
       <div className="bg-white border border-gray-200 rounded-xl p-4">

@@ -1,5 +1,6 @@
 "use server";
 
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requirePortalSession } from "@/lib/portal-auth";
 import { logAlteracaoPortal } from "@/lib/auth";
@@ -299,6 +300,10 @@ export async function gerarPropostaAction(
           estado,
           valor_proposta: valorProposta,
           forma_pagamento: formaPagamento || null,
+          // Guarda a lista tal como digitada (não só o texto achatado acima)
+          // pra tela de edição reabrir as mesmas linhas — ver
+          // atualizarPropostaAction.
+          condicoes_json: condicoes.length > 0 ? condicoes : Prisma.JsonNull,
           data_fechamento: dataFechamento
         }
       })
@@ -327,12 +332,21 @@ export async function gerarPropostaAction(
 
 // Edita uma proposta já gerada (13/09/2026 — pedido do usuário: a lista só
 // mostrava "poucos detalhes" e não dava pra corrigir nada depois de gerada,
-// só cadastrar outra do zero). Reaproveita a mesma resolução de cliente da
-// criação; a "forma de pagamento" aqui é texto livre direto (o formulário de
-// criação junta uma lista de condições numa string só, e essa lista não fica
-// guardada em lugar nenhum pra reconstruir depois — editar reaproveita a
-// própria string já salva). Sempre gera um novo arquivo (nunca sobrescreve o
-// anterior no Storage — mesmo padrão do resto do módulo de documentos).
+// só cadastrar outra do zero; depois, mesmo pedido: o formulário de edição
+// deveria ser IGUAL ao de criação, com as informações "conversando entre
+// si" — ou seja, reabrindo as mesmas condições de pagamento digitadas, não
+// só um texto solto). Reaproveita a mesma resolução de cliente da criação e
+// o mesmo `condicoesJson` do construtor "+ Adicionar condição".
+//
+// Propostas criadas ANTES de condicoes_json existir não têm lista
+// estruturada — só o texto já achatado em forma_pagamento. Pra não perder
+// esse texto se o corretor editar outra coisa sem mexer nas condições
+// (a lista chega vazia do formulário), preserva o que já estava salvo
+// quando a lista vier vazia; só sobrescreve quando o corretor de fato monta
+// pelo menos uma condição.
+//
+// Sempre gera um novo arquivo (nunca sobrescreve o anterior no Storage —
+// mesmo padrão do resto do módulo de documentos).
 export async function atualizarPropostaAction(
   propostaId: string,
   formData: FormData
@@ -358,7 +372,6 @@ export async function atualizarPropostaAction(
     const cidade = texto(formData, "cidade");
     const estado = texto(formData, "estado");
     const dataFechamento = data(formData, "data_fechamento") ?? propostaAtual.data_fechamento;
-    const formaPagamento = texto(formData, "forma_pagamento");
 
     const valorProposta = (() => {
       const t = texto(formData, "valor_proposta");
@@ -367,6 +380,11 @@ export async function atualizarPropostaAction(
     if (!valorProposta) {
       return { ok: false, erro: "Informe o valor da proposta." };
     }
+
+    const condicoes = parseCondicoes(formData);
+    const formaPagamento = condicoes.length > 0 ? condicoes.map(linhaCondicaoDigitada).join("\n") : propostaAtual.forma_pagamento;
+    const condicoesJson =
+      condicoes.length > 0 ? condicoes : ((propostaAtual.condicoes_json as unknown as Prisma.InputJsonValue) ?? Prisma.JsonNull);
 
     const resolvido = await resolverClienteDaProposta(clienteForm, session.parceiroId);
     if (!resolvido.ok) return resolvido;
@@ -386,6 +404,7 @@ export async function atualizarPropostaAction(
           estado,
           valor_proposta: valorProposta,
           forma_pagamento: formaPagamento,
+          condicoes_json: condicoesJson,
           data_fechamento: dataFechamento
         }
       })

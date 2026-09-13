@@ -8,6 +8,30 @@ import { formatCpf, formatCnpj, formatValorEditavel } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
+type CondicaoPagamento = {
+  tipo: string;
+  valor: string;
+  forma_pagamento: string;
+  parcelas: string;
+  momento: string;
+  data_pagamento: string;
+};
+
+// `condicoes_json` é Json solto no banco — só confia no formato se vier
+// exatamente como o formulário grava (array de objetos com essas 6 chaves
+// string); qualquer coisa fora disso (NULL em proposta antiga, ou lixo)
+// volta lista vazia em vez de quebrar a página.
+function parseCondicoesJson(valor: unknown): CondicaoPagamento[] {
+  if (!Array.isArray(valor)) return [];
+  return valor.filter(
+    (c): c is CondicaoPagamento =>
+      typeof c === "object" &&
+      c !== null &&
+      typeof (c as Record<string, unknown>).tipo === "string" &&
+      typeof (c as Record<string, unknown>).valor === "string"
+  );
+}
+
 // Edição de uma Proposta de Compra e Venda já gerada (13/09/2026 — antes só
 // dava pra criar; corrigir um valor ou o endereço do imóvel exigia gerar
 // outra do zero). Reaproveita o mesmo formulário de criação
@@ -87,6 +111,7 @@ export default async function PortalPropostaEditarPage({ params }: { params: Pro
             cidade: proposta.cidade ?? "",
             estado: proposta.estado ?? "",
             valorProposta: formatValorEditavel(proposta.valor_proposta),
+            condicoes: parseCondicoesJson(proposta.condicoes_json),
             formaPagamento: proposta.forma_pagamento ?? "",
             dataFechamento: proposta.data_fechamento.toISOString().slice(0, 10)
           }}

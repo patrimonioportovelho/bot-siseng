@@ -999,6 +999,12 @@ model propostas {
   estado            String?
   valor_proposta    Decimal   @db.Decimal(14, 2)
   forma_pagamento   String?
+  // Lista de condições de pagamento tal como digitada no formulário (mesmo
+  // formato do construtor "+ Adicionar condição") — guardada a partir de
+  // 13/09/2026 pra edição reabrir exatamente as mesmas linhas em vez de só o
+  // texto já achatado em `forma_pagamento`. NULL em propostas criadas antes
+  // disso (o texto em `forma_pagamento` continua valendo pra elas).
+  condicoes_json    Json?
   data_fechamento   DateTime  @default(dbgenerated("CURRENT_DATE")) @db.Date
   created_at        DateTime  @default(now()) @db.Timestamptz(6)
   parceiros         parceiros @relation(fields: [parceiro_id], references: [id], onDelete: NoAction, onUpdate: NoAction)

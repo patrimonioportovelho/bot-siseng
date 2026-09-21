@@ -10,6 +10,7 @@ import {
   gerarRateioAction,
   excluirMovimentacaoAction,
   atualizarStatusPagamentoAction,
+  atualizarDataPagamentoAction,
   alternarPagamentoParcialAction
 } from "../actions";
 import { saldoDevido } from "@/lib/financeiro/pagamentos-pix";
@@ -359,6 +360,7 @@ export default async function MovimentacaoPage({
           action={atualizarMovimentacaoAction}
           excluirAction={excluirMovimentacaoAction}
           atualizarStatusPagamentoAction={atualizarStatusPagamentoAction}
+          atualizarDataPagamentoAction={atualizarDataPagamentoAction}
           conferidoPorNome={
             movimentacao.conferido_por_parceiro_id
               ? nomeParceiroStatus.get(movimentacao.conferido_por_parceiro_id) ?? null

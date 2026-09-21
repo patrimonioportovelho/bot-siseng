@@ -60,6 +60,19 @@ function texto(formData: FormData, campo: string): string | null {
   return t.length > 0 ? t : null;
 }
 
+// Data de pagamento informada à mão (16-21/09/2026): o dinheiro pode ter caído
+// dias antes de alguém conferir no sistema, então "hoje" automático nem sempre
+// serve. Vazio = mantém o comportamento antigo (hoje, Porto Velho). Data no
+// futuro não faz sentido pra algo já pago.
+function dataPagamentoInformada(formData: FormData): Date | null {
+  const t = texto(formData, "data_pagamento");
+  if (t === null) return null;
+  const d = new Date(t + "T00:00:00");
+  if (Number.isNaN(d.getTime())) throw new Error("Data de pagamento inválida.");
+  if (d.getTime() > hojePortoVelho().getTime()) throw new Error("A data de pagamento não pode ser no futuro.");
+  return d;
+}
+
 function inteiro(formData: FormData, campo: string): number | null {
   const t = texto(formData, campo);
   if (t === null) return null;
@@ -244,6 +257,10 @@ export async function criarMovimentacaoAction(_prev: unknown, formData: FormData
     const statusInicial = texto(formData, "status_pagamento") ?? "Pendente";
     if (!ehStatusPagamento(statusInicial)) return { erro: "Situação de pagamento inválida." };
     const campos = camposDeStatusPagamento(statusInicial, sessao.parceiroId);
+    if (statusInicial === "Pago") {
+      const informada = dataPagamentoInformada(formData);
+      if (informada) campos.data_pagamento = informada;
+    }
 
     const criada = await prisma.movimentacoes
       .create({
@@ -494,6 +511,10 @@ export async function atualizarStatusPagamentoAction(formData: FormData) {
     }
 
     const camposStatus = camposDeStatusPagamento(alvo, sessao.parceiroId);
+    if (alvo === "Pago") {
+      const informada = dataPagamentoInformada(formData);
+      if (informada) camposStatus.data_pagamento = informada;
+    }
     // Pagar não "rouba" a autoria da conferência de quem já tinha conferido.
     if (alvo === "Pago" && antes.status_pagamento === "Conferido" && antes.conferido_por_parceiro_id) {
       camposStatus.conferido_por_parceiro_id = antes.conferido_por_parceiro_id;
@@ -514,6 +535,58 @@ export async function atualizarStatusPagamentoAction(formData: FormData) {
     });
   } catch (erro) {
     await registrarEJogarErro({ entidadeTipo: "movimentacoes", entidadeId: id ?? null, acao: "status_pagamento", erro }).catch(
+      () => undefined
+    );
+    redirect(`${voltarPara}?erro=${encodeURIComponent(mensagemDe(erro))}`);
+  }
+
+  revalidatePath(`/financeiro/${id}`);
+  revalidatePath("/financeiro");
+  redirect(`/financeiro/${id}?salvo=1`);
+}
+
+// Corrige a Data de pagamento depois do fato (pedido do usuário, 16/09/2026:
+// "às vezes o pagamento cai no dia anterior à noite, e não tem como
+// atualizar"). `data_pagamento` é gravada automaticamente com a data de HOJE
+// no momento em que alguém marca como Pago/Recebido (camposDeStatusPagamento)
+// — mas o dinheiro pode ter caído no extrato um dia (ou mais) antes de
+// alguém conferir/confirmar no sistema. Só mexe nessa data; não toca em
+// status_pagamento nem em quem conferiu/pagou.
+export async function atualizarDataPagamentoAction(formData: FormData) {
+  const sessao = await requireAdminSession();
+
+  const id = texto(formData, "movimentacaoId");
+  const voltarPara = id ? `/financeiro/${id}` : "/financeiro";
+
+  try {
+    if (!id) throw new Error("Movimentação inválida.");
+
+    const novaData = dataPagamentoInformada(formData);
+    if (!novaData) throw new Error("Informe uma data de pagamento válida.");
+
+    const antes = await prisma.movimentacoes.findUnique({
+      where: { id },
+      select: { id: true, status_pagamento: true, data_pagamento: true }
+    });
+    if (!antes) throw new Error("Movimentação não encontrada.");
+    if (antes.status_pagamento !== "Pago") {
+      throw new Error('Só dá pra corrigir a data de um pagamento já marcado como "Pago"/"Recebido".');
+    }
+
+    await prisma.movimentacoes.update({
+      where: { id },
+      data: { data_pagamento: novaData, updated_at: new Date() }
+    });
+
+    await logAlteracao({
+      entidadeTipo: "movimentacoes",
+      entidadeId: id,
+      acao: "editar_data_pagamento",
+      dadosAntes: { data_pagamento: antes.data_pagamento },
+      dadosDepois: { data_pagamento: novaData, por: sessao.nome }
+    });
+  } catch (erro) {
+    await registrarEJogarErro({ entidadeTipo: "movimentacoes", entidadeId: id ?? null, acao: "editar_data_pagamento", erro }).catch(
       () => undefined
     );
     redirect(`${voltarPara}?erro=${encodeURIComponent(mensagemDe(erro))}`);

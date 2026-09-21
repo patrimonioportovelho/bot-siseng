@@ -805,6 +805,12 @@ export function FinanceiroForm({
               <option value="Pago">{tipo === "Despesa" ? "Pago" : "Recebido"}</option>
             </select>
           </div>
+          {statusPagamento === "Pago" && (
+            <div className="max-w-xs mt-3">
+              <label className={LABEL}>Data do {tipo === "Despesa" ? "pagamento" : "recebimento"}</label>
+              <input className={CAMPO} type="date" name="data_pagamento" defaultValue={hojeInputDate()} max={hojeInputDate()} required />
+            </div>
+          )}
           <p className="text-[11px] text-gray-400 mt-2">
             Depois, no detalhe da movimentação, a situação anda uma etapa por vez (sempre &quot;Conferir&quot; antes de{" "}
             {tipo === "Despesa" ? "pagar" : "receber"}).

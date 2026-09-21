@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { FinanceiroEditarForm } from "@/components/financeiro-editar-form";
 import { BotaoComConfirmacao } from "@/components/botao-com-confirmacao";
-import { formatMoeda, formatDataCalendario, formatDataHora } from "@/lib/format";
+import { formatMoeda, formatDataCalendario, formatDataHora, hojeInputDate } from "@/lib/format";
 import { rotuloStatusPagamento, corSeloStatusPagamento } from "@/lib/financeiro/status-pagamento";
 
 type CategoriaOpcao = { id: string; nome: string; tipo: string | null };
@@ -59,6 +59,7 @@ export function MovimentacaoDetalhe({
   action,
   excluirAction,
   atualizarStatusPagamentoAction,
+  atualizarDataPagamentoAction,
   conferidoPorNome,
   pagoPorNome
 }: {
@@ -70,11 +71,17 @@ export function MovimentacaoDetalhe({
   action: (prevState: unknown, formData: FormData) => Promise<{ erro: string } | undefined | void>;
   excluirAction: (formData: FormData) => void;
   atualizarStatusPagamentoAction: (formData: FormData) => void;
+  atualizarDataPagamentoAction: (formData: FormData) => void;
   conferidoPorNome: string | null;
   pagoPorNome: string | null;
 }) {
   const [editando, setEditando] = useState(false);
+  const [editandoDataPagamento, setEditandoDataPagamento] = useState(false);
   const m = movimentacao;
+
+  // yyyy-mm-dd pro <input type="date"> — data_pagamento é @db.Date, então
+  // já vem sem componente de hora (nem precisa lidar com fuso aqui).
+  const dataPagamentoInput = m.data_pagamento ? new Date(m.data_pagamento).toISOString().slice(0, 10) : "";
 
   if (editando) {
     return (
@@ -168,9 +175,21 @@ export function MovimentacaoDetalhe({
 
                 {status === "Conferido" && (
                   <>
-                    <form action={atualizarStatusPagamentoAction}>
+                    <form action={atualizarStatusPagamentoAction} className="flex items-center gap-1.5 flex-wrap">
                       <input type="hidden" name="movimentacaoId" value={m.id} />
                       <input type="hidden" name="alvo" value="Pago" />
+                      <label htmlFor={`data-pagamento-${m.id}`} className="text-[11px] text-gray-500">
+                        Data do {rotuloPago === "pago" ? "pagamento" : "recebimento"}:
+                      </label>
+                      <input
+                        id={`data-pagamento-${m.id}`}
+                        type="date"
+                        name="data_pagamento"
+                        defaultValue={hojeInputDate()}
+                        max={hojeInputDate()}
+                        required
+                        className="text-[11px] border border-gray-300 rounded-lg px-2 py-1 outline-none focus:border-primary"
+                      />
                       <button
                         type="submit"
                         className="text-xs rounded-lg border border-primary bg-primary text-white px-2.5 py-1 font-semibold hover:opacity-90"
@@ -213,11 +232,49 @@ export function MovimentacaoDetalhe({
                   {m.conferido_em ? ` · ${formatDataHora(m.conferido_em)}` : ""}
                 </span>
               )}
-              {status === "Pago" && (
+              {status === "Pago" && !editandoDataPagamento && (
                 <span className="text-[11px] text-gray-500">
                   {pagoPorNome ? `Pago por ${pagoPorNome}` : "Pago (registro automático)"}
                   {m.data_pagamento ? ` · ${formatDataCalendario(m.data_pagamento)}` : ""}
+                  <button
+                    type="button"
+                    onClick={() => setEditandoDataPagamento(true)}
+                    className="ml-1.5 text-primary font-semibold hover:underline"
+                  >
+                    editar data
+                  </button>
                 </span>
+              )}
+              {status === "Pago" && editandoDataPagamento && (
+                <form
+                  action={atualizarDataPagamentoAction}
+                  className="flex items-center gap-1.5 flex-wrap"
+                  onSubmit={() => setEditandoDataPagamento(false)}
+                >
+                  <input type="hidden" name="movimentacaoId" value={m.id} />
+                  <label className="text-[11px] text-gray-500">Data de pagamento:</label>
+                  <input
+                    type="date"
+                    name="data_pagamento"
+                    defaultValue={dataPagamentoInput}
+                    max={hojeInputDate()}
+                    required
+                    className="text-[11px] border border-gray-300 rounded-lg px-2 py-1 outline-none focus:border-primary"
+                  />
+                  <button
+                    type="submit"
+                    className="text-[11px] rounded-lg border border-primary bg-primary text-white px-2 py-1 font-semibold hover:opacity-90"
+                  >
+                    Salvar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditandoDataPagamento(false)}
+                    className="text-[11px] text-gray-500 hover:text-gray-800"
+                  >
+                    cancelar
+                  </button>
+                </form>
               )}
             </div>
           }

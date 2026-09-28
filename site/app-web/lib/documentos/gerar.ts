@@ -654,6 +654,22 @@ function valorComExtenso(valor: number): string {
   return `${numero(valor)} (${valorPorExtenso(valor)})`;
 }
 
+// Finalidade da locação (Residencial/Comercial/Mista) já escrita como
+// complemento de "utilizado exclusivamente para ...". Sem finalidade cadastrada
+// não inventa uso — cai numa frase neutra em vez de assumir "residencial".
+function finalidadeUsoTexto(finalidade: string | null | undefined): string {
+  switch (finalidade) {
+    case "Residencial":
+      return "fins residenciais";
+    case "Comercial":
+      return "fins comerciais";
+    case "Mista":
+      return "fins residenciais e comerciais";
+    default:
+      return "a finalidade ajustada entre as partes";
+  }
+}
+
 async function montarDadosTransacao(
   tipoDocumento: "contrato_locacao" | "contrato_locacao_sem_administracao" | "contrato_compra_venda",
   transacaoId: string
@@ -738,6 +754,10 @@ async function montarDadosTransacao(
       UcCaerd: t.adm_imoveis?.uc_caerd ?? "",
       Observacao: t.observacao ?? "",
       TextoFinalidadeLocacao: t.finalidade_locacao ?? "",
+      // Frase pronta pra cláusula 1.2 do contrato de locação COM administração
+      // ("O imóvel será utilizado exclusivamente para {{FinalidadeUso}}, ...") —
+      // TextoFinalidadeLocacao sozinho ("Residencial") não encaixa na frase.
+      FinalidadeUso: finalidadeUsoTexto(t.finalidade_locacao),
       PrazoContrato: t.prazo_contrato_meses ?? "",
       DataAssinatura: dataCurta(t.data_assinatura ?? hoje),
       DataVencimento: dataCurta(t.data_vencimento),
@@ -772,7 +792,13 @@ async function montarDadosTransacao(
   const restanteRateio = honorarioTotal - valorParceria;
   const valorCorretorProprietario = restanteRateio * Number(t.porc_corretor_proprietario ?? 0);
   const valorCorretorContraparte = restanteRateio * Number(t.porc_corretor_contraparte ?? 0);
-  const valorImobiliaria = restanteRateio * Number(t.porc_imobiliaria ?? 0);
+  // % da imobiliária gravada; se veio 0 (transação criada pelo portal antes do
+  // admin abrir o Comissionamento), usa o que sobra depois dos corretores —
+  // mesma regra do formulário —, senão o contrato saía sem a conta da imobiliária.
+  const somaCorretores = Number(t.porc_corretor_proprietario ?? 0) + Number(t.porc_corretor_contraparte ?? 0);
+  const porcImobiliariaEfetiva =
+    Number(t.porc_imobiliaria ?? 0) > 0 ? Number(t.porc_imobiliaria) : Math.max(0, 1 - somaCorretores);
+  const valorImobiliaria = restanteRateio * porcImobiliariaEfetiva;
 
   // Quando o corretor do proprietário e o da contraparte são a mesma
   // pessoa (comum — o próprio cliente já indica o corretor de confiança
@@ -828,7 +854,7 @@ async function montarDadosTransacao(
     }
   }
 
-  if (Number(t.porc_imobiliaria ?? 0) > 0) {
+  if (porcImobiliariaEfetiva > 0) {
     itensHonorario.push({
       titulo: `Imobiliária / Intermediadora: ${IMOBILIARIA_DADOS_BANCARIOS.razaoSocial}`,
       detalhes: detalhesBancariosImobiliariaPropria(),

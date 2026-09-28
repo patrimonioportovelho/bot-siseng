@@ -46,6 +46,7 @@ export const CAMPOS_DOCUMENTO: Record<TipoDocumento, CampoDocumento[]> = {
     { campo: "UcCaerd", descricao: "Medidor de água — vem da Administração vinculada, se houver" },
     { campo: "Observacao", descricao: "Observação da transação" },
     { campo: "TextoFinalidadeLocacao", descricao: "Residencial, Comercial ou Mista" },
+    { campo: "FinalidadeUso", descricao: "Frase pronta pra cláusula 1.2 (\"fins residenciais\", \"fins comerciais\" ou \"fins residenciais e comerciais\")" },
     { campo: "PrazoContrato", descricao: "Tempo de contrato em meses" },
     { campo: "DataAssinatura", descricao: "Data de assinatura (dd/mm/aaaa)" },
     { campo: "DataVencimento", descricao: "Data de término do contrato (dd/mm/aaaa)" },

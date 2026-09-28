@@ -666,6 +666,11 @@ export async function gerarLocacaoAction(
           corretor_contraparte_id: corretorContraparteId,
           porc_corretor_proprietario: Number(corretorProprietarioComissao?.porc_proprietario ?? 0),
           porc_corretor_contraparte: Number(corretorContraparteComissao?.porc_interessado ?? 0),
+          // % da imobiliária = o que sobra depois dos dois corretores (regra do formulário do admin).
+          porc_imobiliaria: Math.max(
+            0,
+            1 - Number(corretorProprietarioComissao?.porc_proprietario ?? 0) - Number(corretorContraparteComissao?.porc_interessado ?? 0)
+          ),
           criado_no_portal: true
         }
       })

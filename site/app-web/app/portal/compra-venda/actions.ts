@@ -694,6 +694,12 @@ export async function gerarCompraVendaAction(
           corretor_contraparte_id: corretorContraparteIdForm,
           porc_corretor_proprietario: Number(corretorProprietarioComissao?.porc_proprietario ?? 0),
           porc_corretor_contraparte: Number(corretorContraparteComissao?.porc_interessado ?? 0),
+          // % da imobiliária = o que sobra depois dos dois corretores (mesma regra do
+          // formulário do admin) — sem isso ficava 0 e o contrato saía sem a conta/valor da imobiliária.
+          porc_imobiliaria: Math.max(
+            0,
+            1 - Number(corretorProprietarioComissao?.porc_proprietario ?? 0) - Number(corretorContraparteComissao?.porc_interessado ?? 0)
+          ),
           gestao_id: gestaoId,
           compra_sem_gestao: compraSemGestao,
           historico_gestao_data_assinatura: historicoData,

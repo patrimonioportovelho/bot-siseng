@@ -70,7 +70,7 @@ export default async function PortalCompraVendaPage({
           : [])
       ]
     },
-    orderBy: [{ data_assinatura: { sort: "desc", nulls: "last" } }, { created_at: "desc" }],
+    orderBy: [{ data_cadastro: "desc" }, { data_assinatura: { sort: "desc", nulls: "last" } }, { created_at: "desc" }],
     select: {
       id: true,
       id_legado: true,
@@ -78,6 +78,7 @@ export default async function PortalCompraVendaPage({
       andamento: true,
       valor_transacao: true,
       data_assinatura: true,
+      data_cadastro: true,
       created_at: true,
       imoveis: { select: { endereco: true } },
       clientes_transacoes_cliente_idToclientes: { select: { nome: true } },
@@ -183,7 +184,7 @@ export default async function PortalCompraVendaPage({
                         {t.data_assinatura ? (
                           <> · assinado em {formatDataCalendario(t.data_assinatura)}</>
                         ) : (
-                          <> · cadastrado em {formatDataCalendario(t.created_at)}</>
+                          <> · cadastrado em {formatDataCalendario(t.data_cadastro)}</>
                         )}
                         {t.clientes_transacoes_cliente_idToclientes?.nome && (
                           <> · Propr.: {t.clientes_transacoes_cliente_idToclientes.nome}</>

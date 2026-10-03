@@ -66,6 +66,7 @@ type TransacaoParaVisualizar = {
   garantia: string | null;
   valor_caucao: unknown;
   pg_caucao: string | null;
+  data_cadastro: Date;
   data_assinatura: Date | null;
   data_vencimento: Date | null;
   dia_vencimento: number | null;
@@ -344,7 +345,11 @@ export function TransacaoDetalhe({
       <div className="bg-white border border-gray-200 rounded-xl p-4">
         <div className="text-sm font-bold text-gray-800 mb-3">Datas e valor</div>
         <div className="grid grid-cols-1 gap-2 md:grid-cols-3 md:gap-4">
-          <Campo label="Data de assinatura" valor={formatDataCalendario(t.data_assinatura)} />
+          <Campo label="Data do cadastro" valor={formatDataCalendario(t.data_cadastro)} />
+          <Campo
+            label="Data de assinatura"
+            valor={t.data_assinatura ? formatDataCalendario(t.data_assinatura) : "Ainda não informada"}
+          />
           <Campo label="Valor da transação" valor={formatMoeda(t.valor_transacao)} />
           {eLocacao && <Campo label="Dia de vencimento (aluguel)" valor={t.dia_vencimento ?? "—"} />}
           {eLocacao && <Campo label="Tempo de contrato (meses)" valor={t.prazo_contrato_meses ?? "—"} />}

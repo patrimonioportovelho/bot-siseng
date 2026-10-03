@@ -72,8 +72,7 @@ export async function TransacoesLista({ tipo, q, novoHref }: { tipo: "Locação"
     ]
   };
 
-  // Compra e Venda ordena pela data de assinatura (mais recentes primeiro,
-  // sem assinatura ainda vai por último).
+  // Compra e Venda ordena pela data de cadastro (mais recentes primeiro).
   //
   // Locação ordena pela Data de vencimento, do mais próximo pro mais
   // distante — quem precisa de atenção (entrou nos 90 dias finais = alerta,
@@ -86,7 +85,14 @@ export async function TransacoesLista({ tipo, q, novoHref }: { tipo: "Locação"
   // destaque vermelho/âmbar some (é derivado da própria data).
   const orderBy = somenteLocacao
     ? ([{ data_vencimento: { sort: "asc" as const, nulls: "last" as const } }, { created_at: "desc" as const }])
-    : ([{ data_assinatura: { sort: "desc" as const, nulls: "last" as const } }, { created_at: "desc" as const }]);
+    : ([
+        // Mais recém-cadastradas primeiro: transação nova nasce SEM data de
+        // assinatura (o administrativo informa depois) e, ordenando só por
+        // assinatura, afundaria no fim da lista atrás de todas as antigas.
+        { data_cadastro: "desc" as const },
+        { data_assinatura: { sort: "desc" as const, nulls: "last" as const } },
+        { created_at: "desc" as const }
+      ]);
 
   const transacoes = await prisma.transacoes.findMany({
     where,
@@ -289,7 +295,13 @@ export async function TransacoesLista({ tipo, q, novoHref }: { tipo: "Locação"
                             )}
                           </span>
                           <span className={`text-xs whitespace-nowrap ${situacao === "vencido" ? "text-red-700" : "text-gray-500"}`}>
-                            {formatDataCalendario(t.data_assinatura)}
+                            {t.data_assinatura ? (
+                              formatDataCalendario(t.data_assinatura)
+                            ) : (
+                              <span title="Data de assinatura ainda não informada — mostrando a data do cadastro">
+                                cad. {formatDataCalendario(t.data_cadastro)}
+                              </span>
+                            )}
                           </span>
                           {somenteLocacao && (
                             <span

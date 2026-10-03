@@ -1144,6 +1144,13 @@ model transacoes {
   garantia                                                 String?
   valor_caucao                                             Decimal?                 @db.Decimal(14, 2)
   pg_caucao                                                String?
+  // Dia em que a transação entrou no sistema — obrigatória, gravada sempre pelo
+  // servidor (nunca digitada). DEFAULT = hoje em Porto Velho, como rede de
+  // segurança pra qualquer criador que esqueça de mandar.
+  data_cadastro                                            DateTime                 @default(dbgenerated("((now() AT TIME ZONE 'America/Porto_Velho'::text))::date")) @db.Date
+  // Data em que o contrato foi ASSINADO — preenchida só pelo administrativo,
+  // depois da assinatura (transação nova nasce com ela vazia). É o parâmetro
+  // dos dashboards/metas/ranking: sem ela a transação não conta ainda.
   data_assinatura                                          DateTime?                @db.Date
   data_vencimento                                          DateTime?                @db.Date
   dia_vencimento                                           Int?                     @db.SmallInt

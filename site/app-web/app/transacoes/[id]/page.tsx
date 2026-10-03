@@ -261,7 +261,8 @@ export default async function TransacaoDetalhePage({
         {nomesInteressados && <> · Interessado{interessados.length > 1 ? "s" : ""}: {nomesInteressados}</>}
       </div>
       <div className="text-xs text-gray-400 mb-4">
-        Assinatura: {formatDataCalendario(transacao.data_assinatura)}
+        Cadastro: {formatDataCalendario(transacao.data_cadastro)}
+        {" · "}Assinatura: {transacao.data_assinatura ? formatDataCalendario(transacao.data_assinatura) : "não informada"}
         {" · "}Valor: {formatMoeda(transacao.valor_transacao)}
       </div>
 

@@ -90,9 +90,13 @@ const MESES = [
   "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"
 ];
 
+// As datas que chegam aqui são sempre DIA DE CALENDÁRIO (colunas @db.Date =
+// meia-noite UTC, ou hojeComoDataCalendario()) — por isso os getters são UTC:
+// com getDate()/getMonth() locais, a data saía um dia antes em máquina com
+// fuso negativo (ex.: dev local em Porto Velho, UTC-4).
 export function dataPorExtenso(data: Date | string): string {
   const d = typeof data === "string" ? new Date(data) : data;
-  return `${d.getDate()} de ${MESES[d.getMonth()]} de ${d.getFullYear()}`;
+  return `${d.getUTCDate()} de ${MESES[d.getUTCMonth()]} de ${d.getUTCFullYear()}`;
 }
 
 // Mesma ideia, mas com o dia sempre em 2 dígitos (ex.: "05 de julho de 2026")
@@ -100,7 +104,7 @@ export function dataPorExtenso(data: Date | string): string {
 export function dataPorExtensoComZero(data: Date | string | null | undefined): string {
   if (!data) return "";
   const d = typeof data === "string" ? new Date(data) : data;
-  return `${String(d.getDate()).padStart(2, "0")} de ${MESES[d.getMonth()]} de ${d.getFullYear()}`;
+  return `${String(d.getUTCDate()).padStart(2, "0")} de ${MESES[d.getUTCMonth()]} de ${d.getUTCFullYear()}`;
 }
 
 // Formata CPF (11 dígitos) como 000.000.000-00. Aceita string só com números.

@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireAdminSession, requireAdm, logAlteracao } from "@/lib/auth";
-import { valorEditavelParaDecimal, percentualParaDecimal } from "@/lib/format";
+import { valorEditavelParaDecimal, percentualParaDecimal, hojeComoDataCalendario } from "@/lib/format";
 import { registrarEJogarErro } from "@/lib/erros";
 import { sincronizarProprietariosExtra, sincronizarVinculosConjuge } from "@/lib/imoveis/proprietarios-extra";
 import { STATUS_COMPRA_VENDA_CANCELAMENTO, ANDAMENTO_COMPRA_VENDA_PADRAO } from "@/lib/transacoes/opcoes";
@@ -346,6 +346,8 @@ export async function criarTransacaoAction(_prev: unknown, formData: FormData): 
           cliente_id: clienteId,
           cliente_contraparte_id: interessadosIds[0],
           id_legado: idLegado,
+          // Dia do cadastro: sempre gravado pelo servidor, nunca digitado.
+          data_cadastro: hojeComoDataCalendario(),
           andamento: ehCompraVenda ? resolverAndamento(campos.status, texto(formData, "andamento"), null) : null
         }
       })

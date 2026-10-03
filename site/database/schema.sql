@@ -516,6 +516,10 @@ CREATE TABLE transacoes (
   garantia                    TEXT CHECK (garantia IN ('Fiador','Caução','Seguro fiança','Sem garantias')),
   valor_caucao                NUMERIC(14,2),
   pg_caucao                   TEXT,
+  -- data_cadastro: dia em que entrou no sistema (obrigatória, gravada pelo servidor);
+  -- data_assinatura: preenchida só pelo administrativo depois da assinatura do contrato
+  -- (ver migration_transacoes_data_cadastro.sql)
+  data_cadastro               DATE NOT NULL DEFAULT ((now() AT TIME ZONE 'America/Porto_Velho')::date),
   data_assinatura             DATE,
   data_vencimento             DATE,
   dia_vencimento              SMALLINT,

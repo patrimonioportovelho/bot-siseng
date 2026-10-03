@@ -23,7 +23,7 @@ import {
 } from "@/lib/clientes/opcoes";
 import { validarCpfCnpj } from "@/lib/clientes/validacao";
 import { buscarCep, UF_PARA_ESTADO } from "@/lib/enderecos";
-import { formatInscricao, somarMeses, formatMoeda, valorEditavelParaDecimal } from "@/lib/format";
+import { formatInscricao, formatMoeda, valorEditavelParaDecimal, hojeInputDate } from "@/lib/format";
 import type { ImovelBuscaResultado, ClienteBuscaResultado } from "@/lib/transacoes/buscas";
 import {
   gerarLocacaoAction,
@@ -45,10 +45,6 @@ type AdministracaoOpcao = {
   imovelInscricao: string | null;
   clienteNome: string;
 };
-
-function hojeISO(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 const TAMANHO_MAXIMO_TOTAL = 15 * 1024 * 1024;
 const TIPOS_ACEITOS = ["application/pdf", "image/"];
@@ -105,12 +101,9 @@ type RascunhoLocacao = {
   inscricaoNovo: string;
   proprietarios: PessoaLinha[];
   locatarios: PessoaLinha[];
-  dataAssinatura: string;
   valorTransacaoTexto: string;
   diaVencimento: string;
   prazoContratoMesesTexto: string;
-  dataVencimento: string;
-  vencimentoEditadoManual: boolean;
   finalidadeLocacao: string;
   garantia: string;
   valorCaucaoTexto: string;
@@ -794,12 +787,9 @@ export function PortalLocacaoForm({
   const [buscaLocatario, setBuscaLocatario] = useState("");
   const [listaLocatarioAberta, setListaLocatarioAberta] = useState(false);
 
-  const [dataAssinatura, setDataAssinatura] = useState(hojeISO());
   const [valorTransacaoTexto, setValorTransacaoTexto] = useState("");
   const [diaVencimento, setDiaVencimento] = useState("");
   const [prazoContratoMesesTexto, setPrazoContratoMesesTexto] = useState("");
-  const [dataVencimento, setDataVencimento] = useState("");
-  const [vencimentoEditadoManual, setVencimentoEditadoManual] = useState(false);
 
   const [finalidadeLocacao, setFinalidadeLocacao] = useState("");
   const [garantia, setGarantia] = useState("");
@@ -894,12 +884,9 @@ export function PortalLocacaoForm({
       inscricaoNovo,
       proprietarios,
       locatarios,
-      dataAssinatura,
       valorTransacaoTexto,
       diaVencimento,
       prazoContratoMesesTexto,
-      dataVencimento,
-      vencimentoEditadoManual,
       finalidadeLocacao,
       garantia,
       valorCaucaoTexto,
@@ -954,11 +941,9 @@ export function PortalLocacaoForm({
     inscricaoNovo,
     proprietarios,
     locatarios,
-    dataAssinatura,
     valorTransacaoTexto,
     diaVencimento,
     prazoContratoMesesTexto,
-    dataVencimento,
     finalidadeLocacao,
     garantia,
     valorCaucaoTexto,
@@ -998,12 +983,9 @@ export function PortalLocacaoForm({
     setInscricaoNovo(r.inscricaoNovo);
     setProprietarios(r.proprietarios);
     setLocatarios(r.locatarios);
-    setDataAssinatura(r.dataAssinatura);
     setValorTransacaoTexto(r.valorTransacaoTexto);
     setDiaVencimento(r.diaVencimento);
     setPrazoContratoMesesTexto(r.prazoContratoMesesTexto);
-    setDataVencimento(r.dataVencimento);
-    setVencimentoEditadoManual(r.vencimentoEditadoManual);
     setFinalidadeLocacao(r.finalidadeLocacao);
     setGarantia(r.garantia);
     setValorCaucaoTexto(r.valorCaucaoTexto);
@@ -1127,15 +1109,10 @@ export function PortalLocacaoForm({
     return clientes.filter((c) => c.parceiroId === corretorContraparteId);
   }, [clientes, clientesDoCorretorLocatario, corretorContraparteId]);
 
-  // Data de vencimento calculada sozinha (assinatura + prazo em meses),
-  // igual ao formulário do admin — mas fica editável, e uma vez que o
-  // corretor mexer na mão, para de recalcular sozinha.
-  useMemo(() => {
-    if (vencimentoEditadoManual) return;
-    const calculada = somarMeses(dataAssinatura, Number(prazoContratoMesesTexto) || null);
-    if (calculada) setDataVencimento(calculada);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dataAssinatura, prazoContratoMesesTexto]);
+  // Data do cadastro: só exibida (o servidor grava o dia de verdade). Data de
+  // assinatura e Data de vencimento (fim do contrato = assinatura + prazo) não
+  // existem aqui: o administrativo informa depois que o contrato é assinado.
+  const dataCadastroTexto = hojeInputDate().split("-").reverse().join("/");
 
   function selecionarAdministracao(a: AdministracaoOpcao) {
     setAdmImovelId(a.id);
@@ -1256,11 +1233,9 @@ export function PortalLocacaoForm({
         formData.set("matricula", matriculaNovo);
         formData.set("inscricao", inscricaoNovo);
       }
-      formData.set("data_assinatura", dataAssinatura);
       formData.set("valor_transacao", valorTransacaoTexto);
       formData.set("dia_vencimento", diaVencimento);
       formData.set("prazo_contrato_meses", prazoContratoMesesTexto);
-      formData.set("data_vencimento", dataVencimento);
       formData.set("finalidade_locacao", finalidadeLocacao);
       formData.set("garantia", garantia);
       formData.set("valor_caucao", valorCaucaoTexto);
@@ -1639,8 +1614,11 @@ export function PortalLocacaoForm({
         <div className="text-sm font-bold text-gray-800 mb-3">4. Datas e valor</div>
         <div className="grid md:grid-cols-3 gap-3">
           <div>
-            <label className={LABEL}>Data de assinatura</label>
-            <input type="date" className={CAMPO} value={dataAssinatura} onChange={(e) => setDataAssinatura(e.target.value)} />
+            <label className={LABEL}>Data do cadastro</label>
+            <input className={CAMPO + " bg-gray-100 text-gray-500"} value={dataCadastroTexto} readOnly />
+            <p className="text-[11px] text-gray-400 mt-1">
+              Preenchida sozinha. A data de assinatura do contrato é informada pelo administrativo depois que for assinado.
+            </p>
           </div>
           <div>
             <label className={LABEL}>Valor do aluguel (R$)</label>
@@ -1663,19 +1641,6 @@ export function PortalLocacaoForm({
               value={prazoContratoMesesTexto}
               onChange={(e) => setPrazoContratoMesesTexto(e.target.value)}
             />
-          </div>
-          <div>
-            <label className={LABEL}>Data de vencimento (fim do contrato)</label>
-            <input
-              type="date"
-              className={CAMPO}
-              value={dataVencimento}
-              onChange={(e) => {
-                setVencimentoEditadoManual(true);
-                setDataVencimento(e.target.value);
-              }}
-            />
-            <p className="text-[11px] text-gray-400 mt-1">Preenchida automaticamente ao definir Assinatura e Prazo.</p>
           </div>
         </div>
       </div>

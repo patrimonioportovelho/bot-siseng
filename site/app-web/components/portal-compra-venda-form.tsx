@@ -18,6 +18,7 @@ import {
   CAT_PROFISSAO_OPCOES
 } from "@/lib/clientes/opcoes";
 import { validarCpfCnpj } from "@/lib/clientes/validacao";
+import { hojeInputDate } from "@/lib/format";
 import { buscarCep, UF_PARA_ESTADO } from "@/lib/enderecos";
 import type { ImovelBuscaResultado, ClienteBuscaResultado } from "@/lib/transacoes/buscas";
 import {
@@ -54,10 +55,6 @@ function condicaoVazia(): CondicaoPagamento {
     gera_comissao: false,
     porc_comissao: ""
   };
-}
-
-function hojeISO(): string {
-  return new Date().toISOString().slice(0, 10);
 }
 
 // Limite do lado do cliente pra não deixar o corretor anexar um total que
@@ -264,7 +261,6 @@ type RascunhoCompraVenda = {
   vendedores: PessoaLinha[];
   compradores: PessoaLinha[];
   compraSemGestao: boolean;
-  dataAssinatura: string;
   valorTransacaoTexto: string;
   chave: string;
   condicoes: CondicaoPagamento[];
@@ -798,8 +794,10 @@ export function PortalCompraVendaForm({
   const [listaCompradorAberta, setListaCompradorAberta] = useState(false);
 
   const [compraSemGestao, setCompraSemGestao] = useState(false);
+  // Data do cadastro: só exibida (o servidor grava o dia de verdade). A data de
+  // assinatura não existe aqui: só o administrativo informa, depois da assinatura.
+  const dataCadastroTexto = hojeInputDate().split("-").reverse().join("/");
 
-  const [dataAssinatura, setDataAssinatura] = useState(hojeISO());
   const [valorTransacaoTexto, setValorTransacaoTexto] = useState("");
   const [chave, setChave] = useState("");
 
@@ -957,7 +955,6 @@ export function PortalCompraVendaForm({
       vendedores,
       compradores,
       compraSemGestao,
-      dataAssinatura,
       valorTransacaoTexto,
       chave,
       condicoes,
@@ -1009,7 +1006,6 @@ export function PortalCompraVendaForm({
     vendedores,
     compradores,
     compraSemGestao,
-    dataAssinatura,
     valorTransacaoTexto,
     chave,
     condicoes,
@@ -1044,7 +1040,6 @@ export function PortalCompraVendaForm({
     setVendedores(r.vendedores);
     setCompradores(r.compradores);
     setCompraSemGestao(r.compraSemGestao);
-    setDataAssinatura(r.dataAssinatura);
     setValorTransacaoTexto(r.valorTransacaoTexto);
     setChave(r.chave);
     setCondicoes(r.condicoes);
@@ -1223,7 +1218,6 @@ export function PortalCompraVendaForm({
         formData.set("matricula", matriculaNovo);
         formData.set("inscricao", inscricaoNovo);
       }
-      formData.set("data_assinatura", dataAssinatura);
       formData.set("valor_transacao", valorTransacaoTexto);
       formData.set("chave", chave);
       formData.set("condicoes_pagamento_json", JSON.stringify(condicoes));
@@ -1608,8 +1602,11 @@ export function PortalCompraVendaForm({
         <div className="text-sm font-bold text-gray-800 mb-3">4. Datas e valor</div>
         <div className="grid md:grid-cols-2 gap-3">
           <div>
-            <label className={LABEL}>Data de assinatura</label>
-            <input type="date" className={CAMPO} value={dataAssinatura} onChange={(e) => setDataAssinatura(e.target.value)} />
+            <label className={LABEL}>Data do cadastro</label>
+            <input className={CAMPO + " bg-gray-100 text-gray-500"} value={dataCadastroTexto} readOnly />
+            <p className="text-[11px] text-gray-400 mt-1">
+              Preenchida sozinha pelo sistema. A data de assinatura do contrato é informada pelo administrativo depois que for assinado.
+            </p>
           </div>
           <div>
             <label className={LABEL}>Valor da transação (R$)</label>

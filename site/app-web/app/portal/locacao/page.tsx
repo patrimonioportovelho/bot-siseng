@@ -35,6 +35,7 @@ export default async function PortalLocacaoPage() {
       status: true,
       valor_transacao: true,
       created_at: true,
+      data_cadastro: true,
       imoveis: { select: { endereco: true } },
       clientes_transacoes_cliente_idToclientes: { select: { nome: true } },
       clientes_transacoes_cliente_contraparte_idToclientes: { select: { nome: true } }
@@ -88,7 +89,7 @@ export default async function PortalLocacaoPage() {
                 </div>
                 <div className="text-[11px] text-gray-400">
                   {t.id_legado ?? t.id} · {formatMoeda(t.valor_transacao)}/mês · cadastrado em{" "}
-                  {formatDataCalendario(t.created_at)}
+                  {formatDataCalendario(t.data_cadastro)}
                   {t.clientes_transacoes_cliente_idToclientes?.nome && (
                     <> · Propr.: {t.clientes_transacoes_cliente_idToclientes.nome}</>
                   )}

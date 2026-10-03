@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { supabaseAdmin, subirDocumentoGerado, criarUrlAssinadaDocumentoGerado } from "@/lib/supabase-admin";
 import type { TipoDocumento } from "./campos";
 import { valorPorExtenso, dataPorExtenso, dataPorExtensoComZero, formatarCpf } from "./extenso";
-import { formatTelefone, formatInscricao, formatCnpj } from "@/lib/format";
+import { formatTelefone, formatInscricao, formatCnpj, hojeComoDataCalendario, somarMeses } from "@/lib/format";
 import { ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL } from "@/lib/clientes/opcoes";
 
 // Nome do arquivo .docx (com o timbrado já formatado) que corresponde a cada
@@ -224,6 +224,14 @@ function percentual(valor: unknown): string {
 // contrato de Locação/Compra e Venda sair um dia antes do que foi digitado.
 function dataCurta(d: Date | null | undefined): string {
   return d ? new Date(d).toLocaleDateString("pt-BR", { timeZone: "UTC" }) : "";
+}
+
+// Término de contrato = data de início + prazo em meses (mesma regra de
+// somarMeses usada no formulário). Devolve dia de calendário (UTC) ou null.
+function terminoPeloPrazo(inicio: Date, prazoMeses: number | null | undefined): Date | null {
+  if (!prazoMeses) return null;
+  const iso = somarMeses(new Date(inicio).toISOString().slice(0, 10), prazoMeses);
+  return iso ? new Date(`${iso}T00:00:00Z`) : null;
 }
 
 function mesReferencia(d: Date | null | undefined): string {
@@ -716,7 +724,13 @@ async function montarDadosTransacao(
   const proprietarios = await comSociosRepresentantes(proprietariosBrutos);
   const interessados = await comSociosRepresentantes(interessadosBrutos);
 
-  const hoje = new Date();
+  // Data impressa como "assinatura" no contrato: a data de assinatura que o
+  // administrativo cadastrou (quando já existe) ou, se ainda não existe — caso
+  // de toda transação nova —, o dia em que o documento está sendo GERADO
+  // (hoje em Porto Velho, não o dia UTC do servidor). A data de assinatura do
+  // cadastro continua só do administrativo: gerar o contrato não grava nada.
+  const hoje = hojeComoDataCalendario();
+  const dataAssinaturaContrato = t.data_assinatura ?? hoje;
   const idTransacao = t.id_legado ?? t.id;
 
   // Os dois contratos de locação (com e sem administração) usam o mesmo
@@ -759,8 +773,12 @@ async function montarDadosTransacao(
       // TextoFinalidadeLocacao sozinho ("Residencial") não encaixa na frase.
       FinalidadeUso: finalidadeUsoTexto(t.finalidade_locacao),
       PrazoContrato: t.prazo_contrato_meses ?? "",
-      DataAssinatura: dataCurta(t.data_assinatura ?? hoje),
-      DataVencimento: dataCurta(t.data_vencimento),
+      DataAssinatura: dataCurta(dataAssinaturaContrato),
+      // Sem Data de vencimento cadastrada (transação nova do portal, antes do
+      // administrativo informar a assinatura), calcula o término pelo prazo
+      // a partir da data impressa em "Início" — mesma conta do formulário do
+      // administrativo (assinatura + meses). Sem prazo, fica em branco.
+      DataVencimento: dataCurta(t.data_vencimento ?? terminoPeloPrazo(dataAssinaturaContrato, t.prazo_contrato_meses)),
       ValorTransacao: numero(t.valor_transacao),
       DiaVencimento: t.dia_vencimento ?? "",
       FormaPagamento: t.forma_pagamento ?? "",
@@ -769,7 +787,7 @@ async function montarDadosTransacao(
       ValorCaucao: t.valor_caucao != null ? numero(t.valor_caucao) : "",
       PgCaucao: t.pg_caucao ?? "",
       Loja: t.lojas.nome,
-      DataAssinaturaExtenso: dataPorExtenso(t.data_assinatura ?? hoje),
+      DataAssinaturaExtenso: dataPorExtenso(dataAssinaturaContrato),
       // Rodapé: identificador da transação e, se vinculada a uma
       // administração, o identificador dela também.
       IdTransacao: idTransacao,
@@ -892,7 +910,7 @@ async function montarDadosTransacao(
     Honorarios,
     Chave: t.chave ?? "",
     Loja: t.lojas.nome,
-    DataAssinaturaExtenso: dataPorExtenso(t.data_assinatura ?? hoje),
+    DataAssinaturaExtenso: dataPorExtenso(dataAssinaturaContrato),
     TextoAssinaturas: [
       ...proprietarios.map((c) => blocoAssinaturaCliente(c, "VENDEDOR(A)")),
       ...interessados.map((c) => blocoAssinaturaCliente(c, "COMPRADOR(A)"))
@@ -961,7 +979,7 @@ async function montarDadosContratoGestao(gestaoId: string): Promise<Record<strin
   const [principal] = await comSociosRepresentantes([g.clientes]);
   const demaisProprietarios = await comSociosRepresentantes(demaisProprietariosBrutos);
 
-  const hoje = new Date();
+  const hoje = hojeComoDataCalendario();
 
   return {
     NomeRazaoSocial: principal.nome,
@@ -1112,7 +1130,7 @@ async function montarDadosAdmImovel(admImovelId: string): Promise<Record<string,
     Loja: a.lojas.nome,
     // Mesmo padrão de data por extenso com dia em 2 dígitos usado nos
     // contratos de corretor, na linha de local/data perto da assinatura.
-    DataAssinatura: dataPorExtensoComZero(a.data_assinatura ?? new Date()),
+    DataAssinatura: dataPorExtensoComZero(a.data_assinatura ?? hojeComoDataCalendario()),
     // Usado só no rodapé ("Página X de Y — Identificado da administração
     // ..."), pra dar pra saber de qual administração é aquela página solta.
     IdAdmImovel: a.id_legado ?? a.id

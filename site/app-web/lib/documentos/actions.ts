@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAdminSession, logAlteracao } from "@/lib/auth";
 import { gerarDocumento, ENTIDADE_POR_DOCUMENTO } from "./gerar";
 import type { TipoDocumento } from "./campos";
-import { formatInscricao } from "@/lib/format";
+import { formatInscricao, formatDataCalendario } from "@/lib/format";
 
 export type OpcaoRegistro = { id: string; label: string };
 
@@ -71,7 +71,7 @@ export async function buscarRegistrosAction(
         id: t.id,
         label: `${t.id_legado ?? t.id} — ${t.clientes_transacoes_cliente_idToclientes.nome} x ${
           t.clientes_transacoes_cliente_contraparte_idToclientes?.nome ?? "sem interessado"
-        }`
+        } · cadastro ${formatDataCalendario(t.data_cadastro)}`
       }));
     }
     case "gestao": {

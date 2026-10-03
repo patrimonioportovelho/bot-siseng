@@ -30,7 +30,8 @@ import {
   formatMoeda,
   valorEditavelParaDecimal,
   percentualParaDecimal,
-  somarMeses
+  somarMeses,
+  hojeInputDate
 } from "@/lib/format";
 import { CampoLink } from "@/components/campo-link";
 import { AdicionarProprietarioImovel } from "@/components/adicionar-proprietario-imovel";
@@ -82,6 +83,7 @@ type TransacaoExistente = {
   garantia: string | null;
   valor_caucao: unknown;
   pg_caucao: string | null;
+  data_cadastro: Date;
   data_assinatura: Date | null;
   data_vencimento: Date | null;
   dia_vencimento: number | null;
@@ -252,6 +254,9 @@ export function TransacaoForm({
   // real na mão, sem depender de mexer em Assinatura/Prazo pra forçar o
   // recálculo.
   const [dataAssinatura, setDataAssinatura] = useState(inputDate(t?.data_assinatura ?? null));
+  // Data do cadastro é só exibida: transação nova mostra hoje (o servidor grava o
+  // dia de verdade ao criar), transação existente mostra a que já está gravada.
+  const dataCadastroTexto = (t?.data_cadastro ? inputDate(t.data_cadastro) : hojeInputDate()).split("-").reverse().join("/");
   const [prazoContratoMesesTexto, setPrazoContratoMesesTexto] = useState(
     t?.prazo_contrato_meses != null ? String(t.prazo_contrato_meses) : ""
   );
@@ -785,6 +790,16 @@ export function TransacaoForm({
         <div className="text-sm font-bold text-gray-800 mb-3">Datas e valor</div>
         <div className="grid md:grid-cols-3 gap-3">
           <div>
+            <label className={LABEL}>Data do cadastro</label>
+            <input
+              className={CAMPO + " bg-gray-100 text-gray-500"}
+              value={dataCadastroTexto}
+              readOnly
+              tabIndex={-1}
+            />
+            <p className="text-[11px] text-gray-400 mt-1">Preenchida sozinha pelo sistema (dia em que foi cadastrada).</p>
+          </div>
+          <div>
             <label className={LABEL}>Data de assinatura</label>
             <input
               type="date"
@@ -793,6 +808,10 @@ export function TransacaoForm({
               value={dataAssinatura}
               onChange={(e) => setDataAssinatura(e.target.value)}
             />
+            <p className="text-[11px] text-gray-400 mt-1">
+              Informe depois que o contrato for assinado — é a data que vale pros dashboards. Em branco, o contrato sai com a
+              data do dia em que for gerado.
+            </p>
           </div>
           <div>
             <label className={LABEL}>Valor da transação (R$)</label>

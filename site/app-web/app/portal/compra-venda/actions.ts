@@ -4,7 +4,7 @@ import { after } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requirePortalSession } from "@/lib/portal-auth";
 import { logAlteracaoPortal } from "@/lib/auth";
-import { valorEditavelParaDecimal, percentualParaDecimal, formatMoeda, formatData } from "@/lib/format";
+import { valorEditavelParaDecimal, percentualParaDecimal, formatMoeda, formatData, hojeComoDataCalendario } from "@/lib/format";
 import { registrarEJogarErro } from "@/lib/erros";
 import { STATUS_COMPRA_VENDA_OPCOES, ANDAMENTO_COMPRA_VENDA_PADRAO } from "@/lib/transacoes/opcoes";
 import { buscarGestaoPorImovel, buscarClientesPorParceiro, type ClienteBuscaResultado } from "@/lib/transacoes/buscas";
@@ -642,7 +642,10 @@ export async function gerarCompraVendaAction(
 
     const valorTransacaoTxt = texto(formData, "valor_transacao");
     const valorTransacao = valorTransacaoTxt ? valorEditavelParaDecimal(valorTransacaoTxt) ?? 0 : 0;
-    const dataAssinatura = data(formData, "data_assinatura") ?? new Date();
+    // Data do cadastro: sempre "hoje" (Porto Velho), gravada pelo servidor —
+    // o corretor não digita nem escolhe. A Data de assinatura NÃO nasce aqui:
+    // só o administrativo preenche, depois que o contrato é assinado.
+    const dataCadastro = hojeComoDataCalendario();
     const chave = texto(formData, "chave");
 
     const porcHonorarioTxt = texto(formData, "porc_honorario");
@@ -683,7 +686,7 @@ export async function gerarCompraVendaAction(
           // "Elaboração" pra negócio novo — só o administrativo altera
           // depois, o portal do corretor nunca oferece esse controle.
           andamento: ANDAMENTO_COMPRA_VENDA_PADRAO,
-          data_assinatura: dataAssinatura,
+          data_cadastro: dataCadastro,
           valor_transacao: valorTransacao,
           chave,
           porc_honorario: porcHonorario,
@@ -724,7 +727,7 @@ export async function gerarCompraVendaAction(
           gestao_id: gestaoId,
           tipo: "compra_venda_iniciada",
           titulo: `Elaboração de Contrato de Compra e Venda iniciada (${idLegado})`,
-          data: dataAssinatura,
+          data: dataCadastro,
           feito: false
         }
       });
@@ -783,7 +786,7 @@ export async function gerarCompraVendaAction(
           `<strong>Cliente vendedor:</strong> ${vendedorInfo?.nome ?? "—"}`,
           `<strong>Cliente(s) comprador(es):</strong> ${compradoresInfo.map((c) => c.nome).join(", ") || "—"}`,
           `<strong>Valor da transação:</strong> ${formatMoeda(valorTransacao)}`,
-          `<strong>Data de assinatura:</strong> ${formatData(dataAssinatura)}`,
+          `<strong>Data do cadastro:</strong> ${formatData(dataCadastro)}`,
           `<strong>Momento de entrega das chaves:</strong> ${chave ?? "—"}`,
           `<strong>Honorário informado pelo corretor:</strong> ${porcHonorario ? `${(porcHonorario * 100).toFixed(2)}%` : "—"}`,
           compraSemGestao

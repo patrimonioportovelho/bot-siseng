@@ -4,7 +4,7 @@ import { after } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requirePortalSession } from "@/lib/portal-auth";
 import { logAlteracaoPortal } from "@/lib/auth";
-import { valorEditavelParaDecimal, percentualParaDecimal, somarMeses, formatMoeda, formatData } from "@/lib/format";
+import { valorEditavelParaDecimal, percentualParaDecimal, formatMoeda, formatData, hojeComoDataCalendario } from "@/lib/format";
 import { registrarEJogarErro } from "@/lib/erros";
 import { STATUS_LOCACAO_OPCOES } from "@/lib/transacoes/opcoes";
 import { enviarEmail, type EmailAnexo } from "@/lib/email";
@@ -577,18 +577,13 @@ export async function gerarLocacaoAction(
       };
     }
 
-    const dataAssinatura = data(formData, "data_assinatura") ?? new Date();
+    // Data do cadastro: sempre "hoje" (Porto Velho), gravada pelo servidor —
+    // o corretor não digita. A Data de assinatura (e, junto com ela, a Data de
+    // vencimento/fim do contrato, que é assinatura + prazo) só nasce quando o
+    // administrativo informa a assinatura, depois que o contrato é assinado.
+    const dataCadastro = hojeComoDataCalendario();
     const prazoContratoMeses = inteiro(formData, "prazo_contrato_meses");
     const diaVencimento = inteiro(formData, "dia_vencimento");
-    const dataVencimentoForm = data(formData, "data_vencimento");
-    const dataVencimentoCalc =
-      dataVencimentoForm ??
-      (prazoContratoMeses
-        ? (() => {
-            const iso = somarMeses(dataAssinatura.toISOString().slice(0, 10), prazoContratoMeses);
-            return iso ? new Date(iso + "T00:00:00") : null;
-          })()
-        : null);
 
     const valorTransacaoTxt = texto(formData, "valor_transacao");
     const valorTransacao = valorTransacaoTxt ? valorEditavelParaDecimal(valorTransacaoTxt) ?? 0 : 0;
@@ -644,8 +639,7 @@ export async function gerarLocacaoAction(
           cliente_id: proprietarioId,
           cliente_contraparte_id: locatarioIds[0],
           status: statusTransacao,
-          data_assinatura: dataAssinatura,
-          data_vencimento: dataVencimentoCalc,
+          data_cadastro: dataCadastro,
           dia_vencimento: diaVencimento,
           prazo_contrato_meses: prazoContratoMeses,
           valor_transacao: valorTransacao,
@@ -738,7 +732,7 @@ export async function gerarLocacaoAction(
           `<strong>Cliente proprietário:</strong> ${proprietarioInfo?.nome ?? "—"}`,
           `<strong>Locatário(s):</strong> ${locatariosInfo.map((c) => c.nome).join(", ") || "—"}`,
           `<strong>Valor do aluguel:</strong> ${formatMoeda(valorTransacao)}`,
-          `<strong>Data de assinatura:</strong> ${formatData(dataAssinatura)}`,
+          `<strong>Data do cadastro:</strong> ${formatData(dataCadastro)}`,
           `<strong>Honorário informado pelo corretor:</strong> ${porcHonorario ? `${(porcHonorario * 100).toFixed(2)}%` : "—"}`
         ];
 

@@ -94,6 +94,18 @@ export function hojePortoVelho(): Date {
   return new Date(ano, mes - 1, dia);
 }
 
+// "Hoje" em Porto Velho como DIA DE CALENDÁRIO: meia-noite UTC do dia local.
+// É o formato que as colunas @db.Date usam (e que formatDataCalendario /
+// dataCurta leem com timeZone "UTC") — por isso, diferente de
+// hojePortoVelho() (meia-noite no fuso do servidor), este não muda de dia
+// conforme o fuso da máquina e nem às 20h+ de Porto Velho, quando o servidor
+// (UTC) já está no dia seguinte. Usar pra gravar data_cadastro e como "data
+// de hoje" impressa em contrato.
+export function hojeComoDataCalendario(): Date {
+  const { ano, mes, dia } = partesHojePortoVelho();
+  return new Date(Date.UTC(ano, mes - 1, dia));
+}
+
 // Saudação de acordo com o horário local de Porto Velho — usada na tela
 // inicial do administrativo (ver app/dashboard/page.tsx), que agora exige
 // login todo dia (ver lib/session.ts#sessaoExpiradaPeloResetDiario).

@@ -158,11 +158,27 @@ export async function criarMovimentacaoAction(_prev: unknown, formData: FormData
     }
   }
 
+  // Lançamento ligado a uma transação sem Cliente proprietário/interessado
+  // informado: completa a partir da transação (mesma regra do rateio
+  // automático) — só preenche o que veio vazio, nunca sobrescreve o digitado.
+  let clienteInteressadoForm = texto(formData, "cliente_interessado_id");
+  let clienteProprietarioForm = texto(formData, "cliente_proprietario_id");
+  if (transacaoIdForm && (!clienteInteressadoForm || !clienteProprietarioForm)) {
+    const transacaoVinculada = await prisma.transacoes.findUnique({
+      where: { id: transacaoIdForm },
+      select: { cliente_id: true, cliente_contraparte_id: true }
+    });
+    if (transacaoVinculada) {
+      clienteProprietarioForm = clienteProprietarioForm ?? transacaoVinculada.cliente_id;
+      clienteInteressadoForm = clienteInteressadoForm ?? transacaoVinculada.cliente_contraparte_id;
+    }
+  }
+
   const base = {
     tipo,
     categoria_id: categoriaId,
-    cliente_interessado_id: texto(formData, "cliente_interessado_id"),
-    cliente_proprietario_id: texto(formData, "cliente_proprietario_id"),
+    cliente_interessado_id: clienteInteressadoForm,
+    cliente_proprietario_id: clienteProprietarioForm,
     parceiro_id: parceiroId,
     transacao_id: transacaoIdForm,
     descricao: texto(formData, "descricao"),
@@ -844,6 +860,12 @@ export async function gerarRateioAction(_prev: unknown, formData: FormData): Pro
             transacao_id: transacaoId,
             parceiro_id: linha.parceiro_id,
             pagamento_id: pagamento.id,
+            // Cliente proprietário/interessado sempre vêm da própria
+            // transação (cliente_id = proprietário, cliente_contraparte_id =
+            // interessado) — sem isso o repasse aparecia em branco nessas
+            // duas colunas do Financeiro.
+            cliente_proprietario_id: transacao.cliente_id,
+            cliente_interessado_id: transacao.cliente_contraparte_id,
             descricao: `Repasse de honorário — ${linha.parte} — ${linha.parceiro_nome}`,
             valor: linha.valor_final,
             vencimento,

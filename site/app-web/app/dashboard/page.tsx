@@ -12,13 +12,13 @@ import {
   formatDataCalendario,
   statusTone,
   STATUS_TRANSACAO_EM_ABERTO,
-  STATUS_NAO_REALIZADA,
   resolverPeriodo,
   hojePortoVelho,
   saudacaoPortoVelho
 } from "@/lib/format";
 import { FUNCOES_CORRETOR } from "@/lib/transacoes/opcoes";
-import { buscarHonorariosRecebidosPorParceiro } from "@/lib/parceiros/ranking-honorarios";
+import { buscarHonorariosRecebidosPorParceiroETipo } from "@/lib/parceiros/ranking-honorarios";
+import { buscarAReceberPorParceiro } from "@/lib/financeiro/a-receber-corretores";
 import { buscarResumoHonorarios } from "@/lib/financeiro/honorario-lancado";
 import { SeloHonorario } from "@/components/selo-honorario";
 import { COLUNAS_KANBAN as COLUNAS_MARKETING, labelColuna as labelColunaMarketing, slaDaOrdem, STATUS_PRODUCAO_OPCOES } from "@/lib/marketing/opcoes";
@@ -152,7 +152,6 @@ export default async function DashboardPage({
     despesasVencidas,
     movimentacoesPagasPeriodo,
     corretoresAtivos,
-    pagamentosCorretoresPeriodo,
     honorariosRecebidosPorParceiro,
     avaliacoesPeriodo,
     movimentacoesNegocioPeriodo,
@@ -310,49 +309,14 @@ export default async function DashboardPage({
     prisma.parceiros.findMany({
       where: { funcao: { in: FUNCOES_CORRETOR }, status_funcao: "Ativo", ...whereLojaFiltro(lojasFiltro) },
       orderBy: { nome: "asc" },
-      select: { id: true, nome: true, funcao: true }
+      select: { id: true, nome: true, funcao: true, porc_proprietario: true, porc_interessado: true }
     }),
-    // Recebido/A Receber por corretor: a fonte de verdade do rateio é a
-    // tabela `pagamentos` (é ela que já veio da planilha antiga com a
-    // "tabela de honorários" — id_legado ligado à transação —, e é nela que
-    // o rateio automático grava cada parte também). Filtra pela Data de
-    // assinatura da própria transação (mesma régua do VGH/VGV/VGL acima),
-    // não pela Data de pagamento/vencimento da despesa: muita transação
-    // antiga (2025 e antes) tem o rateio gravado em `pagamentos` mas nunca
-    // ganhou a Despesa correspondente em `movimentacoes` — filtrar pelo
-    // pagamento/vencimento da despesa fazia esses anos aparecerem zerados
-    // mesmo com o rateio já existindo. Quando existe uma Despesa vinculada
-    // (pagamento_id), ela manda no status "pago" (é o que o Financeiro
-    // marca no dia a dia); quando não existe, cai pro status histórico
-    // gravado direto em pagamentos.status.
-    prisma.pagamentos.findMany({
-      where: {
-        transacoes: {
-          data_assinatura: { gte: inicio, lt: fimExclusivo },
-          excluido: false,
-          loja_id: { in: lojasFiltro },
-          // Negócio que não aconteceu (Cancelado / Locação cancelada) não
-          // tem honorário a receber. Distrato fica: o negócio aconteceu e o
-          // honorário nem sempre é devolvido.
-          OR: [{ status: null }, { status: { notIn: STATUS_NAO_REALIZADA } }]
-        }
-      },
-      select: {
-        parceiro_id: true,
-        valor_parceiro: true,
-        pago_direto: true,
-        movimentacoes: { select: { pago: true } }
-      }
-    }),
-    // "Recebido" de verdade (achado da auditoria de 30/08/2026, comparando
-    // com o ranking externo — ver lib/parceiros/ranking-honorarios.ts): eixo
-    // de tempo é a Data de pagamento/geração do rateio, não a Data de
-    // assinatura da transação (o repasse costuma sair semanas depois da
-    // assinatura, então um corretor que assinou tudo mês passado mas foi
-    // pago agora aparecia zerado). pagamentosCorretoresPeriodo (acima)
-    // continua servindo só pra "A Receber" — pendências de transação
-    // assinada no período, uma métrica diferente de propósito.
-    buscarHonorariosRecebidosPorParceiro(inicio, fimExclusivo, lojasFiltro),
+    // "Recebido" por corretor (total, Compra e Venda e Locação): eixo de
+    // tempo é a Data de pagamento/geração do rateio, não a Data de assinatura
+    // da transação (achado da auditoria de 30/08/2026 — ver
+    // lib/parceiros/ranking-honorarios.ts). O "A Receber" não depende do
+    // período e é calculado logo depois deste Promise.all.
+    buscarHonorariosRecebidosPorParceiroETipo(inicio, fimExclusivo, lojasFiltro),
     // Financiamento: Avaliações levantadas dentro do período (por Data de
     // avaliação) — pedido do usuário é filtrar SEMPRE pela Data de avaliação,
     // inclusive pros Andamentos vinculados (por isso eles vêm aninhados aqui,
@@ -629,28 +593,23 @@ export default async function DashboardPage({
     .sort((a, b) => b[1] - a[1])
     .map(([label, valor]) => ({ label, valor }));
 
-  // Quadro Corretores — duas métricas de propósito diferente (achado da
-  // auditoria de 30/08/2026, corrigido):
-  // "Recebido" = honorariosRecebidosPorParceiro (acima), pela Data real de
-  // pagamento/geração do rateio — mesma definição do ranking externo e do
-  // Financeiro do corretor no Portal.
-  // "A Receber" = rateio de transação ASSINADA no período que ainda não virou
-  // dinheiro: exclui "pago direto" (esse já conta como recebido na hora que
-  // o rateio é gerado, nunca fica pendente) e exclui o que já tem Despesa
-  // paga (esse já está contado em "Recebido", só que pela Data de pagamento,
-  // que pode cair fora deste período). NÃO usa mais pagamentos.status — esse
-  // campo nasce "Pendente" e nada no sistema nunca escreve "Pago" nele (é o
-  // mesmo achado que já tinha corrigido o Financeiro do corretor no Portal,
-  // Fase 8, 14/08/2026 — só não tinha chegado até aqui ainda).
+  // Quadro Corretores — duas métricas de propósito diferente:
+  // "Recebido" (total / Compra e Venda / Locações) = pela Data real de
+  // pagamento/geração do rateio, dentro do período — mesma definição do
+  // ranking externo e do Financeiro do corretor no Portal.
+  // "A Receber" = tudo que ainda vai entrar de contrato válido (repasse
+  // lançado e não pago + contrato assinado ainda não lançado no Financeiro),
+  // SEM recorte de período: pode ficar vários meses em aberto. Fora:
+  // Cancelado / Locação cancelada (ver lib/financeiro/a-receber-corretores.ts).
   const recebidoPorParceiro = honorariosRecebidosPorParceiro;
-  const aReceberPorParceiro = new Map<string, number>();
-  for (const p of pagamentosCorretoresPeriodo) {
-    if (p.pago_direto) continue;
-    const despesaLigada = p.movimentacoes[0];
-    if (despesaLigada?.pago) continue;
-    const valor = Number(p.valor_parceiro ?? 0);
-    aReceberPorParceiro.set(p.parceiro_id, (aReceberPorParceiro.get(p.parceiro_id) ?? 0) + valor);
-  }
+  const aReceberPorParceiro = await buscarAReceberPorParceiro(
+    corretoresAtivos.map((c) => ({
+      id: c.id,
+      porc_proprietario: c.porc_proprietario != null ? Number(c.porc_proprietario) : null,
+      porc_interessado: c.porc_interessado != null ? Number(c.porc_interessado) : null
+    })),
+    lojasFiltro
+  );
 
   // Colunas de quantidade do quadro Corretores (pedido do usuário): Clientes
   // Aprovados vem do Financiamento (Avaliação com status Aprovado, mesma
@@ -684,11 +643,15 @@ export default async function DashboardPage({
       compraVenda: compraVendaPorParceiro.get(c.id) ?? 0,
       clientesCadastrados: clientesCadastradosPorParceiro.get(c.id) ?? 0,
       imoveisCaptados: imoveisCaptadosPorParceiro.get(c.id) ?? 0,
-      recebido: recebidoPorParceiro.get(c.id) ?? 0,
+      recebido: recebidoPorParceiro.get(c.id)?.total ?? 0,
+      recebidoCompraVenda: recebidoPorParceiro.get(c.id)?.compraVenda ?? 0,
+      recebidoLocacao: recebidoPorParceiro.get(c.id)?.locacao ?? 0,
       aReceber: aReceberPorParceiro.get(c.id) ?? 0
     }))
     .sort((a, b) => b.recebido + b.aReceber - (a.recebido + a.aReceber));
   const totalRecebidoCorretores = corretoresComValores.reduce((acc, c) => acc + c.recebido, 0);
+  const totalRecebidoCompraVendaCorretores = corretoresComValores.reduce((acc, c) => acc + c.recebidoCompraVenda, 0);
+  const totalRecebidoLocacaoCorretores = corretoresComValores.reduce((acc, c) => acc + c.recebidoLocacao, 0);
   const totalAReceberCorretores = corretoresComValores.reduce((acc, c) => acc + c.aReceber, 0);
 
   // Financiamento — tudo sempre filtrado pela Data de avaliação (pedido do
@@ -1447,13 +1410,16 @@ export default async function DashboardPage({
         <p className="text-[11px] text-gray-400 mb-3">
           Clientes Aprovados vem do Financiamento (por Data de avaliação), Cliente e Imóveis contam quem/o que foi
           cadastrado por esse corretor, Locação e Compra e Venda contam as transações assinadas — essas colunas
-          seguem o período selecionado acima. <strong>Recebido</strong> é diferente: conta pela Data em que o
-          dinheiro entrou (pagamento do repasse, ou o dia em que o rateio foi gerado quando o vendedor pagou
-          direto), não pela Data de assinatura — pode incluir honorário de negócio assinado antes deste período.{" "}
-          <strong>A Receber</strong> é o rateio de transação assinada neste período que ainda não virou dinheiro.
+          seguem o período selecionado acima. <strong>Recebido</strong> (Total, Compra e Venda e Locações) é
+          diferente: conta pela Data em que o dinheiro entrou (pagamento do repasse, ou o dia em que o rateio foi
+          gerado quando o vendedor pagou direto), não pela Data de assinatura — pode incluir honorário de negócio
+          assinado antes deste período. <strong>A Receber</strong> não depende do período: é tudo que ainda vai
+          entrar de contrato válido — repasse já lançado e ainda não pago, mais contrato assinado (a partir de
+          2026) que o Financeiro ainda não lançou. Contrato cancelado não entra; distrato entra, porque o honorário
+          nem sempre é devolvido.
         </p>
         <div className="overflow-x-auto">
-          <table className="w-full text-xs min-w-[820px]">
+          <table className="w-full text-xs min-w-[1040px]">
             <thead>
               <tr className="text-left text-gray-500">
                 <th className="font-normal py-1.5 border-b border-gray-100">Parceiro (corretor)</th>
@@ -1462,7 +1428,9 @@ export default async function DashboardPage({
                 <th className="font-normal py-1.5 border-b border-gray-100 text-right">Compra e Venda</th>
                 <th className="font-normal py-1.5 border-b border-gray-100 text-right">Cliente</th>
                 <th className="font-normal py-1.5 border-b border-gray-100 text-right">Imóveis</th>
-                <th className="font-normal py-1.5 border-b border-gray-100 text-right">Recebido</th>
+                <th className="font-normal py-1.5 border-b border-gray-100 text-right">Recebido Total</th>
+                <th className="font-normal py-1.5 border-b border-gray-100 text-right">Recebido Compra e Venda</th>
+                <th className="font-normal py-1.5 border-b border-gray-100 text-right">Recebido Locações</th>
                 <th className="font-normal py-1.5 border-b border-gray-100 text-right">A Receber</th>
               </tr>
             </thead>
@@ -1493,6 +1461,12 @@ export default async function DashboardPage({
                   <td className="py-2 border-b border-gray-50 text-right whitespace-nowrap text-[#3C7A57] font-semibold">
                     {formatMoeda(c.recebido)}
                   </td>
+                  <td className="py-2 border-b border-gray-50 text-right whitespace-nowrap text-gray-700">
+                    {formatMoeda(c.recebidoCompraVenda)}
+                  </td>
+                  <td className="py-2 border-b border-gray-50 text-right whitespace-nowrap text-gray-700">
+                    {formatMoeda(c.recebidoLocacao)}
+                  </td>
                   <td className="py-2 border-b border-gray-50 text-right whitespace-nowrap text-gray-700 font-semibold">
                     {formatMoeda(c.aReceber)}
                   </td>
@@ -1500,7 +1474,7 @@ export default async function DashboardPage({
               ))}
               {corretoresComValores.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="py-4 text-center text-gray-400">
+                  <td colSpan={10} className="py-4 text-center text-gray-400">
                     Nenhum corretor ativo cadastrado.
                   </td>
                 </tr>
@@ -1527,6 +1501,12 @@ export default async function DashboardPage({
                   </td>
                   <td className="py-2 text-right font-bold text-[#3C7A57] whitespace-nowrap">
                     {formatMoeda(totalRecebidoCorretores)}
+                  </td>
+                  <td className="py-2 text-right font-bold text-gray-700 whitespace-nowrap">
+                    {formatMoeda(totalRecebidoCompraVendaCorretores)}
+                  </td>
+                  <td className="py-2 text-right font-bold text-gray-700 whitespace-nowrap">
+                    {formatMoeda(totalRecebidoLocacaoCorretores)}
                   </td>
                   <td className="py-2 text-right font-bold text-gray-800 whitespace-nowrap">
                     {formatMoeda(totalAReceberCorretores)}

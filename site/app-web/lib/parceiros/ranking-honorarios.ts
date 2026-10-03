@@ -59,13 +59,18 @@ export type LinhaRankingHonorario = {
 // agora é a ÚNICA fonte de verdade de "honorário recebido num período",
 // reaproveitada tanto aqui (ranking, sem filtro de loja, só função Corretor)
 // quanto no Dashboard (com filtro de loja, Corretor + Corretor Estagiário).
-export async function buscarHonorariosRecebidosPorParceiro(
+export type HonorarioRecebido = { total: number; compraVenda: number; locacao: number };
+
+// Mesma definição de "recebido" (ver acima), separada por tipo da transação
+// (Compra e Venda / Locação) — usada no quadro Corretores do Dashboard.
+// `total` soma tudo, inclusive repasse sem transação ligada (que não entra em
+// nenhum dos dois tipos).
+export async function buscarHonorariosRecebidosPorParceiroETipo(
   inicio: Date,
   fimExclusivo: Date,
   lojasFiltro?: string[]
-): Promise<Map<string, number>> {
-  const filtroLojaMovimentacao = lojasFiltro ? { transacoes: { loja_id: { in: lojasFiltro } } } : {};
-  const filtroLojaPagamento = lojasFiltro ? { transacoes: { loja_id: { in: lojasFiltro } } } : {};
+): Promise<Map<string, HonorarioRecebido>> {
+  const filtroLoja = lojasFiltro ? { transacoes: { loja_id: { in: lojasFiltro } } } : {};
 
   const categoriaRepasse = await prisma.categorias_financeiras.findFirst({
     where: { nome: CATEGORIA_REPASSE_HONORARIO, tipo: "Despesa" },
@@ -77,39 +82,49 @@ export async function buscarHonorariosRecebidosPorParceiro(
     // melhor voltar vazio (ranking zerado) do que arriscar somar despesas
     // de outra categoria por engano.
     categoriaRepasse
-      ? prisma.movimentacoes.groupBy({
-          by: ["parceiro_id"],
+      ? prisma.movimentacoes.findMany({
           where: {
             tipo: "Despesa",
             categoria_id: categoriaRepasse.id,
             pago: true,
             parceiro_id: { not: null },
             data_pagamento: { gte: inicio, lt: fimExclusivo },
-            ...filtroLojaMovimentacao
+            ...filtroLoja
           },
-          _sum: { valor: true }
+          select: { parceiro_id: true, valor: true, transacoes: { select: { tipo: true } } }
         })
       : Promise.resolve([]),
-    prisma.pagamentos.groupBy({
-      by: ["parceiro_id"],
-      where: {
-        pago_direto: true,
-        created_at: { gte: inicio, lt: fimExclusivo },
-        ...filtroLojaPagamento
-      },
-      _sum: { valor_parceiro: true }
+    prisma.pagamentos.findMany({
+      where: { pago_direto: true, created_at: { gte: inicio, lt: fimExclusivo }, ...filtroLoja },
+      select: { parceiro_id: true, valor_parceiro: true, transacoes: { select: { tipo: true } } }
     })
   ]);
 
-  const totais = new Map<string, number>();
+  const totais = new Map<string, HonorarioRecebido>();
+  function somar(parceiroId: string, tipo: string | undefined, valor: number) {
+    const atual = totais.get(parceiroId) ?? { total: 0, compraVenda: 0, locacao: 0 };
+    atual.total += valor;
+    if (tipo === "Compra e Venda") atual.compraVenda += valor;
+    else if (tipo === "Locação") atual.locacao += valor;
+    totais.set(parceiroId, atual);
+  }
   for (const r of repassesPagos) {
-    if (!r.parceiro_id) continue;
-    totais.set(r.parceiro_id, (totais.get(r.parceiro_id) ?? 0) + Number(r._sum.valor ?? 0));
+    if (r.parceiro_id) somar(r.parceiro_id, r.transacoes?.tipo, Number(r.valor));
   }
   for (const p of pagosDireto) {
-    totais.set(p.parceiro_id, (totais.get(p.parceiro_id) ?? 0) + Number(p._sum.valor_parceiro ?? 0));
+    somar(p.parceiro_id, p.transacoes?.tipo, Number(p.valor_parceiro ?? 0));
   }
   return totais;
+}
+
+// Só o total por corretor (ranking externo e painel do corretor).
+export async function buscarHonorariosRecebidosPorParceiro(
+  inicio: Date,
+  fimExclusivo: Date,
+  lojasFiltro?: string[]
+): Promise<Map<string, number>> {
+  const detalhado = await buscarHonorariosRecebidosPorParceiroETipo(inicio, fimExclusivo, lojasFiltro);
+  return new Map([...detalhado].map(([parceiroId, v]) => [parceiroId, v.total]));
 }
 
 export async function buscarRankingHonorariosMes(referencia: Date = hojePortoVelho()): Promise<LinhaRankingHonorario[]> {

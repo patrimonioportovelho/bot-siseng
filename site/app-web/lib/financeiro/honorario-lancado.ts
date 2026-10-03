@@ -13,10 +13,16 @@ import { statusCancelado } from "@/lib/format";
 //   ("Aluguéis", "Administração de Imóveis Locados" e "Locações - cauções" são
 //   mensalidade/caução, não contam.)
 //
-//   - Sem data de assinatura, assinada antes de 2026, cancelada (Distrato /
-//     Locação cancelada / Cancelado) ou excluída ........ "nao_se_aplica"
+//   Honorário pago DIRETO ao corretor (pagamentos.pago_direto — o vendedor
+//   pagou na conta do corretor, nada passa pela nossa conta, então não existe
+//   Recebimento) conta como lançado e pago, quando não há Recebimento.
+//
+//   - Sem data de assinatura, assinada antes de 2026, cancelada (Locação
+//     cancelada / Cancelado) ou excluída ................ "nao_se_aplica"
 //     (cancelada que JÁ tem lançamento mostra o estado real dele — o dinheiro
 //     existe no Financeiro; cancelada sem lançamento sai do acompanhamento).
+//     "Distrato" NÃO sai: o negócio aconteceu e o honorário nem sempre é
+//     devolvido, então continua sendo acompanhado.
 //   - Assinada em 2026+ e sem nenhum Recebimento de honorário ..... "nao_lancado"
 //   - Lançado, nenhum pago ........................................ "pendente"
 //   - Lançado, parte paga ......................................... "parcial"
@@ -50,10 +56,19 @@ export type ResumoHonorario = {
 
 const SEM_ACOMPANHAMENTO: ResumoHonorario = { situacao: "nao_se_aplica", lancamentos: 0, pagos: 0, valorLancado: 0 };
 
+export type LancamentoHonorario = { status_pagamento: string; valor: number };
+
+// valoresPagoDireto: rateios pago_direto da transação (valor_parceiro de cada
+// um) — só valem quando NÃO há Recebimento de honorário.
 export function resumoHonorario(
   t: TransacaoParaHonorario,
-  lancamentos: { status_pagamento: string; valor: number }[]
+  recebimentos: LancamentoHonorario[],
+  valoresPagoDireto: number[] = []
 ): ResumoHonorario {
+  const lancamentos: LancamentoHonorario[] =
+    recebimentos.length > 0
+      ? recebimentos
+      : valoresPagoDireto.map((valor) => ({ status_pagamento: "Pago", valor }));
   const pagos = lancamentos.filter((m) => m.status_pagamento === "Pago").length;
   const valorLancado = lancamentos.reduce((soma, m) => soma + m.valor, 0);
 
@@ -78,7 +93,8 @@ export async function buscarResumoHonorarios(
   const elegiveis = transacoes.filter(
     (t) => t.data_assinatura && t.data_assinatura >= DATA_INICIO_ACOMPANHAMENTO_HONORARIO
   );
-  const porTransacao = new Map<string, { status_pagamento: string; valor: number }[]>();
+  const porTransacao = new Map<string, LancamentoHonorario[]>();
+  const pagoDiretoPorTransacao = new Map<string, number[]>();
 
   if (elegiveis.length > 0) {
     const movimentacoes = await prisma.movimentacoes.findMany({
@@ -96,6 +112,15 @@ export async function buscarResumoHonorarios(
         categorias_financeiras: { select: { nome: true } }
       }
     });
+    const rateiosDiretos = await prisma.pagamentos.findMany({
+      where: { transacao_id: { in: elegiveis.map((t) => t.id) }, pago_direto: true },
+      select: { transacao_id: true, valor_parceiro: true }
+    });
+    for (const r of rateiosDiretos) {
+      const lista = pagoDiretoPorTransacao.get(r.transacao_id) ?? [];
+      lista.push(Number(r.valor_parceiro ?? 0));
+      pagoDiretoPorTransacao.set(r.transacao_id, lista);
+    }
     const tipoPorId = new Map(elegiveis.map((t) => [t.id, t.tipo]));
     for (const m of movimentacoes) {
       if (!m.transacao_id) continue;
@@ -108,7 +133,7 @@ export async function buscarResumoHonorarios(
     }
   }
 
-  for (const t of transacoes) resultado.set(t.id, resumoHonorario(t, porTransacao.get(t.id) ?? []));
+  for (const t of transacoes) resultado.set(t.id, resumoHonorario(t, porTransacao.get(t.id) ?? [], pagoDiretoPorTransacao.get(t.id) ?? []));
   return resultado;
 }
 

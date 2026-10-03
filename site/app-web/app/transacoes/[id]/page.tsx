@@ -98,11 +98,16 @@ export default async function TransacaoDetalhePage({
 
   // Honorário no Financeiro: Recebimentos da categoria do honorário deste
   // contrato (ver lib/financeiro/honorario-lancado.ts) — sem consulta extra.
+  const rateiosPagoDireto = await prisma.pagamentos.findMany({
+    where: { transacao_id: id, pago_direto: true },
+    select: { valor_parceiro: true }
+  });
   const resumoHon = resumoHonorario(
     { id: transacao.id, tipo: transacao.tipo, status: transacao.status, data_assinatura: transacao.data_assinatura },
     movimentacoesDaTransacao
       .filter((m) => m.tipo === "Recebimento" && m.categorias_financeiras.nome === categoriaHonorarioDoTipo(transacao.tipo))
-      .map((m) => ({ status_pagamento: m.status_pagamento, valor: Number(m.valor) }))
+      .map((m) => ({ status_pagamento: m.status_pagamento, valor: Number(m.valor) })),
+    rateiosPagoDireto.map((r) => Number(r.valor_parceiro ?? 0))
   );
 
   const ehLocacaoComOuSemAdm =

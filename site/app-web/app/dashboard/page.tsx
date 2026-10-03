@@ -12,6 +12,7 @@ import {
   formatDataCalendario,
   statusTone,
   STATUS_TRANSACAO_EM_ABERTO,
+  STATUS_NAO_REALIZADA,
   resolverPeriodo,
   hojePortoVelho,
   saudacaoPortoVelho
@@ -329,7 +330,11 @@ export default async function DashboardPage({
         transacoes: {
           data_assinatura: { gte: inicio, lt: fimExclusivo },
           excluido: false,
-          loja_id: { in: lojasFiltro }
+          loja_id: { in: lojasFiltro },
+          // Negócio que não aconteceu (Cancelado / Locação cancelada) não
+          // tem honorário a receber. Distrato fica: o negócio aconteceu e o
+          // honorário nem sempre é devolvido.
+          OR: [{ status: null }, { status: { notIn: STATUS_NAO_REALIZADA } }]
         }
       },
       select: {

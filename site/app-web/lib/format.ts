@@ -22,10 +22,14 @@ export function statusTone(status: string | null): Tone {
   return "pendente";
 }
 
-// Transação cancelada (Distrato / Locação cancelada / Cancelado) — nada mais
-// a lançar no Financeiro (ver lib/financeiro/honorario-lancado.ts).
+// Negócio que NÃO aconteceu (Locação cancelada / Cancelado) — não há honorário
+// a lançar nem a receber. "Distrato" fica de fora de propósito: o negócio
+// aconteceu e foi desfeito depois, e o honorário nem sempre é devolvido (ver
+// lib/financeiro/honorario-lancado.ts e o "A Receber" do quadro Corretores).
+export const STATUS_NAO_REALIZADA = ["Locação cancelada", "Cancelado"];
+
 export function statusCancelado(status: string | null | undefined): boolean {
-  return !!status && STATUS_CANCELADA.includes(status);
+  return !!status && STATUS_NAO_REALIZADA.includes(status);
 }
 
 export const STATUS_TRANSACAO_EM_ABERTO = { notIn: [...STATUS_CONCLUIDA, ...STATUS_CANCELADA] };

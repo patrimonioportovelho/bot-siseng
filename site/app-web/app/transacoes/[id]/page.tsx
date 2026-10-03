@@ -6,7 +6,9 @@ import { getAdminSession } from "@/lib/auth";
 import { TransacaoDetalhe } from "@/components/transacao-detalhe";
 import { GerarBoletosForm } from "@/components/gerar-boletos-form";
 import { MovimentacoesTransacaoLista } from "@/components/movimentacoes-transacao-lista";
-import { formatDataCalendario, formatMoeda, formatPercentual, formatValorEditavel } from "@/lib/format";
+import { formatDataCalendario, formatMoeda, formatPercentual, formatValorEditavel, statusCancelado } from "@/lib/format";
+import { categoriaHonorarioDoTipo, resumoHonorario } from "@/lib/financeiro/honorario-lancado";
+import { SeloHonorario } from "@/components/selo-honorario";
 import { atualizarTransacaoAction, apagarTransacaoAction, gerarBoletosAction, alternarBoletoEmitidoAction } from "../actions";
 
 export const dynamic = "force-dynamic";
@@ -93,6 +95,15 @@ export default async function TransacaoDetalhePage({
     orderBy: [{ vencimento: "asc" }, { created_at: "asc" }],
     include: { categorias_financeiras: { select: { nome: true } }, parceiros: { select: { nome: true } } }
   });
+
+  // Honorário no Financeiro: Recebimentos da categoria do honorário deste
+  // contrato (ver lib/financeiro/honorario-lancado.ts) — sem consulta extra.
+  const resumoHon = resumoHonorario(
+    { id: transacao.id, tipo: transacao.tipo, status: transacao.status, data_assinatura: transacao.data_assinatura },
+    movimentacoesDaTransacao
+      .filter((m) => m.tipo === "Recebimento" && m.categorias_financeiras.nome === categoriaHonorarioDoTipo(transacao.tipo))
+      .map((m) => ({ status_pagamento: m.status_pagamento, valor: Number(m.valor) }))
+  );
 
   const ehLocacaoComOuSemAdm =
     transacao.tipo === "Locação" &&
@@ -265,6 +276,32 @@ export default async function TransacaoDetalhePage({
         {" · "}Assinatura: {transacao.data_assinatura ? formatDataCalendario(transacao.data_assinatura) : "não informada"}
         {" · "}Valor: {formatMoeda(transacao.valor_transacao)}
       </div>
+
+      {resumoHon.situacao === "nao_lancado" && (
+        <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg px-3 py-2 mb-4">
+          <span className="font-semibold">Honorário ainda não lançado no Financeiro.</span> Contrato assinado em{" "}
+          {formatDataCalendario(transacao.data_assinatura)} — o Financeiro precisa lançar o Recebimento do honorário
+          (Pendente ou Pago) na categoria &quot;{categoriaHonorarioDoTipo(transacao.tipo)}&quot; ligado a esta transação.{" "}
+          <Link href="/financeiro/novo" className="underline font-semibold whitespace-nowrap">
+            Lançar no Financeiro
+          </Link>
+        </div>
+      )}
+      {resumoHon.situacao !== "nao_lancado" && resumoHon.situacao !== "nao_se_aplica" && (
+        <div className="flex items-center gap-2 text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 mb-4 flex-wrap">
+          <span className="font-semibold text-gray-700">Honorário no Financeiro:</span>
+          <SeloHonorario resumo={resumoHon} />
+          <span>
+            {resumoHon.pagos} de {resumoHon.lancamentos} lançamento(s) pago(s) · {formatMoeda(resumoHon.valorLancado)}{" "}
+            lançado
+          </span>
+        </div>
+      )}
+      {resumoHon.situacao === "nao_se_aplica" && statusCancelado(transacao.status) && (
+        <div className="text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 mb-4">
+          Transação cancelada — não há honorário a lançar no Financeiro.
+        </div>
+      )}
 
       <TransacaoDetalhe
         transacao={transacao}

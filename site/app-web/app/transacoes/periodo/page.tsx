@@ -4,6 +4,8 @@ import { Pagination } from "@/components/pagination";
 import { StatusBadge } from "@/components/status-badge";
 import { prisma } from "@/lib/prisma";
 import { formatMoeda, formatDataCalendario, statusTone, resolverPeriodo } from "@/lib/format";
+import { buscarResumoHonorarios } from "@/lib/financeiro/honorario-lancado";
+import { SeloHonorario } from "@/components/selo-honorario";
 
 export const dynamic = "force-dynamic";
 
@@ -61,6 +63,7 @@ export default async function TransacoesPeriodoPage({
   ]);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const resumoHonorarioPorTransacao = await buscarResumoHonorarios(transacoes);
 
   // Preserva o período atual em qualquer link/paginação desta tela.
   const paramsPeriodo: Record<string, string | undefined> = {
@@ -116,7 +119,7 @@ export default async function TransacoesPeriodoPage({
         </form>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-xs min-w-[720px]">
+          <table className="w-full text-xs min-w-[960px]">
             <thead>
               <tr className="text-left text-gray-500">
                 <th className="font-normal py-1.5 border-b border-gray-100">Imóvel</th>
@@ -126,6 +129,8 @@ export default async function TransacoesPeriodoPage({
                 <th className="font-normal py-1.5 border-b border-gray-100">Status</th>
                 <th className="font-normal py-1.5 border-b border-gray-100">Assinatura</th>
                 <th className="font-normal py-1.5 border-b border-gray-100 text-right">Valor</th>
+                <th className="font-normal py-1.5 px-2 border-b border-gray-100 text-right">Honorário (bruto)</th>
+                <th className="font-normal py-1.5 px-2 border-b border-gray-100">Honorário no Financeiro</th>
               </tr>
             </thead>
             <tbody>
@@ -166,11 +171,21 @@ export default async function TransacoesPeriodoPage({
                       {formatMoeda(t.valor_transacao)}
                     </Link>
                   </td>
+                  <td className="py-2 px-2 border-b border-gray-50 text-right whitespace-nowrap">
+                    <Link href={`/transacoes/${t.id}`} className="block">
+                      {formatMoeda(Number(t.valor_transacao) * Number(t.porc_honorario ?? 0))}
+                    </Link>
+                  </td>
+                  <td className="py-2 px-2 border-b border-gray-50 whitespace-nowrap">
+                    <Link href={`/transacoes/${t.id}`} className="block">
+                      <SeloHonorario resumo={resumoHonorarioPorTransacao.get(t.id)} />
+                    </Link>
+                  </td>
                 </tr>
               ))}
               {transacoes.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="py-4 text-center text-gray-400">
+                  <td colSpan={9} className="py-4 text-center text-gray-400">
                     Nenhuma transação assinada nesse período.
                   </td>
                 </tr>

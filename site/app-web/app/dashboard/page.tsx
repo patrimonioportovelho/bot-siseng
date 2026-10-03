@@ -18,6 +18,8 @@ import {
 } from "@/lib/format";
 import { FUNCOES_CORRETOR } from "@/lib/transacoes/opcoes";
 import { buscarHonorariosRecebidosPorParceiro } from "@/lib/parceiros/ranking-honorarios";
+import { buscarResumoHonorarios } from "@/lib/financeiro/honorario-lancado";
+import { SeloHonorario } from "@/components/selo-honorario";
 import { COLUNAS_KANBAN as COLUNAS_MARKETING, labelColuna as labelColunaMarketing, slaDaOrdem, STATUS_PRODUCAO_OPCOES } from "@/lib/marketing/opcoes";
 import { getAdminSession } from "@/lib/auth";
 import { ultimoResetSessaoMs } from "@/lib/session";
@@ -415,6 +417,11 @@ export default async function DashboardPage({
       _count: { _all: true }
     })
   ]);
+
+  // Situação do honorário no Financeiro (Não lançado / Pendente / Parcial /
+  // Pago) de cada transação da tabela "Transações do período" — uma consulta
+  // só (ver lib/financeiro/honorario-lancado.ts).
+  const resumoHonorarioPorTransacao = await buscarResumoHonorarios(transacoesDoPeriodo);
 
   // Gráfico "Evolução do período": agrupa as Movimentações de negócio (só
   // Compra e Venda/Locação, ver query acima) dia a dia, e calcula o saldo
@@ -1151,7 +1158,7 @@ export default async function DashboardPage({
             overflow-x-auto + min-w continuam pro celular (a tabela rola de
             lado em vez de espremer as colunas). */}
         <div className="overflow-x-auto overflow-y-auto max-h-96 border border-gray-100 rounded-lg">
-          <table className="w-full text-xs min-w-[720px]">
+          <table className="w-full text-xs min-w-[960px]">
             <thead className="sticky top-0 bg-white z-10">
               <tr className="text-left text-gray-500">
                 <th className="font-normal py-1.5 px-2 border-b border-gray-100">Imóvel</th>
@@ -1161,6 +1168,8 @@ export default async function DashboardPage({
                 <th className="font-normal py-1.5 border-b border-gray-100">Status</th>
                 <th className="font-normal py-1.5 border-b border-gray-100">Assinatura</th>
                 <th className="font-normal py-1.5 px-2 border-b border-gray-100 text-right">Valor</th>
+                <th className="font-normal py-1.5 px-2 border-b border-gray-100 text-right">Honorário (bruto)</th>
+                <th className="font-normal py-1.5 px-2 border-b border-gray-100">Honorário no Financeiro</th>
               </tr>
             </thead>
             <tbody>
@@ -1201,11 +1210,21 @@ export default async function DashboardPage({
                       {formatMoeda(t.valor_transacao)}
                     </Link>
                   </td>
+                  <td className="border-b border-gray-50 text-right whitespace-nowrap">
+                    <Link href={`/transacoes/${t.id}`} className="block py-2 px-2">
+                      {formatMoeda(Number(t.valor_transacao) * Number(t.porc_honorario ?? 0))}
+                    </Link>
+                  </td>
+                  <td className="border-b border-gray-50 whitespace-nowrap">
+                    <Link href={`/transacoes/${t.id}`} className="block py-2 px-2">
+                      <SeloHonorario resumo={resumoHonorarioPorTransacao.get(t.id)} />
+                    </Link>
+                  </td>
                 </tr>
               ))}
               {transacoesDoPeriodo.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="py-4 text-center text-gray-400">
+                  <td colSpan={9} className="py-4 text-center text-gray-400">
                     Nenhuma transação assinada nesse período. Se esperava ver alguma aqui (ex.: um contrato renovado),
                     confira a Data de assinatura cadastrada na ficha dela.
                   </td>

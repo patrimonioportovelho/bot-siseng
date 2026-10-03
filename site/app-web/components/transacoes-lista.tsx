@@ -14,6 +14,8 @@ import {
   type Tone
 } from "@/lib/format";
 import { ehNovo, SELO_NOVO_CLASSES, LINHA_NOVA_CLASSES } from "@/lib/novo";
+import { buscarResumoHonorarios } from "@/lib/financeiro/honorario-lancado";
+import { SeloHonorario } from "@/components/selo-honorario";
 
 // Elaboração de Contrato de Locação precisa aparecer primeiro no dashboard
 // de Locação (é o que precisa de atenção pra virar contrato) — o resto dos
@@ -104,6 +106,10 @@ export async function TransacoesLista({ tipo, q, novoHref }: { tipo: "Locação"
     }
   });
 
+  // Situação do honorário no Financeiro (Não lançado / Pendente / Parcial /
+  // Pago) — uma consulta só pra lista inteira.
+  const resumoHonorarioPorTransacao = await buscarResumoHonorarios(transacoes);
+
   const porLoja = new Map<string, typeof transacoes>();
   for (const t of transacoes) {
     const nomeLoja = t.lojas?.nome ?? "Sem loja";
@@ -132,8 +138,8 @@ export async function TransacoesLista({ tipo, q, novoHref }: { tipo: "Locação"
   // classes do cabeçalho/linha mais abaixo), porque essas colunas fixas em
   // px/fr espremiam ou cortavam o conteúdo no celular.
   const colunas = somenteLocacao
-    ? "md:grid-cols-[0.6fr_1fr_1fr_1fr_84px_84px_56px_190px_100px]"
-    : "md:grid-cols-[0.8fr_1.6fr_1.4fr_1.4fr_90px_110px]";
+    ? "md:grid-cols-[0.6fr_1fr_1fr_1fr_84px_84px_56px_190px_100px_92px]"
+    : "md:grid-cols-[0.8fr_1.6fr_1.4fr_1.4fr_90px_110px_92px]";
 
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-4">
@@ -202,7 +208,7 @@ export async function TransacoesLista({ tipo, q, novoHref }: { tipo: "Locação"
               // tem cobrança recorrente de verdade rodando mês a mês).
               const ehImovelEmLocacao = somenteLocacao && status === "Imóvel em Locação";
               const colunasStatus = ehImovelEmLocacao
-                ? "md:grid-cols-[0.6fr_20px_1fr_1fr_1fr_84px_84px_56px_190px_100px]"
+                ? "md:grid-cols-[0.6fr_20px_1fr_1fr_1fr_84px_84px_56px_190px_100px_92px]"
                 : colunas;
               return (
                 <div key={status} className="mb-3 last:mb-0">
@@ -222,6 +228,7 @@ export async function TransacoesLista({ tipo, q, novoHref }: { tipo: "Locação"
                     {somenteLocacao && <span>Dia pgto.</span>}
                     {somenteLocacao && <span>Prazo do contrato</span>}
                     <span className="text-right">Valor</span>
+                    <span title="Situação do honorário no Financeiro">Honorário</span>
                   </div>
                   {/* divide-y + zebra (linha par com fundo cinza clarinho) — antes
                       as linhas eram todas brancas sem nenhuma borda entre elas,
@@ -345,6 +352,9 @@ export async function TransacoesLista({ tipo, q, novoHref }: { tipo: "Locação"
                             className={`text-xs text-right whitespace-nowrap ${situacao === "vencido" ? "text-red-800 font-medium" : "text-gray-600"}`}
                           >
                             {formatMoeda(t.valor_transacao)}
+                          </span>
+                          <span>
+                            <SeloHonorario resumo={resumoHonorarioPorTransacao.get(t.id)} />
                           </span>
                         </Link>
                       );

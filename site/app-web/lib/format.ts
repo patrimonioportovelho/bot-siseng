@@ -22,6 +22,12 @@ export function statusTone(status: string | null): Tone {
   return "pendente";
 }
 
+// Transação cancelada (Distrato / Locação cancelada / Cancelado) — nada mais
+// a lançar no Financeiro (ver lib/financeiro/honorario-lancado.ts).
+export function statusCancelado(status: string | null | undefined): boolean {
+  return !!status && STATUS_CANCELADA.includes(status);
+}
+
 export const STATUS_TRANSACAO_EM_ABERTO = { notIn: [...STATUS_CONCLUIDA, ...STATUS_CANCELADA] };
 
 // Lista fechada com todos os status reais já vistos em transacoes.status —

@@ -81,8 +81,8 @@ export function PortalLoginForm({
         </button>
 
         <p className="text-[11px] text-gray-400 mt-4 leading-relaxed">
-          Acesso restrito a quem tem função Corretor ativa no cadastro de parceiros, com esse email
-          cadastrado na ficha.
+          Acesso restrito a quem tem função Corretor ou Corretor Estagiário ativa no cadastro de
+          parceiros, com esse email cadastrado na ficha.
         </p>
       </div>
     );

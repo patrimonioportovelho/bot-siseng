@@ -9,10 +9,12 @@ const PORTAL_COOKIE = "sis_portal_session";
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 dias
 
 // Domínio exigido pra logar no portal do corretor. Só entra quem tem esse
-// email cadastrado na ficha de parceiro, função = "Corretor" (ativa) E a
-// senha certa (ver loginPortal abaixo) — o mesmo parceiro pode inclusive
-// não ter acesso ao admin (papéis diferentes).
+// email cadastrado na ficha de parceiro, função = "Corretor" ou "Corretor
+// Estagiário" (ativa — liberado pro Estagiário em 05/10/2026, mesma regra do
+// Corretor) E a senha certa (ver loginPortal abaixo) — o mesmo parceiro pode
+// inclusive não ter acesso ao admin (papéis diferentes).
 const DOMINIO_PORTAL = "@remax.com.br";
+const FUNCOES_PORTAL = ["Corretor", "Corretor Estagiário"];
 
 function sessionSecret() {
   const secret = process.env.SESSION_SECRET;
@@ -80,7 +82,7 @@ export async function verificarEmailPortal(email: string): Promise<VerificarEmai
   const parceiro = await prisma.parceiros.findFirst({
     where: {
       status_funcao: "Ativo",
-      funcao: "Corretor",
+      funcao: { in: FUNCOES_PORTAL },
       email: { equals: emailNorm, mode: "insensitive" }
     },
     select: { nome: true, senha_hash: true }
@@ -90,7 +92,7 @@ export async function verificarEmailPortal(email: string): Promise<VerificarEmai
     return {
       ok: false,
       error:
-        "Email não encontrado como Corretor ativo no cadastro. Peça para um administrador conferir sua ficha de parceiro (email e função)."
+        "Email não encontrado como Corretor ou Corretor Estagiário ativo no cadastro. Peça para um administrador conferir sua ficha de parceiro (email e função)."
     };
   }
 
@@ -100,8 +102,9 @@ export async function verificarEmailPortal(email: string): Promise<VerificarEmai
 // Login do portal do corretor — email + senha. A senha usa o mesmo campo
 // (parceiros.senha_hash) e o mesmo hash (PBKDF2, lib/auth.ts) do login
 // administrativo: é a MESMA senha nos dois acessos, quando o corretor tem
-// os dois. Continua exigindo email "@remax.com.br" e função "Corretor"
-// ativa no cadastro — isso não mudou, é só mais uma camada.
+// os dois. Continua exigindo email "@remax.com.br" e função "Corretor" ou
+// "Corretor Estagiário" ativa no cadastro — isso não mudou, é só mais uma
+// camada.
 //
 // Primeiro acesso (pedido explícito do usuário): diferente do acesso
 // administrativo (que agora exige um administrador definir a senha
@@ -138,7 +141,7 @@ export async function loginPortal(email: string, senha: string): Promise<LoginPo
   const parceiro = await prisma.parceiros.findFirst({
     where: {
       status_funcao: "Ativo",
-      funcao: "Corretor",
+      funcao: { in: FUNCOES_PORTAL },
       email: { equals: emailNorm, mode: "insensitive" }
     },
     select: { id: true, nome: true, senha_hash: true }
@@ -149,7 +152,7 @@ export async function loginPortal(email: string, senha: string): Promise<LoginPo
     return {
       ok: false,
       error:
-        "Email não encontrado como Corretor ativo no cadastro. Peça para um administrador conferir sua ficha de parceiro (email e função)."
+        "Email não encontrado como Corretor ou Corretor Estagiário ativo no cadastro. Peça para um administrador conferir sua ficha de parceiro (email e função)."
     };
   }
 

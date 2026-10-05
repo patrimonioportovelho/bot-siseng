@@ -4,6 +4,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { Sidebar } from "@/components/sidebar";
 import { PortalSidebar } from "@/components/portal-sidebar";
 import { RouteLoadingBar } from "@/components/route-loading-bar";
+import { RodapePrivacidade } from "@/components/link-privacidade";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -31,6 +32,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     embutido ||
     pathname === "/login" ||
     pathname === "/portal/login" ||
+    pathname === "/privacidade" ||
     pathname?.startsWith("/noticias") ||
     pathname?.startsWith("/evento/");
   const isPortal = pathname?.startsWith("/portal") && !semMenu;
@@ -54,7 +56,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <RouteLoadingBar />
         <div className="flex flex-col md:flex-row min-h-screen">
           <PortalSidebar />
-          <main className="flex-1 min-w-0">{children}</main>
+          <main className="flex-1 min-w-0 flex flex-col">
+            <div className="flex-1">{children}</div>
+            <RodapePrivacidade />
+          </main>
         </div>
       </>
     );
@@ -65,7 +70,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <RouteLoadingBar />
       <div className="flex flex-col md:flex-row min-h-screen">
         <Sidebar />
-        <main className="flex-1 min-w-0 p-4 md:p-6">{children}</main>
+        <main className="flex-1 min-w-0 p-4 md:p-6 flex flex-col">
+          <div className="flex-1">{children}</div>
+          <RodapePrivacidade />
+        </main>
       </div>
     </>
   );

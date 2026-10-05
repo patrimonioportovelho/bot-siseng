@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import type { Metadata } from "next";
 import { prisma } from "@/lib/prisma";
 import { ShareButton } from "@/components/site/share-button";
+import { LinkPrivacidade } from "@/components/link-privacidade";
 import { ChecklistShareActions } from "@/components/site/checklist-share-actions";
 
 export const dynamic = "force-dynamic";
@@ -164,7 +165,7 @@ export default async function NoticiaDetalhePage({
       </main>
 
       <footer className="max-w-3xl mx-auto px-4 pb-8 text-center text-gray-400 text-[11px]">
-        RE/MAX Engimob · Porto Velho/RO — SisEng, sistema interno de gestão.
+        RE/MAX Engimob · Porto Velho/RO — SisEng, sistema interno de gestão. · <LinkPrivacidade />
       </footer>
     </div>
   );

@@ -1,5 +1,6 @@
 import { loginPortalAction } from "../actions";
 import { PortalLoginForm } from "@/components/portal-login-form";
+import { LinkPrivacidade } from "@/components/link-privacidade";
 
 // Login por email + senha — só entra quem tem email @remax.com.br e função
 // "Corretor" ativa no cadastro de parceiros (ver loginPortal em
@@ -27,6 +28,10 @@ export default async function PortalLoginPage({
         <div className="text-sm text-gray-500 mb-6">Portal do corretor</div>
 
         <PortalLoginForm action={loginPortalAction} erro={erro} emailInicial={email} />
+
+        <div className="text-center text-[11px] mt-5">
+          <LinkPrivacidade />
+        </div>
       </div>
     </div>
   );

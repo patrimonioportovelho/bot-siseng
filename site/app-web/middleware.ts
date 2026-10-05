@@ -35,7 +35,14 @@ export async function middleware(req: NextRequest) {
   // /evento/[id] (singular — diferente de /eventos, que é a tela
   // administrativa protegida) é a versão pública de um Evento, mostrada no
   // mural externo junto com notícias/editais.
-  if (pathname === "/login" || pathname.startsWith("/noticias/") || pathname.startsWith("/evento/")) {
+  // /privacidade (Política de Privacidade) também é pública — é o link do
+  // rodapé e da tela de login, e precisa abrir sem sessão.
+  if (
+    pathname === "/login" ||
+    pathname === "/privacidade" ||
+    pathname.startsWith("/noticias/") ||
+    pathname.startsWith("/evento/")
+  ) {
     return NextResponse.next();
   }
 

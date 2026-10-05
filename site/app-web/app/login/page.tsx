@@ -9,6 +9,7 @@ import { PublicacaoCard } from "@/components/site/publicacao-card";
 import { EventoCard } from "@/components/site/evento-card";
 import { RankingHonorarios } from "@/components/site/ranking-honorarios";
 import { SociosSecao } from "@/components/site/socios-secao";
+import { LinkPrivacidade } from "@/components/link-privacidade";
 import { proximaOcorrencia } from "@/lib/eventos/ocorrencias";
 import { buscarRankingHonorariosMes } from "@/lib/parceiros/ranking-honorarios";
 
@@ -308,7 +309,8 @@ export default async function LoginPage({
 
       <footer className="bg-[color:var(--pri-dark)]">
         <div className="max-w-5xl mx-auto px-4 py-6 text-center text-white/50 text-[11px]">
-          RE/MAX Engimob · Porto Velho/RO — SisEng, sistema interno de gestão.
+          RE/MAX Engimob · Porto Velho/RO — SisEng, sistema interno de gestão. ·{" "}
+          <LinkPrivacidade className="text-white/70 hover:text-white underline" />
         </div>
       </footer>
     </div>

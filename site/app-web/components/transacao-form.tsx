@@ -212,7 +212,8 @@ export function TransacaoForm({
   // não pode ser um imóvel que já tem administração ativa (esse precisa
   // passar pela Administração, não direto aqui).
   const precisaAdministracao = eLocacao && status === "Elaboração de Contrato de Locação";
-  const semAdministracao = eLocacao && status === "Imóvel em locação sem administração";
+  const semAdministracao =
+    eLocacao && (status === "Imóvel em locação sem administração" || status === "Transação Finalizada sem administração");
 
   const idsComAdmAtiva = useMemo(() => new Set(imoveisComAdmAtivaIds), [imoveisComAdmAtivaIds]);
 

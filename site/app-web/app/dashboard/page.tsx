@@ -39,7 +39,9 @@ const MESES_ABREV = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "se
 // Status usado nas transações de Locação que não têm administração vinculada
 // (o dono cuida direto, a imobiliária só intermediou o contrato). Ver
 // STATUS_ABERTA em lib/format.ts.
-const STATUS_LOCACAO_SEM_ADM = "Imóvel em locação sem administração";
+// Locação sem administração = em andamento + já finalizada (as duas contam no
+// KPI "sem administração").
+const STATUS_LOCACAO_SEM_ADM = ["Imóvel em locação sem administração", "Transação Finalizada sem administração"];
 const STATUS_CANCELADAS = ["Distrato", "Locação cancelada"];
 
 export default async function DashboardPage({
@@ -523,7 +525,7 @@ export default async function DashboardPage({
       locacaoValor += Number(t.valor_transacao);
       locacaoQtd += 1;
       linha.locacoes += 1;
-      if (t.status === STATUS_LOCACAO_SEM_ADM) locacaoSemAdmQtd += 1;
+      if (t.status && STATUS_LOCACAO_SEM_ADM.includes(t.status)) locacaoSemAdmQtd += 1;
       creditarCorretor(locacaoPorParceiro, t);
     }
 

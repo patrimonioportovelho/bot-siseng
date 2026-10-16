@@ -47,11 +47,19 @@ export const FUNCOES_CORRETOR = ["Corretor", "Corretor Estagiário"];
 // depois dos dois-pontos indica o tipo, removido na importação). Usado pra
 // o Status do cadastro virar um select fechado (igual ao StatusTransacaoSelect
 // da tela de Administração) em vez de texto livre.
+// "Transação Finalizada sem administração" (05/10/2026+, pedido do usuário): separa as
+// locações finalizadas SEM administração das finalizadas com administração
+// ("Transação Finalizada") pra contabilizar cada grupo à parte. Fica depois de
+// "Transação Finalizada" — os índices [0] e [1] usados pelo portal
+// (app/portal/locacao/actions.ts) não mudam.
+export const STATUS_FINALIZADO_SEM_ADM = "Transação Finalizada sem administração";
+
 export const STATUS_LOCACAO_OPCOES = [
   "Elaboração de Contrato de Locação",
   "Imóvel em locação sem administração",
   "Imóvel em Locação",
   "Transação Finalizada",
+  STATUS_FINALIZADO_SEM_ADM,
   "Distrato",
   "Locação cancelada"
 ];

@@ -1305,7 +1305,8 @@ export function PortalLocacaoForm({
     locatarios.length > 0 &&
     !erroCadastroCliente &&
     valorTransacaoTexto.trim().length > 0 &&
-    (percentualParaDecimal(porcHonorarioTexto) ?? 0) > 0;
+    (percentualParaDecimal(porcHonorarioTexto) ?? 0) > 0 &&
+    (percentualParaDecimal(porcHonorarioTexto) ?? 0) <= 1;
 
   return (
     <div className="flex flex-col gap-5">
@@ -1785,6 +1786,11 @@ export function PortalLocacaoForm({
           <div>
             <label className={LABEL}>Honorário total (%) *</label>
             <input className={CAMPO} placeholder="100" value={porcHonorarioTexto} onChange={(e) => setPorcHonorarioTexto(e.target.value)} />
+            {(percentualParaDecimal(porcHonorarioTexto) ?? 0) > 1 && (
+              <p className="text-[11px] text-red-600 mt-1">
+                Passa de 100% — esse campo é em porcentagem, não em reais (ex.: 83,77).
+              </p>
+            )}
             {(percentualParaDecimal(porcHonorarioTexto) ?? 0) <= 0 && (
               <p className="text-[11px] text-red-600 mt-1">Obrigatório — sem ele o sistema não calcula os honorários.</p>
             )}

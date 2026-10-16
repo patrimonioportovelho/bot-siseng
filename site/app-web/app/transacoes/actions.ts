@@ -163,6 +163,20 @@ function validarComissoesTransacao(campos: ReturnType<typeof camposEditaveis>, f
       return `${rotulo}: "${bruto}" não é um número válido — digite só o número (ex.: 6 ou 22,5).`;
     }
   }
+  // Campo é em %, não em R$: alguém digitou 2513,00 (o valor em reais) e a
+  // tela calculou R$ 75.390,00 de honorário (2513% de R$ 3.000). Honorário e
+  // as frações de rateio nunca passam de 100%.
+  const acima100 = [
+    ["Honorário total (%)", campos.porc_honorario],
+    ["% da parceria", campos.porc_parceria ?? 0],
+    ["% corretor do proprietário", campos.porc_corretor_proprietario],
+    ["% corretor da contraparte", campos.porc_corretor_contraparte]
+  ] as const;
+  for (const [rotulo, valor] of acima100) {
+    if (valor > 1) {
+      return `${rotulo} não pode passar de 100% — esse campo é em porcentagem, não em reais (para um honorário de R$ 2.513,00 sobre um aluguel de R$ 3.000,00, digite 83,77).`;
+    }
+  }
   // Corretores com % de comissão mas Honorário total zerado: o rateio e os
   // dashboards calculam tudo em cima do honorário, então ficaria tudo R$ 0,00
   // (foi o que aconteceu na LOC-0027, criada no portal sem o honorário).

@@ -609,6 +609,9 @@ export async function gerarLocacaoAction(
     if (!(porcHonorario > 0)) {
       return { ok: false, erro: "Informe o Honorário total (%) — sem ele o sistema não calcula os honorários nem o rateio." };
     }
+    if (porcHonorario > 1) {
+      return { ok: false, erro: "O Honorário total (%) não pode passar de 100% — esse campo é em porcentagem, não em reais." };
+    }
     const temParceria = booleano(formData, "tem_parceria");
     const parceiroExternoId = texto(formData, "parceiro_externo_id");
     const porcParceriaTxt = texto(formData, "porc_parceria");

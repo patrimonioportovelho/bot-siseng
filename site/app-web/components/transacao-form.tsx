@@ -1285,6 +1285,12 @@ export function TransacaoForm({
               onChange={(e) => setPorcHonorarioTexto(e.target.value)}
             />
             <p className="text-[11px] text-gray-500 mt-1">{formatMoeda(honorarioTotalRS)}</p>
+            {(percentualParaDecimal(porcHonorarioTexto) ?? 0) > 1 && (
+              <p className="text-[11px] text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1 mt-1">
+                Passa de 100% — esse campo é em <strong>%</strong>, não em reais. Se o honorário é R$ X sobre o valor
+                da transação, digite X ÷ valor × 100 (ex.: R$ 2.513,00 sobre R$ 3.000,00 = 83,77).
+              </p>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <input

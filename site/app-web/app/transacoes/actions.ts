@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireAdminSession, requireAdm, logAlteracao } from "@/lib/auth";
-import { valorEditavelParaDecimal, percentualParaDecimal, hojeComoDataCalendario } from "@/lib/format";
+import { valorEditavelParaDecimal, percentualParaDecimal, hojeComoDataCalendario, statusCancelado } from "@/lib/format";
 import { registrarEJogarErro } from "@/lib/erros";
 import { sincronizarProprietariosExtra, sincronizarVinculosConjuge } from "@/lib/imoveis/proprietarios-extra";
 import { STATUS_COMPRA_VENDA_CANCELAMENTO, ANDAMENTO_COMPRA_VENDA_PADRAO } from "@/lib/transacoes/opcoes";
@@ -147,7 +147,34 @@ function camposEditaveis(formData: FormData) {
 // Server Action — é o único ponto por onde toda criação/edição de
 // transação passa, então protege tanto o formulário quanto qualquer
 // chamada futura.
-function validarComissoesTransacao(campos: ReturnType<typeof camposEditaveis>): string | null {
+function validarComissoesTransacao(campos: ReturnType<typeof camposEditaveis>, formData: FormData): string | null {
+  // Achado do caso LOC-0027 (16/10/2026): texto preenchido mas não numérico
+  // (ex.: "cem", "10..5") virava 0 em silêncio e a tela "salvava com sucesso"
+  // sem gravar nada. Agora o campo preenchido que não dá pra ler é erro.
+  const rotulos: Record<string, string> = {
+    porc_honorario: "Honorário total (%)",
+    porc_parceria: "% da parceria",
+    porc_corretor_proprietario: "% corretor do proprietário",
+    porc_corretor_contraparte: "% corretor da contraparte"
+  };
+  for (const [campo, rotulo] of Object.entries(rotulos)) {
+    const bruto = texto(formData, campo);
+    if (bruto !== null && percentualParaDecimal(bruto) === null) {
+      return `${rotulo}: "${bruto}" não é um número válido — digite só o número (ex.: 6 ou 22,5).`;
+    }
+  }
+  // Corretores com % de comissão mas Honorário total zerado: o rateio e os
+  // dashboards calculam tudo em cima do honorário, então ficaria tudo R$ 0,00
+  // (foi o que aconteceu na LOC-0027, criada no portal sem o honorário).
+  // Transação cancelada/distratada não entra nessa trava.
+  const cancelada = statusCancelado(campos.status) || campos.status === "Distrato";
+  if (
+    !cancelada &&
+    !(campos.porc_honorario > 0) &&
+    (campos.porc_corretor_proprietario > 0 || campos.porc_corretor_contraparte > 0)
+  ) {
+    return "Honorário total (%) não foi informado (está 0%), mas há % de comissão para corretor — informe o Honorário total para o rateio calcular.";
+  }
   if (campos.porc_corretor_proprietario > 0 && !campos.corretor_proprietario_id) {
     return "Há % de comissão para o corretor do proprietário, mas nenhum corretor foi selecionado — selecione o corretor ou zere a %.";
   }
@@ -322,7 +349,7 @@ export async function criarTransacaoAction(_prev: unknown, formData: FormData): 
   }
 
   const campos = camposEditaveis(formData);
-  const erroComissao = validarComissoesTransacao(campos);
+  const erroComissao = validarComissoesTransacao(campos, formData);
   if (erroComissao) return { erro: erroComissao };
 
   let novoId: string;
@@ -394,7 +421,7 @@ export async function atualizarTransacaoAction(_prev: unknown, formData: FormDat
   if (!antes) return { erro: "Transação não encontrada." };
 
   const campos = camposEditaveis(formData);
-  const erroComissao = validarComissoesTransacao(campos);
+  const erroComissao = validarComissoesTransacao(campos, formData);
   if (erroComissao) return { erro: erroComissao };
 
   try {

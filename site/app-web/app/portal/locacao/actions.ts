@@ -604,6 +604,11 @@ export async function gerarLocacaoAction(
 
     const porcHonorarioTxt = texto(formData, "porc_honorario");
     const porcHonorario = porcHonorarioTxt ? percentualParaDecimal(porcHonorarioTxt) ?? 0 : 0;
+    // Caso LOC-0027 (16/10/2026): campo opcional em branco gravava 0% e o
+    // honorário/rateio ficavam em R$ 0,00 sem ninguém perceber.
+    if (!(porcHonorario > 0)) {
+      return { ok: false, erro: "Informe o Honorário total (%) — sem ele o sistema não calcula os honorários nem o rateio." };
+    }
     const temParceria = booleano(formData, "tem_parceria");
     const parceiroExternoId = texto(formData, "parceiro_externo_id");
     const porcParceriaTxt = texto(formData, "porc_parceria");

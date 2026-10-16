@@ -23,7 +23,7 @@ import {
 } from "@/lib/clientes/opcoes";
 import { validarCpfCnpj } from "@/lib/clientes/validacao";
 import { buscarCep, UF_PARA_ESTADO } from "@/lib/enderecos";
-import { formatInscricao, formatMoeda, valorEditavelParaDecimal, hojeInputDate } from "@/lib/format";
+import { formatInscricao, formatMoeda, valorEditavelParaDecimal, hojeInputDate, percentualParaDecimal } from "@/lib/format";
 import type { ImovelBuscaResultado, ClienteBuscaResultado } from "@/lib/transacoes/buscas";
 import {
   gerarLocacaoAction,
@@ -1304,7 +1304,8 @@ export function PortalLocacaoForm({
       : imovelId.length > 0) &&
     locatarios.length > 0 &&
     !erroCadastroCliente &&
-    valorTransacaoTexto.trim().length > 0;
+    valorTransacaoTexto.trim().length > 0 &&
+    (percentualParaDecimal(porcHonorarioTexto) ?? 0) > 0;
 
   return (
     <div className="flex flex-col gap-5">
@@ -1782,8 +1783,11 @@ export function PortalLocacaoForm({
             <p className="text-[11px] text-gray-400 mt-1">Mesma escolha da seção 3 — mudar aqui também muda lá.</p>
           </div>
           <div>
-            <label className={LABEL}>Honorário total (%)</label>
+            <label className={LABEL}>Honorário total (%) *</label>
             <input className={CAMPO} placeholder="100" value={porcHonorarioTexto} onChange={(e) => setPorcHonorarioTexto(e.target.value)} />
+            {(percentualParaDecimal(porcHonorarioTexto) ?? 0) <= 0 && (
+              <p className="text-[11px] text-red-600 mt-1">Obrigatório — sem ele o sistema não calcula os honorários.</p>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <input type="checkbox" id="tem_parceria" checked={temParceria} onChange={(e) => setTemParceria(e.target.checked)} />

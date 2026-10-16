@@ -20,3 +20,6 @@ site/database/.env
 
 # Logs
 *.log
+
+# Exportacoes com dados pessoais de clientes (nunca versionar)
+exportacoes/

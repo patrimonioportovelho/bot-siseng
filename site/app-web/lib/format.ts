@@ -293,7 +293,9 @@ export function formatPercentual(valor: unknown): string {
 // Caminho inverso: texto digitado pelo usuário ("22,5" ou "22.5") -> fração
 // decimal (0.225) para gravar no banco no mesmo formato já usado.
 export function percentualParaDecimal(texto: string): number | null {
-  const t = texto.trim();
+  // Aceita "100%", "100 %" e espaços (inclusive o não-separável) — antes o
+  // "%" digitado virava NaN e o campo era gravado como 0 sem nenhum aviso.
+  const t = texto.replace(/[%\s\u00a0]/g, "");
   if (!t) return null;
   const n = Number(t.replace(",", "."));
   return Number.isFinite(n) ? n / 100 : null;

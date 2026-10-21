@@ -249,7 +249,7 @@ export async function criarClienteAction(_prev: unknown, formData: FormData): Pr
 }
 
 export async function atualizarClienteAction(_prev: unknown, formData: FormData): Promise<ResultadoFormulario> {
-  await requireAdminSession();
+  const sessao = await requireAdminSession();
 
   const id = texto(formData, "clienteId");
   if (!id) return { erro: "Cliente inválido." };
@@ -257,7 +257,15 @@ export async function atualizarClienteAction(_prev: unknown, formData: FormData)
   const antes = await prisma.clientes.findUnique({ where: { id } });
   if (!antes) return { erro: "Cliente não encontrado." };
 
-  const tipoClienteEditado = texto(formData, "tipo_cliente");
+  // Nome e Tipo de cliente só mudam com acesso completo (isAdm); pra os
+  // demais o servidor ignora o que vier do formulário e mantém o cadastrado.
+  const nomeEditado = sessao.isAdm ? texto(formData, "nome") ?? antes.nome : antes.nome;
+  const tipoClienteEditado = sessao.isAdm ? texto(formData, "tipo_cliente") ?? antes.tipo_cliente : antes.tipo_cliente;
+  if (sessao.isAdm) {
+    formData.set("tipo_cliente", tipoClienteEditado);
+  } else {
+    formData.set("tipo_cliente", antes.tipo_cliente);
+  }
 
   // Mesma validação via Zod aplicada na criação (ver lib/clientes/schema.ts)
   // — também vale pra edição, já que cadastros antigos importados sem esses
@@ -267,7 +275,7 @@ export async function atualizarClienteAction(_prev: unknown, formData: FormData)
   // NOVO exige loja).
   const erroValidacaoEditado = validarClienteZod({
     tipoCliente: tipoClienteEditado,
-    nome: texto(formData, "nome") ?? antes.nome,
+    nome: nomeEditado,
     cpf: texto(formData, "cpf"),
     cnpj: texto(formData, "cnpj"),
     sexo: texto(formData, "sexo"),
@@ -281,7 +289,7 @@ export async function atualizarClienteAction(_prev: unknown, formData: FormData)
     const depois = await prisma.clientes
       .update({
         where: { id },
-        data: await camposEditaveis(formData)
+        data: { ...(await camposEditaveis(formData)), ...(nomeEditado !== antes.nome ? { nome: nomeEditado } : {}) }
       })
       .catch((erro) => registrarEJogarErro({ entidadeTipo: "clientes", entidadeId: id, acao: "editar", erro }));
 

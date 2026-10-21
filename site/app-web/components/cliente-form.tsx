@@ -242,9 +242,14 @@ export function ClienteForm({
   sociosAtuais,
   clientesPfDisponiveis,
   adicionarSocioAction,
-  removerSocioAction
+  removerSocioAction,
+  isAdm = false
 }: {
   cliente: ClienteExistente | null;
+  // Acesso completo (Configurações): pode corrigir Nome e Tipo de cliente de
+  // um cadastro já existente. Quem não é ADM continua vendo os dois travados
+  // (e o servidor ignora qualquer tentativa de trocar).
+  isAdm?: boolean;
   lojas: Loja[];
   bancos: Banco[];
   parceiros: ParceiroOpcao[];
@@ -605,7 +610,7 @@ export function ClienteForm({
           <div className="grid md:grid-cols-2 gap-3">
             <div>
               <label className={LABEL}>Tipo de cliente *</label>
-              {c ? (
+              {c && !isAdm ? (
                 <input className={CAMPO} value={c.tipo_cliente} disabled />
               ) : (
                 <select
@@ -625,12 +630,20 @@ export function ClienteForm({
                   ))}
                 </select>
               )}
-              {c && <input type="hidden" name="tipo_cliente" value={c.tipo_cliente} />}
+              {c && !isAdm && <input type="hidden" name="tipo_cliente" value={c.tipo_cliente} />}
             </div>
             <div>
               <label className={LABEL}>{ehPessoaJuridica ? "Razão social *" : "Nome completo *"}</label>
-              {c ? (
+              {c && !isAdm ? (
                 <input className={CAMPO} value={c.nome} disabled />
+              ) : c ? (
+                <input
+                  className={CAMPO + " capitalize"}
+                  name="nome"
+                  required
+                  defaultValue={c.nome}
+                  placeholder={ehPessoaJuridica ? "Razão social" : "Nome completo"}
+                />
               ) : (
                 <input
                   className={CAMPO + " capitalize"}

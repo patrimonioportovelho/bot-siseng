@@ -239,6 +239,26 @@ export async function atualizarParceiroAction(_prev: unknown, formData: FormData
 
   const campos = await camposEditaveis(formData);
 
+  // Nome: só com acesso completo (isAdm). O login é por email desde que
+  // deixou de ser nome + CPF, então corrigir o nome não afeta o acesso.
+  // Bloqueia só o caso de virar um duplicado (mesmo nome E mesmo CPF de
+  // outro parceiro não excluído), igual ao cadastro novo.
+  let nomeNovo: string | undefined;
+  if (session.isAdm) {
+    const nomeForm = texto(formData, "nome");
+    if (nomeForm && nomeForm !== antes.nome) {
+      const duplicado = await buscarParceiroDuplicado({
+        nome: nomeForm,
+        cpf: campos.cpf ?? antes.cpf,
+        ignorarIds: [id]
+      });
+      if (duplicado) {
+        return { erro: `Já existe outro parceiro chamado "${duplicado.nome}" com o mesmo CPF — confira antes de trocar o nome.` };
+      }
+      nomeNovo = nomeForm;
+    }
+  }
+
   // Foto do Corretor — só ADM (ver prepararUploadFotoParceiroAction e o
   // comentário em criarParceiroAction). Três cenários, mesmo padrão de
   // app/eventos/actions.ts: (1) subiu foto nova — troca e apaga a antiga;
@@ -276,7 +296,11 @@ export async function atualizarParceiroAction(_prev: unknown, formData: FormData
     depois = await prisma.parceiros
       .update({
         where: { id },
-        data: { ...campos, ...(foto_url !== undefined ? { foto_url } : {}) }
+        data: {
+          ...campos,
+          ...(nomeNovo !== undefined ? { nome: nomeNovo } : {}),
+          ...(foto_url !== undefined ? { foto_url } : {})
+        }
       })
       .catch((erro) => registrarEJogarErro({ entidadeTipo: "parceiros", entidadeId: id, acao: "editar", erro }));
   } catch (erro) {

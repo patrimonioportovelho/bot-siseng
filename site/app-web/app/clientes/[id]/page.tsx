@@ -117,6 +117,7 @@ export default async function ClienteDetalhePage({
         clientesPfDisponiveis={clientesPfDisponiveis}
         adicionarSocioAction={adicionarSocioAction}
         removerSocioAction={removerSocioAction}
+        isAdm={session?.isAdm ?? false}
       />
     </div>
   );

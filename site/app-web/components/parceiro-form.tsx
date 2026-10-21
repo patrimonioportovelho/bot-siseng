@@ -425,11 +425,13 @@ export function ParceiroForm({
         <div className="grid md:grid-cols-2 gap-3">
           <div>
             <label className={LABEL}>Nome completo</label>
-            {p ? (
+            {p && isAdm ? (
+              <input className={CAMPO} name="nome" required defaultValue={p.nome} placeholder="Nome completo" />
+            ) : p ? (
               <>
                 <input className={CAMPO_DESABILITADO} value={p.nome} disabled />
                 <p className="text-[11px] text-gray-400 mt-1">
-                  Protegido — nome só muda via aprovação de acesso em Configurações.
+                  Protegido — só quem tem acesso completo (Configurações) altera o nome.
                 </p>
               </>
             ) : (

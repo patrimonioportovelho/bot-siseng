@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Topbar } from "@/components/topbar";
 import { prisma } from "@/lib/prisma";
-import { FUNCOES_EQUIPE, FUNCOES_EXTERNAS } from "@/lib/parceiros/opcoes";
+import { FUNCOES_EQUIPE, FUNCOES_EXTERNAS, FUNCOES_RECRUTAMENTO } from "@/lib/parceiros/opcoes";
 import { formatTelefone } from "@/lib/format";
 import { lojasSelecionadas, whereLojaFiltro } from "@/lib/lojas/filtro";
 import { ehNovo, SELO_NOVO_CLASSES, LINHA_NOVA_CLASSES } from "@/lib/novo";
@@ -31,7 +31,7 @@ async function buscarParceiros(termo: string, lojasFiltro: string[]) {
       ]
     },
     orderBy: { nome: "asc" },
-    take: 500,
+    take: 1000,
     include: { lojas: true }
   });
 }
@@ -102,10 +102,11 @@ export default async function ParceirosPage({
     porFuncao.set(p.funcao, lista);
   }
 
-  const funcoesEquipePresentes = FUNCOES_EQUIPE.filter((f) => porFuncao.has(f));
+  // Recrutados aparece logo abaixo de Corretor Estagiário (mesmo bloco).
+  const funcoesEquipePresentes = [...FUNCOES_EQUIPE, ...FUNCOES_RECRUTAMENTO].filter((f) => porFuncao.has(f));
   const funcoesExternasPresentes = FUNCOES_EXTERNAS.filter((f) => porFuncao.has(f));
   const outrasFuncoes = [...porFuncao.keys()].filter(
-    (f) => !FUNCOES_EQUIPE.includes(f) && !FUNCOES_EXTERNAS.includes(f)
+    (f) => !FUNCOES_EQUIPE.includes(f) && !FUNCOES_RECRUTAMENTO.includes(f) && !FUNCOES_EXTERNAS.includes(f)
   );
 
   return (

@@ -42,7 +42,7 @@ export default async function PortalCompraVendaNovoPage() {
     // de Corretor — mesma lista ampla usada no formulário do admin
     // (components/transacao-form.tsx).
     prisma.parceiros.findMany({
-      where: { status_funcao: "Ativo" },
+      where: { status_funcao: "Ativo", funcao: { not: "Recrutados" } },
       orderBy: { nome: "asc" },
       select: { id: true, nome: true }
     }),

@@ -59,7 +59,7 @@ export default async function AvaliacaoDetalhePage({
       select: { id: true, nome: true, cpf: true, telefone: true, parceiro_id: true }
     }),
     prisma.bancos.findMany({ orderBy: { nome: "asc" } }),
-    prisma.parceiros.findMany({ orderBy: { nome: "asc" }, select: { id: true, nome: true } }),
+    prisma.parceiros.findMany({ where: { funcao: { not: "Recrutados" } }, orderBy: { nome: "asc" }, select: { id: true, nome: true } }),
     // Só parceiros com a função "Avaliador Bancário" — é o banco de dados
     // dos avaliadores dos bancos parceiros (pedido do usuário), separado da
     // lista geral de parceiros usada em outros campos desta mesma tela.

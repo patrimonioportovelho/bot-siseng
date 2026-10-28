@@ -14,7 +14,7 @@ export default async function NovaAvaliacaoPage() {
       select: { id: true, nome: true, cpf: true, telefone: true, parceiro_id: true }
     }),
     prisma.bancos.findMany({ orderBy: { nome: "asc" } }),
-    prisma.parceiros.findMany({ orderBy: { nome: "asc" }, select: { id: true, nome: true } }),
+    prisma.parceiros.findMany({ where: { funcao: { not: "Recrutados" } }, orderBy: { nome: "asc" }, select: { id: true, nome: true } }),
     // Pro cadastro completo do cliente novo direto aqui (Sexo, Endereço,
     // Nome da mãe/pai) — pedido do usuário, 09/08/2026: "alinhamento do
     // cadastro de cliente em todos os pontos de entrada".

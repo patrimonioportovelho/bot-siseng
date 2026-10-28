@@ -40,6 +40,7 @@ export default async function NovaTransacaoPage({
       }
     }),
     prisma.parceiros.findMany({
+      where: { funcao: { not: "Recrutados" } },
       orderBy: { nome: "asc" },
       select: { id: true, nome: true, funcao: true, porc_proprietario: true, porc_interessado: true }
     }),

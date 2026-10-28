@@ -17,7 +17,7 @@ export default async function NovaMovimentacaoPage() {
       select: { id: true, nome: true }
     }),
     prisma.parceiros.findMany({
-      where: { status_funcao: "Ativo" },
+      where: { status_funcao: "Ativo", funcao: { not: "Recrutados" } },
       orderBy: { nome: "asc" },
       select: { id: true, nome: true }
     }),

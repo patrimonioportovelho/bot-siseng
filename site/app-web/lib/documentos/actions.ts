@@ -218,7 +218,10 @@ export async function buscarRegistrosAction(
     }
     case "parceiro": {
       const rows = await prisma.parceiros.findMany({
-        where: termo ? { nome: { contains: termo, mode: "insensitive" } } : undefined,
+        where: {
+          funcao: { not: "Recrutados" },
+          ...(termo ? { nome: { contains: termo, mode: "insensitive" as const } } : {})
+        },
         orderBy: { nome: "asc" },
         take: 20
       });

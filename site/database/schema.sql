@@ -85,7 +85,7 @@ CREATE TABLE parceiros (
   email                   TEXT,
   empresa                 TEXT,
   funcao                  TEXT NOT NULL CHECK (funcao IN (
-                              'Administrativo','Corretor','Corretor Estagiário','Parceiro Externa',
+                              'Administrativo','Corretor','Corretor Estagiário','Recrutados','Parceiro Externa',
                               'Corretor Externo','Imobiliária Externa','Prestador de Serviço',
                               'Avaliador Bancário','Desligado'
                           )),

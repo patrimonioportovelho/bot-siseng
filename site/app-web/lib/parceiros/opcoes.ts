@@ -15,7 +15,16 @@ export const FUNCOES_EXTERNAS = [
   "Desligado"
 ];
 
-export const TODAS_FUNCOES = [...FUNCOES_EQUIPE, ...FUNCOES_EXTERNAS];
+// Recrutados (28/10/2026): candidatos do recrutamento de corretores (leads de
+// anúncio, indicações, redes sociais). Ficam logo abaixo de Corretor
+// Estagiário na listagem e no seletor de função, mas NÃO são equipe: de
+// propósito fora de FUNCOES_EQUIPE (sem acesso a portal, eventos internos
+// nem conversão automática ao ficar Inativo) e fora dos seletores de
+// corretor/parceiro dos demais módulos.
+export const FUNCAO_RECRUTADOS = "Recrutados";
+export const FUNCOES_RECRUTAMENTO = [FUNCAO_RECRUTADOS];
+
+export const TODAS_FUNCOES = [...FUNCOES_EQUIPE, ...FUNCOES_RECRUTAMENTO, ...FUNCOES_EXTERNAS];
 
 export const STATUS_FUNCAO = ["Ativo", "Inativo", "Excluído"];
 

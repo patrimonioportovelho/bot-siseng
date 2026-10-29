@@ -1,8 +1,9 @@
 "use server";
 
+import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { requireAdminSession, logAlteracao } from "@/lib/auth";
+import { requireAdminSession } from "@/lib/auth";
 import { hojeComoDataCalendario } from "@/lib/format";
 import {
   CAMPOS_DATA,
@@ -42,13 +43,16 @@ export async function moverCardRecrutamentoAction(parceiroId: string, destino: C
   const sessao = await requireAdminSession();
   if (!COLUNA_POR_ID.has(destino)) throw new Error("Coluna inválida.");
 
-  const parceiro = await prisma.parceiros.findUnique({
-    where: { id: parceiroId },
-    select: { id: true, nome: true, funcao: true, status_funcao: true, creci: true, data_entrada: true, data_saida: true }
-  });
+  // Leituras em paralelo (uma ida só ao banco em vez de várias em fila).
+  const [parceiro, linha, padraoEtapa] = await Promise.all([
+    prisma.parceiros.findUnique({
+      where: { id: parceiroId },
+      select: { id: true, nome: true, funcao: true, status_funcao: true, creci: true, data_entrada: true, data_saida: true }
+    }),
+    prisma.recrutamento.findUnique({ where: { parceiro_id: parceiroId }, select: { etapa: true, inicio_treinamento: true } }),
+    prisma.recrutamento_etapas.findUnique({ where: { etapa: destino }, select: { responsavel_id: true } })
+  ]);
   if (!parceiro) throw new Error("Parceiro não encontrado.");
-
-  const linha = await prisma.recrutamento.findUnique({ where: { parceiro_id: parceiroId }, select: { etapa: true } });
   const origem = colunaDoParceiro(parceiro, linha?.etapa);
   if (!origem) throw new Error("Esse parceiro não faz parte do quadro de Recrutamento.");
   if (origem === destino) return;
@@ -69,13 +73,9 @@ export async function moverCardRecrutamentoAction(parceiroId: string, destino: C
     }
     if (origem === "sem_interesse") dadosParceiro.status_funcao = "Ativo";
     dadosLinha.etapa = destino;
-    if (destino === "Em treinamento") {
-      const atual = await prisma.recrutamento.findUnique({ where: { parceiro_id: parceiroId }, select: { inicio_treinamento: true } });
-      if (!atual?.inicio_treinamento) dadosLinha.inicio_treinamento = hoje;
-    }
+    if (destino === "Em treinamento" && !linha?.inicio_treinamento) dadosLinha.inicio_treinamento = hoje;
     // Responsável padrão da etapa (configurado no quadro), quando existe.
-    const padrao = await prisma.recrutamento_etapas.findUnique({ where: { etapa: destino }, select: { responsavel_id: true } });
-    if (padrao?.responsavel_id) dadosLinha.responsavel_id = padrao.responsavel_id;
+    if (padraoEtapa?.responsavel_id) dadosLinha.responsavel_id = padraoEtapa.responsavel_id;
   } else if (destino === "estagiario" || destino === "corretor") {
     if (origem === "saida") throw new Error("Quem já saiu não volta pelo quadro — reative pelo cadastro do parceiro.");
     if (origem === "sem_interesse") throw new Error("Mova primeiro para uma etapa do funil e depois para Corretor.");
@@ -95,37 +95,51 @@ export async function moverCardRecrutamentoAction(parceiroId: string, destino: C
     dadosParceiro.status_funcao = "Inativo";
   }
 
-  await prisma.$transaction(async (tx) => {
-    if (Object.keys(dadosParceiro).length > 0) {
-      await tx.parceiros.update({ where: { id: parceiroId }, data: { ...dadosParceiro, updated_at: new Date() } });
-    }
-    await tx.recrutamento.upsert({
+  // Escritas em lote (uma ida só ao banco). Não revalida /recrutamento aqui: o
+  // quadro já atualizou o card na tela e recarregar tudo de novo era o que
+  // deixava o arraste lento.
+  const escritas = [
+    ...(Object.keys(dadosParceiro).length > 0
+      ? [prisma.parceiros.update({ where: { id: parceiroId }, data: { ...dadosParceiro, updated_at: new Date() } })]
+      : []),
+    prisma.recrutamento.upsert({
       where: { parceiro_id: parceiroId },
       create: { parceiro_id: parceiroId, ...(dadosLinha as object) },
       update: dadosLinha as object
-    });
-    await tx.recrutamento_atividades.create({
+    }),
+    prisma.recrutamento_atividades.create({
       data: {
         parceiro_id: parceiroId,
         tipo: TIPO_MOVIMENTACAO,
         resultado: `${COLUNA_POR_ID.get(origem)?.label} → ${COLUNA_POR_ID.get(destino)?.label}`,
         por_parceiro_id: sessao.parceiroId
       }
-    });
-  });
+    })
+  ];
+  await prisma.$transaction(escritas);
 
   if (Object.keys(dadosParceiro).length > 0) {
-    await logAlteracao({
-      entidadeTipo: "parceiros",
-      entidadeId: parceiroId,
-      acao: "editar",
-      dadosAntes: { funcao: parceiro.funcao, status_funcao: parceiro.status_funcao },
-      dadosDepois: { ...dadosParceiro, origem: "recrutamento" }
+    // Log de auditoria fora do caminho crítico (não segura a resposta).
+    // (grava direto, com o id lido da sessão acima — dentro do after() não dá
+    // pra ler o cookie da requisição.)
+    const quem = sessao.parceiroId;
+    const antes = { funcao: parceiro.funcao, status_funcao: parceiro.status_funcao };
+    const depois = JSON.parse(JSON.stringify({ ...dadosParceiro, origem: "recrutamento" }));
+    after(async () => {
+      await prisma.logs_alteracao
+        .create({
+          data: {
+            parceiro_id: quem,
+            entidade_tipo: "parceiros",
+            entidade_id: parceiroId,
+            acao: "editar",
+            dados_antes: antes,
+            dados_depois: depois
+          }
+        })
+        .catch(() => {});
     });
   }
-
-  revalidatePath("/recrutamento");
-  revalidatePath("/parceiros");
 }
 
 // ---------------------------------------------------------------------------

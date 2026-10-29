@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { COLUNAS, type ColunaId } from "@/lib/recrutamento/opcoes";
 import { CampoSelectAuto, type ResultadoSalvar } from "@/components/recrutamento-campos";
 
@@ -56,7 +57,7 @@ function formatarData(iso: string) {
 }
 
 export function RecrutamentoKanban({
-  cards,
+  cards: cardsServidor,
   hoje,
   responsaveis,
   responsavelPorEtapa,
@@ -70,6 +71,15 @@ export function RecrutamentoKanban({
   moverCard: (id: string, destino: ColunaId) => Promise<void>;
   definirResponsavelEtapa: (etapa: string, responsavelId: string | null) => Promise<ResultadoSalvar>;
 }) {
+  const router = useRouter();
+  // Cópia local dos cards: o card muda de coluna NA HORA ao soltar e o servidor
+  // grava em segundo plano (antes a tela esperava a gravação + o recarregamento
+  // do quadro inteiro, e ficava lenta). Se o servidor recusar, o card volta.
+  const [cards, setCards] = useState(cardsServidor);
+  const pendentes = useRef(0);
+  useEffect(() => {
+    if (pendentes.current === 0) setCards(cardsServidor);
+  }, [cardsServidor]);
   const [arrastandoId, setArrastandoId] = useState<string | null>(null);
   const [colunaAlvo, setColunaAlvo] = useState<ColunaId | null>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -110,14 +120,33 @@ export function RecrutamentoKanban({
     if (!arrastandoId) return;
     const id = arrastandoId;
     setArrastandoId(null);
-    if (cards.find((c) => c.id === id)?.coluna === coluna) return;
+    const anterior = cards.find((c) => c.id === id);
+    if (!anterior || anterior.coluna === coluna) return;
     setErro(null);
-    startTransition(() => {
-      moverCard(id, coluna).catch((e: unknown) => {
+    setCards((lista) => lista.map((c) => (c.id === id ? { ...c, coluna, diasNaEtapa: 0 } : c)));
+    // Quem entra/sai de Corretor ou Estagiário precisa dos indicadores do
+    // servidor (captações etc.) — só nesses casos recarrega o quadro, depois
+    // de o card já estar na coluna nova.
+    const grupoDe = (id: ColunaId) => COLUNAS.find((x) => x.id === id)?.grupo;
+    const precisaAtualizar = grupoDe(coluna) === "equipe" || grupoDe(anterior.coluna) === "equipe";
+    pendentes.current += 1;
+    moverCard(id, coluna)
+      .then(() => {
+        pendentes.current -= 1;
+        if (precisaAtualizar) startTransition(() => router.refresh());
+      })
+      .catch((e: unknown) => {
+        pendentes.current -= 1;
+        setCards((lista) => lista.map((c) => (c.id === id ? anterior : c)));
         setErro(e instanceof Error ? e.message : "Não foi possível mover o card.");
       });
-    });
   }
+
+  const iniciarArraste = useCallback((id: string) => setArrastandoId(id), []);
+  const terminarArraste = useCallback(() => {
+    setArrastandoId(null);
+    setColunaAlvo(null);
+  }, []);
 
   return (
     <div className="flex flex-col gap-3">
@@ -208,11 +237,8 @@ export function RecrutamentoKanban({
                     c={c}
                     hoje={hoje}
                     arrastando={arrastandoId === c.id}
-                    aoArrastar={() => setArrastandoId(c.id)}
-                    aoSoltarFim={() => {
-                      setArrastandoId(null);
-                      setColunaAlvo(null);
-                    }}
+                    aoArrastar={iniciarArraste}
+                    aoSoltarFim={terminarArraste}
                   />
                 ))}
                 {doGrupo.length === 0 && <div className="text-[11px] text-gray-400 text-center py-4">Nenhum card</div>}
@@ -240,7 +266,9 @@ function Resumo({ rotulo, valor, destaque }: { rotulo: string; valor: number; de
   );
 }
 
-function Cartao({
+// memo: com ~400 cards, sem isso todo cartão era redesenhado a cada movimento
+// do mouse sobre uma coluna durante o arraste.
+const Cartao = memo(function Cartao({
   c,
   hoje,
   arrastando,
@@ -250,7 +278,7 @@ function Cartao({
   c: CardRecrutamento;
   hoje: string;
   arrastando: boolean;
-  aoArrastar: () => void;
+  aoArrastar: (id: string) => void;
   aoSoltarFim: () => void;
 }) {
   const grupo = COLUNAS.find((x) => x.id === c.coluna)?.grupo;
@@ -261,7 +289,7 @@ function Cartao({
     <Link
       href={`/recrutamento/${c.id}`}
       draggable
-      onDragStart={aoArrastar}
+      onDragStart={() => aoArrastar(c.id)}
       onDragEnd={aoSoltarFim}
       className={`bg-white border rounded-lg p-2.5 flex flex-col gap-1 hover:shadow-sm transition-shadow cursor-grab active:cursor-grabbing ${
         arrastando ? "opacity-50" : ""
@@ -340,7 +368,7 @@ function Cartao({
       )}
     </Link>
   );
-}
+});
 
 function Selo({ cor, children }: { cor: "vermelho" | "ambar" | "cinza"; children: React.ReactNode }) {
   const cls =

@@ -952,3 +952,28 @@ CREATE TABLE IF NOT EXISTS recrutamento_etapas (
   responsavel_id  UUID REFERENCES parceiros(id),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Recrutamento v2 (29/10/2026) — ver migration_recrutamento_v2.sql
+CREATE TABLE IF NOT EXISTS recrutamento_turmas (
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  nome             TEXT NOT NULL,
+  inicio           DATE NOT NULL,
+  passos_inicio    DATE,
+  passos_fim       DATE,
+  especificos_a    DATE,
+  especificos_b    DATE,
+  acolhida         DATE,
+  observacao       TEXT,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_recrutamento_turmas_nome ON recrutamento_turmas(nome);
+ALTER TABLE recrutamento ADD COLUMN IF NOT EXISTS canal TEXT;
+ALTER TABLE recrutamento ADD COLUMN IF NOT EXISTS motivo_desistencia TEXT;
+ALTER TABLE recrutamento ADD COLUMN IF NOT EXISTS motivo_obs TEXT;
+ALTER TABLE recrutamento ADD COLUMN IF NOT EXISTS turma_id UUID REFERENCES recrutamento_turmas(id);
+ALTER TABLE recrutamento ADD COLUMN IF NOT EXISTS aprovacao_broker_em DATE;
+ALTER TABLE recrutamento ADD COLUMN IF NOT EXISTS contrato_assinado_em DATE;
+ALTER TABLE recrutamento ADD COLUMN IF NOT EXISTS acolhida_em DATE;
+ALTER TABLE recrutamento ADD COLUMN IF NOT EXISTS diagnostico JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE recrutamento ADD COLUMN IF NOT EXISTS followups JSONB NOT NULL DEFAULT '{}'::jsonb;

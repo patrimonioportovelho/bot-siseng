@@ -2010,13 +2010,24 @@ model recrutamento {
   inicio_treinamento  DateTime? @db.Date
   treinamentos        Json      @default("{}")
   notas               String?
+  canal               String?
+  motivo_desistencia  String?
+  motivo_obs          String?
+  turma_id            String?   @db.Uuid
+  aprovacao_broker_em DateTime? @db.Date
+  contrato_assinado_em DateTime? @db.Date
+  acolhida_em         DateTime? @db.Date
+  diagnostico         Json      @default("{}")
+  followups           Json      @default("{}")
   created_at          DateTime  @default(now()) @db.Timestamptz(6)
   updated_at          DateTime  @default(now()) @db.Timestamptz(6)
   parceiros           parceiros  @relation("recrutamento_parceiro", fields: [parceiro_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   responsavel         parceiros? @relation("recrutamento_responsavel", fields: [responsavel_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  turma               recrutamento_turmas? @relation(fields: [turma_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([responsavel_id], map: "idx_recrutamento_responsavel")
   @@index([proxima_acao_data], map: "idx_recrutamento_proxima_acao")
+  @@index([turma_id], map: "idx_recrutamento_turma")
 }
 
 model recrutamento_atividades {
@@ -2039,4 +2050,21 @@ model recrutamento_etapas {
   responsavel_id String?   @db.Uuid
   updated_at     DateTime  @default(now()) @db.Timestamptz(6)
   responsavel    parceiros? @relation(fields: [responsavel_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+// Turmas quinzenais (9 Passos + específicos + acolhida) — calendário do
+// "Processo de Recrutamento e Treinamento de Corretores" da Engimob.
+model recrutamento_turmas {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  nome          String    @unique(map: "uq_recrutamento_turmas_nome")
+  inicio        DateTime  @db.Date
+  passos_inicio DateTime? @db.Date
+  passos_fim    DateTime? @db.Date
+  especificos_a DateTime? @db.Date
+  especificos_b DateTime? @db.Date
+  acolhida      DateTime? @db.Date
+  observacao    String?
+  created_at    DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at    DateTime  @default(now()) @db.Timestamptz(6)
+  recrutamento  recrutamento[]
 }

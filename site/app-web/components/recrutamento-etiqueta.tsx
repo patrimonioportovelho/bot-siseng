@@ -4,19 +4,25 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  AVISO_PRIMEIRO_CONTATO,
+  CANAIS,
   COLUNAS,
   CRECI_STATUS,
+  DIAGNOSTICO_PERGUNTAS,
   INTERESSE_OPCOES,
-  META_CAPTACOES,
-  PRAZO_META_DIAS,
+  JANELA_ACOMPANHAMENTO_DIAS,
+  MOTIVOS_DESISTENCIA,
+  PRAZO_ACOLHIDA_DIAS,
   RESULTADOS_CONTATO,
+  ROTEIRO_PRIMEIRO_CONTATO,
   STATUS_REUNIAO,
   TIPOS_CONTATO,
+  TIPO_CHECKIN,
   TIPO_MOVIMENTACAO,
   TTI_STATUS,
   type ColunaId
 } from "@/lib/recrutamento/opcoes";
-import { GRUPOS_TREINAMENTO, type EstadoTreinamentos } from "@/lib/recrutamento/treinamentos";
+import { CHAVES_PRESENCA, GRUPOS_TREINAMENTO, type EstadoTreinamentos } from "@/lib/recrutamento/treinamentos";
 import {
   CampoDataAuto,
   CampoSelectAuto,
@@ -26,6 +32,8 @@ import {
   type ResultadoSalvar
 } from "@/components/recrutamento-campos";
 import type { AtividadeRegistrada } from "@/app/recrutamento/actions";
+
+export type PassoFollowupTela = { chave: string; titulo: string; vence: string; feito: boolean; atrasoDias: number };
 
 export type DadosEtiqueta = {
   id: string;
@@ -37,16 +45,24 @@ export type DadosEtiqueta = {
   statusFuncao: string;
   coluna: ColunaId;
   linkDrive: string | null;
+  canal: string | null;
   responsavelId: string | null;
   proximaAcaoData: string | null;
   proximaAcaoTexto: string | null;
   reuniao1: { data: string | null; status: string | null; notas: string | null };
   reuniao2: { data: string | null; status: string | null; notas: string | null };
+  aprovacaoBrokerEm: string | null;
   interesse: string | null;
+  motivoDesistencia: string | null;
+  motivoObs: string | null;
+  diagnostico: Record<string, string>;
+  followups: PassoFollowupTela[];
+  turmaId: string | null;
   ttiStatus: string | null;
   creciStatus: string | null;
   inicioTreinamento: string | null;
   treinamentos: EstadoTreinamentos;
+  acolhidaEm: string | null;
   notas: string | null;
   dataEntrada: string | null; // yyyy-mm-dd
   diasNaCasa: number | null;
@@ -68,10 +84,18 @@ export type DadosEtiqueta = {
   } | null;
 };
 
+export type TurmaOpcao = { id: string; nome: string; inicio: string; acolhida: string | null };
+
 type Acoes = {
-  moverCard: (id: string, destino: ColunaId) => Promise<void>;
+  moverCard: (
+    id: string,
+    destino: ColunaId,
+    opcoes?: { motivo?: string | null; motivoObs?: string | null; forcar?: boolean }
+  ) => Promise<void>;
   salvarCampo: (id: string, campo: string, valor: string | null) => Promise<ResultadoSalvar>;
   alternarTreinamento: (id: string, chave: string, feito: boolean) => Promise<ResultadoSalvar>;
+  alternarFollowup: (id: string, chave: string, feito: boolean) => Promise<ResultadoSalvar>;
+  salvarDiagnostico: (id: string, chave: string, texto: string | null) => Promise<ResultadoSalvar>;
   registrarAtividade: (
     id: string,
     dados: { tipo: string; resultado: string | null; nota: string | null; proximaAcaoData: string | null }
@@ -93,13 +117,19 @@ function formatarDataHora(iso: string) {
   });
 }
 
+function dataBr(iso: string) {
+  return iso.split("-").reverse().join("/");
+}
+
 export function RecrutamentoEtiqueta({
   d,
   responsaveis,
+  turmas,
   acoes
 }: {
   d: DadosEtiqueta;
   responsaveis: { id: string; nome: string }[];
+  turmas: TurmaOpcao[];
   acoes: Acoes;
 }) {
   const router = useRouter();
@@ -109,19 +139,37 @@ export function RecrutamentoEtiqueta({
   // ---- mover de etapa ----
   const [colunaAtual, setColunaAtual] = useState<ColunaId>(d.coluna);
   const [erroMover, setErroMover] = useState<string | null>(null);
+  const [destinoRecusado, setDestinoRecusado] = useState<ColunaId | null>(null);
   const [movendo, setMovendo] = useState(false);
-  async function aoMudarEtapa(destino: ColunaId) {
+  const [motivoPendente, setMotivoPendente] = useState(false);
+  const [motivoEscolhido, setMotivoEscolhido] = useState("");
+  const [motivoObsEscolhido, setMotivoObsEscolhido] = useState("");
+
+  async function mover(destino: ColunaId, opcoes?: { motivo?: string | null; motivoObs?: string | null; forcar?: boolean }) {
     setErroMover(null);
+    setDestinoRecusado(null);
     setMovendo(true);
     try {
-      await acoes.moverCard(d.id, destino);
+      await acoes.moverCard(d.id, destino, opcoes);
       setColunaAtual(destino);
+      setMotivoPendente(false);
       router.refresh();
     } catch (e) {
       setErroMover(e instanceof Error ? e.message : "Não foi possível mover.");
+      setDestinoRecusado(destino);
     } finally {
       setMovendo(false);
     }
+  }
+  function aoMudarEtapa(destino: ColunaId) {
+    if (destino === "sem_interesse") {
+      setMotivoEscolhido("");
+      setMotivoObsEscolhido("");
+      setMotivoPendente(true);
+      return;
+    }
+    setMotivoPendente(false);
+    void mover(destino);
   }
 
   // ---- contatos ----
@@ -153,11 +201,9 @@ export function RecrutamentoEtiqueta({
     router.refresh();
   }
 
-  // ---- treinamentos ----
+  // ---- checklists (documentação, turma, acolhida) ----
   const [treino, setTreino] = useState<EstadoTreinamentos>(d.treinamentos);
   const [erroTreino, setErroTreino] = useState<string | null>(null);
-  const totalTreino = GRUPOS_TREINAMENTO.reduce((s, g) => s + g.itens.length, 0);
-  const feitosTreino = GRUPOS_TREINAMENTO.reduce((s, g) => s + g.itens.filter((i) => treino[i.chave]?.feito).length, 0);
   async function alternar(chave: string, feito: boolean) {
     setErroTreino(null);
     const anterior = treino;
@@ -168,15 +214,26 @@ export function RecrutamentoEtiqueta({
       setErroTreino(r.erro);
     }
   }
+  const presencasFeitas = CHAVES_PRESENCA.filter((c) => treino[c]?.feito).length;
+  const presencaCompleta = presencasFeitas === CHAVES_PRESENCA.length;
+  const turma = turmas.find((t) => t.id === d.turmaId) ?? null;
+  const diasDesdeInicioTurma = turma
+    ? Math.floor((Date.now() - new Date(`${turma.inicio}T00:00:00-04:00`).getTime()) / 86400000)
+    : null;
+
+  // ---- follow-up ----
+  const [passos, setPassos] = useState<PassoFollowupTela[]>(d.followups);
+  async function alternarPasso(chave: string, feito: boolean) {
+    setPassos((lista) => lista.map((p) => (p.chave === chave ? { ...p, feito, atrasoDias: feito ? 0 : p.atrasoDias } : p)));
+    const r = await acoes.alternarFollowup(d.id, chave, feito);
+    if (!r.ok) setPassos((lista) => lista.map((p) => (p.chave === chave ? { ...p, feito: !feito } : p)));
+  }
 
   const m = d.metricas;
-  const diaDoPrograma =
-    d.inicioTreinamento || d.dataEntrada
-      ? Math.max(
-          0,
-          Math.floor((Date.now() - new Date(`${d.inicioTreinamento ?? d.dataEntrada}T00:00:00-04:00`).getTime()) / 86400000)
-        )
-      : null;
+  const ehEquipe = d.coluna === "estagiario" || d.coluna === "corretor";
+  const emAcompanhamento = ehEquipe && d.diasNaCasa !== null && d.diasNaCasa <= JANELA_ACOMPANHAMENTO_DIAS;
+  const faltou = d.reuniao1.status === "Não compareceu" || d.reuniao2.status === "Não compareceu";
+  const ehFunil = coluna?.grupo === "funil";
 
   return (
     <div className="flex flex-col gap-4 max-w-4xl">
@@ -192,6 +249,7 @@ export function RecrutamentoEtiqueta({
               <span>
                 {d.funcao} · {d.statusFuncao}
               </span>
+              {d.canal && <span className="rounded-full border border-blue-200 bg-blue-50 text-blue-700 px-2 py-0.5 text-[10px] font-bold">{d.canal}</span>}
             </div>
             <div className="text-xs text-gray-600 mt-2 flex items-center gap-3 flex-wrap">
               {d.telefone && (
@@ -236,7 +294,7 @@ export function RecrutamentoEtiqueta({
               className={CAMPO}
               value={colunaAtual}
               disabled={movendo}
-              onChange={(e) => void aoMudarEtapa(e.target.value as ColunaId)}
+              onChange={(e) => aoMudarEtapa(e.target.value as ColunaId)}
             >
               {COLUNAS.map((c) => (
                 <option key={c.id} value={c.id}>
@@ -245,7 +303,20 @@ export function RecrutamentoEtiqueta({
               ))}
             </select>
             {movendo && <span className="text-[10px] text-gray-400">Movendo…</span>}
-            {erroMover && <div className="text-[11px] text-red-600 mt-1">{erroMover}</div>}
+            {erroMover && (
+              <div className="text-[11px] text-red-600 mt-1">
+                {erroMover}
+                {destinoRecusado && erroMover.startsWith("Presença incompleta") && (
+                  <button
+                    type="button"
+                    onClick={() => void mover(destinoRecusado, { forcar: true })}
+                    className="block mt-1 underline font-semibold"
+                  >
+                    Liberar mesmo assim (decisão dos gestores)
+                  </button>
+                )}
+              </div>
+            )}
           </div>
           <div>
             <Rotulo>Responsável pelo acompanhamento</Rotulo>
@@ -257,10 +328,19 @@ export function RecrutamentoEtiqueta({
             />
           </div>
           <div>
+            <Rotulo>Canal de origem</Rotulo>
+            <CampoSelectAuto
+              valor={d.canal}
+              vazio="Não informado"
+              opcoes={CANAIS.map((c) => ({ valor: c, rotulo: c }))}
+              salvar={salvar("canal")}
+            />
+          </div>
+          <div>
             <Rotulo>Próximo retorno</Rotulo>
             <CampoDataAuto valor={d.proximaAcaoData} salvar={salvar("proxima_acao_data")} />
           </div>
-          <div className="md:col-span-3">
+          <div className="md:col-span-2">
             <Rotulo>O que fazer no próximo retorno</Rotulo>
             <CampoTextoAuto
               valor={d.proximaAcaoTexto}
@@ -269,7 +349,52 @@ export function RecrutamentoEtiqueta({
             />
           </div>
         </div>
+
+        {motivoPendente && (
+          <div className="mt-3 border border-amber-200 bg-amber-50 rounded-lg p-3 flex flex-col gap-2">
+            <div className="text-xs font-semibold text-amber-800">Motivo da desistência (obrigatório)</div>
+            <select className={CAMPO} value={motivoEscolhido} onChange={(e) => setMotivoEscolhido(e.target.value)}>
+              <option value="">Escolha o motivo…</option>
+              {MOTIVOS_DESISTENCIA.map((mo) => (
+                <option key={mo}>{mo}</option>
+              ))}
+            </select>
+            <textarea
+              className={CAMPO}
+              rows={2}
+              value={motivoObsEscolhido}
+              onChange={(e) => setMotivoObsEscolhido(e.target.value)}
+              placeholder="Detalhe (opcional)"
+            />
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={!motivoEscolhido || movendo}
+                onClick={() => void mover("sem_interesse", { motivo: motivoEscolhido, motivoObs: motivoObsEscolhido || null })}
+                className="text-xs bg-primary text-white rounded-lg px-3 py-1.5 font-semibold disabled:opacity-50"
+              >
+                Confirmar
+              </button>
+              <button type="button" onClick={() => setMotivoPendente(false)} className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 text-gray-600">
+                Cancelar
+              </button>
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* Roteiro do 1º contato */}
+      {(d.coluna === "Lead" || d.coluna === "Em contato") && (
+        <details className={CARTAO} open={d.coluna === "Lead"}>
+          <summary className="text-sm font-bold text-gray-800 cursor-pointer">Roteiro do 1º contato (em até 1 hora útil)</summary>
+          <ol className="list-decimal pl-5 mt-3 flex flex-col gap-1.5 text-xs text-gray-700">
+            {ROTEIRO_PRIMEIRO_CONTATO.map((passo) => (
+              <li key={passo}>{passo}</li>
+            ))}
+          </ol>
+          <p className="text-[11px] text-red-700 bg-red-50 border border-red-200 rounded-lg px-2.5 py-1.5 mt-3">{AVISO_PRIMEIRO_CONTATO}</p>
+        </details>
+      )}
 
       {/* Contatos */}
       <div className={CARTAO}>
@@ -301,7 +426,7 @@ export function RecrutamentoEtiqueta({
             <textarea className={CAMPO} rows={2} value={nota} onChange={(e) => setNota(e.target.value)} placeholder="O que foi conversado" />
           </div>
         </div>
-        <div className="flex items-center gap-2 mb-3">
+        <div className="flex items-center gap-2 mb-3 flex-wrap">
           <button
             type="button"
             onClick={() => void registrar()}
@@ -310,6 +435,11 @@ export function RecrutamentoEtiqueta({
           >
             {registrando ? "Registrando…" : "Registrar contato"}
           </button>
+          {ehEquipe && (
+            <button type="button" onClick={() => setTipo(TIPO_CHECKIN)} className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 text-gray-600">
+              Preparar check-in semanal
+            </button>
+          )}
           {erroContato && <span className="text-[11px] text-red-600">{erroContato}</span>}
         </div>
         <div className="flex flex-col divide-y divide-gray-100 border-t border-gray-100">
@@ -330,13 +460,39 @@ export function RecrutamentoEtiqueta({
         </div>
       </div>
 
+      {/* Cadência de follow-up */}
+      {ehFunil && (
+        <div className={CARTAO}>
+          <div className={TITULO}>Cadência de follow-up (quem ainda não decidiu)</div>
+          {passos.length === 0 ? (
+            <div className="text-[11px] text-gray-400">
+              A cadência (D+1, D+3, D+7, D+15 e D+30) começa a contar a partir da data de uma reunião marcada como “Realizada”.
+            </div>
+          ) : (
+            <div className="flex flex-col">
+              {passos.map((p) => (
+                <label key={p.chave} className="flex items-center gap-2 py-1 text-xs text-gray-700 cursor-pointer hover:bg-gray-50 rounded px-1">
+                  <input type="checkbox" checked={p.feito} onChange={(e) => void alternarPasso(p.chave, e.target.checked)} />
+                  <span className={p.feito ? "text-gray-400 line-through" : ""}>{p.titulo}</span>
+                  <span className={`ml-auto text-[10px] ${!p.feito && p.atrasoDias > 0 ? "text-red-600 font-semibold" : "text-gray-400"}`}>
+                    {!p.feito && p.atrasoDias > 0 ? `atrasado ${p.atrasoDias} dia(s) · ` : ""}
+                    {dataBr(p.vence)}
+                  </span>
+                </label>
+              ))}
+            </div>
+          )}
+          <p className="text-[11px] text-gray-400 mt-2">Quem for reprovado recebe a resposta com empatia e segue na lista para indicações.</p>
+        </div>
+      )}
+
       {/* Reuniões */}
       <div className={CARTAO}>
         <div className={TITULO}>Reuniões</div>
         <div className="grid md:grid-cols-2 gap-4">
           {[
-            { n: 1, titulo: "1ª reunião — conhecer e mostrar como somos", dados: d.reuniao1 },
-            { n: 2, titulo: "2ª reunião — só para quem tem interesse", dados: d.reuniao2 }
+            { n: 1, titulo: "1ª reunião — diagnóstico (30 a 45 min)", dados: d.reuniao1 },
+            { n: 2, titulo: "2ª reunião — modelo de negócio (60 min, presencial)", dados: d.reuniao2 }
           ].map((r) => (
             <div key={r.n} className="flex flex-col gap-2">
               <div className="text-xs font-semibold text-gray-700">{r.titulo}</div>
@@ -354,56 +510,117 @@ export function RecrutamentoEtiqueta({
                   />
                 </div>
               </div>
+              <p className="text-[10px] text-gray-400">Confirmar presença na véspera e no dia. Faltou? Ligar no mesmo dia e registrar o motivo.</p>
               <div>
                 <Rotulo>Anotações</Rotulo>
                 <CampoTextoAuto valor={r.dados.notas} salvar={salvar(`reuniao${r.n}_notas`)} multilinha linhas={2} />
               </div>
+              {r.n === 2 && (
+                <div>
+                  <Rotulo>Broker aprovou a associação em</Rotulo>
+                  <CampoDataAuto valor={d.aprovacaoBrokerEm} salvar={salvar("aprovacao_broker_em")} />
+                </div>
+              )}
             </div>
           ))}
         </div>
-        <div className="mt-3 max-w-xs">
-          <Rotulo>Interesse em ingressar</Rotulo>
-          <CampoSelectAuto
-            valor={d.interesse}
-            vazio="—"
-            opcoes={INTERESSE_OPCOES.map((s) => ({ valor: s, rotulo: s }))}
-            salvar={salvar("interesse")}
-          />
+        <div className="grid md:grid-cols-3 gap-3 mt-4">
+          <div>
+            <Rotulo>Interesse em ingressar</Rotulo>
+            <CampoSelectAuto
+              valor={d.interesse}
+              vazio="—"
+              opcoes={INTERESSE_OPCOES.map((s) => ({ valor: s, rotulo: s }))}
+              salvar={salvar("interesse")}
+            />
+          </div>
+          <div>
+            <Rotulo>Motivo de falta ou desistência</Rotulo>
+            <CampoSelectAuto
+              valor={d.motivoDesistencia}
+              vazio="—"
+              opcoes={MOTIVOS_DESISTENCIA.map((s) => ({ valor: s, rotulo: s }))}
+              salvar={salvar("motivo_desistencia")}
+            />
+            {faltou && !d.motivoDesistencia && <div className="text-[10px] text-red-600">Faltou e ainda sem motivo registrado.</div>}
+          </div>
+          <div>
+            <Rotulo>Detalhe do motivo</Rotulo>
+            <CampoTextoAuto valor={d.motivoObs} salvar={salvar("motivo_obs")} />
+          </div>
+        </div>
+
+        <div className="mt-4 border-t border-gray-100 pt-3">
+          <div className="text-xs font-semibold text-gray-700 mb-2">Diagnóstico da 1ª reunião</div>
+          <div className="flex flex-col gap-2.5">
+            {DIAGNOSTICO_PERGUNTAS.map((q) => (
+              <div key={q.chave}>
+                <Rotulo>{q.texto}</Rotulo>
+                <CampoTextoAuto
+                  valor={d.diagnostico[q.chave] ?? null}
+                  salvar={(v) => acoes.salvarDiagnostico(d.id, q.chave, v)}
+                  multilinha
+                  linhas={2}
+                />
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 
-      {/* Treinamento */}
+      {/* Documentação / Turma / Acolhida */}
       <div className={CARTAO}>
         <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
-          <div className="text-sm font-bold text-gray-800">Treinamento e CRECI</div>
-          <div className="text-[11px] text-gray-500">
-            {feitosTreino}/{totalTreino} acompanhados
-            {diaDoPrograma !== null && ` · dia ${diaDoPrograma} de ${PRAZO_META_DIAS}`}
+          <div className="text-sm font-bold text-gray-800">Turma, documentação e acolhida</div>
+          <div className={`text-[11px] font-semibold ${presencaCompleta ? "text-green-600" : "text-gray-500"}`}>
+            Presença {presencasFeitas}/{CHAVES_PRESENCA.length}
+            {presencaCompleta ? " · 100% — liberado para a acolhida" : ""}
           </div>
         </div>
         <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden mb-3">
-          <div className="h-full bg-primary rounded-full" style={{ width: `${totalTreino ? (feitosTreino / totalTreino) * 100 : 0}%` }} />
+          <div
+            className={`h-full rounded-full ${presencaCompleta ? "bg-green-500" : "bg-primary"}`}
+            style={{ width: `${(presencasFeitas / CHAVES_PRESENCA.length) * 100}%` }}
+          />
         </div>
-        <div className="grid md:grid-cols-3 gap-3 mb-4">
+        <div className="grid md:grid-cols-4 gap-3 mb-3">
+          <div className="md:col-span-2">
+            <Rotulo>Turma (inscrições fecham 3 dias antes)</Rotulo>
+            <CampoSelectAuto
+              valor={d.turmaId}
+              vazio="Sem turma"
+              opcoes={turmas.map((t) => ({ valor: t.id, rotulo: `${t.nome} — início ${dataBr(t.inicio)}` }))}
+              salvar={salvar("turma_id")}
+            />
+          </div>
           <div>
             <Rotulo>Início do treinamento</Rotulo>
             <CampoDataAuto valor={d.inicioTreinamento} salvar={salvar("inicio_treinamento")} />
           </div>
           <div>
+            <Rotulo>Acolhida em</Rotulo>
+            <CampoDataAuto valor={d.acolhidaEm} salvar={salvar("acolhida_em")} />
+          </div>
+        </div>
+        {turma && (
+          <div className="text-[11px] text-gray-500 mb-3">
+            {turma.acolhida ? `Acolhida prevista: ${dataBr(turma.acolhida)}. ` : ""}
+            {diasDesdeInicioTurma !== null && diasDesdeInicioTurma >= 0 && (
+              <span className={diasDesdeInicioTurma > PRAZO_ACOLHIDA_DIAS && !d.acolhidaEm ? "text-red-600 font-semibold" : ""}>
+                {diasDesdeInicioTurma} dia(s) desde o início da turma (acolhida em até {PRAZO_ACOLHIDA_DIAS}).
+                {diasDesdeInicioTurma > PRAZO_ACOLHIDA_DIAS && !d.acolhidaEm ? " Prazo estourado: os gestores decidem se continua." : ""}
+              </span>
+            )}
+          </div>
+        )}
+        <div className="grid md:grid-cols-2 gap-3 mb-4">
+          <div>
             <Rotulo>Curso TTI</Rotulo>
-            <CampoSelectAuto
-              valor={d.ttiStatus}
-              opcoes={TTI_STATUS.map((s) => ({ valor: s, rotulo: s }))}
-              salvar={salvar("tti_status")}
-            />
+            <CampoSelectAuto valor={d.ttiStatus} opcoes={TTI_STATUS.map((s) => ({ valor: s, rotulo: s }))} salvar={salvar("tti_status")} />
           </div>
           <div>
             <Rotulo>CRECI</Rotulo>
-            <CampoSelectAuto
-              valor={d.creciStatus}
-              opcoes={CRECI_STATUS.map((s) => ({ valor: s, rotulo: s }))}
-              salvar={salvar("creci_status")}
-            />
+            <CampoSelectAuto valor={d.creciStatus} opcoes={CRECI_STATUS.map((s) => ({ valor: s, rotulo: s }))} salvar={salvar("creci_status")} />
           </div>
         </div>
         {erroTreino && <div className="text-[11px] text-red-600 mb-2">{erroTreino}</div>}
@@ -419,9 +636,7 @@ export function RecrutamentoEtiqueta({
                       <input type="checkbox" className="mt-0.5" checked={feito} onChange={(e) => void alternar(i.chave, e.target.checked)} />
                       <span className={feito ? "text-gray-400 line-through" : ""}>{i.titulo}</span>
                       {feito && treino[i.chave]?.data && (
-                        <span className="text-[10px] text-gray-400 ml-auto shrink-0">
-                          {treino[i.chave]!.data!.split("-").reverse().join("/")}
-                        </span>
+                        <span className="text-[10px] text-gray-400 ml-auto shrink-0">{dataBr(treino[i.chave]!.data!)}</span>
                       )}
                     </label>
                   );
@@ -430,51 +645,44 @@ export function RecrutamentoEtiqueta({
             </div>
           ))}
         </div>
+        <p className="text-[11px] text-gray-400 mt-3">
+          Sem 100%, a pessoa repõe o que faltou na turma seguinte e só é acolhida depois (limite de {PRAZO_ACOLHIDA_DIAS} dias do início da turma).
+        </p>
       </div>
 
       {/* Desenvolvimento */}
       <div className={CARTAO}>
-        <div className={TITULO}>Desenvolvimento</div>
+        <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+          <div className="text-sm font-bold text-gray-800">Desenvolvimento</div>
+          {emAcompanhamento && (
+            <div className="text-[11px] text-blue-700">
+              Acompanhamento de {JANELA_ACOMPANHAMENTO_DIAS} dias · semana {Math.floor((d.diasNaCasa ?? 0) / 7) + 1} de 13 · 1 contato por semana
+            </div>
+          )}
+        </div>
         {d.mostrarMetricas && m ? (
-          <>
-            <div className="mb-3">
-              <div className="flex items-center justify-between text-[11px] text-gray-600 mb-1">
-                <span>
-                  Meta dos {PRAZO_META_DIAS} dias: {META_CAPTACOES} captações
-                </span>
-                <span className="font-semibold">
-                  {Math.min(m.captacoes90d, META_CAPTACOES)}/{META_CAPTACOES}
-                </span>
-              </div>
-              <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-primary rounded-full"
-                  style={{ width: `${Math.min(100, (m.captacoes90d / META_CAPTACOES) * 100)}%` }}
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-              <Indicador rotulo="Imóveis captados" valor={String(m.captacoes)} />
-              <Indicador
-                rotulo="Tempo até a 1ª captação"
-                valor={m.diasAtePrimeiraCaptacao !== null ? `${m.diasAtePrimeiraCaptacao} dia(s)` : "Ainda sem captação"}
-              />
-              <Indicador rotulo="Clientes cadastrados" valor={String(m.clientes)} />
-              <Indicador rotulo="Propostas" valor={String(m.propostas)} />
-              <Indicador rotulo="Locações" valor={String(m.locacoes)} />
-              <Indicador rotulo="Compra e Venda" valor={String(m.vendas)} />
-              <Indicador rotulo="Administrações captadas" valor={String(m.administracoes)} />
-              <Indicador rotulo="Financiamentos (avaliações)" valor={String(m.avaliacoes)} />
-              <Indicador rotulo="Gestões" valor={String(m.gestoes)} />
-              <Indicador rotulo="Honorário recebido" valor={m.honorarioRecebido} />
-              <Indicador rotulo="Dias na casa" valor={d.diasNaCasa !== null ? String(d.diasNaCasa) : "—"} />
-              <Indicador rotulo="Último acesso ao portal" valor={m.ultimoAcessoPortal ?? "Nunca acessou"} />
-            </div>
-          </>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            <Indicador rotulo="Imóveis captados" valor={String(m.captacoes)} />
+            <Indicador
+              rotulo="Tempo até a 1ª captação"
+              valor={m.diasAtePrimeiraCaptacao !== null ? `${m.diasAtePrimeiraCaptacao} dia(s)` : "Ainda sem captação"}
+            />
+            <Indicador rotulo={`Captações nos ${JANELA_ACOMPANHAMENTO_DIAS} dias`} valor={String(m.captacoes90d)} />
+            <Indicador rotulo="Clientes cadastrados" valor={String(m.clientes)} />
+            <Indicador rotulo="Propostas" valor={String(m.propostas)} />
+            <Indicador rotulo="Locações" valor={String(m.locacoes)} />
+            <Indicador rotulo="Compra e Venda" valor={String(m.vendas)} />
+            <Indicador rotulo="Administrações captadas" valor={String(m.administracoes)} />
+            <Indicador rotulo="Financiamentos (avaliações)" valor={String(m.avaliacoes)} />
+            <Indicador rotulo="Gestões" valor={String(m.gestoes)} />
+            <Indicador rotulo="Honorário recebido" valor={m.honorarioRecebido} />
+            <Indicador rotulo="Dias na casa" valor={d.diasNaCasa !== null ? String(d.diasNaCasa) : "—"} />
+            <Indicador rotulo="Último acesso ao portal" valor={m.ultimoAcessoPortal ?? "Nunca acessou"} />
+          </div>
         ) : (
           <div className="text-[11px] text-gray-400">
-            Os indicadores (captações, clientes, propostas, transações, tempo até a 1ª captação) aparecem quando a pessoa virar
-            Corretor Estagiário ou Corretor.
+            Os indicadores (captações, clientes, propostas, transações, tempo até a 1ª captação) aparecem depois da acolhida, quando a
+            pessoa virar Corretor Estagiário ou Corretor.
           </div>
         )}
       </div>

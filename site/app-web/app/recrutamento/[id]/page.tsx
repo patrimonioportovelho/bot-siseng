@@ -3,17 +3,20 @@ import { notFound } from "next/navigation";
 import { Topbar } from "@/components/topbar";
 import { prisma } from "@/lib/prisma";
 import { requireAdminSession } from "@/lib/auth";
-import { formatData, formatMoeda, formatTelefone } from "@/lib/format";
+import { formatData, formatMoeda, formatTelefone, hojeInputDate } from "@/lib/format";
 import { RecrutamentoEtiqueta, type DadosEtiqueta } from "@/components/recrutamento-etiqueta";
 import {
+  alternarFollowupAction,
   alternarTreinamentoAction,
   moverCardRecrutamentoAction,
   registrarAtividadeRecrutamentoAction,
-  salvarCampoRecrutamentoAction
+  salvarCampoRecrutamentoAction,
+  salvarDiagnosticoAction
 } from "../actions";
 import { FUNCOES_NO_QUADRO, colunaDoParceiro } from "@/lib/recrutamento/opcoes";
 import { buscarMetricasCorretores, diasEntre } from "@/lib/recrutamento/metricas";
 import type { EstadoTreinamentos } from "@/lib/recrutamento/treinamentos";
+import { calcularFollowups, dataReferenciaFollowup, type EstadoFollowups } from "@/lib/recrutamento/followup";
 
 export const dynamic = "force-dynamic";
 
@@ -46,7 +49,7 @@ export default async function EtiquetaRecrutamentoPage({ params }: { params: Pro
   // Garante a linha de acompanhamento (idempotente).
   await prisma.recrutamento.upsert({ where: { parceiro_id: id }, create: { parceiro_id: id }, update: {} });
 
-  const [r, atividades, responsaveis] = await Promise.all([
+  const [r, atividades, responsaveis, turmas] = await Promise.all([
     prisma.recrutamento.findUniqueOrThrow({ where: { parceiro_id: id } }),
     prisma.recrutamento_atividades.findMany({
       where: { parceiro_id: id },
@@ -58,7 +61,8 @@ export default async function EtiquetaRecrutamentoPage({ params }: { params: Pro
       where: { funcao: { in: ["Administrativo", "Corretor"] }, status_funcao: "Ativo" },
       orderBy: [{ funcao: "asc" }, { nome: "asc" }],
       select: { id: true, nome: true }
-    })
+    }),
+    prisma.recrutamento_turmas.findMany({ orderBy: { inicio: "asc" }, select: { id: true, nome: true, inicio: true, acolhida: true } })
   ]);
 
   const coluna = colunaDoParceiro(parceiro, r.etapa);
@@ -70,6 +74,8 @@ export default async function EtiquetaRecrutamentoPage({ params }: { params: Pro
     : null;
   const m = metricasMap?.get(id) ?? null;
 
+  const passos = calcularFollowups(dataReferenciaFollowup(r), r.followups as EstadoFollowups | null, hojeInputDate());
+
   const dados: DadosEtiqueta = {
     id,
     nome: parceiro.nome,
@@ -80,16 +86,24 @@ export default async function EtiquetaRecrutamentoPage({ params }: { params: Pro
     statusFuncao: parceiro.status_funcao,
     coluna,
     linkDrive: parceiro.link_drive,
+    canal: r.canal,
     responsavelId: r.responsavel_id,
     proximaAcaoData: dataIso(r.proxima_acao_data),
     proximaAcaoTexto: r.proxima_acao_texto,
     reuniao1: { data: dataIso(r.reuniao1_data), status: r.reuniao1_status, notas: r.reuniao1_notas },
     reuniao2: { data: dataIso(r.reuniao2_data), status: r.reuniao2_status, notas: r.reuniao2_notas },
+    aprovacaoBrokerEm: dataIso(r.aprovacao_broker_em),
     interesse: r.interesse,
+    motivoDesistencia: r.motivo_desistencia,
+    motivoObs: r.motivo_obs,
+    diagnostico: ((r.diagnostico as Record<string, string> | null) ?? {}) as Record<string, string>,
+    followups: passos.map((p) => ({ chave: p.chave, titulo: p.titulo, vence: p.vence, feito: p.feito, atrasoDias: p.atrasoDias })),
+    turmaId: r.turma_id,
     ttiStatus: r.tti_status,
     creciStatus: r.creci_status,
     inicioTreinamento: dataIso(r.inicio_treinamento),
     treinamentos: ((r.treinamentos as EstadoTreinamentos | null) ?? {}) as EstadoTreinamentos,
+    acolhidaEm: dataIso(r.acolhida_em),
     notas: r.notas,
     dataEntrada: dataIso(parceiro.data_entrada),
     diasNaCasa: parceiro.data_entrada ? Math.max(0, diasEntre(parceiro.data_entrada, new Date())) : null,
@@ -129,10 +143,13 @@ export default async function EtiquetaRecrutamentoPage({ params }: { params: Pro
       <RecrutamentoEtiqueta
         d={dados}
         responsaveis={responsaveis}
+        turmas={turmas.map((t) => ({ id: t.id, nome: t.nome, inicio: dataIso(t.inicio)!, acolhida: dataIso(t.acolhida) }))}
         acoes={{
           moverCard: moverCardRecrutamentoAction,
           salvarCampo: salvarCampoRecrutamentoAction,
           alternarTreinamento: alternarTreinamentoAction,
+          alternarFollowup: alternarFollowupAction,
+          salvarDiagnostico: salvarDiagnosticoAction,
           registrarAtividade: registrarAtividadeRecrutamentoAction
         }}
       />

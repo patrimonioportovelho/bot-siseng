@@ -3,7 +3,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { COLUNAS, type ColunaId } from "@/lib/recrutamento/opcoes";
+import { COLUNAS, MOTIVOS_DESISTENCIA, type ColunaId } from "@/lib/recrutamento/opcoes";
 import { CampoSelectAuto, type ResultadoSalvar } from "@/components/recrutamento-campos";
 
 export type MetricasCard = {
@@ -21,24 +21,30 @@ export type CardRecrutamento = {
   nome: string;
   telefone: string | null; // já formatado
   coluna: ColunaId;
+  canal: string | null;
   responsavelId: string | null;
   responsavelNome: string | null;
   proximaAcaoData: string | null; // yyyy-mm-dd
   proximaAcaoTexto: string | null;
   diasNaEtapa: number;
+  idadeHoras: number; // desde o cadastro do lead
   ultimoContatoDias: number | null; // null = nunca
   totalContatos: number;
   diasNaCasa: number | null;
   dataSaida: string | null; // dd/mm/aaaa
   funcaoAtual: string;
   metricas: MetricasCard | null;
-  treinamentoFeitos: number;
-  treinamentoTotal: number;
+  presencasFeitas: number;
+  presencasTotal: number;
+  turmaNome: string | null;
+  followupVencido: string | null; // ex.: "D+3 — resposta a dúvidas (2 dias)"
+  faltaSemMotivo: boolean;
+  motivoDesistencia: string | null;
+  aprovadoBroker: boolean;
 };
 
 type OpcaoResponsavel = { id: string; nome: string };
-
-const META_CAPTACOES = 9;
+type OpcoesMover = { motivo?: string | null; motivoObs?: string | null; forcar?: boolean };
 
 function primeiroNome(nome: string | null) {
   return nome ? nome.split(" ")[0] : null;
@@ -52,9 +58,17 @@ function situacaoRetorno(data: string | null, hoje: string): "atrasado" | "hoje"
 }
 
 function formatarData(iso: string) {
-  const [a, m, d] = iso.split("-");
+  const [, m, d] = iso.split("-");
   return `${d}/${m}`;
 }
+
+function idadeTexto(horas: number) {
+  if (horas < 1) return "menos de 1 hora";
+  if (horas < 24) return `${Math.floor(horas)} h`;
+  return `${Math.floor(horas / 24)} dia(s)`;
+}
+
+const grupoDe = (id: ColunaId) => COLUNAS.find((x) => x.id === id)?.grupo;
 
 export function RecrutamentoKanban({
   cards: cardsServidor,
@@ -68,7 +82,7 @@ export function RecrutamentoKanban({
   hoje: string;
   responsaveis: OpcaoResponsavel[];
   responsavelPorEtapa: Record<string, string | null>;
-  moverCard: (id: string, destino: ColunaId) => Promise<void>;
+  moverCard: (id: string, destino: ColunaId, opcoes?: OpcoesMover) => Promise<void>;
   definirResponsavelEtapa: (etapa: string, responsavelId: string | null) => Promise<ResultadoSalvar>;
 }) {
   const router = useRouter();
@@ -85,7 +99,12 @@ export function RecrutamentoKanban({
   const [erro, setErro] = useState<string | null>(null);
   const [busca, setBusca] = useState("");
   const [filtroResp, setFiltroResp] = useState("");
+  const [filtroCanal, setFiltroCanal] = useState("");
   const [soPendentes, setSoPendentes] = useState(false);
+  // Motivo obrigatório ao mandar alguém para "Sem interesse".
+  const [pedindoMotivo, setPedindoMotivo] = useState<{ id: string } | null>(null);
+  const [motivo, setMotivo] = useState("");
+  const [motivoObs, setMotivoObs] = useState("");
   const [, startTransition] = useTransition();
 
   const filtrados = useMemo(() => {
@@ -95,17 +114,18 @@ export function RecrutamentoKanban({
       if (filtroResp === "__sem") {
         if (c.responsavelId) return false;
       } else if (filtroResp && c.responsavelId !== filtroResp) return false;
+      if (filtroCanal && c.canal !== filtroCanal) return false;
       if (soPendentes) {
         const s = situacaoRetorno(c.proximaAcaoData, hoje);
-        if (s !== "atrasado" && s !== "hoje") return false;
+        if (s !== "atrasado" && s !== "hoje" && !c.followupVencido) return false;
       }
       return true;
     });
-  }, [cards, busca, filtroResp, soPendentes, hoje]);
+  }, [cards, busca, filtroResp, filtroCanal, soPendentes, hoje]);
 
   // Faixa de resumo — só do funil (quem ainda está sendo recrutado).
   const resumo = useMemo(() => {
-    const funil = cards.filter((c) => COLUNAS.find((x) => x.id === c.coluna)?.grupo === "funil");
+    const funil = cards.filter((c) => grupoDe(c.coluna) === "funil");
     return {
       atrasados: funil.filter((c) => situacaoRetorno(c.proximaAcaoData, hoje) === "atrasado").length,
       hoje: funil.filter((c) => situacaoRetorno(c.proximaAcaoData, hoje) === "hoje").length,
@@ -115,31 +135,59 @@ export function RecrutamentoKanban({
     };
   }, [cards, hoje]);
 
+  const executarMover = useCallback(
+    (id: string, coluna: ColunaId, opcoes?: OpcoesMover) => {
+      const anterior = cards.find((c) => c.id === id);
+      if (!anterior || anterior.coluna === coluna) return;
+      setErro(null);
+      setCards((lista) =>
+        lista.map((c) =>
+          c.id === id
+            ? { ...c, coluna, diasNaEtapa: 0, motivoDesistencia: coluna === "sem_interesse" ? (opcoes?.motivo ?? null) : null }
+            : c
+        )
+      );
+      // Quem entra/sai de Corretor ou Estagiário precisa dos indicadores do
+      // servidor (captações etc.) — só nesses casos recarrega o quadro, depois
+      // de o card já estar na coluna nova.
+      const precisaAtualizar = grupoDe(coluna) === "equipe" || grupoDe(anterior.coluna) === "equipe" || coluna === "Em treinamento";
+      pendentes.current += 1;
+      moverCard(id, coluna, opcoes)
+        .then(() => {
+          pendentes.current -= 1;
+          if (precisaAtualizar) startTransition(() => router.refresh());
+        })
+        .catch((e: unknown) => {
+          pendentes.current -= 1;
+          setCards((lista) => lista.map((c) => (c.id === id ? anterior : c)));
+          setErro(e instanceof Error ? e.message : "Não foi possível mover o card.");
+        });
+    },
+    [cards, moverCard, router]
+  );
+
   function aoSoltar(coluna: ColunaId) {
     setColunaAlvo(null);
     if (!arrastandoId) return;
     const id = arrastandoId;
     setArrastandoId(null);
-    const anterior = cards.find((c) => c.id === id);
-    if (!anterior || anterior.coluna === coluna) return;
-    setErro(null);
-    setCards((lista) => lista.map((c) => (c.id === id ? { ...c, coluna, diasNaEtapa: 0 } : c)));
-    // Quem entra/sai de Corretor ou Estagiário precisa dos indicadores do
-    // servidor (captações etc.) — só nesses casos recarrega o quadro, depois
-    // de o card já estar na coluna nova.
-    const grupoDe = (id: ColunaId) => COLUNAS.find((x) => x.id === id)?.grupo;
-    const precisaAtualizar = grupoDe(coluna) === "equipe" || grupoDe(anterior.coluna) === "equipe";
-    pendentes.current += 1;
-    moverCard(id, coluna)
-      .then(() => {
-        pendentes.current -= 1;
-        if (precisaAtualizar) startTransition(() => router.refresh());
-      })
-      .catch((e: unknown) => {
-        pendentes.current -= 1;
-        setCards((lista) => lista.map((c) => (c.id === id ? anterior : c)));
-        setErro(e instanceof Error ? e.message : "Não foi possível mover o card.");
-      });
+    const atual = cards.find((c) => c.id === id);
+    if (!atual || atual.coluna === coluna) return;
+    if (coluna === "sem_interesse") {
+      // Abre a janelinha do motivo antes de mover (regra: 100% com motivo).
+      setMotivo("");
+      setMotivoObs("");
+      setPedindoMotivo({ id });
+      return;
+    }
+    executarMover(id, coluna);
+  }
+
+  function confirmarMotivo() {
+    if (!pedindoMotivo || !motivo) return;
+    const { id } = pedindoMotivo;
+    setPedindoMotivo(null);
+    executarMover(id, "sem_interesse", { motivo, motivoObs: motivoObs || null });
   }
 
   const iniciarArraste = useCallback((id: string) => setArrastandoId(id), []);
@@ -181,9 +229,19 @@ export function RecrutamentoKanban({
             </option>
           ))}
         </select>
+        <select
+          value={filtroCanal}
+          onChange={(e) => setFiltroCanal(e.target.value)}
+          className="text-xs border border-gray-300 rounded-lg px-2 py-1.5 bg-white outline-none focus:border-primary"
+        >
+          <option value="">Todos os canais</option>
+          <option value="Tráfego pago">Tráfego pago</option>
+          <option value="Prospecção ativa">Prospecção ativa</option>
+          <option value="Indicação">Indicação</option>
+        </select>
         <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
           <input type="checkbox" checked={soPendentes} onChange={(e) => setSoPendentes(e.target.checked)} />
-          Só retornos de hoje ou atrasados
+          Só retornos ou follow-ups de hoje/atrasados
         </label>
       </div>
 
@@ -247,6 +305,50 @@ export function RecrutamentoKanban({
           );
         })}
       </div>
+
+      {/* Motivo obrigatório (Sem interesse) */}
+      {pedindoMotivo && (
+        <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl border border-gray-200 shadow-lg p-4 w-full max-w-sm flex flex-col gap-3">
+            <div className="text-sm font-bold text-gray-800">
+              Motivo da desistência — {cards.find((c) => c.id === pedindoMotivo.id)?.nome}
+            </div>
+            <p className="text-[11px] text-gray-500">
+              Todo caso de desistência precisa de motivo registrado. Os motivos são revistos todo mês para ajustar a atração e a 1ª reunião.
+            </p>
+            <select
+              className="w-full text-xs border border-gray-300 rounded-lg px-2.5 py-1.5 outline-none focus:border-primary bg-white"
+              value={motivo}
+              onChange={(e) => setMotivo(e.target.value)}
+            >
+              <option value="">Escolha o motivo…</option>
+              {MOTIVOS_DESISTENCIA.map((m) => (
+                <option key={m}>{m}</option>
+              ))}
+            </select>
+            <textarea
+              className="w-full text-xs border border-gray-300 rounded-lg px-2.5 py-1.5 outline-none focus:border-primary bg-white"
+              rows={2}
+              value={motivoObs}
+              onChange={(e) => setMotivoObs(e.target.value)}
+              placeholder="Detalhe (opcional)"
+            />
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => setPedindoMotivo(null)} className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 text-gray-600">
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={!motivo}
+                onClick={confirmarMotivo}
+                className="text-xs bg-primary text-white rounded-lg px-3 py-1.5 font-semibold disabled:opacity-50"
+              >
+                Confirmar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -281,9 +383,12 @@ const Cartao = memo(function Cartao({
   aoArrastar: (id: string) => void;
   aoSoltarFim: () => void;
 }) {
-  const grupo = COLUNAS.find((x) => x.id === c.coluna)?.grupo;
+  const grupo = grupoDe(c.coluna);
   const retorno = situacaoRetorno(c.proximaAcaoData, hoje);
-  const atrasado = grupo === "funil" && retorno === "atrasado";
+  const atrasado = grupo === "funil" && (retorno === "atrasado" || !!c.followupVencido);
+  const emAcompanhamento = grupo === "equipe" && c.diasNaCasa !== null && c.diasNaCasa <= 90;
+  const checkinAtrasado =
+    emAcompanhamento && (c.ultimoContatoDias === null ? (c.diasNaCasa ?? 0) >= 7 : c.ultimoContatoDias > 7);
 
   return (
     <Link
@@ -293,7 +398,7 @@ const Cartao = memo(function Cartao({
       onDragEnd={aoSoltarFim}
       className={`bg-white border rounded-lg p-2.5 flex flex-col gap-1 hover:shadow-sm transition-shadow cursor-grab active:cursor-grabbing ${
         arrastando ? "opacity-50" : ""
-      } ${atrasado ? "border-red-300" : "border-gray-200 hover:border-primary/40"}`}
+      } ${atrasado || checkinAtrasado ? "border-red-300" : "border-gray-200 hover:border-primary/40"}`}
     >
       <div className="flex items-start justify-between gap-2">
         <span className="text-xs font-semibold text-gray-800 leading-snug">{c.nome}</span>
@@ -309,10 +414,17 @@ const Cartao = memo(function Cartao({
       {grupo === "funil" && (
         <>
           <div className="flex items-center gap-1 flex-wrap">
+            {c.canal && <Selo cor="azul">{c.canal}</Selo>}
+            {c.coluna === "Lead" && c.ultimoContatoDias === null && (
+              <Selo cor={c.idadeHoras < 24 ? "ambar" : "vermelho"}>1º contato pendente · {idadeTexto(c.idadeHoras)}</Selo>
+            )}
             {retorno === "atrasado" && <Selo cor="vermelho">Retorno atrasado · {formatarData(c.proximaAcaoData!)}</Selo>}
             {retorno === "hoje" && <Selo cor="ambar">Retorno hoje</Selo>}
             {retorno === "futuro" && <Selo cor="cinza">Retorno {formatarData(c.proximaAcaoData!)}</Selo>}
-            {retorno === "sem" && c.coluna !== "Em treinamento" && <Selo cor="cinza">Sem retorno agendado</Selo>}
+            {retorno === "sem" && c.coluna !== "Em treinamento" && c.coluna !== "Lead" && <Selo cor="cinza">Sem retorno agendado</Selo>}
+            {c.followupVencido && <Selo cor="vermelho">Follow-up {c.followupVencido}</Selo>}
+            {c.faltaSemMotivo && <Selo cor="vermelho">Falta sem motivo</Selo>}
+            {c.coluna === "2ª reunião" && c.aprovadoBroker && <Selo cor="verde">Broker aprovou</Selo>}
           </div>
           {c.proximaAcaoTexto && <div className="text-[11px] text-gray-600 leading-snug">{c.proximaAcaoTexto}</div>}
           <div className="text-[10px] text-gray-400">
@@ -323,23 +435,26 @@ const Cartao = memo(function Cartao({
               : `Último contato há ${c.ultimoContatoDias} dia(s)`}
             {c.totalContatos > 0 && ` · ${c.totalContatos} contato(s)`}
           </div>
-          {c.coluna === "Em treinamento" && c.treinamentoTotal > 0 && (
-            <Barra rotulo={`Treinamentos ${c.treinamentoFeitos}/${c.treinamentoTotal}`} valor={c.treinamentoFeitos} total={c.treinamentoTotal} />
+          {c.coluna === "Em treinamento" && (
+            <>
+              <div className="text-[10px] text-gray-500">{c.turmaNome ? `Turma: ${c.turmaNome}` : "Sem turma definida"}</div>
+              <Barra rotulo={`Presença ${c.presencasFeitas}/${c.presencasTotal} (100% libera a acolhida)`} valor={c.presencasFeitas} total={c.presencasTotal} />
+            </>
           )}
         </>
       )}
 
       {grupo === "equipe" && (
         <>
+          <div className="flex items-center gap-1 flex-wrap">
+            {emAcompanhamento && <Selo cor="azul">Acompanhamento 90 dias · semana {Math.floor((c.diasNaCasa ?? 0) / 7) + 1}/13</Selo>}
+            {checkinAtrasado && <Selo cor="vermelho">Check-in atrasado</Selo>}
+          </div>
           <div className="text-[10px] text-gray-400">{c.diasNaCasa !== null ? `${c.diasNaCasa} dias na casa` : "Sem data de entrada"}</div>
           {c.metricas && (
             <>
-              <Barra
-                rotulo={`Captações ${c.metricas.captacoes} (90 dias: ${c.metricas.captacoes90d}/${META_CAPTACOES})`}
-                valor={Math.min(c.metricas.captacoes90d, META_CAPTACOES)}
-                total={META_CAPTACOES}
-              />
               <div className="flex flex-wrap gap-1">
+                <Chip rotulo="Captações" valor={c.metricas.captacoes} />
                 <Chip rotulo="Clientes" valor={c.metricas.clientes} />
                 <Chip rotulo="Propostas" valor={c.metricas.propostas} />
                 <Chip rotulo="Locações" valor={c.metricas.locacoes} />
@@ -349,8 +464,14 @@ const Cartao = memo(function Cartao({
                 {c.metricas.diasAtePrimeiraCaptacao !== null
                   ? `1ª captação em ${c.metricas.diasAtePrimeiraCaptacao} dia(s)`
                   : "Ainda sem captação"}
+                {emAcompanhamento && ` · ${c.metricas.captacoes90d} captação(ões) nos 90 dias`}
               </div>
             </>
+          )}
+          {emAcompanhamento && (
+            <div className="text-[10px] text-gray-400">
+              {c.ultimoContatoDias === null ? "Sem check-in registrado" : `Último check-in há ${c.ultimoContatoDias} dia(s)`}
+            </div>
           )}
         </>
       )}
@@ -359,6 +480,10 @@ const Cartao = memo(function Cartao({
         <div className="text-[10px] text-gray-400">
           Saiu em {c.dataSaida ?? "—"} · agora {c.funcaoAtual}
         </div>
+      )}
+
+      {c.coluna === "sem_interesse" && (
+        <div className="text-[10px] text-gray-500">{c.motivoDesistencia ? `Motivo: ${c.motivoDesistencia}` : "Sem motivo registrado"}</div>
       )}
 
       {grupo !== "fim" && (
@@ -370,12 +495,16 @@ const Cartao = memo(function Cartao({
   );
 });
 
-function Selo({ cor, children }: { cor: "vermelho" | "ambar" | "cinza"; children: React.ReactNode }) {
+function Selo({ cor, children }: { cor: "vermelho" | "ambar" | "cinza" | "azul" | "verde"; children: React.ReactNode }) {
   const cls =
     cor === "vermelho"
       ? "bg-red-50 text-red-600 border-red-200"
       : cor === "ambar"
       ? "bg-amber-50 text-amber-700 border-amber-200"
+      : cor === "azul"
+      ? "bg-blue-50 text-blue-700 border-blue-200"
+      : cor === "verde"
+      ? "bg-green-50 text-green-700 border-green-200"
       : "bg-gray-50 text-gray-500 border-gray-200";
   return <span className={`text-[9px] font-bold rounded-full px-1.5 py-0.5 border ${cls}`}>{children}</span>;
 }

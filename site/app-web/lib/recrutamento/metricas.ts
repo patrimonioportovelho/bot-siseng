@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { STATUS_NAO_REALIZADA } from "@/lib/format";
 import { buscarHonorariosRecebidosPorParceiroETipo } from "@/lib/parceiros/ranking-honorarios";
-import { META_CAPTACOES, PRAZO_META_DIAS } from "@/lib/recrutamento/opcoes";
+import { JANELA_ACOMPANHAMENTO_DIAS } from "@/lib/recrutamento/opcoes";
 
 // Indicadores de evolução de Corretor / Corretor Estagiário, puxados do que o
 // sistema já registra: imóveis captados, clientes cadastrados, propostas,
@@ -12,7 +12,7 @@ export type MetricasCorretor = {
   primeiraCaptacao: Date | null;
   // Dias entre a entrada e a 1ª captação (null se ainda não captou).
   diasAtePrimeiraCaptacao: number | null;
-  // Captações feitas dentro dos primeiros 90 dias depois da entrada.
+  // Captações feitas nos primeiros 90 dias depois da acolhida (data de entrada).
   captacoes90d: number;
   clientes: number;
   propostas: number;
@@ -102,7 +102,7 @@ export async function buscarMetricasCorretores(
     x.captacoes += 1;
     if (!x.primeiraCaptacao || i.data_cadastro < x.primeiraCaptacao) x.primeiraCaptacao = i.data_cadastro;
     const ent = entrada.get(i.parceiro_id);
-    if (ent && i.data_cadastro >= ent && diasEntre(ent, i.data_cadastro) <= PRAZO_META_DIAS) x.captacoes90d += 1;
+    if (ent && i.data_cadastro >= ent && diasEntre(ent, i.data_cadastro) <= JANELA_ACOMPANHAMENTO_DIAS) x.captacoes90d += 1;
   }
   for (const p of parceiros) {
     const x = m(p.id);
@@ -129,4 +129,3 @@ export async function buscarMetricasCorretores(
   return resultado;
 }
 
-export { META_CAPTACOES, PRAZO_META_DIAS };

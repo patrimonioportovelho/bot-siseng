@@ -82,6 +82,7 @@ export const META_CANAL_MES: Record<string, number> = { "Tráfego pago": 60, "Pr
 // ---- Contatos / atividades ----
 export const TIPOS_CONTATO = ["Ligação", "WhatsApp", "E-mail", "Reunião", "Follow-up", "Check-in semanal", "Visita", "Outro"];
 export const RESULTADOS_CONTATO = [
+  "Mensagem enviada",
   "Atendeu",
   "Não atendeu",
   "Retornar depois",

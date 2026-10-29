@@ -27,7 +27,7 @@ function dataIso(d: Date | null | undefined) {
 // Etiqueta de Recrutamento: tudo da pessoa numa tela, com salvamento
 // automático (sem botão Salvar e sem recarregar a página).
 export default async function EtiquetaRecrutamentoPage({ params }: { params: Promise<{ id: string }> }) {
-  await requireAdminSession();
+  const sessao = await requireAdminSession();
   const { id } = await params;
 
   const parceiro = await prisma.parceiros.findUnique({
@@ -49,7 +49,7 @@ export default async function EtiquetaRecrutamentoPage({ params }: { params: Pro
   // Garante a linha de acompanhamento (idempotente).
   await prisma.recrutamento.upsert({ where: { parceiro_id: id }, create: { parceiro_id: id }, update: {} });
 
-  const [r, atividades, responsaveis, turmas] = await Promise.all([
+  const [r, atividades, responsaveis, turmas, etapasResp] = await Promise.all([
     prisma.recrutamento.findUniqueOrThrow({ where: { parceiro_id: id } }),
     prisma.recrutamento_atividades.findMany({
       where: { parceiro_id: id },
@@ -62,8 +62,11 @@ export default async function EtiquetaRecrutamentoPage({ params }: { params: Pro
       orderBy: [{ funcao: "asc" }, { nome: "asc" }],
       select: { id: true, nome: true }
     }),
-    prisma.recrutamento_turmas.findMany({ orderBy: { inicio: "asc" }, select: { id: true, nome: true, inicio: true, acolhida: true } })
+    prisma.recrutamento_turmas.findMany({ orderBy: { inicio: "asc" } }),
+    prisma.recrutamento_etapas.findMany({ select: { etapa: true, responsavel_id: true } })
   ]);
+  const responsavelPorEtapa: Record<string, string | null> = {};
+  for (const e of etapasResp) responsavelPorEtapa[e.etapa] = e.responsavel_id;
 
   const coluna = colunaDoParceiro(parceiro, r.etapa);
   if (!coluna) notFound();
@@ -143,7 +146,18 @@ export default async function EtiquetaRecrutamentoPage({ params }: { params: Pro
       <RecrutamentoEtiqueta
         d={dados}
         responsaveis={responsaveis}
-        turmas={turmas.map((t) => ({ id: t.id, nome: t.nome, inicio: dataIso(t.inicio)!, acolhida: dataIso(t.acolhida) }))}
+        remetenteLogado={{ id: sessao.parceiroId, primeiroNome: (sessao.nome ?? "").trim().split(/\s+/)[0] ?? "" }}
+        responsavelPorEtapa={responsavelPorEtapa}
+        turmas={turmas.map((t) => ({
+          id: t.id,
+          nome: t.nome,
+          inicio: dataIso(t.inicio)!,
+          acolhida: dataIso(t.acolhida),
+          passosInicio: dataIso(t.passos_inicio),
+          passosFim: dataIso(t.passos_fim),
+          especificosA: dataIso(t.especificos_a),
+          especificosB: dataIso(t.especificos_b)
+        }))}
         acoes={{
           moverCard: moverCardRecrutamentoAction,
           salvarCampo: salvarCampoRecrutamentoAction,

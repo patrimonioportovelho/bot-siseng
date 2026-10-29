@@ -32,6 +32,7 @@ import {
   type ResultadoSalvar
 } from "@/components/recrutamento-campos";
 import type { AtividadeRegistrada } from "@/app/recrutamento/actions";
+import { RecrutamentoWhatsapp } from "@/components/recrutamento-whatsapp";
 
 export type PassoFollowupTela = { chave: string; titulo: string; vence: string; feito: boolean; atrasoDias: number };
 
@@ -84,7 +85,16 @@ export type DadosEtiqueta = {
   } | null;
 };
 
-export type TurmaOpcao = { id: string; nome: string; inicio: string; acolhida: string | null };
+export type TurmaOpcao = {
+  id: string;
+  nome: string;
+  inicio: string;
+  acolhida: string | null;
+  passosInicio: string | null;
+  passosFim: string | null;
+  especificosA: string | null;
+  especificosB: string | null;
+};
 
 type Acoes = {
   moverCard: (
@@ -125,15 +135,24 @@ export function RecrutamentoEtiqueta({
   d,
   responsaveis,
   turmas,
+  remetenteLogado,
+  responsavelPorEtapa,
   acoes
 }: {
   d: DadosEtiqueta;
   responsaveis: { id: string; nome: string }[];
   turmas: TurmaOpcao[];
+  // Quem está logado (assina a mensagem de WhatsApp quando o item não tem
+  // responsável nem a etapa tem um padrão).
+  remetenteLogado: { id: string; primeiroNome: string };
+  // Responsável padrão de cada etapa (configurado no quadro).
+  responsavelPorEtapa: Record<string, string | null>;
   acoes: Acoes;
 }) {
   const router = useRouter();
   const salvar = (campo: string) => (valor: string | null) => acoes.salvarCampo(d.id, campo, valor);
+  // O responsável do item também alimenta o remetente da mensagem de WhatsApp.
+  const [responsavelId, setResponsavelId] = useState<string | null>(d.responsavelId);
   const coluna = COLUNAS.find((c) => c.id === d.coluna);
 
   // ---- mover de etapa ----
@@ -284,6 +303,42 @@ export function RecrutamentoEtiqueta({
         </div>
       </div>
 
+      {/* Gerador de mensagem de WhatsApp (registra o contato ao abrir) */}
+      <RecrutamentoWhatsapp
+        id={d.id}
+        nome={d.nome}
+        telefoneDigitos={d.telefoneDigitos}
+        coluna={colunaAtual}
+        remetentes={responsaveis}
+        remetenteIdPadrao={
+          responsavelId ?? responsavelPorEtapa[colunaAtual] ?? (responsaveis.some((r) => r.id === remetenteLogado.id) ? remetenteLogado.id : null)
+        }
+        remetenteFallback={remetenteLogado.primeiroNome}
+        reuniao1={{ data: d.reuniao1.data, status: d.reuniao1.status }}
+        reuniao2={{ data: d.reuniao2.data, status: d.reuniao2.status }}
+        turma={
+          turma
+            ? {
+                nome: turma.nome,
+                inicio: turma.inicio,
+                passosInicio: turma.passosInicio,
+                passosFim: turma.passosFim,
+                especificosA: turma.especificosA,
+                especificosB: turma.especificosB,
+                acolhida: turma.acolhida
+              }
+            : null
+        }
+        acolhidaEm={d.acolhidaEm}
+        faltou={faltou}
+        followupPendente={passos.find((p) => !p.feito)?.chave ?? null}
+        registrarAtividade={acoes.registrarAtividade}
+        aoRegistrar={(a) => {
+          setAtividades((lista) => [a, ...lista]);
+          router.refresh();
+        }}
+      />
+
       {/* Acompanhamento */}
       <div className={CARTAO}>
         <div className={TITULO}>Acompanhamento</div>
@@ -321,10 +376,13 @@ export function RecrutamentoEtiqueta({
           <div>
             <Rotulo>Responsável pelo acompanhamento</Rotulo>
             <CampoSelectAuto
-              valor={d.responsavelId}
+              valor={responsavelId}
               vazio="Sem responsável"
               opcoes={responsaveis.map((r) => ({ valor: r.id, rotulo: r.nome }))}
-              salvar={salvar("responsavel_id")}
+              salvar={(v) => {
+                setResponsavelId(v);
+                return salvar("responsavel_id")(v);
+              }}
             />
           </div>
           <div>

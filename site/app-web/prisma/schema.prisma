@@ -971,6 +971,11 @@ model parceiros {
   transacoes_transacoes_parceiro_externo_idToparceiros                        transacoes[]              @relation("transacoes_parceiro_externo_idToparceiros")
   transacoes_comissao_extra                                                   transacoes_comissao_extra[]
   usuarios                                                                    usuarios[]
+  recrutamento                                                                recrutamento?             @relation("recrutamento_parceiro")
+  recrutamento_responsavel                                                    recrutamento[]            @relation("recrutamento_responsavel")
+  recrutamento_atividades                                                     recrutamento_atividades[] @relation("recrutamento_atividades_parceiro")
+  recrutamento_atividades_por                                                 recrutamento_atividades[] @relation("recrutamento_atividades_por")
+  recrutamento_etapas                                                         recrutamento_etapas[]
 
   @@index([loja_id], map: "idx_parceiros_loja")
   @@index([nome], map: "idx_parceiros_nome")
@@ -1979,4 +1984,59 @@ model eventos_atas_geradas {
   parceiros              parceiros @relation(fields: [gerado_por_parceiro_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([evento_id], map: "idx_eventos_atas_evento")
+}
+
+
+// Módulo Recrutamento (29/10/2026) — kanban de acompanhamento. Uma linha por
+// parceiro (Recrutados, Corretor Estagiário, Corretor, quem saiu). A coluna
+// do quadro é derivada de parceiros.funcao/status_funcao + `etapa` (só vale
+// pro funil de Recrutados) — ver lib/recrutamento/opcoes.ts.
+model recrutamento {
+  parceiro_id         String    @id @db.Uuid
+  etapa               String    @default("Lead")
+  etapa_atualizada_em DateTime  @default(now()) @db.Timestamptz(6)
+  responsavel_id      String?   @db.Uuid
+  proxima_acao_data   DateTime? @db.Date
+  proxima_acao_texto  String?
+  reuniao1_data       DateTime? @db.Date
+  reuniao1_status     String?
+  reuniao1_notas      String?
+  reuniao2_data       DateTime? @db.Date
+  reuniao2_status     String?
+  reuniao2_notas      String?
+  interesse           String?
+  tti_status          String?
+  creci_status        String?
+  inicio_treinamento  DateTime? @db.Date
+  treinamentos        Json      @default("{}")
+  notas               String?
+  created_at          DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime  @default(now()) @db.Timestamptz(6)
+  parceiros           parceiros  @relation("recrutamento_parceiro", fields: [parceiro_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  responsavel         parceiros? @relation("recrutamento_responsavel", fields: [responsavel_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([responsavel_id], map: "idx_recrutamento_responsavel")
+  @@index([proxima_acao_data], map: "idx_recrutamento_proxima_acao")
+}
+
+model recrutamento_atividades {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  parceiro_id     String    @db.Uuid
+  tipo            String
+  resultado       String?
+  nota            String?
+  data            DateTime  @default(now()) @db.Timestamptz(6)
+  por_parceiro_id String?   @db.Uuid
+  created_at      DateTime  @default(now()) @db.Timestamptz(6)
+  parceiros       parceiros  @relation("recrutamento_atividades_parceiro", fields: [parceiro_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  por             parceiros? @relation("recrutamento_atividades_por", fields: [por_parceiro_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([parceiro_id, data(sort: Desc)], map: "idx_recrutamento_atividades_parceiro")
+}
+
+model recrutamento_etapas {
+  etapa          String    @id
+  responsavel_id String?   @db.Uuid
+  updated_at     DateTime  @default(now()) @db.Timestamptz(6)
+  responsavel    parceiros? @relation(fields: [responsavel_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 }

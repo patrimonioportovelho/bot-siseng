@@ -280,8 +280,14 @@ export function ParceiroForm({
   estados,
   cidades,
   action,
-  isAdm
+  isAdm,
+  funcaoInicial,
+  origem
 }: {
+  // Novo cadastro vindo do Recrutamento: função já escolhida (Recrutados) e
+  // volta pra etiqueta do lead depois de salvar.
+  funcaoInicial?: string;
+  origem?: string;
   parceiro: ParceiroExistente | null;
   lojas: Loja[];
   bancos: Banco[];
@@ -337,6 +343,7 @@ export function ParceiroForm({
   // sem campo nenhum editável até isso acontecer).
   const [modoEdicao, setModoEdicao] = useState(!p);
   const [statusFuncao, setStatusFuncao] = useState(p?.status_funcao ?? "Ativo");
+  const [funcaoSel, setFuncaoSel] = useState(p?.funcao ?? funcaoInicial ?? "");
   const [estadoCivil, setEstadoCivil] = useState(p?.estado_civil ?? "");
   const [uniaoEstavel, setUniaoEstavel] = useState(
     p?.uniao_estavel === true ? "true" : p?.uniao_estavel === false ? "false" : ""
@@ -419,6 +426,7 @@ export function ParceiroForm({
   return (
     <form action={formAction} className="flex flex-col gap-5">
       {p && <input type="hidden" name="parceiroId" value={p.id} />}
+      {origem && <input type="hidden" name="_origem" value={origem} />}
 
       <div className="bg-white border border-gray-200 rounded-xl p-4">
         <div className="text-sm font-bold text-gray-800 mb-3">Identificação</div>
@@ -454,7 +462,13 @@ export function ParceiroForm({
           </div>
           <div>
             <label className={LABEL}>Função</label>
-            <select className={CAMPO} name="funcao" defaultValue={p?.funcao ?? ""} required>
+            <select
+              className={CAMPO}
+              name="funcao"
+              value={funcaoSel}
+              onChange={(e) => setFuncaoSel(e.target.value)}
+              required
+            >
               <option value="" disabled>
                 Selecione...
               </option>
@@ -481,8 +495,8 @@ export function ParceiroForm({
             </select>
           </div>
           <div>
-            <label className={LABEL}>Loja *</label>
-            <select className={CAMPO} name="loja_id" defaultValue={p?.loja_id ?? ""} required>
+            <label className={LABEL}>{funcaoSel === "Recrutados" ? "Loja" : "Loja *"}</label>
+            <select className={CAMPO} name="loja_id" defaultValue={p?.loja_id ?? ""} required={funcaoSel !== "Recrutados"}>
               <option value="" disabled>
                 Selecione...
               </option>

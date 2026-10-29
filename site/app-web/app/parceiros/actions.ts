@@ -178,7 +178,9 @@ export async function criarParceiroAction(_prev: unknown, formData: FormData): P
   // 01/08/2026) — dá suporte ao filtro de loja no Topbar. Cadastro já
   // existente sem loja continua editável normalmente (reforçado só pelo
   // `required` no <select>, mesmo padrão de Transações/Administrações).
-  if (!texto(formData, "loja_id")) {
+  // Exceção: lead de recrutamento (função Recrutados) chega de anúncio, ainda
+  // sem loja definida.
+  if (!texto(formData, "loja_id") && funcao !== "Recrutados") {
     return { erro: "Loja é obrigatória." };
   }
 
@@ -225,6 +227,10 @@ export async function criarParceiroAction(_prev: unknown, formData: FormData): P
   });
 
   revalidatePath("/parceiros");
+  if (texto(formData, "_origem") === "recrutamento") {
+    revalidatePath("/recrutamento");
+    redirect(`/recrutamento/${novo.id}`);
+  }
   redirect(`/parceiros/${novo.id}?salvo=1`);
 }
 

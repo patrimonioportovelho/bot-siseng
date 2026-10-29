@@ -911,3 +911,44 @@ COMMENT ON VIEW vw_ranking_mes_atual IS 'Base para o leaderboard mensal de corre
 -- ============================================================
 -- FIM
 -- ============================================================
+
+-- ---------------------------------------------------------------------------
+-- Módulo Recrutamento (29/10/2026) — ver migration_recrutamento.sql
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS recrutamento (
+  parceiro_id          UUID PRIMARY KEY REFERENCES parceiros(id) ON DELETE CASCADE,
+  etapa                TEXT NOT NULL DEFAULT 'Lead',
+  etapa_atualizada_em  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  responsavel_id       UUID REFERENCES parceiros(id),
+  proxima_acao_data    DATE,
+  proxima_acao_texto   TEXT,
+  reuniao1_data        DATE,
+  reuniao1_status      TEXT,
+  reuniao1_notas       TEXT,
+  reuniao2_data        DATE,
+  reuniao2_status      TEXT,
+  reuniao2_notas       TEXT,
+  interesse            TEXT,
+  tti_status           TEXT,
+  creci_status         TEXT,
+  inicio_treinamento   DATE,
+  treinamentos         JSONB NOT NULL DEFAULT '{}'::jsonb,
+  notas                TEXT,
+  created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at           TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS recrutamento_atividades (
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  parceiro_id      UUID NOT NULL REFERENCES parceiros(id) ON DELETE CASCADE,
+  tipo             TEXT NOT NULL,
+  resultado        TEXT,
+  nota             TEXT,
+  data             TIMESTAMPTZ NOT NULL DEFAULT now(),
+  por_parceiro_id  UUID REFERENCES parceiros(id),
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS recrutamento_etapas (
+  etapa           TEXT PRIMARY KEY,
+  responsavel_id  UUID REFERENCES parceiros(id),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);

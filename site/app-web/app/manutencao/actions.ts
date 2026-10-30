@@ -1,11 +1,14 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireAdminSession, logAlteracao } from "@/lib/auth";
 import { valorEditavelParaDecimal } from "@/lib/format";
 import { registrarEJogarErro } from "@/lib/erros";
+import { logMovimentoQuadro } from "@/lib/quadro-log";
+import { AUTORIZADO_POR, URGENCIAS } from "@/lib/manutencao/opcoes";
 
 function texto(formData: FormData, campo: string): string | null {
   const v = formData.get(campo);
@@ -25,6 +28,17 @@ function data(formData: FormData, campo: string): Date | null {
   if (t === null) return null;
   const d = new Date(t + "T00:00:00");
   return Number.isNaN(d.getTime()) ? null : d;
+}
+
+// Quando a ficha está aberta no painel lateral da etiqueta (?embed=1) ou veio
+// dela no celular (?voltar=etiqueta), o redirect depois de salvar mantém isso
+// (lido do endereço da tela que enviou o formulário).
+async function sufixoDaFicha(): Promise<string> {
+  const ref = (await headers()).get("referer") ?? "";
+  let extra = "";
+  if (/[?&]embed=1/.test(ref)) extra += "&embed=1";
+  if (/[?&]voltar=etiqueta/.test(ref)) extra += "&voltar=etiqueta";
+  return extra;
 }
 
 // Cadastro de um novo ticket de manutenção. imovel_id sempre vem de um
@@ -58,6 +72,7 @@ export async function criarManutencaoAction(formData: FormData) {
         chave_com: texto(formData, "chave_com"),
         chave_atualizado_em: new Date(),
         coluna: "solicitado",
+        coluna_atualizada_em: new Date(),
         autorizado_por: "pendente"
       }
     })
@@ -111,32 +126,32 @@ export async function atualizarManutencaoAction(formData: FormData) {
   revalidatePath(`/manutencao/${id}`);
   revalidatePath("/manutencao");
   revalidatePath("/manutencao/painel");
-  redirect(`/manutencao/${id}?salvo=1`);
+  redirect(`/manutencao/${id}?salvo=1${await sufixoDaFicha()}`);
 }
 
-// Chamada direto do arrastar-e-soltar do Kanban — atualiza só a coluna, sem
-// passar pelo formulário inteiro. Chamada como função normal (não via
-// <form action>) direto do onDrop do card.
+// Chamada direto do arrastar-e-soltar do Kanban — atualiza só a coluna (e o
+// relógio "parado há N dias"), sem passar pelo formulário inteiro. O quadro já
+// mostra o card na coluna nova (movimento otimista), então aqui não recarrega a
+// página: só grava e devolve rápido. O log vai para depois da resposta.
 export async function moverColunaAction(id: string, novaColuna: string) {
-  await requireAdminSession();
+  const sessao = await requireAdminSession();
 
-  const antes = await prisma.manutencoes.findUnique({ where: { id } });
+  const antes = await prisma.manutencoes.findUnique({ where: { id }, select: { coluna: true } });
   if (!antes) throw new Error("Manutenção não encontrada.");
+  if (antes.coluna === novaColuna) return;
 
+  const agora = new Date();
   await prisma.manutencoes
-    .update({ where: { id }, data: { coluna: novaColuna, updated_at: new Date() } })
+    .update({ where: { id }, data: { coluna: novaColuna, coluna_atualizada_em: agora, updated_at: agora } })
     .catch((erro) => registrarEJogarErro({ entidadeTipo: "manutencoes", entidadeId: id, acao: "mover_coluna", erro }));
 
-  await logAlteracao({
+  logMovimentoQuadro({
+    parceiroId: sessao.parceiroId,
     entidadeTipo: "manutencoes",
     entidadeId: id,
-    acao: "editar",
-    dadosAntes: { coluna: antes.coluna },
-    dadosDepois: { coluna: novaColuna }
+    antes: { coluna: antes.coluna },
+    depois: { coluna: novaColuna }
   });
-
-  revalidatePath("/manutencao");
-  revalidatePath("/manutencao/painel");
 }
 
 // Soft-delete — mesmo padrão usado em imóveis/clientes/transações: marca
@@ -276,4 +291,82 @@ export async function adicionarNotaAction(formData: FormData) {
     .catch((erro) => registrarEJogarErro({ entidadeTipo: "manutencao_notas", entidadeId: manutencaoId, acao: "criar", erro }));
 
   revalidatePath(`/manutencao/${manutencaoId}`);
+}
+
+// --- Etiqueta (salvamento automático, mensagens e notas rápidas) ---
+
+type ResultadoMan = { ok: true } | { ok: false; erro: string };
+
+export type NotaManutencao = { id: string; texto: string; criadoEm: string };
+
+// Campos que a etiqueta edita direto: urgência, prestador e quem autorizou.
+export async function salvarCampoManutencaoAction(id: string, campo: string, valor: string | null): Promise<ResultadoMan> {
+  const sessao = await requireAdminSession();
+  try {
+    const v = (valor ?? "").trim() || null;
+    let dados: Record<string, unknown>;
+    if (campo === "urgencia") {
+      if (!v || !(URGENCIAS as readonly string[]).includes(v)) return { ok: false, erro: "Urgência inválida." };
+      dados = { urgencia: v };
+    } else if (campo === "autorizado_por") {
+      if (!v || !AUTORIZADO_POR.includes(v)) return { ok: false, erro: "Valor inválido." };
+      dados = { autorizado_por: v };
+    } else if (campo === "prestador_id") {
+      if (v) {
+        const existe = await prisma.parceiros.findUnique({ where: { id: v }, select: { id: true } });
+        if (!existe) return { ok: false, erro: "Prestador não encontrado." };
+      }
+      dados = { prestador_id: v };
+    } else {
+      return { ok: false, erro: "Campo não permitido." };
+    }
+    const antes = await prisma.manutencoes.findUnique({ where: { id }, select: { [campo]: true } });
+    if (!antes) return { ok: false, erro: "Manutenção não encontrada." };
+    await prisma.manutencoes.update({ where: { id }, data: { ...(dados as object), updated_at: new Date() } });
+    logMovimentoQuadro({
+      parceiroId: sessao.parceiroId,
+      entidadeTipo: "manutencoes",
+      entidadeId: id,
+      antes,
+      depois: { ...dados, origem: "etiqueta-manutencao" }
+    });
+    return { ok: true };
+  } catch (erro) {
+    return { ok: false, erro: erro instanceof Error ? erro.message : "Não foi possível salvar." };
+  }
+}
+
+async function criarNota(id: string, textoNota: string): Promise<NotaManutencao> {
+  const nota = await prisma.manutencao_notas.create({ data: { manutencao_id: id, texto: textoNota } });
+  return { id: nota.id, texto: nota.texto, criadoEm: nota.criado_em.toISOString() };
+}
+
+// Nota rápida da etiqueta (sem sair da tela).
+export async function adicionarNotaRapidaAction(
+  id: string,
+  textoNota: string
+): Promise<{ ok: true; nota: NotaManutencao } | { ok: false; erro: string }> {
+  await requireAdminSession();
+  const t = textoNota.trim();
+  if (!t) return { ok: false, erro: "Escreva o texto da nota." };
+  try {
+    return { ok: true, nota: await criarNota(id, t) };
+  } catch (erro) {
+    return { ok: false, erro: erro instanceof Error ? erro.message : "Não foi possível salvar a nota." };
+  }
+}
+
+// Mensagem de WhatsApp enviada pela etiqueta: fica registrada nas notas do
+// ticket (quem recebeu, qual modelo e o texto), que é a linha do tempo da ficha.
+export async function registrarContatoManutencaoAction(
+  id: string,
+  dados: { para: string; modelo: string; texto: string }
+): Promise<{ ok: true; nota: NotaManutencao } | { ok: false; erro: string }> {
+  await requireAdminSession();
+  try {
+    const texto = `📱 WhatsApp enviado — Para: ${dados.para}\nModelo: ${dados.modelo}\n${dados.texto}`;
+    return { ok: true, nota: await criarNota(id, texto) };
+  } catch (erro) {
+    return { ok: false, erro: erro instanceof Error ? erro.message : "Não foi possível registrar o contato." };
+  }
 }

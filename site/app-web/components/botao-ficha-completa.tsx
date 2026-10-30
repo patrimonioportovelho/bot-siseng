@@ -5,15 +5,16 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { PainelLateral } from "@/components/painel-lateral";
 
-// "Abrir ficha completa" da etiqueta do Financiamento. No computador (tela
+// "Abrir ficha completa" da etiqueta (Financiamento e Manutenção). No computador (tela
 // larga) abre a ficha num painel ao lado, sem sair da etiqueta; ao fechar, a
 // etiqueta é atualizada (a ficha pode ter mudado status, valores etc.). No
 // celular navega para a ficha em outra tela, e o "Voltar" dela retorna à
 // etiqueta (?voltar=etiqueta), não ao quadro.
-export function BotaoFichaCompleta({ avaliacaoId, nome }: { avaliacaoId: string; nome: string }) {
+export function BotaoFichaCompleta({ avaliacaoId, nome, base: baseProp }: { avaliacaoId: string; nome: string; base?: string }) {
   const router = useRouter();
   const [aberto, setAberto] = useState(false);
-  const base = `/financiamento/${avaliacaoId}`;
+  // Financiamento por padrão; outros quadros (ex.: Manutenção) passam o caminho da ficha.
+  const base = baseProp ?? `/financiamento/${avaliacaoId}`;
 
   return (
     <>

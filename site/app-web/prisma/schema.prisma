@@ -1444,6 +1444,8 @@ model manutencoes {
   chave_com                String?
   chave_atualizado_em      DateTime?                  @db.Timestamptz(6)
   coluna                   String                     @default("solicitado")
+  // Quando entrou na coluna atual — base do "parado há N dias" do quadro.
+  coluna_atualizada_em     DateTime?                  @db.Timestamptz(6)
   excluido                 Boolean                    @default(false)
   created_at               DateTime                   @default(now()) @db.Timestamptz(6)
   updated_at               DateTime                   @default(now()) @db.Timestamptz(6)

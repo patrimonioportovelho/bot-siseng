@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { formatMoeda } from "@/lib/format";
 import { COLUNAS_KANBAN, CHAVE_POSSE_LABEL } from "@/lib/gestoes/opcoes";
+import { useQuadroOtimista } from "@/components/use-quadro-otimista";
 
 type GestaoKanban = {
   id: string;
@@ -19,31 +20,44 @@ type GestaoKanban = {
 // de Manutenção (ver components/manutencao-kanban.tsx): moverColuna é uma
 // server action chamada direto no onDrop, sem <form>.
 export function GestaoKanban({
-  gestoes,
+  gestoes: gestoesServidor,
   moverColuna
 }: {
   gestoes: GestaoKanban[];
   moverColuna: (id: string, novaColuna: string) => Promise<void>;
 }) {
+  // O card muda de coluna na hora; o servidor grava em segundo plano.
+  const { itens: gestoes, moverPara, erro, limparErro } = useQuadroOtimista(gestoesServidor, moverColuna);
   const [arrastandoId, setArrastandoId] = useState<string | null>(null);
   const [colunaAlvo, setColunaAlvo] = useState<string | null>(null);
-  const [, startTransition] = useTransition();
 
   function onDrop(coluna: string) {
     setColunaAlvo(null);
     if (!arrastandoId) return;
     const id = arrastandoId;
     setArrastandoId(null);
-    if (gestoes.find((g) => g.id === id)?.coluna === coluna) return;
-    startTransition(() => {
-      moverColuna(id, coluna);
-    });
+    moverPara(id, coluna);
   }
 
+  const porColuna = useMemo(() => {
+    const mapa = new Map<string, GestaoKanban[]>();
+    for (const g of gestoes) mapa.set(g.coluna, [...(mapa.get(g.coluna) ?? []), g]);
+    return mapa;
+  }, [gestoes]);
+
   return (
+    <div className="flex flex-col gap-3">
+      {erro && (
+        <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg px-3 py-2 flex items-center justify-between gap-2">
+          <span>{erro}</span>
+          <button type="button" onClick={limparErro} className="text-red-400 hover:text-red-600">
+            ×
+          </button>
+        </div>
+      )}
     <div className="flex flex-col md:flex-row gap-3 md:overflow-x-auto pb-2">
       {COLUNAS_KANBAN.map((coluna) => {
-        const gestoesColuna = gestoes.filter((g) => g.coluna === coluna.id);
+        const gestoesColuna = porColuna.get(coluna.id) ?? [];
         const emDestaque = colunaAlvo === coluna.id;
         return (
           <div
@@ -100,6 +114,7 @@ export function GestaoKanban({
           </div>
         );
       })}
+    </div>
     </div>
   );
 }

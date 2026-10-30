@@ -26,10 +26,14 @@ export default async function ManutencaoDetalhePage({
   searchParams
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ salvo?: string }>;
+  searchParams: Promise<{ salvo?: string; embed?: string; voltar?: string }>;
 }) {
   const { id } = await params;
-  const { salvo } = await searchParams;
+  const { salvo, embed, voltar } = await searchParams;
+  // embed=1: aberta dentro do painel lateral da etiqueta (sem menu nem voltar).
+  // voltar=etiqueta: veio da etiqueta (celular) — o "Voltar" retorna a ela.
+  const embutido = embed === "1";
+  const voltarParaEtiqueta = voltar === "etiqueta";
 
   const manutencao = await prisma.manutencoes.findUnique({
     where: { id },
@@ -58,12 +62,19 @@ export default async function ManutencaoDetalhePage({
 
   return (
     <div>
-      <Topbar />
+      {!embutido && <Topbar />}
 
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-        <Link href="/manutencao" className="text-xs text-gray-500 hover:text-gray-800">
-          ← Voltar para Manutenção
-        </Link>
+        {embutido ? (
+          <span />
+        ) : (
+          <Link
+            href={voltarParaEtiqueta ? `/manutencao/${id}/etiqueta` : "/manutencao"}
+            className="text-xs text-gray-500 hover:text-gray-800"
+          >
+            {voltarParaEtiqueta ? "← Voltar para a etiqueta" : "← Voltar para Manutenção"}
+          </Link>
+        )}
         {!manutencao.excluido && (
           <form action={apagarManutencaoAction}>
             <input type="hidden" name="manutencaoId" value={manutencao.id} />

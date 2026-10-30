@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireAdminSession, logAlteracao } from "@/lib/auth";
 import { registrarEJogarErro } from "@/lib/erros";
+import { logMovimentoQuadro } from "@/lib/quadro-log";
 import { gerarProximoIdOrdemMarketing } from "@/lib/marketing/id-legado";
 import { dataHoraPortoVelho, formatHoraPortoVelho } from "@/lib/format";
 
@@ -190,20 +191,26 @@ export async function salvarBriefingAction(formData: FormData) {
 
 // Chamada direto do arrastar-e-soltar do Kanban — mesmo padrão de
 // app/gestoes/actions.ts e app/manutencao/actions.ts.
-export async function moverColunaAction(id: string, novaColuna: string) {
-  await requireAdminSession();
+export async function moverColunaAction(id: string, novaColuna: string): Promise<{ ok: true } | { ok: false; erro: string }> {
+  const sessao = await requireAdminSession();
 
-  const antes = await prisma.marketing_ordens.findUnique({ where: { id } });
-  if (!antes) throw new Error("Ordem de Marketing não encontrada.");
+  const antes = await prisma.marketing_ordens.findUnique({
+    where: { id },
+    select: { coluna: true, briefing_completo: true }
+  });
+  if (!antes) return { ok: false, erro: "Ordem de Marketing não encontrada." };
+  if (antes.coluna === novaColuna) return { ok: true };
 
   // Regra de ouro do Manual: "o agendamento reserva o horário; o briefing
   // autoriza a produção" — uma Ordem só sai de Aguardando briefing com o
   // briefing completo. Voltar pra Recebido continua liberado (é um
-  // "desistir"/reiniciar, não um avanço).
+  // "desistir"/reiniciar, não um avanço). Devolve { ok: false } (e não lança
+  // erro) porque em produção o Next esconde a mensagem de um erro lançado.
   if (antes.coluna === "aguardando_briefing" && novaColuna !== "aguardando_briefing" && novaColuna !== "recebido" && !antes.briefing_completo) {
-    throw new Error("Briefing incompleto — preencha todos os campos do briefing antes de avançar.");
+    return { ok: false, erro: "Briefing incompleto — preencha todos os campos do briefing antes de avançar." };
   }
 
+  const agora = new Date();
   await prisma.marketing_ordens
     .update({
       where: { id },
@@ -211,19 +218,18 @@ export async function moverColunaAction(id: string, novaColuna: string) {
       // slaDaOrdem) — só acontece aqui, nunca em atualizarOrdemAction ou
       // salvarBriefingAction, senão editar um campo qualquer "escondia" um
       // atraso real.
-      data: { coluna: novaColuna, coluna_atualizada_em: new Date(), updated_at: new Date() }
+      data: { coluna: novaColuna, coluna_atualizada_em: agora, updated_at: agora }
     })
     .catch((erro) => registrarEJogarErro({ entidadeTipo: "marketing_ordens", entidadeId: id, acao: "mover_coluna", erro }));
 
-  await logAlteracao({
+  logMovimentoQuadro({
+    parceiroId: sessao.parceiroId,
     entidadeTipo: "marketing_ordens",
     entidadeId: id,
-    acao: "editar",
-    dadosAntes: { coluna: antes.coluna },
-    dadosDepois: { coluna: novaColuna }
+    antes: { coluna: antes.coluna },
+    depois: { coluna: novaColuna }
   });
-
-  revalidatePath("/marketing");
+  return { ok: true };
 }
 
 // Soft-delete — mesmo padrão do resto do sistema.

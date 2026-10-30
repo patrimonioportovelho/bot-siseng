@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAdminSession, logAlteracao } from "@/lib/auth";
 import { valorEditavelParaDecimal, percentualParaDecimal } from "@/lib/format";
 import { registrarEJogarErro } from "@/lib/erros";
+import { logMovimentoQuadro } from "@/lib/quadro-log";
 import { sincronizarProprietariosExtra, sincronizarVinculosConjuge } from "@/lib/imoveis/proprietarios-extra";
 
 function texto(formData: FormData, campo: string): string | null {
@@ -87,27 +88,26 @@ export async function atualizarGestaoAction(formData: FormData) {
 }
 
 // Chamada direto do arrastar-e-soltar do Kanban — mesmo padrão do quadro de
-// Manutenção (moverColunaAction em app/manutencao/actions.ts).
+// Manutenção (moverColunaAction em app/manutencao/actions.ts): o card já muda
+// de coluna na tela, aqui só grava e devolve rápido (log depois da resposta).
 export async function moverColunaAction(id: string, novaColuna: string) {
-  await requireAdminSession();
+  const sessao = await requireAdminSession();
 
-  const antes = await prisma.gestoes.findUnique({ where: { id } });
+  const antes = await prisma.gestoes.findUnique({ where: { id }, select: { coluna: true } });
   if (!antes) throw new Error("Gestão não encontrada.");
+  if (antes.coluna === novaColuna) return;
 
   await prisma.gestoes
     .update({ where: { id }, data: { coluna: novaColuna, updated_at: new Date() } })
     .catch((erro) => registrarEJogarErro({ entidadeTipo: "gestoes", entidadeId: id, acao: "mover_coluna", erro }));
 
-  await logAlteracao({
+  logMovimentoQuadro({
+    parceiroId: sessao.parceiroId,
     entidadeTipo: "gestoes",
     entidadeId: id,
-    acao: "editar",
-    dadosAntes: { coluna: antes.coluna },
-    dadosDepois: { coluna: novaColuna }
+    antes: { coluna: antes.coluna },
+    depois: { coluna: novaColuna }
   });
-
-  revalidatePath("/gestoes");
-  revalidatePath("/manutencao/painel");
 }
 
 // Soft-delete — mesmo padrão do resto do sistema: marca excluido=true em vez

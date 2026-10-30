@@ -24,6 +24,7 @@ import {
 } from "@/lib/financiamento/conformidade";
 import { CampoDataAuto, CampoSelectAuto, CampoTextoAuto, Rotulo, type ResultadoSalvar } from "@/components/recrutamento-campos";
 import { FinanciamentoWhatsapp, type PessoaContato } from "@/components/financiamento-whatsapp";
+import { BotaoFichaCompleta } from "@/components/botao-ficha-completa";
 import type { AtividadeFinTela } from "@/app/financiamento/quadro-actions";
 
 export type DadosFin = {
@@ -271,9 +272,7 @@ export function FinanciamentoEtiqueta({
               {d.usaFgts && <span>Usa FGTS</span>}
             </div>
           </div>
-          <Link href={`/financiamento/${d.id}`} className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 text-gray-600 hover:bg-gray-50">
-            Abrir ficha completa
-          </Link>
+          <BotaoFichaCompleta avaliacaoId={d.id} nome={d.cliente.nome} />
         </div>
       </div>
 

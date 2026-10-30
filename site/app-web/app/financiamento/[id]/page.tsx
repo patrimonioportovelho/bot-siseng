@@ -25,10 +25,14 @@ export default async function AvaliacaoDetalhePage({
   searchParams
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ salvo?: string }>;
+  searchParams: Promise<{ salvo?: string; embed?: string; voltar?: string }>;
 }) {
   const { id } = await params;
-  const { salvo } = await searchParams;
+  const { salvo, embed, voltar } = await searchParams;
+  // embed=1: aberta dentro do painel lateral da etiqueta (sem menu nem voltar).
+  // voltar=etiqueta: veio da etiqueta (celular) — o "Voltar" retorna a ela.
+  const embutido = embed === "1";
+  const voltarParaEtiqueta = voltar === "etiqueta";
   const session = await getAdminSession();
 
   const avaliacao = await prisma.avaliacoes.findUnique({
@@ -105,13 +109,18 @@ export default async function AvaliacaoDetalhePage({
 
   return (
     <div>
-      <Topbar />
+      {!embutido && <Topbar />}
 
-      <div className="flex items-center justify-between mb-3">
-        <Link href="/financiamento" className="text-xs text-gray-500 hover:text-gray-800">
-          ← Voltar para Financiamento
-        </Link>
-      </div>
+      {!embutido && (
+        <div className="flex items-center justify-between mb-3">
+          <Link
+            href={voltarParaEtiqueta ? `/financiamento/${id}/etiqueta` : "/financiamento"}
+            className="text-xs text-gray-500 hover:text-gray-800"
+          >
+            {voltarParaEtiqueta ? "← Voltar para a etiqueta" : "← Voltar para Financiamento"}
+          </Link>
+        </div>
+      )}
 
       {salvo === "1" && (
         <div className="bg-green-50 border border-green-200 text-green-700 text-xs rounded-lg px-3 py-2 mb-4">

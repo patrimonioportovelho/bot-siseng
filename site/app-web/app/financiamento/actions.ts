@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireAdminSession, requireAdm, logAlteracao } from "@/lib/auth";
@@ -222,6 +223,17 @@ function validarClienteNovoObrigatorio(formData: FormData, sexo: string | null, 
   if (!telefone) throw new Error("Informe o telefone do cliente — obrigatório em todo cadastro novo.");
 }
 
+// Quando a ficha está aberta no painel lateral da etiqueta (?embed=1) ou veio
+// dela no celular (?voltar=etiqueta), o redirect depois de salvar mantém isso
+// (lido do endereço da tela que enviou o formulário).
+async function sufixoDaFicha(): Promise<string> {
+  const ref = (await headers()).get("referer") ?? "";
+  let extra = "";
+  if (/[?&]embed=1/.test(ref)) extra += "&embed=1";
+  if (/[?&]voltar=etiqueta/.test(ref)) extra += "&voltar=etiqueta";
+  return extra;
+}
+
 export async function criarAvaliacaoAction(formData: FormData) {
   await requireAdminSession();
 
@@ -306,7 +318,7 @@ export async function atualizarAvaliacaoAction(formData: FormData) {
 
   revalidatePath(`/financiamento/${id}`);
   revalidatePath("/financiamento");
-  redirect(`/financiamento/${id}?salvo=1`);
+  redirect(`/financiamento/${id}?salvo=1${await sufixoDaFicha()}`);
 }
 
 // "Apagar" aqui é sempre soft-delete (excluido=true) — mesmo padrão de
@@ -427,7 +439,7 @@ export async function enviarImagemConsultaCorretorAction(formData: FormData) {
   });
 
   revalidatePath(`/financiamento/${avaliacaoId}`);
-  redirect(`/financiamento/${avaliacaoId}?salvo=1`);
+  redirect(`/financiamento/${avaliacaoId}?salvo=1${await sufixoDaFicha()}`);
 }
 
 // Análise de crédito muitas vezes é conjunta (cônjuge, por exemplo) — além do
@@ -517,7 +529,7 @@ export async function criarAndamentoAction(formData: FormData) {
 
   revalidatePath(`/financiamento/${avaliacaoId}`);
   revalidatePath("/financiamento");
-  redirect(`/financiamento/${avaliacaoId}?salvo=1`);
+  redirect(`/financiamento/${avaliacaoId}?salvo=1${await sufixoDaFicha()}`);
 }
 
 export async function atualizarAndamentoAction(formData: FormData) {
@@ -547,7 +559,7 @@ export async function atualizarAndamentoAction(formData: FormData) {
 
   revalidatePath(`/financiamento/${antes.avaliacao_id}`);
   revalidatePath("/financiamento");
-  redirect(`/financiamento/${antes.avaliacao_id}?salvo=1`);
+  redirect(`/financiamento/${antes.avaliacao_id}?salvo=1${await sufixoDaFicha()}`);
 }
 
 // Mesmo soft-delete de apagarAvaliacaoAction, só que aqui não some da tela —
@@ -574,7 +586,7 @@ export async function apagarAndamentoAction(formData: FormData) {
 
   revalidatePath(`/financiamento/${antes.avaliacao_id}`);
   revalidatePath("/financiamento");
-  redirect(`/financiamento/${antes.avaliacao_id}?salvo=1`);
+  redirect(`/financiamento/${antes.avaliacao_id}?salvo=1${await sufixoDaFicha()}`);
 }
 
 // ==================== Lançamentos ====================
@@ -666,5 +678,5 @@ export async function sincronizarLancamentosAction(formData: FormData) {
   });
 
   revalidatePath(`/financiamento/${andamento.avaliacao_id}`);
-  redirect(`/financiamento/${andamento.avaliacao_id}?salvo=1`);
+  redirect(`/financiamento/${andamento.avaliacao_id}?salvo=1${await sufixoDaFicha()}`);
 }

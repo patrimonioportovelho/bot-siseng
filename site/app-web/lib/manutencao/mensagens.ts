@@ -26,7 +26,7 @@ export const MODELOS_MENSAGEM_MAN: ModeloMensagemMan[] = [
     id: "pro_orcamento",
     destinatario: "proprietario",
     titulo: "Orçamento para autorizar",
-    texto: `Oi, {nome}! ${ASSINATURA} O orçamento para {servico} no imóvel {imovel} ficou em {custo_estimado}. Você autoriza a execução? Se preferir, te passo os detalhes do que será feito antes de decidir.`
+    texto: `Oi, {nome}! ${ASSINATURA} Segue o orçamento do serviço de {servico} no imóvel {imovel}:\n\n{resumo_orcamento}\n\n*Total: {custo_estimado}*\n\nVocê autoriza a execução? Se preferir, te passo os detalhes antes de decidir.`
   },
   {
     id: "pro_aprovado",
@@ -63,6 +63,12 @@ export const MODELOS_MENSAGEM_MAN: ModeloMensagemMan[] = [
     destinatario: "proprietario",
     titulo: "Atividade agendada",
     texto: `Oi, {nome}! ${ASSINATURA} Agendamos {atividade} no imóvel {imovel} para {data_atividade}: {titulo_atividade}.{obs_atividade} Se algo não servir, me avise para ajustarmos.`
+  },
+  {
+    id: "pro_pagamento",
+    destinatario: "proprietario",
+    titulo: "Forma de pagamento combinada",
+    texto: `Oi, {nome}! ${ASSINATURA} Sobre o serviço de {servico} no imóvel {imovel} (total {custo_estimado}), a forma de pagamento ficou assim:\n\n{resumo_pagamento}\n\nEstá de acordo?`
   },
   {
     id: "pro_chave",
@@ -114,6 +120,12 @@ export const MODELOS_MENSAGEM_MAN: ModeloMensagemMan[] = [
     texto: `Oi, {nome}! ${ASSINATURA} Combinamos {atividade} no imóvel {imovel} para {data_atividade}: {titulo_atividade}.{obs_atividade} Você consegue? Acesso ao imóvel: {chave}.`
   },
   {
+    id: "pre_pagamento",
+    destinatario: "prestador",
+    titulo: "Forma de pagamento combinada",
+    texto: `Oi, {nome}! ${ASSINATURA} Sobre o serviço no imóvel {imovel}, o pagamento ficou assim:\n\n{resumo_pagamento}\n\nQualquer dúvida me avise.`
+  },
+  {
     id: "pre_chave",
     destinatario: "prestador",
     titulo: "Chave do imóvel",
@@ -143,6 +155,12 @@ export const MODELOS_MENSAGEM_MAN: ModeloMensagemMan[] = [
     destinatario: "inquilino",
     titulo: "Atividade agendada",
     texto: `Oi, {nome}! ${ASSINATURA} Agendamos {atividade} no imóvel {imovel} para {data_atividade}: {titulo_atividade}.{obs_atividade} Pode nos receber ou liberar o acesso? Qual horário é melhor para você?`
+  },
+  {
+    id: "inq_pagamento",
+    destinatario: "inquilino",
+    titulo: "Cobrança do serviço",
+    texto: `Oi, {nome}! ${ASSINATURA} Sobre o serviço de {servico} no imóvel {imovel} (total {custo_estimado}), a forma de pagamento ficou assim:\n\n{resumo_pagamento}\n\nQualquer dúvida me chame.`
   },
   {
     id: "inq_chave",
@@ -193,7 +211,9 @@ const SUGERIDO: Record<DestinatarioMan, Record<string, string>> = {
 const SIGLA: Record<DestinatarioMan, string> = { proprietario: "pro", prestador: "pre", inquilino: "inq" };
 
 // Modelo para uma atividade agendada ou para falar da chave, por destinatário.
-export function modeloPorAssunto(assunto: "atividade" | "chave", destinatario: DestinatarioMan): string {
+export function modeloPorAssunto(assunto: "atividade" | "chave" | "orcamento" | "pagamento", destinatario: DestinatarioMan): string {
+  // o orçamento detalhado só existe para o proprietário (é quem autoriza)
+  if (assunto === "orcamento") return "pro_orcamento";
   return `${SIGLA[destinatario]}_${assunto}`;
 }
 

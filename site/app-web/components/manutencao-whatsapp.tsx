@@ -18,7 +18,11 @@ export type PessoaMan = { nome: string; telefone: string | null };
 
 // Pedido vindo de outra parte da etiqueta: "enviar esta atividade" ou "falar da
 // chave". `n` muda a cada clique, para o mesmo pedido poder ser repetido.
-export type PedidoMensagem = { tipo: "atividade"; atividade: AtividadeMan; n: number } | { tipo: "chave"; n: number };
+export type PedidoMensagem =
+  | { tipo: "atividade"; atividade: AtividadeMan; n: number }
+  | { tipo: "chave"; n: number }
+  | { tipo: "orcamento"; n: number }
+  | { tipo: "pagamento"; para: DestinatarioMan; n: number };
 
 function dataBr(iso: string) {
   const [a, m, d] = iso.split("-");
@@ -64,6 +68,8 @@ export function ManutencaoWhatsapp({
     custoFinal: string | null;
     urgencia: string;
     chave: string;
+    resumoOrcamento: string | null;
+    resumoPagamento: string | null;
   };
   pedido: PedidoMensagem | null;
   registrarContato: (
@@ -101,6 +107,8 @@ export function ManutencaoWhatsapp({
       custo_final: contexto.custoFinal,
       urgencia: contexto.urgencia.toLowerCase(),
       chave: contexto.chave,
+      resumo_orcamento: contexto.resumoOrcamento,
+      resumo_pagamento: contexto.resumoPagamento,
       prestador: prestador ? primeiroNome(prestador.nome) : null,
       proprietario: proprietario ? primeiroNome(proprietario.nome) : null,
       atividade: atividadeFoco ? (TIPO_ATIVIDADE_LABEL[atividadeFoco.tipo] ?? atividadeFoco.tipo).toLowerCase() : null,
@@ -145,7 +153,10 @@ export function ManutencaoWhatsapp({
     pedidoAplicado.current = pedido.n;
     const foco = pedido.tipo === "atividade" ? pedido.atividade : null;
     setAtividadeFoco(foco);
-    const novo = modeloPorAssunto(pedido.tipo, destinatario);
+    // orçamento vai para o proprietário (quem autoriza); pagamento para quem foi indicado
+    const dest: DestinatarioMan = pedido.tipo === "orcamento" ? "proprietario" : pedido.tipo === "pagamento" ? pedido.para : destinatario;
+    setDestinatario(dest);
+    const novo = modeloPorAssunto(pedido.tipo, dest);
     setModeloId(novo);
     setEditado(false);
     const m = MODELO_MAN_POR_ID.get(novo);
@@ -157,7 +168,7 @@ export function ManutencaoWhatsapp({
             titulo_atividade: foco.titulo
           }
         : {};
-      setTexto(montar(m.texto, { ...ctx, ...extra }, foco?.notas?.trim() ?? ""));
+      setTexto(montar(m.texto, { ...ctx, nome: primeiroNome(pessoas[dest]?.nome ?? ""), ...extra }, foco?.notas?.trim() ?? ""));
     }
     raiz.current?.scrollIntoView({ behavior: "smooth", block: "center" });
     // eslint-disable-next-line react-hooks/exhaustive-deps

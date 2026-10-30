@@ -1452,9 +1452,16 @@ model manutencoes {
   imoveis                  imoveis                    @relation(fields: [imovel_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   clientes                 clientes?                  @relation(fields: [cliente_proprietario_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   parceiros                parceiros?                 @relation(fields: [prestador_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  // Pagamento (depois de aprovado): quem arca com o custo, quem paga o
+  // fornecedor e observações; as parcelas ficam em manutencao_pagamento_linhas.
+  pagamento_quem_arca      String?
+  pagamento_quem_paga      String?
+  pagamento_obs            String?
   checklist_itens          manutencao_checklist_itens[]
   atividades               manutencao_atividades[]
   notas                    manutencao_notas[]
+  orcamento_itens          manutencao_orcamento_itens[]
+  pagamento_linhas         manutencao_pagamento_linhas[]
 
   @@index([imovel_id], map: "idx_manutencoes_imovel")
   @@index([coluna], map: "idx_manutencoes_coluna")
@@ -2126,4 +2133,64 @@ model financiamento_etapas {
   responsavel_id String?   @db.Uuid
   updated_at     DateTime  @default(now()) @db.Timestamptz(6)
   responsavel    parceiros? @relation(fields: [responsavel_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// Catálogo de referência de materiais e serviços de obra (SINAPI/Caixa por
+/// estado e mês, ou itens manuais) usado no orçamento da Manutenção.
+model catalogo_obra {
+  id            String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  fonte         String                       @default("SINAPI")
+  grupo         String
+  codigo        String
+  categoria     String
+  classe_origem String?
+  descricao     String
+  unidade       String
+  preco_ref     Decimal?                     @db.Decimal(14, 2)
+  uf            String                       @default("RO")
+  referencia    String?
+  created_at    DateTime                     @default(now()) @db.Timestamptz(6)
+  itens         manutencao_orcamento_itens[]
+
+  @@unique([fonte, grupo, codigo, uf])
+  @@index([grupo, categoria], map: "idx_catalogo_obra_grupo_categoria")
+}
+
+/// Itens do orçamento de um ticket de Manutenção: materiais a comprar e
+/// serviços (reforma/mão de obra por m², linear, diária...).
+model manutencao_orcamento_itens {
+  id             String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  manutencao_id  String         @db.Uuid
+  grupo          String
+  categoria      String?
+  descricao      String
+  unidade        String
+  quantidade     Decimal        @default(1) @db.Decimal(14, 3)
+  valor_unitario Decimal        @default(0) @db.Decimal(14, 2)
+  fornecedor     String?
+  catalogo_id    String?        @db.Uuid
+  preco_ref      Decimal?       @db.Decimal(14, 2)
+  ordem          Int            @default(0) @db.SmallInt
+  created_at     DateTime       @default(now()) @db.Timestamptz(6)
+  manutencoes    manutencoes    @relation(fields: [manutencao_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  catalogo       catalogo_obra? @relation(fields: [catalogo_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+
+  @@index([manutencao_id], map: "idx_manut_orcamento_manutencao")
+}
+
+/// Como o serviço será pago depois de aprovado: uma linha por pagamento ou
+/// parcela (caução, boleto, PIX, desconto no repasse...).
+model manutencao_pagamento_linhas {
+  id            String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  manutencao_id String      @db.Uuid
+  descricao     String
+  forma         String
+  valor         Decimal     @default(0) @db.Decimal(14, 2)
+  vencimento    DateTime?   @db.Date
+  pago_em       DateTime?   @db.Date
+  ordem         Int         @default(0) @db.SmallInt
+  created_at    DateTime    @default(now()) @db.Timestamptz(6)
+  manutencoes   manutencoes @relation(fields: [manutencao_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([manutencao_id], map: "idx_manut_pagamento_manutencao")
 }

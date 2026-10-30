@@ -8,6 +8,16 @@ import { requireAdminSession, logAlteracao } from "@/lib/auth";
 import { valorEditavelParaDecimal } from "@/lib/format";
 import { registrarEJogarErro } from "@/lib/erros";
 import { logMovimentoQuadro } from "@/lib/quadro-log";
+import {
+  FORMAS_PAGAMENTO,
+  QUEM_ARCA,
+  QUEM_PAGA,
+  gerarParcelas,
+  type GrupoOrcamento,
+  type ItemCatalogo,
+  type ItemOrcamento,
+  type LinhaPagamento
+} from "@/lib/manutencao/orcamento";
 import { CHAVE_POSSE, SOLICITADO_POR, TIPOS_ATIVIDADE, TIPOS_SERVICO, URGENCIAS } from "@/lib/manutencao/opcoes";
 
 function texto(formData: FormData, campo: string): string | null {
@@ -459,5 +469,282 @@ export async function removerAtividadeRapidaAction(atividadeId: string): Promise
     return { ok: true };
   } catch (erro) {
     return falha(erro, "Não foi possível remover a atividade.");
+  }
+}
+
+// --- Orçamento (materiais e reforma/mão de obra) ---
+
+const GRUPOS: GrupoOrcamento[] = ["material", "servico"];
+const num = (v: unknown) => (v == null ? 0 : Number(v));
+
+function itemOrcamento(i: {
+  id: string;
+  grupo: string;
+  categoria: string | null;
+  descricao: string;
+  unidade: string;
+  quantidade: unknown;
+  valor_unitario: unknown;
+  fornecedor: string | null;
+  preco_ref: unknown;
+}): ItemOrcamento {
+  return {
+    id: i.id,
+    grupo: i.grupo as GrupoOrcamento,
+    categoria: i.categoria,
+    descricao: i.descricao,
+    unidade: i.unidade,
+    quantidade: num(i.quantidade),
+    valorUnitario: num(i.valor_unitario),
+    fornecedor: i.fornecedor,
+    precoRef: i.preco_ref == null ? null : Number(i.preco_ref)
+  };
+}
+
+// Itens do catálogo (SINAPI ou manuais) de uma categoria, filtrados pelo que
+// foi digitado — alimenta a lista de sugestões do orçamento.
+export async function buscarCatalogoObraAction(
+  grupo: GrupoOrcamento,
+  categoria: string | null,
+  termo: string
+): Promise<ItemCatalogo[]> {
+  await requireAdminSession();
+  if (!GRUPOS.includes(grupo)) return [];
+  const palavras = termo.trim().split(/\s+/).filter(Boolean).slice(0, 5);
+  const itens = await prisma.catalogo_obra.findMany({
+    where: {
+      grupo,
+      ...(categoria ? { categoria } : {}),
+      AND: palavras.map((p) => ({ descricao: { contains: p, mode: "insensitive" as const } }))
+    },
+    orderBy: { descricao: "asc" },
+    take: 40
+  });
+  return itens.map((c) => ({
+    id: c.id,
+    descricao: c.descricao,
+    unidade: c.unidade,
+    categoria: c.categoria,
+    precoRef: c.preco_ref == null ? null : Number(c.preco_ref),
+    referencia: c.referencia
+  }));
+}
+
+export async function adicionarItemOrcamentoAction(
+  id: string,
+  dados: {
+    grupo: GrupoOrcamento;
+    categoria: string | null;
+    descricao: string;
+    unidade: string;
+    quantidade: number;
+    valorUnitario: number;
+    fornecedor: string | null;
+    catalogoId: string | null;
+  }
+): Promise<{ ok: true; item: ItemOrcamento } | { ok: false; erro: string }> {
+  await requireAdminSession();
+  const descricao = dados.descricao.trim();
+  if (!GRUPOS.includes(dados.grupo) || !descricao || !dados.unidade.trim()) {
+    return { ok: false, erro: "Informe a descrição e a unidade do item." };
+  }
+  if (!(dados.quantidade > 0)) return { ok: false, erro: "A quantidade precisa ser maior que zero." };
+  if (dados.valorUnitario < 0) return { ok: false, erro: "O valor não pode ser negativo." };
+  try {
+    const cat = dados.catalogoId ? await prisma.catalogo_obra.findUnique({ where: { id: dados.catalogoId }, select: { id: true, preco_ref: true } }) : null;
+    const ultimo = await prisma.manutencao_orcamento_itens.findFirst({ where: { manutencao_id: id }, orderBy: { ordem: "desc" }, select: { ordem: true } });
+    const item = await prisma.manutencao_orcamento_itens.create({
+      data: {
+        manutencao_id: id,
+        grupo: dados.grupo,
+        categoria: dados.categoria || null,
+        descricao,
+        unidade: dados.unidade.trim(),
+        quantidade: dados.quantidade,
+        valor_unitario: dados.valorUnitario,
+        fornecedor: (dados.fornecedor ?? "").trim() || null,
+        catalogo_id: cat?.id ?? null,
+        preco_ref: cat?.preco_ref ?? null,
+        ordem: (ultimo?.ordem ?? -1) + 1
+      }
+    });
+    return { ok: true, item: itemOrcamento(item) };
+  } catch (erro) {
+    return falha(erro, "Não foi possível adicionar o item.");
+  }
+}
+
+export async function atualizarItemOrcamentoAction(
+  itemId: string,
+  patch: { quantidade?: number; valorUnitario?: number; descricao?: string; unidade?: string; fornecedor?: string | null }
+): Promise<ResultadoMan> {
+  await requireAdminSession();
+  const dados: Record<string, unknown> = {};
+  if (patch.quantidade !== undefined) {
+    if (!(patch.quantidade > 0)) return { ok: false, erro: "A quantidade precisa ser maior que zero." };
+    dados.quantidade = patch.quantidade;
+  }
+  if (patch.valorUnitario !== undefined) {
+    if (patch.valorUnitario < 0) return { ok: false, erro: "O valor não pode ser negativo." };
+    dados.valor_unitario = patch.valorUnitario;
+  }
+  if (patch.descricao !== undefined) {
+    if (!patch.descricao.trim()) return { ok: false, erro: "A descrição não pode ficar vazia." };
+    dados.descricao = patch.descricao.trim();
+  }
+  if (patch.unidade !== undefined) {
+    if (!patch.unidade.trim()) return { ok: false, erro: "A unidade não pode ficar vazia." };
+    dados.unidade = patch.unidade.trim();
+  }
+  if (patch.fornecedor !== undefined) dados.fornecedor = (patch.fornecedor ?? "").trim() || null;
+  try {
+    await prisma.manutencao_orcamento_itens.update({ where: { id: itemId }, data: dados });
+    return { ok: true };
+  } catch (erro) {
+    return falha(erro, "Não foi possível salvar o item.");
+  }
+}
+
+export async function removerItemOrcamentoAction(itemId: string): Promise<ResultadoMan> {
+  await requireAdminSession();
+  try {
+    await prisma.manutencao_orcamento_itens.delete({ where: { id: itemId } });
+    return { ok: true };
+  } catch (erro) {
+    return falha(erro, "Não foi possível remover o item.");
+  }
+}
+
+// --- Pagamento (depois de aprovado) ---
+
+function linhaPagamento(l: { id: string; descricao: string; forma: string; valor: unknown; vencimento: Date | null; pago_em: Date | null }): LinhaPagamento {
+  return {
+    id: l.id,
+    descricao: l.descricao,
+    forma: l.forma,
+    valor: num(l.valor),
+    vencimento: l.vencimento ? l.vencimento.toISOString().slice(0, 10) : null,
+    pagoEm: l.pago_em ? l.pago_em.toISOString().slice(0, 10) : null
+  };
+}
+
+const dataValida = (v: string | null | undefined) => (v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? new Date(`${v}T00:00:00.000Z`) : null);
+
+// quem_arca / quem_paga / obs do plano de pagamento.
+export async function salvarPagamentoCampoAction(id: string, campo: string, valor: string | null): Promise<ResultadoMan> {
+  await requireAdminSession();
+  const v = (valor ?? "").trim() || null;
+  let dados: Record<string, unknown>;
+  if (campo === "pagamento_quem_arca") {
+    if (v && !QUEM_ARCA.some((q) => q.valor === v)) return { ok: false, erro: "Valor inválido." };
+    dados = { pagamento_quem_arca: v };
+  } else if (campo === "pagamento_quem_paga") {
+    if (v && !QUEM_PAGA.some((q) => q.valor === v)) return { ok: false, erro: "Valor inválido." };
+    dados = { pagamento_quem_paga: v };
+  } else if (campo === "pagamento_obs") {
+    dados = { pagamento_obs: v };
+  } else {
+    return { ok: false, erro: "Campo não permitido." };
+  }
+  try {
+    await prisma.manutencoes.update({ where: { id }, data: { ...(dados as object), updated_at: new Date() } });
+    return { ok: true };
+  } catch (erro) {
+    return falha(erro, "Não foi possível salvar.");
+  }
+}
+
+export async function adicionarLinhaPagamentoAction(
+  id: string,
+  dados: { descricao: string; forma: string; valor: number; vencimento: string | null }
+): Promise<{ ok: true; linha: LinhaPagamento } | { ok: false; erro: string }> {
+  await requireAdminSession();
+  if (!dados.descricao.trim() || !FORMAS_PAGAMENTO.some((f) => f.valor === dados.forma)) {
+    return { ok: false, erro: "Informe a descrição e a forma de pagamento." };
+  }
+  if (!(dados.valor >= 0)) return { ok: false, erro: "Valor inválido." };
+  try {
+    const ultimo = await prisma.manutencao_pagamento_linhas.findFirst({ where: { manutencao_id: id }, orderBy: { ordem: "desc" }, select: { ordem: true } });
+    const l = await prisma.manutencao_pagamento_linhas.create({
+      data: { manutencao_id: id, descricao: dados.descricao.trim(), forma: dados.forma, valor: dados.valor, vencimento: dataValida(dados.vencimento), ordem: (ultimo?.ordem ?? -1) + 1 }
+    });
+    return { ok: true, linha: linhaPagamento(l) };
+  } catch (erro) {
+    return falha(erro, "Não foi possível adicionar o pagamento.");
+  }
+}
+
+export async function atualizarLinhaPagamentoAction(
+  linhaId: string,
+  patch: { descricao?: string; forma?: string; valor?: number; vencimento?: string | null; pagoEm?: string | null }
+): Promise<ResultadoMan> {
+  await requireAdminSession();
+  const dados: Record<string, unknown> = {};
+  if (patch.descricao !== undefined) {
+    if (!patch.descricao.trim()) return { ok: false, erro: "A descrição não pode ficar vazia." };
+    dados.descricao = patch.descricao.trim();
+  }
+  if (patch.forma !== undefined) {
+    if (!FORMAS_PAGAMENTO.some((f) => f.valor === patch.forma)) return { ok: false, erro: "Forma de pagamento inválida." };
+    dados.forma = patch.forma;
+  }
+  if (patch.valor !== undefined) {
+    if (!(patch.valor >= 0)) return { ok: false, erro: "Valor inválido." };
+    dados.valor = patch.valor;
+  }
+  if (patch.vencimento !== undefined) dados.vencimento = dataValida(patch.vencimento);
+  if (patch.pagoEm !== undefined) dados.pago_em = dataValida(patch.pagoEm);
+  try {
+    await prisma.manutencao_pagamento_linhas.update({ where: { id: linhaId }, data: dados });
+    return { ok: true };
+  } catch (erro) {
+    return falha(erro, "Não foi possível salvar o pagamento.");
+  }
+}
+
+export async function removerLinhaPagamentoAction(linhaId: string): Promise<ResultadoMan> {
+  await requireAdminSession();
+  try {
+    await prisma.manutencao_pagamento_linhas.delete({ where: { id: linhaId } });
+    return { ok: true };
+  } catch (erro) {
+    return falha(erro, "Não foi possível remover o pagamento.");
+  }
+}
+
+// Cria as parcelas mensais de um valor (ex.: material em 3x no boleto).
+export async function gerarParcelasPagamentoAction(
+  id: string,
+  dados: { descricao: string; forma: string; total: number; parcelas: number; primeiroVencimento: string }
+): Promise<{ ok: true; linhas: LinhaPagamento[] } | { ok: false; erro: string }> {
+  await requireAdminSession();
+  if (!dados.descricao.trim() || !FORMAS_PAGAMENTO.some((f) => f.valor === dados.forma)) {
+    return { ok: false, erro: "Informe a descrição e a forma de pagamento." };
+  }
+  if (!(dados.total > 0) || !Number.isInteger(dados.parcelas) || dados.parcelas < 1 || dados.parcelas > 36) {
+    return { ok: false, erro: "Informe o valor e um número de parcelas entre 1 e 36." };
+  }
+  if (!dataValida(dados.primeiroVencimento)) return { ok: false, erro: "Informe a data do primeiro vencimento." };
+  try {
+    const ultimo = await prisma.manutencao_pagamento_linhas.findFirst({ where: { manutencao_id: id }, orderBy: { ordem: "desc" }, select: { ordem: true } });
+    const base = (ultimo?.ordem ?? -1) + 1;
+    const partes = gerarParcelas(dados.total, dados.parcelas, dados.primeiroVencimento);
+    const criadas = await prisma.$transaction(
+      partes.map((p, i) =>
+        prisma.manutencao_pagamento_linhas.create({
+          data: {
+            manutencao_id: id,
+            descricao: dados.parcelas === 1 ? dados.descricao.trim() : `${dados.descricao.trim()} ${i + 1}/${dados.parcelas}`,
+            forma: dados.forma,
+            valor: p.valor,
+            vencimento: dataValida(p.vencimento),
+            ordem: base + i
+          }
+        })
+      )
+    );
+    return { ok: true, linhas: criadas.map(linhaPagamento) };
+  } catch (erro) {
+    return falha(erro, "Não foi possível gerar as parcelas.");
   }
 }

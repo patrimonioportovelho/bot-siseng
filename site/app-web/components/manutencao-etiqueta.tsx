@@ -19,6 +19,9 @@ import { COR_SLA_MAN, diasParado, situacaoSlaMan, textoMeta } from "@/lib/manute
 import { CampoSelectAuto, CampoTextoAuto, Rotulo, type ResultadoSalvar } from "@/components/recrutamento-campos";
 import { ManutencaoWhatsapp, type PedidoMensagem } from "@/components/manutencao-whatsapp";
 import { BotaoFichaCompleta } from "@/components/botao-ficha-completa";
+import { ManutencaoOrcamento, type AcoesOrcamento } from "@/components/manutencao-orcamento";
+import { ManutencaoPagamento, type AcoesPagamento, type CaucaoImovel } from "@/components/manutencao-pagamento";
+import { moeda, resumoOrcamentoTexto, resumoPagamentoTexto, totaisOrcamento, type ItemOrcamento, type LinhaPagamento } from "@/lib/manutencao/orcamento";
 import type { AtividadeMan, ItemChecklistMan, NotaManutencao } from "@/app/manutencao/actions";
 
 export type DadosMan = {
@@ -40,6 +43,9 @@ export type DadosMan = {
   checklist: ItemChecklistMan[];
   atividades: AtividadeMan[];
   notas: NotaManutencao[];
+  orcamento: ItemOrcamento[];
+  pagamento: { quemArca: string | null; quemPaga: string | null; obs: string | null; linhas: LinhaPagamento[] };
+  caucao: CaucaoImovel;
 };
 
 type Resultado<T> = ({ ok: true } & T) | { ok: false; erro: string };
@@ -58,6 +64,8 @@ type Acoes = {
   ) => Promise<Resultado<{ atividade: AtividadeMan }>>;
   marcarAtividade: (atividadeId: string, feito: boolean) => Promise<ResultadoSalvar>;
   removerAtividade: (atividadeId: string) => Promise<ResultadoSalvar>;
+  orcamento: AcoesOrcamento;
+  pagamento: AcoesPagamento;
 };
 
 const CAMPO = "w-full text-xs border border-gray-300 rounded-lg px-2.5 py-1.5 outline-none focus:border-primary bg-white";
@@ -106,6 +114,11 @@ export function ManutencaoEtiqueta({
   const [checklist, setChecklist] = useState(d.checklist);
   const [atividades, setAtividades] = useState(d.atividades);
   const [pedido, setPedido] = useState<PedidoMensagem | null>(null);
+  const [orcamento, setOrcamento] = useState(d.orcamento);
+  const [quemArca, setQuemArca] = useState(d.pagamento.quemArca);
+  const [quemPaga, setQuemPaga] = useState(d.pagamento.quemPaga);
+  const [obsPagamento, setObsPagamento] = useState(d.pagamento.obs);
+  const [linhasPagamento, setLinhasPagamento] = useState(d.pagamento.linhas);
 
   const [movendo, setMovendo] = useState(false);
   const [erroMover, setErroMover] = useState("");
@@ -224,17 +237,21 @@ export function ManutencaoEtiqueta({
     }
   }
 
+  const totalOrcamento = totaisOrcamento(orcamento).total;
+  const depoisDeAprovado = COLUNAS_KANBAN.findIndex((c) => c.id === coluna) >= COLUNAS_KANBAN.findIndex((c) => c.id === "aprovado");
   const contexto = useMemo(
     () => ({
       servico,
       titulo,
       imovel: d.endereco,
-      custoEstimado: null,
-      custoFinal: null,
+      custoEstimado: totalOrcamento > 0 ? moeda(totalOrcamento) : null,
+      custoFinal: totalOrcamento > 0 ? moeda(totalOrcamento) : null,
       urgencia: URGENCIA_LABEL[urgencia] ?? urgencia,
-      chave: chaveTexto
+      chave: chaveTexto,
+      resumoOrcamento: resumoOrcamentoTexto(orcamento) || null,
+      resumoPagamento: resumoPagamentoTexto({ quemArca, quemPaga, linhas: linhasPagamento, obs: obsPagamento }) || null
     }),
-    [servico, titulo, d.endereco, urgencia, chaveTexto]
+    [servico, titulo, d.endereco, urgencia, chaveTexto, totalOrcamento, orcamento, quemArca, quemPaga, linhasPagamento, obsPagamento]
   );
 
   return (
@@ -351,6 +368,38 @@ export function ManutencaoEtiqueta({
           </div>
         </div>
       </div>
+
+      {/* Orçamento: abre sozinho quando o ticket está em Orçamento */}
+      <ManutencaoOrcamento
+        manutencaoId={d.id}
+        coluna={coluna}
+        itens={orcamento}
+        aoMudar={setOrcamento}
+        acoes={acoes.orcamento}
+        aoEnviar={() => setPedido({ tipo: "orcamento", n: proximoN })}
+      />
+
+      {/* Forma de pagamento: depois de aprovado */}
+      {depoisDeAprovado && (
+        <ManutencaoPagamento
+          manutencaoId={d.id}
+          totalOrcamento={totalOrcamento}
+          quemArca={quemArca}
+          quemPaga={quemPaga}
+          obs={obsPagamento}
+          linhas={linhasPagamento}
+          caucao={d.caucao}
+          hoje={hoje}
+          aoMudarCampo={(campo, valor) => {
+            if (campo === "quemArca") setQuemArca(valor);
+            else if (campo === "quemPaga") setQuemPaga(valor);
+            else setObsPagamento(valor);
+          }}
+          aoMudarLinhas={setLinhasPagamento}
+          acoes={acoes.pagamento}
+          aoEnviar={() => setPedido({ tipo: "pagamento", para: quemArca === "inquilino" ? "inquilino" : "proprietario", n: proximoN })}
+        />
+      )}
 
       {/* Chave */}
       <div className={CARTAO}>

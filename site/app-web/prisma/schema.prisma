@@ -91,6 +91,7 @@ model andamentos {
   imoveis                       imoveis?                    @relation(fields: [imovel_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   parceiros                     parceiros?                  @relation(fields: [avaliador_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   lancamentos_financiamento     lancamentos_financiamento[]
+  financiamento_atividades      financiamento_atividades[]
 
   @@index([avaliacao_id], map: "idx_andamentos_avaliacao")
   @@index([imovel_id], map: "idx_andamentos_imovel")
@@ -142,6 +143,8 @@ model avaliacoes {
   clientes            clientes?    @relation(fields: [cliente_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   parceiros           parceiros?   @relation(fields: [parceiro_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   avaliacoes_clientes avaliacoes_clientes[]
+  financiamento_acompanhamento financiamento_acompanhamento?
+  financiamento_atividades     financiamento_atividades[]
 
   @@index([cliente_id], map: "idx_avaliacoes_cliente")
   @@index([parceiro_id], map: "idx_avaliacoes_parceiro")
@@ -976,6 +979,9 @@ model parceiros {
   recrutamento_atividades                                                     recrutamento_atividades[] @relation("recrutamento_atividades_parceiro")
   recrutamento_atividades_por                                                 recrutamento_atividades[] @relation("recrutamento_atividades_por")
   recrutamento_etapas                                                         recrutamento_etapas[]
+  financiamento_acompanhamento_responsavel                                    financiamento_acompanhamento[]
+  financiamento_atividades_por                                                financiamento_atividades[]
+  financiamento_etapas                                                        financiamento_etapas[]
 
   @@index([loja_id], map: "idx_parceiros_loja")
   @@index([nome], map: "idx_parceiros_nome")
@@ -2067,4 +2073,51 @@ model recrutamento_turmas {
   created_at    DateTime  @default(now()) @db.Timestamptz(6)
   updated_at    DateTime  @default(now()) @db.Timestamptz(6)
   recrutamento  recrutamento[]
+}
+
+
+// Financiamento em Kanban (30/10/2026) — ver migration_financiamento_kanban.sql
+model financiamento_acompanhamento {
+  avaliacao_id       String    @id @db.Uuid
+  responsavel_id     String?   @db.Uuid
+  proxima_acao_data  DateTime? @db.Date
+  proxima_acao_texto String?
+  checklist          Json      @default("{}")
+  notas              String?
+  created_at         DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime  @default(now()) @db.Timestamptz(6)
+  avaliacoes         avaliacoes @relation(fields: [avaliacao_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  responsavel        parceiros?  @relation(fields: [responsavel_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([responsavel_id], map: "idx_fin_acomp_responsavel")
+}
+
+model financiamento_atividades {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  avaliacao_id    String    @db.Uuid
+  andamento_id    String?   @db.Uuid
+  tipo            String
+  coluna          String?
+  etapa           String?
+  resultado       String?
+  motivo          String?
+  nota            String?
+  inicio          DateTime  @default(now()) @db.Timestamptz(6)
+  fim             DateTime? @db.Timestamptz(6)
+  estimado        Boolean   @default(false)
+  por_parceiro_id String?   @db.Uuid
+  created_at      DateTime  @default(now()) @db.Timestamptz(6)
+  avaliacoes      avaliacoes  @relation(fields: [avaliacao_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  andamentos      andamentos? @relation(fields: [andamento_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  por             parceiros?  @relation(fields: [por_parceiro_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([avaliacao_id, inicio(sort: Desc)], map: "idx_fin_atividades_avaliacao")
+  @@index([tipo, etapa], map: "idx_fin_atividades_tipo_etapa")
+}
+
+model financiamento_etapas {
+  coluna         String    @id
+  responsavel_id String?   @db.Uuid
+  updated_at     DateTime  @default(now()) @db.Timestamptz(6)
+  responsavel    parceiros? @relation(fields: [responsavel_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 }

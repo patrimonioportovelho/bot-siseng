@@ -977,3 +977,38 @@ ALTER TABLE recrutamento ADD COLUMN IF NOT EXISTS contrato_assinado_em DATE;
 ALTER TABLE recrutamento ADD COLUMN IF NOT EXISTS acolhida_em DATE;
 ALTER TABLE recrutamento ADD COLUMN IF NOT EXISTS diagnostico JSONB NOT NULL DEFAULT '{}'::jsonb;
 ALTER TABLE recrutamento ADD COLUMN IF NOT EXISTS followups JSONB NOT NULL DEFAULT '{}'::jsonb;
+
+-- Financiamento em Kanban (30/10/2026) — ver migration_financiamento_kanban.sql
+CREATE TABLE IF NOT EXISTS financiamento_acompanhamento (
+  avaliacao_id        UUID PRIMARY KEY REFERENCES avaliacoes(id) ON DELETE CASCADE,
+  responsavel_id      UUID REFERENCES parceiros(id),
+  proxima_acao_data   DATE,
+  proxima_acao_texto  TEXT,
+  checklist           JSONB NOT NULL DEFAULT '{}'::jsonb,
+  notas               TEXT,
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS financiamento_atividades (
+  id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  avaliacao_id     UUID NOT NULL REFERENCES avaliacoes(id) ON DELETE CASCADE,
+  andamento_id     UUID REFERENCES andamentos(id) ON DELETE SET NULL,
+  tipo             TEXT NOT NULL,
+  coluna           TEXT,
+  etapa            TEXT,
+  resultado        TEXT,
+  motivo           TEXT,
+  nota             TEXT,
+  inicio           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  fim              TIMESTAMPTZ,
+  estimado         BOOLEAN NOT NULL DEFAULT false,
+  por_parceiro_id  UUID REFERENCES parceiros(id),
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_fin_atividades_avaliacao ON financiamento_atividades(avaliacao_id, inicio DESC);
+CREATE INDEX IF NOT EXISTS idx_fin_atividades_tipo_etapa ON financiamento_atividades(tipo, etapa);
+CREATE TABLE IF NOT EXISTS financiamento_etapas (
+  coluna          TEXT PRIMARY KEY,
+  responsavel_id  UUID REFERENCES parceiros(id),
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);

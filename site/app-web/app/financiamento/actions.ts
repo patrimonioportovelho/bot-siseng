@@ -334,7 +334,7 @@ export async function apagarAvaliacaoAction(formData: FormData) {
   });
 
   revalidatePath("/financiamento");
-  redirect("/financiamento?excluido=1");
+  redirect("/financiamento/lista?excluido=1");
 }
 
 // Manda a imagem da consulta de CPF pro corretor (parceiro) que pediu a

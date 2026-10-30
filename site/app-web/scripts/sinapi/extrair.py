@@ -138,13 +138,17 @@ i_ro = cab.index(UF)
 for r in linhas[10:]:
     classe, cod, desc, un = r[0], r[1], r[2], r[3]
     p = preco(r[i_ro])
-    if not classe or not desc or p is None:
+    if not classe or not desc:
         continue
+    # Itens sem preço coletado no estado entram mesmo assim (preço de referência
+    # vazio) — o orçamento precisa listar tudo que existe, o valor é do responsável.
     if classe == "MATERIAL":
         itens.append(dict(grupo="material", codigo=str(cod), categoria=categoria_material(desc), classe_origem=classe, descricao=str(desc).strip(), unidade=unidade(un), preco_ref=p))
+    elif classe == "EQUIPAMENTO (AQUISIÇÃO)":
+        itens.append(dict(grupo="material", codigo=str(cod), categoria="Ferramentas e equipamentos", classe_origem=classe, descricao=str(desc).strip(), unidade=unidade(un), preco_ref=p))
     elif classe == "SERVIÇOS":
         itens.append(dict(grupo="servico", codigo=str(cod), categoria=categoria_material(desc), classe_origem=classe, descricao=str(desc).strip(), unidade=unidade(un), preco_ref=p))
-    elif classe == "MAO DE OBRA" and "(HORISTA)" in norm(desc):
+    elif classe == "MAO DE OBRA" and "(HORISTA)" in norm(desc) and p is not None:
         cat = categoria_profissao(desc)
         if not cat:
             continue
@@ -167,7 +171,7 @@ for r in linhas_f[10:]:
         continue
     m = cod_re.search(str(cel))
     p = preco(r[i_ro_c])
-    if not m or p is None:
+    if not m:
         continue
     itens.append(dict(grupo="servico", codigo=m.group(1), categoria=cat, classe_origem=str(grupo), descricao=str(desc).strip(), unidade=unidade(un), preco_ref=p))
 

@@ -19,7 +19,7 @@ import {
 type Resultado = { ok: true } | { ok: false; erro: string };
 
 export type AcoesOrcamento = {
-  buscarCatalogo: (grupo: GrupoOrcamento, categoria: string | null, termo: string) => Promise<ItemCatalogo[]>;
+  buscarCatalogo: (grupo: GrupoOrcamento, categoria: string | null, termo: string) => Promise<{ itens: ItemCatalogo[]; total: number }>;
   adicionar: (
     id: string,
     dados: {
@@ -114,6 +114,7 @@ export function ManutencaoOrcamento({
   const vazio = { categoria: "", descricao: "", unidade: "", quantidade: "1", valor: "", fornecedor: "", catalogoId: null as string | null, precoRef: null as number | null };
   const [novo, setNovo] = useState(vazio);
   const [sugestoes, setSugestoes] = useState<ItemCatalogo[]>([]);
+  const [totalCatalogo, setTotalCatalogo] = useState(0);
   const [listaAberta, setListaAberta] = useState(false);
   const [buscando, setBuscando] = useState(false);
   const [adicionando, setAdicionando] = useState(false);
@@ -134,14 +135,18 @@ export function ManutencaoOrcamento({
     if (busca.current) clearTimeout(busca.current);
     if (!categoria && termo.trim().length < 2) {
       setSugestoes([]);
+      setTotalCatalogo(0);
       return;
     }
     busca.current = setTimeout(async () => {
       setBuscando(true);
       try {
-        setSugestoes(await acoes.buscarCatalogo(aba, categoria || null, termo));
+        const r = await acoes.buscarCatalogo(aba, categoria || null, termo);
+        setSugestoes(r.itens);
+        setTotalCatalogo(r.total);
       } catch {
         setSugestoes([]);
+        setTotalCatalogo(0);
       } finally {
         setBuscando(false);
       }
@@ -296,10 +301,17 @@ export function ManutencaoOrcamento({
                   onBlur={() => setTimeout(() => setListaAberta(false), 150)}
                 />
                 {listaAberta && (novo.categoria || novo.descricao.trim().length >= 2) && (
-                  <div className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-lg max-h-64 overflow-auto shadow-lg">
+                  <div className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-lg max-h-80 overflow-auto shadow-lg">
                     {buscando && <p className="text-xs text-gray-400 p-3">Buscando…</p>}
                     {!buscando && sugestoes.length === 0 && (
                       <p className="text-xs text-gray-400 p-3">Nada no catálogo — o texto digitado vira um item livre.</p>
+                    )}
+                    {!buscando && sugestoes.length > 0 && (
+                      <p className="text-[10px] text-gray-400 px-3 py-1.5 border-b border-gray-100 bg-gray-50 sticky top-0">
+                        {totalCatalogo > sugestoes.length
+                          ? `Mostrando ${sugestoes.length} de ${totalCatalogo} — digite mais palavras para achar o item.`
+                          : `${totalCatalogo} item(ns).`}
+                      </p>
                     )}
                     {sugestoes.map((c) => (
                       <button

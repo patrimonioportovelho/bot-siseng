@@ -507,27 +507,30 @@ export async function buscarCatalogoObraAction(
   grupo: GrupoOrcamento,
   categoria: string | null,
   termo: string
-): Promise<ItemCatalogo[]> {
+): Promise<{ itens: ItemCatalogo[]; total: number }> {
   await requireAdminSession();
-  if (!GRUPOS.includes(grupo)) return [];
+  if (!GRUPOS.includes(grupo)) return { itens: [], total: 0 };
   const palavras = termo.trim().split(/\s+/).filter(Boolean).slice(0, 5);
-  const itens = await prisma.catalogo_obra.findMany({
-    where: {
-      grupo,
-      ...(categoria ? { categoria } : {}),
-      AND: palavras.map((p) => ({ descricao: { contains: p, mode: "insensitive" as const } }))
-    },
-    orderBy: { descricao: "asc" },
-    take: 40
-  });
-  return itens.map((c) => ({
-    id: c.id,
-    descricao: c.descricao,
-    unidade: c.unidade,
-    categoria: c.categoria,
-    precoRef: c.preco_ref == null ? null : Number(c.preco_ref),
-    referencia: c.referencia
-  }));
+  const where = {
+    grupo,
+    ...(categoria ? { categoria } : {}),
+    AND: palavras.map((p) => ({ descricao: { contains: p, mode: "insensitive" as const } }))
+  };
+  const [itens, total] = await Promise.all([
+    prisma.catalogo_obra.findMany({ where, orderBy: { descricao: "asc" }, take: 300 }),
+    prisma.catalogo_obra.count({ where })
+  ]);
+  return {
+    total,
+    itens: itens.map((c) => ({
+      id: c.id,
+      descricao: c.descricao,
+      unidade: c.unidade,
+      categoria: c.categoria,
+      precoRef: c.preco_ref == null ? null : Number(c.preco_ref),
+      referencia: c.referencia
+    }))
+  };
 }
 
 export async function adicionarItemOrcamentoAction(

@@ -20,6 +20,7 @@ export const CATEGORIAS_OBRA = [
   "Louças e metais sanitários",
   "Limpeza e dedetização",
   "Ferragens e fixação",
+  "Ferramentas e equipamentos",
   "Outros"
 ] as const;
 

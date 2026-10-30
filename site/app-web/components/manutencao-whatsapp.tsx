@@ -5,14 +5,30 @@ import {
   MODELOS_MENSAGEM_MAN,
   MODELO_MAN_POR_ID,
   ROTULO_DESTINATARIO_MAN,
+  modeloPorAssunto,
   modeloSugeridoMan,
   type DestinatarioMan
 } from "@/lib/manutencao/mensagens";
+import { TIPO_ATIVIDADE_LABEL } from "@/lib/manutencao/opcoes";
 import { linkWhatsapp, numeroWhatsapp, preencherMensagem, primeiroNome } from "@/lib/whatsapp";
 import { Rotulo } from "@/components/recrutamento-campos";
-import type { NotaManutencao } from "@/app/manutencao/actions";
+import type { AtividadeMan, NotaManutencao } from "@/app/manutencao/actions";
 
 export type PessoaMan = { nome: string; telefone: string | null };
+
+// Pedido vindo de outra parte da etiqueta: "enviar esta atividade" ou "falar da
+// chave". `n` muda a cada clique, para o mesmo pedido poder ser repetido.
+export type PedidoMensagem = { tipo: "atividade"; atividade: AtividadeMan; n: number } | { tipo: "chave"; n: number };
+
+function dataBr(iso: string) {
+  const [a, m, d] = iso.split("-");
+  return `${d}/${m}/${a}`;
+}
+
+// {obs_atividade} some quando não há observação (os demais viram [colchetes]).
+function montar(texto: string, ctx: Record<string, string | null | undefined>, obs: string) {
+  return preencherMensagem(texto.replace("{obs_atividade}", obs ? ` Obs.: ${obs}` : ""), ctx);
+}
 
 const CAMPO = "w-full text-xs border border-gray-300 rounded-lg px-2.5 py-1.5 outline-none focus:border-primary bg-white";
 
@@ -29,6 +45,7 @@ export function ManutencaoWhatsapp({
   remetenteIdPadrao,
   remetenteFallback,
   contexto,
+  pedido,
   registrarContato,
   aoRegistrar
 }: {
@@ -48,12 +65,16 @@ export function ManutencaoWhatsapp({
     urgencia: string;
     chave: string;
   };
+  pedido: PedidoMensagem | null;
   registrarContato: (
     id: string,
     dados: { para: string; modelo: string; texto: string }
   ) => Promise<{ ok: true; nota: NotaManutencao } | { ok: false; erro: string }>;
   aoRegistrar: (nota: NotaManutencao) => void;
 }) {
+  const raiz = useRef<HTMLDivElement>(null);
+  // Atividade em foco (a que o usuário mandou enviar) — alimenta as variáveis do modelo.
+  const [atividadeFoco, setAtividadeFoco] = useState<AtividadeMan | null>(null);
   const [inquilinoNome, setInquilinoNome] = useState("");
   const [inquilinoTelefone, setInquilinoTelefone] = useState("");
   const pessoas: Record<DestinatarioMan, PessoaMan | null> = {
@@ -81,14 +102,18 @@ export function ManutencaoWhatsapp({
       urgencia: contexto.urgencia.toLowerCase(),
       chave: contexto.chave,
       prestador: prestador ? primeiroNome(prestador.nome) : null,
-      proprietario: proprietario ? primeiroNome(proprietario.nome) : null
+      proprietario: proprietario ? primeiroNome(proprietario.nome) : null,
+      atividade: atividadeFoco ? (TIPO_ATIVIDADE_LABEL[atividadeFoco.tipo] ?? atividadeFoco.tipo).toLowerCase() : null,
+      data_atividade: atividadeFoco ? dataBr(atividadeFoco.data) : null,
+      titulo_atividade: atividadeFoco?.titulo ?? null
     }),
-    [pessoa, remetente, contexto, prestador, proprietario]
+    [pessoa, remetente, contexto, prestador, proprietario, atividadeFoco]
   );
+  const obsAtividade = atividadeFoco?.notas?.trim() ?? "";
 
   const [modeloId, setModeloId] = useState(modeloSugeridoMan(coluna, "proprietario"));
   const modelo = MODELO_MAN_POR_ID.get(modeloId) ?? MODELOS_MENSAGEM_MAN[0];
-  const [texto, setTexto] = useState(() => preencherMensagem(modelo.texto, ctx));
+  const [texto, setTexto] = useState(() => montar(modelo.texto, ctx, obsAtividade));
   const [editado, setEditado] = useState(false);
   const [estado, setEstado] = useState<"ocioso" | "registrando" | "registrado" | "erro">("ocioso");
   const [erro, setErro] = useState("");
@@ -104,13 +129,39 @@ export function ManutencaoWhatsapp({
         const novo = modeloSugeridoMan(coluna, destinatario);
         setModeloId(novo);
         const m = MODELO_MAN_POR_ID.get(novo);
-        if (m) setTexto(preencherMensagem(m.texto, ctx));
+        if (m) setTexto(montar(m.texto, ctx, obsAtividade));
       }
     } else if (!editado) {
-      setTexto(preencherMensagem(modelo.texto, ctx));
+      setTexto(montar(modelo.texto, ctx, obsAtividade));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [coluna, ctx]);
+
+  // Chegou um pedido ("enviar esta atividade" / "falar da chave"): troca para o
+  // modelo certo do destinatário atual e leva a tela até a mensagem.
+  const pedidoAplicado = useRef(0);
+  useEffect(() => {
+    if (!pedido || pedido.n === pedidoAplicado.current) return;
+    pedidoAplicado.current = pedido.n;
+    const foco = pedido.tipo === "atividade" ? pedido.atividade : null;
+    setAtividadeFoco(foco);
+    const novo = modeloPorAssunto(pedido.tipo, destinatario);
+    setModeloId(novo);
+    setEditado(false);
+    const m = MODELO_MAN_POR_ID.get(novo);
+    if (m) {
+      const extra = foco
+        ? {
+            atividade: (TIPO_ATIVIDADE_LABEL[foco.tipo] ?? foco.tipo).toLowerCase(),
+            data_atividade: dataBr(foco.data),
+            titulo_atividade: foco.titulo
+          }
+        : {};
+      setTexto(montar(m.texto, { ...ctx, ...extra }, foco?.notas?.trim() ?? ""));
+    }
+    raiz.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pedido]);
 
   function trocarDestinatario(d: DestinatarioMan) {
     setDestinatario(d);
@@ -118,14 +169,14 @@ export function ManutencaoWhatsapp({
     setModeloId(novo);
     setEditado(false);
     const m = MODELO_MAN_POR_ID.get(novo);
-    if (m) setTexto(preencherMensagem(m.texto, { ...ctx, nome: primeiroNome(pessoas[d]?.nome ?? "") }));
+    if (m) setTexto(montar(m.texto, { ...ctx, nome: primeiroNome(pessoas[d]?.nome ?? "") }, obsAtividade));
   }
 
   function trocarModelo(id: string) {
     setModeloId(id);
     setEditado(false);
     const m = MODELO_MAN_POR_ID.get(id);
-    if (m) setTexto(preencherMensagem(m.texto, ctx));
+    if (m) setTexto(montar(m.texto, ctx, obsAtividade));
   }
 
   // Trocou o remetente: troca só o nome em "Aqui é <nome>" (mantém o que foi editado).
@@ -179,7 +230,7 @@ export function ManutencaoWhatsapp({
   const semTelefone = destinatario === "inquilino" ? "Digite o telefone do inquilino." : `Sem telefone cadastrado para ${ROTULO_DESTINATARIO_MAN[destinatario].toLowerCase()}.`;
 
   return (
-    <div className="bg-white border border-green-200 rounded-xl p-4">
+    <div ref={raiz} className="bg-white border border-green-200 rounded-xl p-4">
       <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
         <div className="text-sm font-bold text-gray-800">Mensagem de WhatsApp</div>
         <div className="text-[11px] text-gray-400">

@@ -171,10 +171,6 @@ export function ManutencaoForm({
               ))}
             </select>
           </div>
-          <div>
-            <label className={LABEL}>Custo estimado</label>
-            <input className={CAMPO} name="custo_estimado" placeholder="0,00" />
-          </div>
         </div>
       </div>
 

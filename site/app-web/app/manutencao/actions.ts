@@ -8,7 +8,7 @@ import { requireAdminSession, logAlteracao } from "@/lib/auth";
 import { valorEditavelParaDecimal } from "@/lib/format";
 import { registrarEJogarErro } from "@/lib/erros";
 import { logMovimentoQuadro } from "@/lib/quadro-log";
-import { AUTORIZADO_POR, URGENCIAS } from "@/lib/manutencao/opcoes";
+import { CHAVE_POSSE, SOLICITADO_POR, TIPOS_ATIVIDADE, TIPOS_SERVICO, URGENCIAS } from "@/lib/manutencao/opcoes";
 
 function texto(formData: FormData, campo: string): string | null {
   const v = formData.get(campo);
@@ -67,7 +67,6 @@ export async function criarManutencaoAction(formData: FormData) {
         tipo_servico: tipoServico,
         urgencia: texto(formData, "urgencia") ?? "media",
         solicitado_por: texto(formData, "solicitado_por"),
-        custo_estimado: valorMonetario(formData, "custo_estimado"),
         chave_posse: texto(formData, "chave_posse") ?? "imobiliaria",
         chave_com: texto(formData, "chave_com"),
         chave_atualizado_em: new Date(),
@@ -110,9 +109,6 @@ export async function atualizarManutencaoAction(formData: FormData) {
         solicitado_por: texto(formData, "solicitado_por"),
         cliente_proprietario_id: texto(formData, "cliente_proprietario_id"),
         prestador_id: texto(formData, "prestador_id"),
-        custo_estimado: valorMonetario(formData, "custo_estimado"),
-        custo_final: valorMonetario(formData, "custo_final"),
-        autorizado_por: texto(formData, "autorizado_por") ?? "pendente",
         chave_posse: novaChavePosse,
         chave_com: novaChaveCom,
         chave_atualizado_em: chaveMudou ? new Date() : undefined,
@@ -299,7 +295,7 @@ type ResultadoMan = { ok: true } | { ok: false; erro: string };
 
 export type NotaManutencao = { id: string; texto: string; criadoEm: string };
 
-// Campos que a etiqueta edita direto: urgência, prestador e quem autorizou.
+// Campos que a etiqueta edita direto (salvamento automático).
 export async function salvarCampoManutencaoAction(id: string, campo: string, valor: string | null): Promise<ResultadoMan> {
   const sessao = await requireAdminSession();
   try {
@@ -308,9 +304,20 @@ export async function salvarCampoManutencaoAction(id: string, campo: string, val
     if (campo === "urgencia") {
       if (!v || !(URGENCIAS as readonly string[]).includes(v)) return { ok: false, erro: "Urgência inválida." };
       dados = { urgencia: v };
-    } else if (campo === "autorizado_por") {
-      if (!v || !AUTORIZADO_POR.includes(v)) return { ok: false, erro: "Valor inválido." };
-      dados = { autorizado_por: v };
+    } else if (campo === "titulo") {
+      if (!v) return { ok: false, erro: "O título não pode ficar vazio." };
+      dados = { titulo: v };
+    } else if (campo === "tipo_servico") {
+      if (!v || !TIPOS_SERVICO.some((t) => t.value === v)) return { ok: false, erro: "Tipo de serviço inválido." };
+      dados = { tipo_servico: v };
+    } else if (campo === "solicitado_por") {
+      if (v && !SOLICITADO_POR.includes(v)) return { ok: false, erro: "Valor inválido." };
+      dados = { solicitado_por: v };
+    } else if (campo === "chave_posse") {
+      if (!v || !CHAVE_POSSE.includes(v)) return { ok: false, erro: "Posse da chave inválida." };
+      dados = { chave_posse: v, chave_atualizado_em: new Date() };
+    } else if (campo === "chave_com") {
+      dados = { chave_com: v, chave_atualizado_em: new Date() };
     } else if (campo === "prestador_id") {
       if (v) {
         const existe = await prisma.parceiros.findUnique({ where: { id: v }, select: { id: true } });
@@ -368,5 +375,89 @@ export async function registrarContatoManutencaoAction(
     return { ok: true, nota: await criarNota(id, texto) };
   } catch (erro) {
     return { ok: false, erro: erro instanceof Error ? erro.message : "Não foi possível registrar o contato." };
+  }
+}
+
+// --- Checklist e atividades dentro da etiqueta (devolvem o item; a tela não recarrega) ---
+
+export type ItemChecklistMan = { id: string; label: string; done: boolean };
+export type AtividadeMan = { id: string; tipo: string; titulo: string; data: string; feito: boolean; notas: string | null };
+
+function falha(erro: unknown, padrao: string): { ok: false; erro: string } {
+  return { ok: false, erro: erro instanceof Error ? erro.message : padrao };
+}
+
+export async function adicionarChecklistRapidoAction(
+  id: string,
+  label: string
+): Promise<{ ok: true; item: ItemChecklistMan } | { ok: false; erro: string }> {
+  await requireAdminSession();
+  const l = label.trim();
+  if (!l) return { ok: false, erro: "Informe o item do checklist." };
+  try {
+    const ultimo = await prisma.manutencao_checklist_itens.findFirst({ where: { manutencao_id: id }, orderBy: { ordem: "desc" }, select: { ordem: true } });
+    const item = await prisma.manutencao_checklist_itens.create({ data: { manutencao_id: id, label: l, ordem: (ultimo?.ordem ?? -1) + 1 } });
+    return { ok: true, item: { id: item.id, label: item.label, done: item.done } };
+  } catch (erro) {
+    return falha(erro, "Não foi possível adicionar o item.");
+  }
+}
+
+export async function marcarChecklistRapidoAction(itemId: string, done: boolean): Promise<ResultadoMan> {
+  await requireAdminSession();
+  try {
+    await prisma.manutencao_checklist_itens.update({ where: { id: itemId }, data: { done } });
+    return { ok: true };
+  } catch (erro) {
+    return falha(erro, "Não foi possível atualizar o item.");
+  }
+}
+
+export async function removerChecklistRapidoAction(itemId: string): Promise<ResultadoMan> {
+  await requireAdminSession();
+  try {
+    await prisma.manutencao_checklist_itens.delete({ where: { id: itemId } });
+    return { ok: true };
+  } catch (erro) {
+    return falha(erro, "Não foi possível remover o item.");
+  }
+}
+
+export async function criarAtividadeRapidaAction(
+  id: string,
+  dados: { tipo: string; titulo: string; data: string; notas: string | null }
+): Promise<{ ok: true; atividade: AtividadeMan } | { ok: false; erro: string }> {
+  await requireAdminSession();
+  const titulo = dados.titulo.trim();
+  if (!TIPOS_ATIVIDADE.includes(dados.tipo) || !titulo || !/^\d{4}-\d{2}-\d{2}$/.test(dados.data)) {
+    return { ok: false, erro: "Tipo, descrição e data são obrigatórios para agendar." };
+  }
+  try {
+    const a = await prisma.manutencao_atividades.create({
+      data: { manutencao_id: id, tipo: dados.tipo, titulo, data: new Date(`${dados.data}T00:00:00.000Z`), notas: (dados.notas ?? "").trim() || null }
+    });
+    return { ok: true, atividade: { id: a.id, tipo: a.tipo, titulo: a.titulo, data: a.data.toISOString().slice(0, 10), feito: a.feito, notas: a.notas } };
+  } catch (erro) {
+    return falha(erro, "Não foi possível agendar a atividade.");
+  }
+}
+
+export async function marcarAtividadeRapidaAction(atividadeId: string, feito: boolean): Promise<ResultadoMan> {
+  await requireAdminSession();
+  try {
+    await prisma.manutencao_atividades.update({ where: { id: atividadeId }, data: { feito } });
+    return { ok: true };
+  } catch (erro) {
+    return falha(erro, "Não foi possível atualizar a atividade.");
+  }
+}
+
+export async function removerAtividadeRapidaAction(atividadeId: string): Promise<ResultadoMan> {
+  await requireAdminSession();
+  try {
+    await prisma.manutencao_atividades.delete({ where: { id: atividadeId } });
+    return { ok: true };
+  } catch (erro) {
+    return falha(erro, "Não foi possível remover a atividade.");
   }
 }

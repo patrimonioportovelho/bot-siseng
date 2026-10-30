@@ -2,7 +2,6 @@
 
 import { memo, useCallback, useMemo, useState } from "react";
 import Link from "next/link";
-import { formatMoeda } from "@/lib/format";
 import {
   COLUNAS_KANBAN,
   TIPOS_SERVICO,
@@ -29,10 +28,7 @@ export type TicketKanban = {
   coluna: string;
   /** quando entrou na coluna atual (ISO) */
   desde: string;
-  /** custo final, se já houver; senão o estimado */
-  custo: number | null;
   chave_posse: string;
-  autorizado_por: string;
   imovelId: string;
   imovelIdLegado: string | null;
   endereco: string | null;
@@ -41,7 +37,7 @@ export type TicketKanban = {
   prestador: string | null;
 };
 
-type Filtro = "" | "urgentes" | "atrasados" | "sem_prestador" | "sem_autorizacao";
+type Filtro = "" | "urgentes" | "atrasados" | "sem_prestador";
 
 const CAMPO = "text-xs border border-gray-300 rounded-lg px-2.5 py-1.5 outline-none focus:border-primary bg-white";
 
@@ -60,7 +56,6 @@ const CardTicket = memo(function CardTicket({
   const dias = diasParado(t.desde, agoraMs);
   const sla = situacaoSlaMan(t.coluna, t.urgencia, dias);
   const semPrestador = COLUNAS_PEDEM_PRESTADOR.has(t.coluna) && !t.prestadorId;
-  const semAutorizacao = t.coluna === "orcamento" && t.autorizado_por === "pendente";
   const emergencial = t.urgencia === "emergencial" && COLUNAS_ABERTAS.has(t.coluna);
 
   return (
@@ -82,16 +77,9 @@ const CardTicket = memo(function CardTicket({
       </div>
       {t.proprietario && <div className="text-[11px] text-gray-500 truncate">Propr.: {t.proprietario}</div>}
       {t.prestador && <div className="text-[11px] text-gray-500 truncate">Prestador: {t.prestador}</div>}
-      {(semPrestador || semAutorizacao) && (
+      {semPrestador && (
         <div className="flex gap-1 flex-wrap">
-          {semPrestador && (
-            <span className="text-[9px] font-bold rounded-full px-1.5 py-0.5 bg-amber-50 text-amber-700 border border-amber-200">Sem prestador</span>
-          )}
-          {semAutorizacao && (
-            <span className="text-[9px] font-bold rounded-full px-1.5 py-0.5 bg-amber-50 text-amber-700 border border-amber-200">
-              Aguardando autorização
-            </span>
-          )}
+          <span className="text-[9px] font-bold rounded-full px-1.5 py-0.5 bg-amber-50 text-amber-700 border border-amber-200">Sem prestador</span>
         </div>
       )}
       <div className="flex items-center justify-between gap-2 mt-1 flex-wrap">
@@ -100,8 +88,7 @@ const CardTicket = memo(function CardTicket({
         </span>
         <span className="text-[10px] text-gray-400">🔑 {CHAVE_POSSE_LABEL[t.chave_posse] ?? t.chave_posse}</span>
       </div>
-      <div className="flex items-center justify-between gap-2">
-        {t.custo != null ? <span className="text-[11px] font-medium text-gray-700">{formatMoeda(t.custo)}</span> : <span />}
+      <div className="flex items-center justify-end gap-2">
         {sla !== "sem_meta" && (
           <span className={`text-[10px] font-semibold ${COR_SLA_MAN[sla]}`} title={`Nesta etapa há ${dias} dia(s) — ${textoMeta(t.coluna, t.urgencia)}`}>
             {dias === 0 ? "hoje" : `parado há ${dias}d`}
@@ -166,16 +153,13 @@ export function ManutencaoKanban({
   );
   const ehUrgente = (t: TicketKanban) => (t.urgencia === "alta" || t.urgencia === "emergencial") && COLUNAS_ABERTAS.has(t.coluna);
   const semPrestador = (t: TicketKanban) => COLUNAS_PEDEM_PRESTADOR.has(t.coluna) && !t.prestadorId;
-  const semAutorizacao = (t: TicketKanban) => t.coluna === "orcamento" && t.autorizado_por === "pendente";
 
   const resumo = useMemo(
     () => ({
       urgentes: tickets.filter(ehUrgente).length,
       atrasados: tickets.filter(ehAtrasado).length,
       semPrestador: tickets.filter(semPrestador).length,
-      semAutorizacao: tickets.filter(semAutorizacao).length,
-      emAberto: tickets.filter((t) => COLUNAS_ABERTAS.has(t.coluna)).length,
-      valorEmAberto: tickets.filter((t) => COLUNAS_ABERTAS.has(t.coluna)).reduce((s, t) => s + (t.custo ?? 0), 0)
+      emAberto: tickets.filter((t) => COLUNAS_ABERTAS.has(t.coluna)).length
     }),
     [tickets, ehAtrasado]
   );
@@ -193,7 +177,6 @@ export function ManutencaoKanban({
       if (filtro === "urgentes" && !ehUrgente(t)) return false;
       if (filtro === "atrasados" && !ehAtrasado(t)) return false;
       if (filtro === "sem_prestador" && !semPrestador(t)) return false;
-      if (filtro === "sem_autorizacao" && !semAutorizacao(t)) return false;
       return true;
     });
   }, [tickets, busca, urgencia, prestador, tipo, filtro, ehAtrasado]);
@@ -214,7 +197,6 @@ export function ManutencaoKanban({
   const chips: { id: Filtro; rotulo: string; valor: number; tom: string }[] = [
     { id: "urgentes", rotulo: "Urgentes em aberto", valor: resumo.urgentes, tom: "red" },
     { id: "atrasados", rotulo: "Acima da meta de tempo", valor: resumo.atrasados, tom: "red" },
-    { id: "sem_autorizacao", rotulo: "Aguardando autorização", valor: resumo.semAutorizacao, tom: "amber" },
     { id: "sem_prestador", rotulo: "Sem prestador", valor: resumo.semPrestador, tom: "amber" }
   ];
 
@@ -230,11 +212,10 @@ export function ManutencaoKanban({
       )}
 
       {/* Resumo: cada indicador filtra o quadro ao clicar */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
         <div className="border border-gray-200 bg-white rounded-lg px-3 py-2">
           <div className="text-[10px] text-gray-400">Em aberto</div>
           <div className="text-lg font-bold text-gray-800 leading-tight">{resumo.emAberto}</div>
-          <div className="text-[10px] text-gray-400">{formatMoeda(resumo.valorEmAberto)}</div>
         </div>
         {chips.map((c) => {
           const ativo = filtro === c.id;
@@ -318,7 +299,6 @@ export function ManutencaoKanban({
         {COLUNAS_KANBAN.map((coluna) => {
           const lista = porColuna.get(coluna.id) ?? [];
           const emDestaque = colunaAlvo === coluna.id;
-          const total = lista.reduce((s, t) => s + (t.custo ?? 0), 0);
           return (
             <div
               key={coluna.id}
@@ -337,7 +317,6 @@ export function ManutencaoKanban({
                   <span className="text-xs font-bold text-gray-700">{coluna.label}</span>
                   <span className="text-[11px] text-gray-400">{lista.length}</span>
                 </div>
-                {total > 0 && <div className="text-[10px] text-gray-400">{formatMoeda(total)}</div>}
               </div>
 
               <div className="flex flex-col gap-2 md:max-h-[65vh] md:overflow-y-auto">

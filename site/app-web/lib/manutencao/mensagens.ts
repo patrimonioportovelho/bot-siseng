@@ -59,6 +59,18 @@ export const MODELOS_MENSAGEM_MAN: ModeloMensagemMan[] = [
     texto: `Oi, {nome}! ${ASSINATURA} O serviço de {servico} no imóvel {imovel} está pago e encerrado ({custo_final}). Qualquer coisa que precisar no imóvel, é só chamar.`
   },
   {
+    id: "pro_atividade",
+    destinatario: "proprietario",
+    titulo: "Atividade agendada",
+    texto: `Oi, {nome}! ${ASSINATURA} Agendamos {atividade} no imóvel {imovel} para {data_atividade}: {titulo_atividade}.{obs_atividade} Se algo não servir, me avise para ajustarmos.`
+  },
+  {
+    id: "pro_chave",
+    destinatario: "proprietario",
+    titulo: "Chave do imóvel",
+    texto: `Oi, {nome}! ${ASSINATURA} Sobre a chave do imóvel {imovel}: ela está com {chave}. [combinar retirada ou devolução da chave]`
+  },
+  {
     id: "pro_livre",
     destinatario: "proprietario",
     titulo: "Mensagem livre",
@@ -96,6 +108,18 @@ export const MODELOS_MENSAGEM_MAN: ModeloMensagemMan[] = [
     texto: `Oi, {nome}! ${ASSINATURA} O pagamento do serviço no imóvel {imovel} foi realizado ({custo_final}). Obrigada pela parceria!`
   },
   {
+    id: "pre_atividade",
+    destinatario: "prestador",
+    titulo: "Atividade agendada",
+    texto: `Oi, {nome}! ${ASSINATURA} Combinamos {atividade} no imóvel {imovel} para {data_atividade}: {titulo_atividade}.{obs_atividade} Você consegue? Acesso ao imóvel: {chave}.`
+  },
+  {
+    id: "pre_chave",
+    destinatario: "prestador",
+    titulo: "Chave do imóvel",
+    texto: `Oi, {nome}! ${ASSINATURA} Sobre a chave do imóvel {imovel}: ela está com {chave}. [combinar retirada]. Ao terminar o serviço, devolva a chave para nós, combinado?`
+  },
+  {
     id: "pre_livre",
     destinatario: "prestador",
     titulo: "Mensagem livre",
@@ -113,6 +137,18 @@ export const MODELOS_MENSAGEM_MAN: ModeloMensagemMan[] = [
     destinatario: "inquilino",
     titulo: "Serviço concluído — está tudo certo?",
     texto: `Oi, {nome}! ${ASSINATURA} O serviço de {servico} no imóvel {imovel} foi concluído. Ficou tudo certo? Se notar qualquer coisa, me avise.`
+  },
+  {
+    id: "inq_atividade",
+    destinatario: "inquilino",
+    titulo: "Atividade agendada",
+    texto: `Oi, {nome}! ${ASSINATURA} Agendamos {atividade} no imóvel {imovel} para {data_atividade}: {titulo_atividade}.{obs_atividade} Pode nos receber ou liberar o acesso? Qual horário é melhor para você?`
+  },
+  {
+    id: "inq_chave",
+    destinatario: "inquilino",
+    titulo: "Chave do imóvel",
+    texto: `Oi, {nome}! ${ASSINATURA} Sobre a chave do imóvel {imovel}: [combinar entrega ou retirada da chave].`
   },
   {
     id: "inq_livre",
@@ -153,6 +189,13 @@ const SUGERIDO: Record<DestinatarioMan, Record<string, string>> = {
     pago: "inq_concluido"
   }
 };
+
+const SIGLA: Record<DestinatarioMan, string> = { proprietario: "pro", prestador: "pre", inquilino: "inq" };
+
+// Modelo para uma atividade agendada ou para falar da chave, por destinatário.
+export function modeloPorAssunto(assunto: "atividade" | "chave", destinatario: DestinatarioMan): string {
+  return `${SIGLA[destinatario]}_${assunto}`;
+}
 
 export function modeloSugeridoMan(coluna: string, destinatario: DestinatarioMan): string {
   return SUGERIDO[destinatario][coluna] ?? `${destinatario === "proprietario" ? "pro" : destinatario === "prestador" ? "pre" : "inq"}_livre`;

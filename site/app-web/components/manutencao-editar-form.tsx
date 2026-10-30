@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { formatValorEditavel } from "@/lib/format";
 import { BotaoSubmit } from "@/components/botao-submit";
 import {
   TIPOS_SERVICO,
@@ -9,8 +8,6 @@ import {
   URGENCIA_LABEL,
   SOLICITADO_POR,
   SOLICITADO_POR_LABEL,
-  AUTORIZADO_POR,
-  AUTORIZADO_POR_LABEL,
   CHAVE_POSSE,
   CHAVE_POSSE_LABEL,
   COLUNAS_KANBAN
@@ -27,9 +24,6 @@ type ManutencaoExistente = {
   solicitado_por: string | null;
   cliente_proprietario_id: string | null;
   prestador_id: string | null;
-  custo_estimado: unknown;
-  custo_final: unknown;
-  autorizado_por: string;
   chave_posse: string;
   chave_com: string | null;
   coluna: string;
@@ -165,30 +159,6 @@ export function ManutencaoEditarForm({
               {prestadores.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.nome}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-      </div>
-
-      <div className="bg-white border border-gray-200 rounded-xl p-4">
-        <div className="text-sm font-bold text-gray-800 mb-3">Custo e autorização</div>
-        <div className="grid md:grid-cols-3 gap-3">
-          <div>
-            <label className={LABEL}>Custo estimado</label>
-            <input className={CAMPO} name="custo_estimado" defaultValue={formatValorEditavel(m.custo_estimado)} placeholder="0,00" />
-          </div>
-          <div>
-            <label className={LABEL}>Custo final</label>
-            <input className={CAMPO} name="custo_final" defaultValue={formatValorEditavel(m.custo_final)} placeholder="0,00" />
-          </div>
-          <div>
-            <label className={LABEL}>Autorizado por</label>
-            <select className={CAMPO} name="autorizado_por" defaultValue={m.autorizado_por}>
-              {AUTORIZADO_POR.map((a) => (
-                <option key={a} value={a}>
-                  {AUTORIZADO_POR_LABEL[a]}
                 </option>
               ))}
             </select>

@@ -989,7 +989,7 @@ model parceiros {
 
   @@index([loja_id], map: "idx_parceiros_loja")
   @@index([nome], map: "idx_parceiros_nome")
-  push_assinaturas push_assinaturas[]
+  avisos_equipe avisos_equipe[]
 }
 
 // Nasce do formulário "Proposta de Compra e Venda" no portal do corretor
@@ -2196,17 +2196,16 @@ model manutencao_pagamento_linhas {
   @@index([manutencao_id], map: "idx_manut_pagamento_manutencao")
 }
 
-/// Navegadores com "avisos na tela" ativados (Web Push): um por navegador.
-model push_assinaturas {
-  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  parceiro_id String   @db.Uuid
-  endpoint    String   @unique
-  p256dh      String
-  auth        String
-  modulos     String[] @default(["financiamento", "recrutamento", "manutencao", "gestao", "marketing", "portal"])
-  user_agent  String?
-  created_at  DateTime @default(now()) @db.Timestamptz(6)
-  parceiros   parceiros @relation(fields: [parceiro_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+/// Avisos da equipe (estilo MSN): login e cadastros novos dos corretores, mostrados
+/// numa janelinha no canto da tela do administrativo. Linhas com mais de 7 dias são apagadas.
+model avisos_equipe {
+  id          String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tipo        String
+  parceiro_id String?    @db.Uuid
+  detalhe     String?
+  url         String?
+  created_at  DateTime   @default(now()) @db.Timestamptz(6)
+  parceiros   parceiros? @relation(fields: [parceiro_id], references: [id], onDelete: SetNull, onUpdate: NoAction)
 
-  @@index([parceiro_id], map: "idx_push_assinaturas_parceiro")
+  @@index([created_at(sort: Desc)], map: "idx_avisos_equipe_created")
 }

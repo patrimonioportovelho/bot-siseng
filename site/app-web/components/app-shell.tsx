@@ -5,6 +5,7 @@ import { Sidebar } from "@/components/sidebar";
 import { PortalSidebar } from "@/components/portal-sidebar";
 import { RouteLoadingBar } from "@/components/route-loading-bar";
 import { RodapePrivacidade } from "@/components/link-privacidade";
+import { AvisosEquipeToasts } from "@/components/avisos-equipe-toasts";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -75,6 +76,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <RodapePrivacidade />
         </main>
       </div>
+      {/* Avisos estilo MSN: corretor entrou / fez proposta / cadastrou algo */}
+      <AvisosEquipeToasts />
     </>
   );
 }

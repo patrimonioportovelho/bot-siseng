@@ -1,4 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
+import { avisoDeAcaoPortal, registrarAviso } from "@/lib/avisos-equipe";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
@@ -347,6 +348,8 @@ export async function logAcessoPortal(parceiroId: string, acao: "login" | "logou
   await prisma.logs_acesso.create({
     data: { parceiro_id: parceiroId, tipo_portal: "corretor", acao }
   });
+  // Aviso estilo MSN para a equipe: "fulano entrou no portal".
+  if (acao === "login") await registrarAviso({ tipo: "login", parceiroId });
 }
 
 export async function logAlteracaoPortal(params: {
@@ -367,4 +370,7 @@ export async function logAlteracaoPortal(params: {
       dados_depois: params.dadosDepois === undefined ? undefined : (params.dadosDepois as object)
     }
   });
+  // Cadastro novo do corretor vira aviso na tela da equipe (ver lib/avisos-equipe.ts).
+  const aviso = avisoDeAcaoPortal(params.acao, params.entidadeId, params.dadosDepois as Record<string, unknown> | null | undefined);
+  if (aviso) await registrarAviso({ ...aviso, parceiroId: params.parceiroId });
 }

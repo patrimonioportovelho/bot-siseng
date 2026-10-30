@@ -5,8 +5,6 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireAdminSession } from "@/lib/auth";
 import { hojeComoDataCalendario } from "@/lib/format";
-import { avisarMovimento } from "@/lib/quadro-log";
-import { primeiroNome } from "@/lib/whatsapp";
 import {
   COLUNA_FIN_POR_ID,
   COLUNAS_FIN,
@@ -233,15 +231,6 @@ export async function moverCardFinanciamentoAction(
         }
       })
       .catch(() => {});
-  });
-  avisarMovimento("financiamento", quem, async () => {
-    const a = await prisma.avaliacoes.findUnique({ where: { id: avaliacaoId }, select: { clientes: { select: { nome: true } } } });
-    return {
-      titulo: `Financiamento · ${a?.clientes?.nome ?? "cliente"}`,
-      corpo: `${COLUNA_FIN_POR_ID.get(origem)?.label} → ${colunaDestino.label} · por ${primeiroNome(sessao.nome)}`,
-      url: `/financiamento/${avaliacaoId}/etiqueta`,
-      tag: `financiamento-${avaliacaoId}`
-    };
   });
 }
 

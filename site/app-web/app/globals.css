@@ -13,3 +13,16 @@ body {
   background: var(--bg);
   color: #222222;
 }
+
+/* Avisos da equipe (estilo MSN) — components/avisos-equipe-toasts.tsx */
+@keyframes avisos-toast-entrada {
+  from { opacity: 0; transform: translateY(18px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes avisos-toast-barra {
+  from { width: 100%; }
+  to { width: 0%; }
+}
+.avisos-toast-entrada { animation: avisos-toast-entrada 0.25s ease-out both; }
+.avisos-toast-barra { animation-name: avisos-toast-barra; animation-timing-function: linear; animation-fill-mode: forwards; }
+.group:hover .avisos-toast-barra { animation-play-state: paused; }

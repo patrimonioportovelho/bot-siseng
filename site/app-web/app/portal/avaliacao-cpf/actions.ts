@@ -7,7 +7,6 @@ import { requirePortalSession } from "@/lib/portal-auth";
 import { logAlteracaoPortal } from "@/lib/auth";
 import { valorEditavelParaDecimal } from "@/lib/format";
 import { registrarEJogarErro } from "@/lib/erros";
-import { notificarModulo } from "@/lib/push";
 import { enviarEmail, type EmailAnexo } from "@/lib/email";
 import { buscarClienteDuplicado, mensagemClienteDuplicado } from "@/lib/clientes/duplicidade";
 import { validarCpfCnpj } from "@/lib/clientes/validacao";
@@ -606,22 +605,12 @@ export async function criarAvaliacaoCpfAction(
       entidadeId: novaAvaliacao.id,
       acao: credito ? "criar_avaliacao_credito" : "criar_avaliacao_cpf",
       dadosDepois: {
+        cliente: clienteNome,
         cliente_id: clienteId,
         status: novaAvaliacao.status,
         ...(credito ? dadosDasRespostas(respostas) : {})
       }
     });
-
-    // Aviso na tela para a equipe (quem ativou os avisos do portal).
-    after(() =>
-      notificarModulo({
-        modulo: "portal",
-        titulo: credito ? "Portal · Nova avaliação de crédito" : "Portal · Nova consulta de CPF",
-        corpo: `${clienteNome} · cadastrada por ${session.nome}`,
-        url: `/financiamento/${novaAvaliacao.id}/etiqueta`,
-        tag: `portal-avaliacao-${novaAvaliacao.id}`
-      })
-    );
 
     agendarEmailAvaliacao({
       avaliacaoId: novaAvaliacao.id,
@@ -705,18 +694,8 @@ export async function converterEmAvaliacaoCreditoAction(
       entidadeId: avaliacaoId,
       acao: "converter_avaliacao_credito",
       dadosAntes: { status: avaliacao.status },
-      dadosDepois: { status: "Montagem de processo", ...respostasDados }
+      dadosDepois: { cliente: preparado.nome, status: "Montagem de processo", ...respostasDados }
     });
-
-    after(() =>
-      notificarModulo({
-        modulo: "portal",
-        titulo: "Portal · Consulta virou avaliação de crédito",
-        corpo: `${preparado.nome} · por ${session.nome} · agora em Montagem de processo`,
-        url: `/financiamento/${avaliacaoId}/etiqueta`,
-        tag: `portal-avaliacao-${avaliacaoId}`
-      })
-    );
 
     agendarEmailAvaliacao({
       avaliacaoId,

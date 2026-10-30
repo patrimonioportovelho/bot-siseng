@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import type { Notificacao } from "@/lib/notificacoes";
 import { dispensarNotificacaoAction } from "@/lib/notificacoes-actions";
-import { PushAvisos } from "@/components/push-avisos";
+import { CHAVE_SOM } from "@/components/avisos-equipe-toasts";
 
 // apenasData=true (ver lib/notificacoes.ts#Notificacao) vem de uma coluna
 // @db.Date (meia-noite UTC, sem horário de verdade) — formatar com timeZone
@@ -31,6 +31,23 @@ function formatDataHora(data: Date, apenasData?: boolean) {
 // clicar fora + painel absoluto, sem lib de popover.
 export function NotificacoesSino({ itens: itensIniciais }: { itens: Notificacao[] }) {
   const [aberto, setAberto] = useState(false);
+  // Som dos avisos da equipe (corretor entrou / cadastrou algo) — ligado por padrão.
+  const [som, setSom] = useState(true);
+  useEffect(() => {
+    try {
+      setSom(window.localStorage.getItem(CHAVE_SOM) !== "0");
+    } catch {
+      // sem localStorage
+    }
+  }, []);
+  function alternarSom(ligado: boolean) {
+    setSom(ligado);
+    try {
+      window.localStorage.setItem(CHAVE_SOM, ligado ? "1" : "0");
+    } catch {
+      // ignora
+    }
+  }
   // Cópia local (pedido do usuário 30/08/2026: "dispensar" a notificação) —
   // o servidor só recalcula essa lista quando a página navega de novo; o
   // dispensar precisa remover da tela na hora, sem esperar isso. A gravação
@@ -83,7 +100,10 @@ export function NotificacoesSino({ itens: itensIniciais }: { itens: Notificacao[
             <div className="px-3 py-2 text-xs font-semibold text-gray-700 border-b border-gray-100 sticky top-0 bg-white">
               Notificações {itens.length > 0 && <span className="text-gray-400 font-normal">({itens.length})</span>}
             </div>
-            <PushAvisos />
+            <label className="flex items-center gap-2 px-3 py-1.5 text-[11px] text-gray-500 border-b border-gray-100 cursor-pointer">
+              <input type="checkbox" checked={som} onChange={(e) => alternarSom(e.target.checked)} />
+              Som nos avisos da equipe (corretor entrou, cadastrou…)
+            </label>
             {itens.length === 0 ? (
               <p className="text-xs text-gray-400 px-3 py-4 text-center">Nada pendente por aqui.</p>
             ) : (

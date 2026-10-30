@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { respostaParaBooleano } from "@/lib/financiamento/avaliacao-credito";
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
@@ -159,6 +160,11 @@ function booleanoTri(v: string | null): boolean | null {
   return null;
 }
 
+// Respostas das perguntas da Avaliação de crédito ("sim" | "nao" | vazio = não respondido).
+function respostaCredito(formData: FormData, campo: string): boolean | null {
+  return respostaParaBooleano(texto(formData, campo));
+}
+
 function camposAvaliacao(formData: FormData, clienteId: string | null) {
   return {
     tipo_avaliacao: texto(formData, "tipo_avaliacao"),
@@ -188,6 +194,9 @@ function camposAvaliacao(formData: FormData, clienteId: string | null) {
     // formato antigo) não é mais editável por aqui.
     imagem_consulta_caminho: texto(formData, "imagem_consulta_caminho"),
     observacao: texto(formData, "observacao"),
+    credito_fgts_3_anos: respostaCredito(formData, "credito_fgts_3_anos"),
+    credito_mais_compradores: respostaCredito(formData, "credito_mais_compradores"),
+    credito_primeiro_imovel: respostaCredito(formData, "credito_primeiro_imovel"),
     updated_at: new Date()
   };
 }

@@ -359,6 +359,10 @@ CREATE TABLE avaliacoes (
   imagem_consulta_caminho    TEXT,
   imagem_consulta_enviada_em TIMESTAMPTZ,
   observacao            TEXT,
+  -- Perguntas da Avaliação de crédito do portal (NULL = não respondido).
+  credito_fgts_3_anos      BOOLEAN,
+  credito_mais_compradores BOOLEAN,
+  credito_primeiro_imovel  BOOLEAN,
   created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
 );

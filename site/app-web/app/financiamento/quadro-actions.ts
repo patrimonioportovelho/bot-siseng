@@ -19,6 +19,7 @@ import {
   etapaDoCard,
   type ColunaFinId
 } from "@/lib/financiamento/quadro";
+import { CAMPOS_CREDITO, respostaParaBooleano } from "@/lib/financiamento/avaliacao-credito";
 import { CHAVES_CHECKLIST, MOTIVOS_INCONFORMIDADE, type EstadoChecklist } from "@/lib/financiamento/conformidade";
 
 type Resultado = { ok: true } | { ok: false; erro: string };
@@ -415,6 +416,38 @@ export async function salvarCampoFinanciamentoAction(avaliacaoId: string, campo:
       where: { avaliacao_id: avaliacaoId },
       create: { avaliacao_id: avaliacaoId, ...(dados as object) },
       update: { ...(dados as object), updated_at: new Date() }
+    });
+    return { ok: true };
+  } catch (erro) {
+    return { ok: false, erro: erro instanceof Error ? erro.message : "Não foi possível salvar." };
+  }
+}
+
+// Perguntas da Avaliação de crédito (respondidas pelo corretor no portal): a
+// correspondente confere e corrige direto na etiqueta. valor: "sim" | "nao" | null.
+export async function salvarRespostaCreditoAction(avaliacaoId: string, campo: string, valor: string | null): Promise<Resultado> {
+  const sessao = await requireAdminSession();
+  if (!(CAMPOS_CREDITO as readonly string[]).includes(campo)) return { ok: false, erro: "Campo não permitido." };
+  try {
+    const atual = await prisma.avaliacoes.findUnique({ where: { id: avaliacaoId }, select: { excluido: true, [campo]: true } });
+    if (!atual || atual.excluido) return { ok: false, erro: "Avaliação não encontrada." };
+    const novo = respostaParaBooleano(valor);
+    await prisma.avaliacoes.update({ where: { id: avaliacaoId }, data: { [campo]: novo, updated_at: new Date() } });
+    const quem = sessao.parceiroId;
+    const antes = { [campo]: (atual as Record<string, unknown>)[campo] ?? null };
+    after(async () => {
+      await prisma.logs_alteracao
+        .create({
+          data: {
+            parceiro_id: quem,
+            entidade_tipo: "avaliacoes",
+            entidade_id: avaliacaoId,
+            acao: "editar",
+            dados_antes: antes,
+            dados_depois: { [campo]: novo, origem: "etiqueta-financiamento" }
+          }
+        })
+        .catch(() => {});
     });
     return { ok: true };
   } catch (erro) {

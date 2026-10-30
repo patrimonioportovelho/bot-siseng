@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { booleanoParaResposta } from "@/lib/financiamento/avaliacao-credito";
 import { notFound } from "next/navigation";
 import { Topbar } from "@/components/topbar";
 import { prisma } from "@/lib/prisma";
@@ -13,7 +14,8 @@ import {
   registrarConformidadeAction,
   registrarContatoFinanciamentoAction,
   resolverInconformidadeAction,
-  salvarCampoFinanciamentoAction
+  salvarCampoFinanciamentoAction,
+  salvarRespostaCreditoAction
 } from "../../quadro-actions";
 import {
   DIAS_ALERTA_VALIDADE,
@@ -108,6 +110,11 @@ export default async function EtiquetaFinanciamentoPage({ params }: { params: Pr
     prestacao: dinheiro(a.prestacao),
     validade: validadeIso,
     usaFgts: a.usa_fgts,
+    respostasCredito: {
+      credito_fgts_3_anos: booleanoParaResposta(a.credito_fgts_3_anos),
+      credito_mais_compradores: booleanoParaResposta(a.credito_mais_compradores),
+      credito_primeiro_imovel: booleanoParaResposta(a.credito_primeiro_imovel)
+    },
     responsavelId: acomp?.responsavel_id ?? null,
     proximaAcaoData: acomp?.proxima_acao_data ? acomp.proxima_acao_data.toISOString().slice(0, 10) : null,
     proximaAcaoTexto: acomp?.proxima_acao_texto ?? null,
@@ -154,6 +161,7 @@ export default async function EtiquetaFinanciamentoPage({ params }: { params: Pr
           moverCard: moverCardFinanciamentoAction,
           definirStatusAndamento: definirStatusAndamentoAction,
           salvarCampo: salvarCampoFinanciamentoAction,
+          salvarRespostaCredito: salvarRespostaCreditoAction,
           alternarChecklist: alternarChecklistFinanciamentoAction,
           registrarConformidade: registrarConformidadeAction,
           resolverInconformidade: resolverInconformidadeAction,

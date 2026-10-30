@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import {
   ESTADOS_CIVIS,
   ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL,
@@ -13,97 +14,25 @@ import {
 import type { ClienteBuscaResultado } from "@/lib/transacoes/buscas";
 import { validarCpfCnpj } from "@/lib/clientes/validacao";
 import { buscarCep, UF_PARA_ESTADO } from "@/lib/enderecos";
-import { criarAvaliacaoCpfAction, prepararUploadDocumentoAvaliacaoAction } from "@/app/portal/avaliacao-cpf/actions";
+import {
+  carregarClienteParaCreditoAction,
+  converterEmAvaliacaoCreditoAction,
+  criarAvaliacaoCpfAction,
+  prepararUploadDocumentoAvaliacaoAction
+} from "@/app/portal/avaliacao-cpf/actions";
+import {
+  PERGUNTAS_CREDITO,
+  camposFaltandoCredito,
+  clienteVazio,
+  respostasIncompletas,
+  respostasVazias,
+  type ClienteAvaliacao,
+  type RespostaCredito,
+  type RespostasCredito
+} from "@/lib/financiamento/avaliacao-credito";
 import { supabaseBrowser, BUCKET_DOCUMENTOS_PORTAL } from "@/lib/supabase-browser";
 
 type Banco = { id: string; nome: string; codigo: string | null };
-
-// Cadastro COMPLETO do cliente — diferente do resto do portal (Compra e
-// Venda/Administração só pedem um subconjunto pequeno), porque aqui o
-// cliente vai passar por avaliação de crédito de verdade: precisa de renda,
-// profissão, estado civil etc. desde o início. Mesmos campos do cadastro
-// completo do administrativo (ver components/cliente-form.tsx).
-type ClienteAvaliacao = {
-  clienteId?: string;
-  tipoCliente: string;
-  nome: string;
-  sexo: string;
-  cpf: string;
-  cnpj: string;
-  rg: string;
-  expedicao: string;
-  telefone: string;
-  email: string;
-  nomeMae: string;
-  nomePai: string;
-  estadoCivil: string;
-  // "" (não perguntado), "true" ou "false" — só perguntado/mostrado quando
-  // estadoCivil é um dos que pedem (ver ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL).
-  uniaoEstavel: string;
-  dataNascimento: string;
-  catProfissao: string;
-  tipoServidor: string;
-  profissao: string;
-  rendaBruta: string;
-  // Endereço de Pessoa Física é dividido (CEP/logradouro/número/complemento/
-  // bairro/cidade/estado); Pessoa Jurídica usa "endereco" como Sede em texto
-  // livre solto.
-  endereco: string;
-  cep: string;
-  rua: string;
-  nPredial: string;
-  complemento: string;
-  bairro: string;
-  estadoId: string;
-  cidadeId: string;
-  observacao: string;
-  bancoId: string;
-  codigoBanco: string;
-  agencia: string;
-  conta: string;
-  tipoConta: string;
-  tipoPix: string;
-  pix: string;
-};
-
-function clienteVazio(): ClienteAvaliacao {
-  return {
-    tipoCliente: "Pessoa Física",
-    nome: "",
-    sexo: "",
-    cpf: "",
-    cnpj: "",
-    rg: "",
-    expedicao: "",
-    telefone: "",
-    email: "",
-    nomeMae: "",
-    nomePai: "",
-    estadoCivil: "",
-    uniaoEstavel: "",
-    dataNascimento: "",
-    catProfissao: "",
-    tipoServidor: "",
-    profissao: "",
-    rendaBruta: "",
-    endereco: "",
-    cep: "",
-    rua: "",
-    nPredial: "",
-    complemento: "",
-    bairro: "",
-    estadoId: "",
-    cidadeId: "",
-    observacao: "",
-    bancoId: "",
-    codigoBanco: "",
-    agencia: "",
-    conta: "",
-    tipoConta: "",
-    tipoPix: "",
-    pix: ""
-  };
-}
 
 function clienteDeExistente(c: ClienteBuscaResultado): ClienteAvaliacao {
   return { ...clienteVazio(), clienteId: c.id, nome: c.nome, cpf: c.cpfCnpj ?? "", telefone: c.telefone ?? "", email: c.email ?? "" };
@@ -119,10 +48,14 @@ function labelCliente(c: ClienteBuscaResultado): string {
 // rascunho, só os dados do cliente.
 const RASCUNHO_KEY = "sis_rascunho_avaliacao_cpf";
 
+type Modalidade = "" | "consulta" | "credito";
+
 type RascunhoAvaliacaoCpf = {
   salvoEm: number;
   cliente: ClienteAvaliacao;
   busca: string;
+  modalidade?: Modalidade;
+  respostas?: RespostasCredito;
 };
 
 function formatarDataHoraRascunho(ms: number): string {
@@ -150,14 +83,22 @@ export function PortalAvaliacaoCpfForm({
   clientesDisponiveis,
   bancos,
   estados,
-  cidades
+  cidades,
+  conversao
 }: {
   clientesDisponiveis: ClienteBuscaResultado[];
   bancos: Banco[];
   estados: { id: string; nome: string }[];
   cidades: { id: string; nome: string; estado_id: string }[];
+  // Corretor que consultou o CPF e agora transforma a consulta em Avaliação de
+  // crédito: o cadastro vem preenchido e a modalidade já é "crédito".
+  conversao?: { avaliacaoId: string; cliente: ClienteAvaliacao; respostas: RespostasCredito };
 }) {
-  const [cliente, setCliente] = useState<ClienteAvaliacao>(clienteVazio());
+  const [modalidade, setModalidade] = useState<Modalidade>(conversao ? "credito" : "");
+  const [respostas, setRespostas] = useState<RespostasCredito>(conversao?.respostas ?? respostasVazias());
+  const [carregandoCliente, setCarregandoCliente] = useState(false);
+  const [erroCliente, setErroCliente] = useState("");
+  const [cliente, setCliente] = useState<ClienteAvaliacao>(conversao?.cliente ?? clienteVazio());
   const [busca, setBusca] = useState("");
   const [listaAberta, setListaAberta] = useState(false);
 
@@ -170,12 +111,14 @@ export function PortalAvaliacaoCpfForm({
     { ok: true; avaliacaoId: string } | { ok: false; erro: string } | null
   >(null);
 
+  const [enviadoComo, setEnviadoComo] = useState<Modalidade>("");
   const [rascunhoEncontrado, setRascunhoEncontrado] = useState<RascunhoAvaliacaoCpf | null>(null);
   const [rascunhoSalvoAgora, setRascunhoSalvoAgora] = useState(false);
 
   // Ao montar, só AVISA que existe rascunho — não aplica sozinho (evita
   // sobrescrever o que o corretor já tiver preenchido nesta mesma visita).
   useEffect(() => {
+    if (conversao) return; // conversão não usa rascunho
     try {
       const bruto = window.localStorage.getItem(RASCUNHO_KEY);
       if (bruto) setRascunhoEncontrado(JSON.parse(bruto));
@@ -186,12 +129,13 @@ export function PortalAvaliacaoCpfForm({
   }, []);
 
   function montarRascunho(): RascunhoAvaliacaoCpf {
-    return { salvoEm: Date.now(), cliente, busca };
+    return { salvoEm: Date.now(), cliente, busca, modalidade, respostas };
   }
 
   // Salva sozinho a cada mudança relevante — o botão "Salvar rascunho"
   // abaixo só dá a confirmação visual, o auto-save já cobre o esquecimento.
   useEffect(() => {
+    if (conversao) return;
     const temAlgumDado = cliente.nome.trim().length > 0 || cliente.cpf.trim().length > 0 || cliente.cnpj.trim().length > 0;
     if (!temAlgumDado) return;
     try {
@@ -207,6 +151,8 @@ export function PortalAvaliacaoCpfForm({
     if (!r) return;
     setCliente(r.cliente);
     setBusca(r.busca);
+    if (r.modalidade) setModalidade(r.modalidade);
+    if (r.respostas) setRespostas(r.respostas);
     setRascunhoEncontrado(null);
   }
 
@@ -238,16 +184,42 @@ export function PortalAvaliacaoCpfForm({
     return clientesDisponiveis.filter((c) => c.nome.toLowerCase().includes(b)).slice(0, RESULTADOS_MAXIMO);
   }, [busca, clientesDisponiveis]);
 
+  // Na Avaliação de crédito os dados do cliente precisam estar completos, então
+  // o cadastro dele (do próprio corretor) é carregado nos campos para conferir.
+  async function carregarCadastroCompleto(clienteId: string) {
+    setCarregandoCliente(true);
+    setErroCliente("");
+    const r = await carregarClienteParaCreditoAction(clienteId);
+    setCarregandoCliente(false);
+    if (r.ok) {
+      setCliente(r.cliente);
+    } else {
+      setErroCliente(r.erro);
+      setCliente(clienteVazio());
+      setBusca("");
+    }
+  }
+
   function selecionarExistente(c: ClienteBuscaResultado) {
     setCliente(clienteDeExistente(c));
     setBusca(c.nome);
     setListaAberta(false);
+    setErroCliente("");
+    if (modalidade === "credito") void carregarCadastroCompleto(c.id);
+  }
+
+  function escolherModalidade(m: Modalidade) {
+    setModalidade(m);
+    setResultado(null);
+    setErroCliente("");
+    if (m === "credito" && cliente.clienteId) void carregarCadastroCompleto(cliente.clienteId);
   }
 
   function comecarCadastroNovo() {
     setCliente(clienteVazio());
     setBusca("");
     setListaAberta(false);
+    setErroCliente("");
   }
 
   function atualizar<K extends keyof ClienteAvaliacao>(campo: K, valor: ClienteAvaliacao[K]) {
@@ -310,7 +282,21 @@ export function PortalAvaliacaoCpfForm({
   // pedido do usuário (09/08/2026, "alinhamento do cadastro de cliente").
   // Cliente já cadastrado (clienteId) não passa por essa checagem de novo,
   // só é reaproveitado.
-  const erroCadastroCliente = cliente.clienteId
+  const credito = modalidade === "credito";
+  const req = credito ? " *" : "";
+  const faltandoCredito = credito ? camposFaltandoCredito(cliente) : [];
+  const faltaResposta = credito && respostasIncompletas(respostas);
+  const erroCredito = credito
+    ? faltandoCredito.length > 0
+      ? `Falta preencher: ${faltandoCredito.join(", ")}.`
+      : faltaResposta
+        ? "Responda as 3 perguntas."
+        : null
+    : null;
+
+  const erroCadastroCliente = credito
+    ? erroCredito
+    : cliente.clienteId
     ? null
     : !cliente.nome.trim()
       ? null
@@ -324,11 +310,16 @@ export function PortalAvaliacaoCpfForm({
               ? "Informe o telefone."
               : null;
 
-  const podeEnviar = cliente.clienteId
-    ? true
-    : cliente.nome.trim().length > 0 &&
-      (mostrarCpf ? cliente.cpf.trim().length > 0 : cliente.cnpj.trim().length > 0) &&
-      !erroCadastroCliente;
+  const podeEnviar =
+    modalidade === "" || carregandoCliente
+      ? false
+      : credito
+        ? !erroCredito
+        : cliente.clienteId
+          ? true
+          : cliente.nome.trim().length > 0 &&
+            (mostrarCpf ? cliente.cpf.trim().length > 0 : cliente.cnpj.trim().length > 0) &&
+            !erroCadastroCliente;
 
   async function handleEnviar() {
     setEnviando(true);
@@ -352,12 +343,21 @@ export function PortalAvaliacaoCpfForm({
       const formData = new FormData();
       formData.set("clienteJson", JSON.stringify(cliente));
       formData.set("documentosJson", JSON.stringify(documentosEnviados));
+      formData.set("modalidade", modalidade);
+      formData.set("respostasJson", JSON.stringify(respostas));
 
-      const r = await criarAvaliacaoCpfAction(formData);
+      const r = conversao
+        ? await converterEmAvaliacaoCreditoAction(conversao.avaliacaoId, formData).then((x) =>
+            x.ok ? ({ ok: true, avaliacaoId: conversao.avaliacaoId } as const) : x
+          )
+        : await criarAvaliacaoCpfAction(formData);
       setResultado(r);
+      setEnviadoComo(modalidade);
       if (r.ok) {
         setCliente(clienteVazio());
         setBusca("");
+        setRespostas(respostasVazias());
+        setModalidade(conversao ? "credito" : "");
         setDocumentos([]);
         // Cadastrou com sucesso — o rascunho não serve mais pra nada.
         try {
@@ -402,13 +402,55 @@ export function PortalAvaliacaoCpfForm({
         </div>
       )}
 
+      {!conversao && (
+        <div className="bg-white border border-gray-200 rounded-xl p-4">
+          <div className="text-sm font-bold text-gray-800 mb-1">O que você quer fazer?</div>
+          <p className="text-[11px] text-gray-400 mb-3">Escolha antes de preencher. Dá pra transformar uma Consulta de CPF em Avaliação de crédito depois.</p>
+          <div className="grid md:grid-cols-2 gap-3">
+            {(
+              [
+                { id: "consulta", titulo: "Consulta de CPF", texto: "Só ver se o CPF está limpo. Precisa de nome, CPF, sexo e telefone." },
+                { id: "credito", titulo: "Avaliação de crédito", texto: "Cadastro completo do cliente e 3 perguntas. A etiqueta já entra em Montagem de processo." }
+              ] as const
+            ).map((o) => (
+              <button
+                key={o.id}
+                type="button"
+                onClick={() => escolherModalidade(o.id)}
+                className={`text-left border rounded-xl p-3 transition-colors ${
+                  modalidade === o.id ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-gray-200 hover:bg-gray-50"
+                }`}
+              >
+                <div className="text-sm font-semibold text-gray-800">{o.titulo}</div>
+                <div className="text-[11px] text-gray-500 mt-0.5">{o.texto}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {conversao && resultado?.ok ? (
+        <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-xs text-green-800">
+          Consulta transformada em Avaliação de crédito. A etiqueta passou para <strong>Montagem de processo</strong> e o administrativo já foi avisado.
+          <div className="mt-3">
+            <Link href="/portal/avaliacao-cpf" className="bg-primary text-white rounded-lg px-4 py-2 text-xs font-semibold hover:opacity-90 inline-block">
+              Voltar para minhas avaliações
+            </Link>
+          </div>
+        </div>
+      ) : modalidade === "" ? null : (
+      <>
       <div className="bg-white border border-gray-200 rounded-xl p-4">
         <div className="text-sm font-bold text-gray-800 mb-1">Cliente</div>
         <p className="text-[11px] text-gray-400 mb-3">
-          Busque um cliente já cadastrado ou preencha o cadastro completo — é o que o administrativo precisa pra
-          rodar a avaliação de crédito.
+          {credito
+            ? "Na Avaliação de crédito toda a identificação e o contato são obrigatórios (campos com *). Busque um cliente seu já cadastrado ou preencha o cadastro."
+            : "Busque um cliente já cadastrado ou preencha o cadastro completo — é o que o administrativo precisa pra rodar a avaliação de crédito."}
         </p>
+        {erroCliente && <p className="text-xs text-red-600 mb-3">{erroCliente}</p>}
+        {carregandoCliente && <p className="text-xs text-gray-400 mb-3">Carregando o cadastro do cliente...</p>}
 
+        {!conversao && (
         <div className="relative mb-3">
           <label className={LABEL}>Buscar cliente já cadastrado...</label>
           <input
@@ -439,8 +481,9 @@ export function PortalAvaliacaoCpfForm({
             </div>
           )}
         </div>
+        )}
 
-        {cliente.clienteId ? (
+        {cliente.clienteId && !credito ? (
           <div className="border border-gray-100 rounded-lg p-3 flex items-center justify-between">
             <div className="text-xs text-gray-700 font-medium">
               {cliente.nome}
@@ -453,6 +496,21 @@ export function PortalAvaliacaoCpfForm({
           </div>
         ) : (
           <div className="flex flex-col gap-4">
+            {credito && cliente.clienteId && (
+              <div className="border border-gray-100 rounded-lg p-3 flex items-center justify-between">
+                <div className="text-xs text-gray-700 font-medium">
+                  {cliente.nome}
+                  <span className="block text-[11px] text-primary font-normal mt-0.5">
+                    Cliente já cadastrado — confira os dados e complete o que faltar
+                  </span>
+                </div>
+                {!conversao && (
+                  <button type="button" onClick={comecarCadastroNovo} className="text-[11px] text-gray-400 hover:text-red-600">
+                    trocar
+                  </button>
+                )}
+              </div>
+            )}
             <div className="pt-2 border-t border-gray-100">
               <div className="text-[11px] font-semibold text-gray-500 mb-2">Identificação</div>
               <div className="grid md:grid-cols-2 gap-3">
@@ -502,13 +560,13 @@ export function PortalAvaliacaoCpfForm({
                 )}
                 {mostrarCpf && (
                   <div>
-                    <label className={LABEL}>RG</label>
+                    <label className={LABEL}>RG{req}</label>
                     <input className={CAMPO} value={cliente.rg} onChange={(e) => atualizar("rg", e.target.value)} />
                   </div>
                 )}
                 {mostrarCpf && (
                   <div>
-                    <label className={LABEL}>Estado de expedição</label>
+                    <label className={LABEL}>Estado de expedição{req}</label>
                     <input className={CAMPO} value={cliente.expedicao} onChange={(e) => atualizar("expedicao", e.target.value)} />
                   </div>
                 )}
@@ -528,17 +586,17 @@ export function PortalAvaliacaoCpfForm({
                 {mostrarCpf && (
                   <>
                     <div>
-                      <label className={LABEL}>Nome da mãe</label>
+                      <label className={LABEL}>Nome da mãe{req}</label>
                       <input className={CAMPO} value={cliente.nomeMae} onChange={(e) => atualizar("nomeMae", e.target.value)} />
                     </div>
                     <div>
-                      <label className={LABEL}>Nome do pai</label>
+                      <label className={LABEL}>Nome do pai{req}</label>
                       <input className={CAMPO} value={cliente.nomePai} onChange={(e) => atualizar("nomePai", e.target.value)} />
                     </div>
                   </>
                 )}
                 <div>
-                  <label className={LABEL}>Estado civil</label>
+                  <label className={LABEL}>Estado civil{req}</label>
                   <select
                     className={CAMPO}
                     value={cliente.estadoCivil}
@@ -557,7 +615,7 @@ export function PortalAvaliacaoCpfForm({
                 </div>
                 {ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL.includes(cliente.estadoCivil) && (
                   <div>
-                    <label className={LABEL}>Convive em união estável?</label>
+                    <label className={LABEL}>Convive em união estável?{req}</label>
                     <select className={CAMPO} value={cliente.uniaoEstavel} onChange={(e) => atualizar("uniaoEstavel", e.target.value)}>
                       <option value="">Não perguntado ainda</option>
                       <option value="false">Não</option>
@@ -566,7 +624,7 @@ export function PortalAvaliacaoCpfForm({
                   </div>
                 )}
                 <div>
-                  <label className={LABEL}>Data de nascimento</label>
+                  <label className={LABEL}>Data de nascimento{req}</label>
                   <input type="date" className={CAMPO} value={cliente.dataNascimento} onChange={(e) => atualizar("dataNascimento", e.target.value)} />
                 </div>
               </div>
@@ -580,7 +638,7 @@ export function PortalAvaliacaoCpfForm({
                   <input className={CAMPO} placeholder="(69) 99999-9999" value={cliente.telefone} onChange={(e) => atualizar("telefone", e.target.value)} />
                 </div>
                 <div>
-                  <label className={LABEL}>E-mail</label>
+                  <label className={LABEL}>E-mail{req}</label>
                   <input className={CAMPO} type="email" value={cliente.email} onChange={(e) => atualizar("email", e.target.value)} />
                 </div>
                 {/* Endereço estruturado (CEP/rua/número/complemento/bairro/
@@ -588,15 +646,15 @@ export function PortalAvaliacaoCpfForm({
                     ("Sede"), mesmo padrão do cadastro de Clientes do admin
                     (19/08/2026). */}
                 <div>
-                  <label className={LABEL}>CEP</label>
+                  <label className={LABEL}>CEP{req}</label>
                   <input className={CAMPO} value={cliente.cep} onChange={(e) => atualizar("cep", e.target.value)} onBlur={buscarEnderecoPorCep} />
                 </div>
                 <div>
-                  <label className={LABEL}>Logradouro</label>
+                  <label className={LABEL}>Logradouro{req}</label>
                   <input className={CAMPO} value={cliente.rua} onChange={(e) => atualizar("rua", e.target.value)} />
                 </div>
                 <div>
-                  <label className={LABEL}>Número predial</label>
+                  <label className={LABEL}>Número predial{req}</label>
                   <input className={CAMPO} value={cliente.nPredial} onChange={(e) => atualizar("nPredial", e.target.value)} />
                 </div>
                 <div>
@@ -604,11 +662,11 @@ export function PortalAvaliacaoCpfForm({
                   <input className={CAMPO} value={cliente.complemento} onChange={(e) => atualizar("complemento", e.target.value)} />
                 </div>
                 <div>
-                  <label className={LABEL}>Bairro</label>
+                  <label className={LABEL}>Bairro{req}</label>
                   <input className={CAMPO} value={cliente.bairro} onChange={(e) => atualizar("bairro", e.target.value)} />
                 </div>
                 <div>
-                  <label className={LABEL}>Estado</label>
+                  <label className={LABEL}>Estado{req}</label>
                   <select
                     className={CAMPO}
                     value={cliente.estadoId}
@@ -626,7 +684,7 @@ export function PortalAvaliacaoCpfForm({
                   </select>
                 </div>
                 <div>
-                  <label className={LABEL}>Cidade</label>
+                  <label className={LABEL}>Cidade{req}</label>
                   <select className={CAMPO} value={cliente.cidadeId} onChange={(e) => atualizar("cidadeId", e.target.value)}>
                     <option value="">—</option>
                     {cidades
@@ -725,6 +783,42 @@ export function PortalAvaliacaoCpfForm({
               </div>
             </div>
 
+            {credito && (
+              <div className="pt-2 border-t border-gray-100">
+                <div className="text-[11px] font-semibold text-gray-500 mb-2">Perguntas da avaliação *</div>
+                <div className="flex flex-col gap-4">
+                  {PERGUNTAS_CREDITO.map((p) => (
+                    <fieldset key={p.chave}>
+                      <legend className="text-xs text-gray-700 font-medium mb-1.5">{p.pergunta}</legend>
+                      <div className="flex flex-col gap-1.5">
+                        {(
+                          [
+                            { valor: "sim", texto: p.sim },
+                            { valor: "nao", texto: p.nao }
+                          ] as { valor: RespostaCredito; texto: string }[]
+                        ).map((o) => (
+                          <label
+                            key={o.valor}
+                            className={`flex items-center gap-2 text-xs border rounded-lg px-3 py-2 cursor-pointer ${
+                              respostas[p.chave] === o.valor ? "border-primary bg-primary/5 text-gray-800" : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name={`pergunta-${p.chave}`}
+                              checked={respostas[p.chave] === o.valor}
+                              onChange={() => setRespostas((atual) => ({ ...atual, [p.chave]: o.valor }))}
+                            />
+                            {o.texto}
+                          </label>
+                        ))}
+                      </div>
+                    </fieldset>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="pt-2 border-t border-gray-100">
               <label className={LABEL}>Observação</label>
               <textarea className={CAMPO + " min-h-16"} value={cliente.observacao} onChange={(e) => atualizar("observacao", e.target.value)} />
@@ -781,8 +875,9 @@ export function PortalAvaliacaoCpfForm({
           className="bg-primary text-white rounded-lg px-5 py-2 text-sm font-semibold disabled:opacity-40 hover:opacity-90 disabled:cursor-wait inline-flex items-center justify-center gap-1.5"
         >
           {enviando && <span className="w-3 h-3 border-2 rounded-full animate-spin border-white/40 border-t-white shrink-0" />}
-          {enviando ? etapaEnvio || "Cadastrando..." : "Cadastrar avaliação"}
+          {enviando ? etapaEnvio || "Cadastrando..." : conversao ? "Transformar em Avaliação de crédito" : credito ? "Cadastrar avaliação de crédito" : "Cadastrar consulta de CPF"}
         </button>
+        {!conversao && (
         <button
           type="button"
           onClick={salvarRascunhoManual}
@@ -790,15 +885,22 @@ export function PortalAvaliacaoCpfForm({
         >
           Salvar rascunho
         </button>
+        )}
         {rascunhoSalvoAgora && <span className="text-xs text-green-700 font-semibold">Rascunho salvo neste navegador.</span>}
         {erroCadastroCliente && <span className="text-xs text-red-600">{erroCadastroCliente}</span>}
-        {resultado?.ok && (
-          <span className="text-xs text-green-700 font-semibold">
-            Cadastrado com sucesso. O administrativo vai definir a finalidade e dar sequência no Financiamento.
-          </span>
-        )}
+
         {resultado && !resultado.ok && <span className="text-xs text-red-600">{resultado.erro}</span>}
       </div>
+      </>
+      )}
+
+      {!conversao && modalidade === "" && resultado?.ok && (
+        <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-xs text-green-800">
+          {enviadoComo === "credito"
+            ? "Avaliação de crédito cadastrada. A etiqueta já está em Montagem de processo no Financiamento."
+            : "Consulta de CPF cadastrada. O administrativo vai dar sequência no Financiamento."}
+        </div>
+      )}
     </div>
   );
 }

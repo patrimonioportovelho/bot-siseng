@@ -1,6 +1,7 @@
 "use server";
 
 import { after } from "next/server";
+import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requirePortalSession } from "@/lib/portal-auth";
 import { logAlteracaoPortal } from "@/lib/auth";
@@ -12,6 +13,16 @@ import { validarCpfCnpj } from "@/lib/clientes/validacao";
 import { montarEnderecoPF } from "@/lib/clientes/endereco";
 import { gerarProximoIdCliente } from "@/lib/clientes/id-legado";
 import { gerarProximoIdAvaliacao } from "@/lib/avaliacoes/id-legado";
+import {
+  PERGUNTAS_CREDITO,
+  camposFaltandoCredito,
+  respostaParaBooleano,
+  respostasIncompletas,
+  textoDaResposta,
+  type ClienteAvaliacao,
+  type RespostasCredito
+} from "@/lib/financiamento/avaliacao-credito";
+import { clienteParaFormulario } from "@/lib/financiamento/avaliacao-credito-servidor";
 import { criarUploadAssinadoDocumento, criarLinkDownloadDocumento, baixarDocumentoPortal } from "@/lib/supabase-admin";
 
 const EMAIL_DESTINO_PADRAO = "engimob@remax.com.br";
@@ -206,7 +217,9 @@ function parseCliente(formData: FormData): ClienteAvaliacaoDigitado | null {
   }
 }
 
-async function criarClienteCompleto(c: ClienteAvaliacaoDigitado, parceiroId: string) {
+// Campos do cadastro do cliente a partir do que o corretor digitou — usado tanto
+// para criar quanto para atualizar (Avaliação de crédito completa o cadastro).
+async function dadosDoCliente(c: ClienteAvaliacaoDigitado) {
   const ehCnpj = c.tipoCliente === "Pessoa Jurídica";
   const dataNasc = c.dataNascimento ? new Date(c.dataNascimento) : null;
 
@@ -222,218 +235,485 @@ async function criarClienteCompleto(c: ClienteAvaliacaoDigitado, parceiroId: str
     estadoId: c.estadoId || null
   });
 
+  return {
+    nome: c.nome,
+    tipo_cliente: c.tipoCliente,
+    sexo: !ehCnpj ? c.sexo || null : null,
+    cpf: !ehCnpj ? digitos(c.cpf) : null,
+    cnpj: ehCnpj ? digitos(c.cnpj) : null,
+    rg: !ehCnpj ? c.rg || null : null,
+    expedicao: !ehCnpj ? c.expedicao || null : null,
+    nome_mae: !ehCnpj ? c.nomeMae || null : null,
+    nome_pai: !ehCnpj ? c.nomePai || null : null,
+    telefone: digitos(c.telefone),
+    email: c.email || null,
+    estado_civil: !ehCnpj ? c.estadoCivil || null : null,
+    uniao_estavel: !ehCnpj ? booleanoTri(c.uniaoEstavel) : null,
+    data_nascimento: dataNasc && !Number.isNaN(dataNasc.getTime()) ? dataNasc : null,
+    cat_profissao: c.catProfissao || null,
+    tipo_servidor: c.tipoServidor || null,
+    profissao: c.profissao || null,
+    renda_bruta: c.rendaBruta ? valorEditavelParaDecimal(c.rendaBruta) : null,
+    cep: digitos(c.cep),
+    rua: c.rua || null,
+    n_predial: c.nPredial || null,
+    complemento: c.complemento || null,
+    bairro: c.bairro || null,
+    estado_id: c.estadoId || null,
+    cidade_id: c.cidadeId || null,
+    endereco,
+    observacao: c.observacao || null,
+    banco_id: c.bancoId || null,
+    codigo_banco: c.codigoBanco || null,
+    agencia: c.agencia || null,
+    conta: c.conta || null,
+    tipo_conta: c.tipoConta || null,
+    tipo_pix: c.tipoPix || null,
+    pix: c.pix || null
+  };
+}
+
+async function criarClienteCompleto(c: ClienteAvaliacaoDigitado, parceiroId: string) {
   return prisma.clientes.create({
     data: {
-      nome: c.nome,
+      ...(await dadosDoCliente(c)),
       id_legado: await gerarProximoIdCliente(),
-      tipo_cliente: c.tipoCliente,
-      sexo: !ehCnpj ? c.sexo || null : null,
-      cpf: !ehCnpj ? digitos(c.cpf) : null,
-      cnpj: ehCnpj ? digitos(c.cnpj) : null,
-      rg: !ehCnpj ? c.rg || null : null,
-      expedicao: !ehCnpj ? c.expedicao || null : null,
-      nome_mae: !ehCnpj ? c.nomeMae || null : null,
-      nome_pai: !ehCnpj ? c.nomePai || null : null,
-      telefone: digitos(c.telefone),
-      email: c.email || null,
-      estado_civil: !ehCnpj ? c.estadoCivil || null : null,
-      uniao_estavel: !ehCnpj ? booleanoTri(c.uniaoEstavel) : null,
-      data_nascimento: dataNasc && !Number.isNaN(dataNasc.getTime()) ? dataNasc : null,
-      cat_profissao: c.catProfissao || null,
-      tipo_servidor: c.tipoServidor || null,
-      profissao: c.profissao || null,
-      renda_bruta: c.rendaBruta ? valorEditavelParaDecimal(c.rendaBruta) : null,
-      cep: digitos(c.cep),
-      rua: c.rua || null,
-      n_predial: c.nPredial || null,
-      complemento: c.complemento || null,
-      bairro: c.bairro || null,
-      estado_id: c.estadoId || null,
-      cidade_id: c.cidadeId || null,
-      endereco,
-      observacao: c.observacao || null,
-      banco_id: c.bancoId || null,
-      codigo_banco: c.codigoBanco || null,
-      agencia: c.agencia || null,
-      conta: c.conta || null,
-      tipo_conta: c.tipoConta || null,
-      tipo_pix: c.tipoPix || null,
-      pix: c.pix || null,
       parceiro_id: parceiroId,
       status_cadastro: "Completo"
     }
   });
 }
 
-// Avaliação de CPF cadastrada pelo corretor — é a mesma "Consulta de CPF" que
-// já existe no módulo Financiamento do administrativo (lib/financiamento/opcoes.ts),
-// só que agora tem uma porta de entrada pelo portal. Entra sempre com status
-// "Consulta de CPF" e SEM tipo_avaliacao definido — quem decide a finalidade
-// (Financiamento, Análise de crédito, Locação) e dá seguimento é o
-// administrativo, que já vê isso na tela /financiamento assim que salva.
+// Respostas das 3 perguntas da Avaliação de crédito ("sim" | "nao" | "").
+function parseRespostas(formData: FormData): RespostasCredito {
+  const vazio: RespostasCredito = { fgts3Anos: "", maisCompradores: "", primeiroImovel: "" };
+  const bruto = texto(formData, "respostasJson");
+  if (!bruto) return vazio;
+  try {
+    const r = JSON.parse(bruto);
+    const limpa = (v: unknown) => (v === "sim" || v === "nao" ? v : "");
+    return { fgts3Anos: limpa(r?.fgts3Anos), maisCompradores: limpa(r?.maisCompradores), primeiroImovel: limpa(r?.primeiroImovel) };
+  } catch {
+    return vazio;
+  }
+}
+
+function dadosDasRespostas(r: RespostasCredito) {
+  return {
+    credito_fgts_3_anos: respostaParaBooleano(r.fgts3Anos),
+    credito_mais_compradores: respostaParaBooleano(r.maisCompradores),
+    credito_primeiro_imovel: respostaParaBooleano(r.primeiroImovel)
+  };
+}
+
+type ClientePreparado =
+  | { ok: true; id: string; nome: string; telefone: string | null; cpf: string | null; documento: string }
+  | { ok: false; erro: string };
+
+// Valida e grava o cadastro completo do cliente para a Avaliação de crédito:
+// cliente novo é criado; cliente já cadastrado (só do próprio corretor) é
+// completado com o que veio do formulário.
+async function prepararClienteCredito(cliente: ClienteAvaliacaoDigitado, parceiroId: string): Promise<ClientePreparado> {
+  const falta = camposFaltandoCredito(cliente);
+  if (falta.length > 0) {
+    return { ok: false, erro: `Avaliação de crédito exige o cadastro completo. Falta preencher: ${falta.join(", ")}.` };
+  }
+  const ehCnpj = cliente.tipoCliente === "Pessoa Jurídica";
+  const documento = ehCnpj ? cliente.cnpj : cliente.cpf;
+  const erroDocumento = validarCpfCnpj(documento);
+  if (erroDocumento) return { ok: false, erro: erroDocumento };
+
+  if (cliente.clienteId) {
+    const existente = await prisma.clientes.findUnique({ where: { id: cliente.clienteId } });
+    if (!existente) {
+      return { ok: false, erro: "Cliente selecionado não foi encontrado — atualize a página e tente de novo." };
+    }
+    if (existente.parceiro_id !== parceiroId) {
+      return {
+        ok: false,
+        erro: "Este cliente está no cadastro de outro corretor — Avaliação de crédito precisa do cadastro completo, então use um cliente seu ou fale com o administrativo."
+      };
+    }
+    const docAtual = ehCnpj ? existente.cnpj : existente.cpf;
+    if (digitos(documento) !== (docAtual ?? "")) {
+      const duplicado = await buscarClienteDuplicado({ nome: "", cpfCnpj: documento, ignorarIds: [existente.id] });
+      if (duplicado) return { ok: false, erro: mensagemClienteDuplicado(duplicado, parceiroId) };
+    }
+    const atualizado = await prisma.clientes
+      .update({
+        where: { id: existente.id },
+        data: { ...(await dadosDoCliente(cliente)), status_cadastro: "Completo", updated_at: new Date() }
+      })
+      .catch((erro) => registrarEJogarErro({ entidadeTipo: "clientes", acao: "completar_via_portal_avaliacao_credito", erro }));
+    return { ok: true, id: atualizado.id, nome: atualizado.nome, telefone: atualizado.telefone, cpf: atualizado.cpf, documento };
+  }
+
+  const duplicado = await buscarClienteDuplicado({ nome: cliente.nome, cpfCnpj: documento });
+  if (duplicado) return { ok: false, erro: mensagemClienteDuplicado(duplicado, parceiroId) };
+  const criado = await criarClienteCompleto(cliente, parceiroId).catch((erro) =>
+    registrarEJogarErro({ entidadeTipo: "clientes", acao: "criar_via_portal_avaliacao_cpf", erro })
+  );
+  return { ok: true, id: criado.id, nome: criado.nome, telefone: criado.telefone, cpf: criado.cpf, documento };
+}
+
+// Abre a etapa (relógio do quadro de Financiamento) da avaliação, fechando a
+// que estivesse aberta. Mesmo registro que o quadro faz ao mover um card.
+function escritasEtapa(avaliacaoId: string, coluna: "cpf" | "montagem", etapa: string, parceiroId: string) {
+  const agora = new Date();
+  return [
+    prisma.financiamento_atividades.updateMany({
+      where: { avaliacao_id: avaliacaoId, tipo: "etapa", fim: null },
+      data: { fim: agora }
+    }),
+    prisma.financiamento_atividades.create({
+      data: { avaliacao_id: avaliacaoId, tipo: "etapa", coluna, etapa, inicio: agora, por_parceiro_id: parceiroId }
+    })
+  ];
+}
+
+// Respostas em HTML para o e-mail do administrativo.
+function respostasHtml(r: {
+  credito_fgts_3_anos: boolean | null;
+  credito_mais_compradores: boolean | null;
+  credito_primeiro_imovel: boolean | null;
+}): string {
+  return PERGUNTAS_CREDITO.map(
+    (p) => `<li><strong>${p.pergunta}</strong><br/>${textoDaResposta(p.campo, r[p.campo]) ?? "—"}</li>`
+  ).join("");
+}
+
+// E-mail ao administrativo (com os documentos anexados de verdade — mesmo
+// padrão do Compra e Venda, ver montarAnexosDocumentos). Roda depois da
+// resposta ao corretor (after(), do Next.js) — mesmo achado do Compra e Venda
+// (ver comentário completo em app/portal/compra-venda/actions.ts): baixar
+// anexo do Storage + mandar pelo Gmail no fim da função é que empurrava o
+// tempo total pra perto do limite e causava "An unexpected response was
+// received from the server." pro corretor, mesmo com a avaliação já salva.
+// Falha no envio agora só aparece em Configurações > Erros de cadastro.
+function agendarEmailAvaliacao(params: {
+  avaliacaoId: string;
+  parceiroId: string;
+  corretorNome: string;
+  introHtml: string;
+  clienteNome: string;
+  documento: string;
+  telefone: string | null;
+  respostasLista: string | null;
+  documentos: DocumentoEnviado[];
+  rodapeHtml: string;
+  assunto: string;
+}) {
+  after(async () => {
+    try {
+      const linksDocumentosHtml = await montarLinksDocumentos(params.documentos);
+      const anexosDocumentos = await montarAnexosDocumentos(params.documentos);
+
+      const html = `
+        <div style="font-family: sans-serif; font-size: 14px; color: #1f2937;">
+          <p>${params.introHtml}</p>
+          <p>
+            <strong>Cliente:</strong> ${params.clienteNome}<br/>
+            <strong>CPF/CNPJ:</strong> ${params.documento || "—"}<br/>
+            <strong>Telefone:</strong> ${params.telefone ?? "—"}<br/>
+            <strong>Corretor que cadastrou:</strong> ${params.corretorNome}
+          </p>
+          ${params.respostasLista ? `<ul style="padding-left:18px;">${params.respostasLista}</ul>` : ""}
+          ${linksDocumentosHtml}
+          <p style="color:#6b7280; font-size:12px;">${params.rodapeHtml}</p>
+        </div>
+      `;
+
+      // .trim(): ver comentário igual em app/portal/locacao/actions.ts.
+      const destinoEmail = (process.env.EMAIL_ADM_FINANCIAMENTO || "").trim() || EMAIL_DESTINO_PADRAO;
+
+      const resultadoEmail = await enviarEmail({
+        to: destinoEmail,
+        subject: params.assunto,
+        html,
+        attachments: anexosDocumentos
+      });
+
+      await logAlteracaoPortal({
+        parceiroId: params.parceiroId,
+        entidadeTipo: "avaliacoes",
+        entidadeId: params.avaliacaoId,
+        acao: resultadoEmail.ok ? "email_avaliacao_cpf_enviado" : "email_avaliacao_cpf_falhou",
+        dadosDepois: {
+          para: destinoEmail,
+          anexos: anexosDocumentos.length,
+          docs_como_link: Math.max(0, params.documentos.length - anexosDocumentos.length),
+          erro: resultadoEmail.ok ? undefined : resultadoEmail.erro
+        }
+      }).catch(() => undefined);
+
+      if (!resultadoEmail.ok) {
+        await registrarEJogarErro({
+          entidadeTipo: "avaliacoes",
+          entidadeId: params.avaliacaoId,
+          acao: "enviar_email_avaliacao_cpf",
+          erro: new Error(resultadoEmail.erro)
+        }).catch(() => undefined);
+      }
+    } catch (erroEmail) {
+      await registrarEJogarErro({
+        entidadeTipo: "avaliacoes",
+        entidadeId: params.avaliacaoId,
+        acao: "enviar_email_avaliacao_cpf",
+        erro: erroEmail instanceof Error ? erroEmail : new Error(String(erroEmail))
+      }).catch(() => undefined);
+    }
+  });
+}
+
+// Cadastro completo de um cliente do próprio corretor, para preencher o
+// formulário da Avaliação de crédito (que exige identificação e contato).
+export async function carregarClienteParaCreditoAction(
+  clienteId: string
+): Promise<{ ok: true; cliente: ClienteAvaliacao } | { ok: false; erro: string }> {
+  const session = await requirePortalSession();
+  const c = await prisma.clientes.findUnique({ where: { id: clienteId } });
+  if (!c) return { ok: false, erro: "Cliente não encontrado." };
+  if (c.parceiro_id !== session.parceiroId) {
+    return {
+      ok: false,
+      erro: "Este cliente está no cadastro de outro corretor. Para Avaliação de crédito use um cliente seu ou fale com o administrativo."
+    };
+  }
+  return { ok: true, cliente: clienteParaFormulario(c) };
+}
+
+// Avaliação cadastrada pelo corretor. Duas modalidades:
+//  - "consulta" (Consulta de CPF): é a mesma "Consulta de CPF" que já existe no
+//    módulo Financiamento do administrativo (lib/financiamento/opcoes.ts), só
+//    que com uma porta de entrada pelo portal. Entra com status "Consulta de
+//    CPF" e SEM tipo_avaliacao — quem decide a finalidade (Financiamento,
+//    Análise de crédito, Locação) e dá seguimento é o administrativo.
+//  - "credito" (Avaliação de crédito, 30/10/2026): exige o cadastro completo do
+//    cliente (identificação e contato) e as 3 perguntas, e a etiqueta já nasce
+//    em "Montagem de processo".
 export async function criarAvaliacaoCpfAction(
   formData: FormData
 ): Promise<{ ok: true; avaliacaoId: string } | { ok: false; erro: string }> {
   const session = await requirePortalSession();
 
   try {
+    const modalidade = texto(formData, "modalidade") === "credito" ? "credito" : "consulta";
+    const credito = modalidade === "credito";
     const cliente = parseCliente(formData);
     if (!cliente || (!cliente.clienteId && !cliente.nome)) {
       return { ok: false, erro: "Preencha o cadastro do cliente." };
     }
+    const respostas = parseRespostas(formData);
 
     const ehCnpj = cliente.tipoCliente === "Pessoa Jurídica";
-    const documentoDigitado = ehCnpj ? cliente.cnpj : cliente.cpf;
-    if (!cliente.clienteId && (!cliente.nome || !documentoDigitado)) {
-      return {
-        ok: false,
-        erro: `Avaliação de CPF precisa do nome completo e do ${ehCnpj ? "CNPJ" : "CPF"} do cliente preenchidos.`
-      };
-    }
-
-    // Sexo (PF) e Telefone também obrigatórios — pedido do usuário
-    // (09/08/2026, "alinhamento do cadastro de cliente em todos os pontos de
-    // entrada"). Nome/CPF/CNPJ já checados acima.
-    if (!cliente.clienteId) {
-      if (!ehCnpj && !cliente.sexo) {
-        return { ok: false, erro: "Informe o sexo do cliente." };
-      }
-      if (!cliente.telefone) {
-        return { ok: false, erro: "Informe o telefone do cliente." };
-      }
-    }
+    let documentoDigitado = ehCnpj ? cliente.cnpj : cliente.cpf;
 
     let clienteId: string;
     let clienteNome: string;
     let clienteTelefone: string | null;
     let clienteCpf: string | null;
 
-    if (cliente.clienteId) {
-      const existente = await prisma.clientes.findUnique({ where: { id: cliente.clienteId } });
-      if (!existente) {
-        return { ok: false, erro: "Cliente selecionado não foi encontrado — atualize a página e tente de novo." };
+    if (credito) {
+      if (respostasIncompletas(respostas)) {
+        return { ok: false, erro: "Responda as 3 perguntas da Avaliação de crédito antes de enviar." };
       }
-      clienteId = existente.id;
-      clienteNome = existente.nome;
-      clienteTelefone = existente.telefone;
-      clienteCpf = existente.cpf;
+      const preparado = await prepararClienteCredito(cliente, session.parceiroId);
+      if (!preparado.ok) return preparado;
+      clienteId = preparado.id;
+      clienteNome = preparado.nome;
+      clienteTelefone = preparado.telefone;
+      clienteCpf = preparado.cpf;
+      documentoDigitado = preparado.documento;
     } else {
-      const erroDocumento = documentoDigitado ? validarCpfCnpj(documentoDigitado) : null;
-      if (erroDocumento) return { ok: false, erro: erroDocumento };
-
-      const duplicado = await buscarClienteDuplicado({ nome: cliente.nome, cpfCnpj: documentoDigitado });
-      if (duplicado) {
-        return { ok: false, erro: mensagemClienteDuplicado(duplicado, session.parceiroId) };
+      if (!cliente.clienteId && (!cliente.nome || !documentoDigitado)) {
+        return {
+          ok: false,
+          erro: `Avaliação de CPF precisa do nome completo e do ${ehCnpj ? "CNPJ" : "CPF"} do cliente preenchidos.`
+        };
       }
-      const criado = await criarClienteCompleto(cliente, session.parceiroId).catch((erro) =>
-        registrarEJogarErro({ entidadeTipo: "clientes", acao: "criar_via_portal_avaliacao_cpf", erro })
-      );
-      clienteId = criado.id;
-      clienteNome = criado.nome;
-      clienteTelefone = criado.telefone;
-      clienteCpf = criado.cpf;
+
+      // Sexo (PF) e Telefone também obrigatórios — pedido do usuário
+      // (09/08/2026, "alinhamento do cadastro de cliente em todos os pontos de
+      // entrada"). Nome/CPF/CNPJ já checados acima.
+      if (!cliente.clienteId) {
+        if (!ehCnpj && !cliente.sexo) {
+          return { ok: false, erro: "Informe o sexo do cliente." };
+        }
+        if (!cliente.telefone) {
+          return { ok: false, erro: "Informe o telefone do cliente." };
+        }
+      }
+
+      if (cliente.clienteId) {
+        const existente = await prisma.clientes.findUnique({ where: { id: cliente.clienteId } });
+        if (!existente) {
+          return { ok: false, erro: "Cliente selecionado não foi encontrado — atualize a página e tente de novo." };
+        }
+        clienteId = existente.id;
+        clienteNome = existente.nome;
+        clienteTelefone = existente.telefone;
+        clienteCpf = existente.cpf;
+      } else {
+        const erroDocumento = documentoDigitado ? validarCpfCnpj(documentoDigitado) : null;
+        if (erroDocumento) return { ok: false, erro: erroDocumento };
+
+        const duplicado = await buscarClienteDuplicado({ nome: cliente.nome, cpfCnpj: documentoDigitado });
+        if (duplicado) {
+          return { ok: false, erro: mensagemClienteDuplicado(duplicado, session.parceiroId) };
+        }
+        const criado = await criarClienteCompleto(cliente, session.parceiroId).catch((erro) =>
+          registrarEJogarErro({ entidadeTipo: "clientes", acao: "criar_via_portal_avaliacao_cpf", erro })
+        );
+        clienteId = criado.id;
+        clienteNome = criado.nome;
+        clienteTelefone = criado.telefone;
+        clienteCpf = criado.cpf;
+      }
     }
 
     const idLegado = await gerarProximoIdAvaliacao();
+    const statusInicial = credito ? "Montagem de processo" : "Consulta de CPF";
 
     const novaAvaliacao = await prisma.avaliacoes
       .create({
         data: {
           id_legado: idLegado,
-          status: "Consulta de CPF",
+          status: statusInicial,
           data_avaliacao: data(formData, "data_avaliacao") ?? new Date(),
           cliente_id: clienteId,
           telefone: clienteTelefone,
           cpf: clienteCpf,
           parceiro_id: session.parceiroId,
-          observacao: "Cadastrado pelo corretor via portal — cliente quer comprar imóvel.",
-          criado_no_portal: true
+          observacao: credito
+            ? "Avaliação de crédito cadastrada pelo corretor via portal — cliente quer comprar imóvel."
+            : "Cadastrado pelo corretor via portal — cliente quer comprar imóvel.",
+          criado_no_portal: true,
+          ...(credito ? dadosDasRespostas(respostas) : {})
         }
       })
       .catch((erro) => registrarEJogarErro({ entidadeTipo: "avaliacoes", acao: "criar_via_portal_avaliacao_cpf", erro }));
+
+    // Relógio do quadro desde o primeiro minuto (sem isso o quadro estimaria
+    // o início pela data da avaliação).
+    await prisma
+      .$transaction(escritasEtapa(novaAvaliacao.id, credito ? "montagem" : "cpf", statusInicial, session.parceiroId))
+      .catch(() => undefined);
 
     await logAlteracaoPortal({
       parceiroId: session.parceiroId,
       entidadeTipo: "avaliacoes",
       entidadeId: novaAvaliacao.id,
-      acao: "criar_avaliacao_cpf",
-      dadosDepois: { cliente_id: clienteId, status: novaAvaliacao.status }
-    });
-
-    // Email pro administrativo, com os documentos do cliente anexados de
-    // verdade (mesmo padrão do Compra e Venda — ver montarAnexosDocumentos).
-    // Movido pra depois da resposta ao corretor (after(), do Next.js) — mesmo
-    // achado do Compra e Venda (ver comentário completo em
-    // app/portal/compra-venda/actions.ts): baixar anexo do Storage + mandar
-    // pelo Gmail no fim da função é que empurrava o tempo total pra perto do
-    // limite e causava "An unexpected response was received from the
-    // server." pro corretor, mesmo com a avaliação já salva. Falha no envio
-    // agora só aparece em Configurações > Erros de cadastro.
-    const documentosEnviados = parseDocumentos(formData);
-
-    after(async () => {
-      try {
-        const linksDocumentosHtml = await montarLinksDocumentos(documentosEnviados);
-        const anexosDocumentos = await montarAnexosDocumentos(documentosEnviados);
-
-        const html = `
-          <div style="font-family: sans-serif; font-size: 14px; color: #1f2937;">
-            <p>Nova <strong>Avaliação de CPF</strong> cadastrada pelo portal do corretor — cliente quer comprar imóvel.</p>
-            <p>
-              <strong>Cliente:</strong> ${clienteNome}<br/>
-              <strong>CPF/CNPJ:</strong> ${documentoDigitado || clienteCpf || "—"}<br/>
-              <strong>Telefone:</strong> ${clienteTelefone ?? "—"}<br/>
-              <strong>Corretor que cadastrou:</strong> ${session.nome}
-            </p>
-            ${linksDocumentosHtml}
-            <p style="color:#6b7280; font-size:12px;">
-              Defina a finalidade (Financiamento, Análise de crédito ou Locação) e dê seguimento no módulo Financiamento.
-            </p>
-          </div>
-        `;
-
-        // .trim(): ver comentário igual em app/portal/locacao/actions.ts.
-        const destinoEmail = (process.env.EMAIL_ADM_FINANCIAMENTO || "").trim() || EMAIL_DESTINO_PADRAO;
-
-        const resultadoEmail = await enviarEmail({
-          to: destinoEmail,
-          subject: `Avaliação de CPF — ${clienteNome}`,
-          html,
-          attachments: anexosDocumentos
-        });
-
-        await logAlteracaoPortal({
-          parceiroId: session.parceiroId,
-          entidadeTipo: "avaliacoes",
-          entidadeId: novaAvaliacao.id,
-          acao: resultadoEmail.ok ? "email_avaliacao_cpf_enviado" : "email_avaliacao_cpf_falhou",
-          dadosDepois: {
-            para: destinoEmail,
-            anexos: anexosDocumentos.length,
-            docs_como_link: Math.max(0, documentosEnviados.length - anexosDocumentos.length),
-            erro: resultadoEmail.ok ? undefined : resultadoEmail.erro
-          }
-        }).catch(() => undefined);
-
-        if (!resultadoEmail.ok) {
-          await registrarEJogarErro({
-            entidadeTipo: "avaliacoes",
-            entidadeId: novaAvaliacao.id,
-            acao: "enviar_email_avaliacao_cpf",
-            erro: new Error(resultadoEmail.erro)
-          }).catch(() => undefined);
-        }
-      } catch (erroEmail) {
-        await registrarEJogarErro({
-          entidadeTipo: "avaliacoes",
-          entidadeId: novaAvaliacao.id,
-          acao: "enviar_email_avaliacao_cpf",
-          erro: erroEmail instanceof Error ? erroEmail : new Error(String(erroEmail))
-        }).catch(() => undefined);
+      acao: credito ? "criar_avaliacao_credito" : "criar_avaliacao_cpf",
+      dadosDepois: {
+        cliente_id: clienteId,
+        status: novaAvaliacao.status,
+        ...(credito ? dadosDasRespostas(respostas) : {})
       }
     });
 
+    agendarEmailAvaliacao({
+      avaliacaoId: novaAvaliacao.id,
+      parceiroId: session.parceiroId,
+      corretorNome: session.nome,
+      introHtml: credito
+        ? "Nova <strong>Avaliação de crédito</strong> cadastrada pelo portal do corretor — cliente quer comprar imóvel. A etiqueta já está em <strong>Montagem de processo</strong>."
+        : "Nova <strong>Avaliação de CPF</strong> cadastrada pelo portal do corretor — cliente quer comprar imóvel.",
+      clienteNome,
+      documento: documentoDigitado || clienteCpf || "",
+      telefone: clienteTelefone,
+      respostasLista: credito ? respostasHtml(dadosDasRespostas(respostas)) : null,
+      documentos: parseDocumentos(formData),
+      rodapeHtml: credito
+        ? "As respostas também estão na ficha da avaliação, no módulo Financiamento. Defina a finalidade e dê seguimento."
+        : "Defina a finalidade (Financiamento, Análise de crédito ou Locação) e dê seguimento no módulo Financiamento.",
+      assunto: credito ? `Avaliação de crédito — ${clienteNome}` : `Avaliação de CPF — ${clienteNome}`
+    });
+
     return { ok: true, avaliacaoId: novaAvaliacao.id };
+  } catch (erro) {
+    const mensagem = erro instanceof Error ? erro.message : String(erro);
+    return { ok: false, erro: mensagem };
+  }
+}
+
+// O corretor primeiro consulta o CPF e, depois, transforma a consulta em
+// Avaliação de crédito: completa o cadastro, responde as 3 perguntas e a
+// etiqueta passa de "Consulta de CPF" para "Montagem de processo".
+export async function converterEmAvaliacaoCreditoAction(
+  avaliacaoId: string,
+  formData: FormData
+): Promise<{ ok: true } | { ok: false; erro: string }> {
+  const session = await requirePortalSession();
+
+  try {
+    const avaliacao = await prisma.avaliacoes.findUnique({
+      where: { id: avaliacaoId },
+      select: { id: true, status: true, excluido: true, parceiro_id: true, cliente_id: true }
+    });
+    if (!avaliacao || avaliacao.excluido || avaliacao.parceiro_id !== session.parceiroId) {
+      return { ok: false, erro: "Avaliação não encontrada." };
+    }
+    if (avaliacao.status !== "Consulta de CPF") {
+      return { ok: false, erro: "Só uma Consulta de CPF pode ser transformada em Avaliação de crédito." };
+    }
+
+    const cliente = parseCliente(formData);
+    if (!cliente || !cliente.clienteId || cliente.clienteId !== avaliacao.cliente_id) {
+      return { ok: false, erro: "Cadastro do cliente inválido — volte e abra a avaliação de novo." };
+    }
+    const respostas = parseRespostas(formData);
+    if (respostasIncompletas(respostas)) {
+      return { ok: false, erro: "Responda as 3 perguntas da Avaliação de crédito antes de enviar." };
+    }
+
+    const preparado = await prepararClienteCredito(cliente, session.parceiroId);
+    if (!preparado.ok) return preparado;
+
+    const agora = new Date();
+    const respostasDados = dadosDasRespostas(respostas);
+    await prisma
+      .$transaction([
+        prisma.avaliacoes.update({
+          where: { id: avaliacaoId },
+          data: {
+            status: "Montagem de processo",
+            telefone: preparado.telefone,
+            cpf: preparado.cpf,
+            ...respostasDados,
+            updated_at: agora
+          }
+        }),
+        ...escritasEtapa(avaliacaoId, "montagem", "Montagem de processo", session.parceiroId)
+      ])
+      .catch((erro) => registrarEJogarErro({ entidadeTipo: "avaliacoes", entidadeId: avaliacaoId, acao: "converter_avaliacao_credito", erro }));
+
+    await logAlteracaoPortal({
+      parceiroId: session.parceiroId,
+      entidadeTipo: "avaliacoes",
+      entidadeId: avaliacaoId,
+      acao: "converter_avaliacao_credito",
+      dadosAntes: { status: avaliacao.status },
+      dadosDepois: { status: "Montagem de processo", ...respostasDados }
+    });
+
+    agendarEmailAvaliacao({
+      avaliacaoId,
+      parceiroId: session.parceiroId,
+      corretorNome: session.nome,
+      introHtml:
+        "A <strong>Consulta de CPF</strong> abaixo foi transformada em <strong>Avaliação de crédito</strong> pelo corretor. A etiqueta passou para <strong>Montagem de processo</strong>.",
+      clienteNome: preparado.nome,
+      documento: preparado.documento,
+      telefone: preparado.telefone,
+      respostasLista: respostasHtml(respostasDados),
+      documentos: parseDocumentos(formData),
+      rodapeHtml: "As respostas também estão na ficha da avaliação, no módulo Financiamento.",
+      assunto: `Avaliação de crédito (de consulta) — ${preparado.nome}`
+    });
+
+    revalidatePath("/financiamento");
+    revalidatePath("/portal/avaliacao-cpf");
+    return { ok: true };
   } catch (erro) {
     const mensagem = erro instanceof Error ? erro.message : String(erro);
     return { ok: false, erro: mensagem };

@@ -10,6 +10,7 @@ import {
   TABELA_AVALIACAO_OPCOES,
   INDEXADOR_AVALIACAO_OPCOES
 } from "@/lib/financiamento/opcoes";
+import { PERGUNTAS_CREDITO, booleanoParaResposta, textoDaResposta } from "@/lib/financiamento/avaliacao-credito";
 import {
   formatCpf,
   formatTelefone,
@@ -71,6 +72,9 @@ type AvaliacaoExistente = {
   imagem_consulta_caminho: string | null;
   imagem_consulta_enviada_em: Date | null;
   observacao: string | null;
+  credito_fgts_3_anos?: boolean | null;
+  credito_mais_compradores?: boolean | null;
+  credito_primeiro_imovel?: boolean | null;
 };
 
 function inputDate(d: Date | null) {
@@ -255,6 +259,16 @@ function Ficha({
           {a.usa_subsidio && <Linha label="Valor subsídio" valor={formatMoeda(a.valor_subsidio)} />}
         </div>
       </Cartao>
+
+      {PERGUNTAS_CREDITO.some((p) => a[p.campo] != null) && (
+        <Cartao titulo="Perguntas da avaliação de crédito">
+          <div className="grid md:grid-cols-3 gap-3">
+            {PERGUNTAS_CREDITO.map((p) => (
+              <Linha key={p.campo} label={p.pergunta} valor={textoDaResposta(p.campo, a[p.campo])} />
+            ))}
+          </div>
+        </Cartao>
+      )}
 
       {(imagemConsultaUrl || a.imagem_consulta_url) && (
         <Cartao titulo="Imagem da consulta">
@@ -1160,6 +1174,25 @@ export function AvaliacaoForm({
             <label className={LABEL}>Valor subsídio</label>
             <input className={CAMPO} name="valor_subsidio" placeholder="0,00" defaultValue={formatValorEditavel(a?.valor_subsidio)} />
           </div>
+        </div>
+      </div>
+
+      <div className="bg-white border border-gray-200 rounded-xl p-4">
+        <div className="text-sm font-bold text-gray-800 mb-1">Perguntas da avaliação de crédito</div>
+        <p className="text-[11px] text-gray-400 mb-3">
+          Respondidas pelo corretor no portal (Avaliação de crédito). Pode conferir e corrigir aqui; vazio = não respondido.
+        </p>
+        <div className="grid md:grid-cols-3 gap-3">
+          {PERGUNTAS_CREDITO.map((p) => (
+            <div key={p.campo}>
+              <label className={LABEL}>{p.pergunta}</label>
+              <select className={CAMPO} name={p.campo} defaultValue={booleanoParaResposta(a?.[p.campo])}>
+                <option value="">— Não respondido</option>
+                <option value="sim">{p.sim}</option>
+                <option value="nao">{p.nao}</option>
+              </select>
+            </div>
+          ))}
         </div>
       </div>
 

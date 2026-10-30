@@ -25,6 +25,7 @@ import {
 import { CampoDataAuto, CampoSelectAuto, CampoTextoAuto, Rotulo, type ResultadoSalvar } from "@/components/recrutamento-campos";
 import { FinanciamentoWhatsapp, type PessoaContato } from "@/components/financiamento-whatsapp";
 import { BotaoFichaCompleta } from "@/components/botao-ficha-completa";
+import { PERGUNTAS_CREDITO, type CampoCredito, type RespostaCredito } from "@/lib/financiamento/avaliacao-credito";
 import type { AtividadeFinTela } from "@/app/financiamento/quadro-actions";
 
 export type DadosFin = {
@@ -45,6 +46,7 @@ export type DadosFin = {
   prestacao: string | null;
   validade: string | null; // yyyy-mm-dd
   usaFgts: boolean;
+  respostasCredito: Record<CampoCredito, RespostaCredito>;
   responsavelId: string | null;
   proximaAcaoData: string | null;
   proximaAcaoTexto: string | null;
@@ -60,6 +62,7 @@ type Acoes = {
   moverCard: (id: string, destino: ColunaFinId, opcoes?: { encerramento?: string | null; motivo?: string | null }) => Promise<void>;
   definirStatusAndamento: (id: string, status: string) => Promise<ResultadoSalvar>;
   salvarCampo: (id: string, campo: string, valor: string | null) => Promise<ResultadoSalvar>;
+  salvarRespostaCredito: (id: string, campo: string, valor: string | null) => Promise<ResultadoSalvar>;
   alternarChecklist: (id: string, chave: string, feito: boolean) => Promise<ResultadoSalvar>;
   registrarConformidade: (
     id: string,
@@ -273,6 +276,28 @@ export function FinanciamentoEtiqueta({
             </div>
           </div>
           <BotaoFichaCompleta avaliacaoId={d.id} nome={d.cliente.nome} />
+        </div>
+      </div>
+
+      {/* Perguntas da Avaliação de crédito (resposta do corretor no portal) */}
+      <div className="bg-white border border-gray-200 rounded-xl p-4">
+        <div className="text-xs font-bold text-gray-700 mb-1">Perguntas da avaliação de crédito</div>
+        <p className="text-[11px] text-gray-400 mb-3">Respondidas pelo corretor no portal. Confira com o cliente e corrija aqui, se preciso.</p>
+        <div className="grid md:grid-cols-3 gap-3">
+          {PERGUNTAS_CREDITO.map((p) => (
+            <div key={p.campo}>
+              <Rotulo>{p.pergunta}</Rotulo>
+              <CampoSelectAuto
+                valor={d.respostasCredito[p.campo] || null}
+                vazio="Não respondido"
+                opcoes={[
+                  { valor: "sim", rotulo: p.sim },
+                  { valor: "nao", rotulo: p.nao }
+                ]}
+                salvar={(v) => acoes.salvarRespostaCredito(d.id, p.campo, v)}
+              />
+            </div>
+          ))}
         </div>
       </div>
 

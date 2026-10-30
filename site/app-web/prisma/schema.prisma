@@ -134,6 +134,10 @@ model avaliacoes {
   // "reenviar" em vez de "enviar" e evita mandar em dobro sem querer).
   imagem_consulta_enviada_em DateTime? @db.Timestamptz(6)
   observacao          String?
+  // Perguntas da Avaliação de crédito do portal (null = não respondido).
+  credito_fgts_3_anos      Boolean?
+  credito_mais_compradores Boolean?
+  credito_primeiro_imovel  Boolean?
   excluido            Boolean      @default(false)
   criado_no_portal    Boolean      @default(false)
   created_at          DateTime     @default(now()) @db.Timestamptz(6)

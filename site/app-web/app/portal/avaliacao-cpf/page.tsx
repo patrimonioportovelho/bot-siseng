@@ -226,6 +226,16 @@ export default async function PortalAvaliacaoCpfPage({
                           <div className="text-[11px] text-gray-400">
                             {a.clientes?.cpf ? `CPF: ${a.clientes.cpf}` : a.clientes?.cnpj ? `CNPJ: ${a.clientes.cnpj}` : ""}
                           </div>
+                          {a.status === "Consulta de CPF" && (
+                            <div className="mt-2">
+                              <Link
+                                href={`/portal/avaliacao-cpf/${a.id}/converter`}
+                                className="text-[11px] font-semibold text-primary border border-primary/40 rounded-lg px-3 py-1.5 hover:bg-primary/5 inline-block"
+                              >
+                                Transformar em Avaliação de crédito
+                              </Link>
+                            </div>
+                          )}
                           {a.data_validade ? (
                             <div className="text-[11px] text-gray-400">
                               Validade da consulta: {formatDataCalendario(a.data_validade)}

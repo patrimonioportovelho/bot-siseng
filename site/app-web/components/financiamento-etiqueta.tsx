@@ -12,6 +12,7 @@ import {
   TIPO_CONTATO_FIN,
   TIPO_ETAPA,
   TIPO_INCONFORMIDADE,
+  TIPO_NOTA_FIN,
   situacaoSla,
   type ColunaFinId
 } from "@/lib/financiamento/quadro";
@@ -594,6 +595,7 @@ export function FinanciamentoEtiqueta({
                     {a.motivo && <span className="text-gray-500">· {a.motivo}</span>}
                   </>
                 )}
+                {a.tipo === TIPO_NOTA_FIN && <span className="font-semibold text-gray-600">{a.etapa}</span>}
                 {a.tipo === TIPO_CONFORMIDADE && <span className="font-semibold text-green-700">Conforme</span>}
                 {a.tipo === TIPO_INCONFORMIDADE && <span className="font-semibold text-red-600">Inconformidade: {a.motivo}</span>}
                 {a.tipo === TIPO_CONTATO_FIN && (
@@ -601,6 +603,11 @@ export function FinanciamentoEtiqueta({
                     <span className="font-semibold">{a.etapa ?? "Contato"}</span>
                     {a.resultado && <span>· {a.resultado}</span>}
                   </>
+                )}
+                {a.resultado === "importado-log" && (
+                  <span className="text-[9px] text-gray-400 border border-gray-200 rounded-full px-1.5" title="Reconstituído do histórico de alterações do sistema">
+                    histórico
+                  </span>
                 )}
                 <span className="text-[10px] text-gray-400 ml-auto">
                   {formatarDataHora(a.inicio)}

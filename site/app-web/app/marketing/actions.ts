@@ -5,7 +5,9 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireAdminSession, logAlteracao } from "@/lib/auth";
 import { registrarEJogarErro } from "@/lib/erros";
-import { logMovimentoQuadro } from "@/lib/quadro-log";
+import { avisarMovimento, logMovimentoQuadro } from "@/lib/quadro-log";
+import { labelColuna as labelColunaMarketing } from "@/lib/marketing/opcoes";
+import { primeiroNome } from "@/lib/whatsapp";
 import { gerarProximoIdOrdemMarketing } from "@/lib/marketing/id-legado";
 import { dataHoraPortoVelho, formatHoraPortoVelho } from "@/lib/format";
 
@@ -228,6 +230,15 @@ export async function moverColunaAction(id: string, novaColuna: string): Promise
     entidadeId: id,
     antes: { coluna: antes.coluna },
     depois: { coluna: novaColuna }
+  });
+  avisarMovimento("marketing", sessao.parceiroId, async () => {
+    const o = await prisma.marketing_ordens.findUnique({ where: { id }, select: { titulo: true, id_legado: true } });
+    return {
+      titulo: `Marketing · ${o?.id_legado ? `${o.id_legado} ` : ""}${o?.titulo ?? "ordem"}`,
+      corpo: `${labelColunaMarketing(antes.coluna)} → ${labelColunaMarketing(novaColuna)} · por ${primeiroNome(sessao.nome)}`,
+      url: `/marketing/${id}`,
+      tag: `marketing-${id}`
+    };
   });
   return { ok: true };
 }

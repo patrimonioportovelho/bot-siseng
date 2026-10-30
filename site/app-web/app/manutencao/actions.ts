@@ -7,7 +7,9 @@ import { prisma } from "@/lib/prisma";
 import { requireAdminSession, logAlteracao } from "@/lib/auth";
 import { valorEditavelParaDecimal } from "@/lib/format";
 import { registrarEJogarErro } from "@/lib/erros";
-import { logMovimentoQuadro } from "@/lib/quadro-log";
+import { primeiroNome } from "@/lib/whatsapp";
+import { avisarMovimento, logMovimentoQuadro } from "@/lib/quadro-log";
+import { labelColuna as labelColunaManutencao } from "@/lib/manutencao/opcoes";
 import {
   FORMAS_PAGAMENTO,
   QUEM_ARCA,
@@ -142,7 +144,7 @@ export async function atualizarManutencaoAction(formData: FormData) {
 export async function moverColunaAction(id: string, novaColuna: string) {
   const sessao = await requireAdminSession();
 
-  const antes = await prisma.manutencoes.findUnique({ where: { id }, select: { coluna: true } });
+  const antes = await prisma.manutencoes.findUnique({ where: { id }, select: { coluna: true, titulo: true } });
   if (!antes) throw new Error("Manutenção não encontrada.");
   if (antes.coluna === novaColuna) return;
 
@@ -158,6 +160,12 @@ export async function moverColunaAction(id: string, novaColuna: string) {
     antes: { coluna: antes.coluna },
     depois: { coluna: novaColuna }
   });
+  avisarMovimento("manutencao", sessao.parceiroId, async () => ({
+    titulo: `Manutenção · ${antes.titulo}`,
+    corpo: `${labelColunaManutencao(antes.coluna)} → ${labelColunaManutencao(novaColuna)} · por ${primeiroNome(sessao.nome)}`,
+    url: `/manutencao/${id}/etiqueta`,
+    tag: `manutencao-${id}`
+  }));
 }
 
 // Soft-delete — mesmo padrão usado em imóveis/clientes/transações: marca

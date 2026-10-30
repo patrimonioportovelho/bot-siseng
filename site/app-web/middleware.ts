@@ -61,5 +61,5 @@ export const config = {
   // isso, o middleware tratava o próprio pedido da imagem como se fosse uma
   // página, exigindo sessão e redirecionando pro login (por isso a logo
   // aparecia quebrada pra quem não tinha sessão de admin ativa).
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/|.*\\.(?:png|jpg|jpeg|gif|svg|webp|ico)$).*)"]
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|sw.js|api/|.*\\.(?:png|jpg|jpeg|gif|svg|webp|ico)$).*)"]
 };

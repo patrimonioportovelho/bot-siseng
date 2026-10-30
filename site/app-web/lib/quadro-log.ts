@@ -1,5 +1,6 @@
 import { after } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { notificarModulo, type ModuloPush } from "@/lib/push";
 
 // Log de auditoria de um movimento de card nos quadros (Manutenção, Gestões,
 // Marketing). Roda DEPOIS da resposta (after) para a tela não esperar o
@@ -25,5 +26,22 @@ export function logMovimentoQuadro(params: {
         }
       })
       .catch(() => {});
+  });
+}
+
+// Aviso na tela (Web Push) de uma movimentação. `montar` roda DEPOIS da resposta
+// (after): pode consultar o banco para o título e devolve null para não avisar.
+export function avisarMovimento(
+  modulo: ModuloPush,
+  atorParceiroId: string | null,
+  montar: () => Promise<{ titulo: string; corpo: string; url: string; tag?: string } | null>
+) {
+  after(async () => {
+    try {
+      const m = await montar();
+      if (m) await notificarModulo({ modulo, atorParceiroId, titulo: m.titulo, corpo: m.corpo, url: m.url, tag: m.tag });
+    } catch {
+      // aviso nunca derruba a ação
+    }
   });
 }

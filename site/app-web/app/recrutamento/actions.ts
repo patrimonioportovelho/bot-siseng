@@ -1,6 +1,8 @@
 "use server";
 
 import { after } from "next/server";
+import { avisarMovimento } from "@/lib/quadro-log";
+import { primeiroNome } from "@/lib/whatsapp";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireAdminSession } from "@/lib/auth";
@@ -169,6 +171,13 @@ export async function moverCardRecrutamentoAction(
     })
   ];
   await prisma.$transaction(escritas);
+
+  avisarMovimento("recrutamento", sessao.parceiroId, async () => ({
+    titulo: `Recrutamento · ${parceiro.nome}`,
+    corpo: `${COLUNA_POR_ID.get(origem)?.label} → ${COLUNA_POR_ID.get(destino)?.label} · por ${primeiroNome(sessao.nome)}`,
+    url: `/recrutamento/${parceiroId}`,
+    tag: `recrutamento-${parceiroId}`
+  }));
 
   if (Object.keys(dadosParceiro).length > 0) {
     // Log de auditoria fora do caminho crítico (não segura a resposta).

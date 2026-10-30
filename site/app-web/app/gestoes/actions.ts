@@ -6,7 +6,9 @@ import { prisma } from "@/lib/prisma";
 import { requireAdminSession, logAlteracao } from "@/lib/auth";
 import { valorEditavelParaDecimal, percentualParaDecimal } from "@/lib/format";
 import { registrarEJogarErro } from "@/lib/erros";
-import { logMovimentoQuadro } from "@/lib/quadro-log";
+import { avisarMovimento, logMovimentoQuadro } from "@/lib/quadro-log";
+import { labelColuna as labelColunaGestao } from "@/lib/gestoes/opcoes";
+import { primeiroNome } from "@/lib/whatsapp";
 import { sincronizarProprietariosExtra, sincronizarVinculosConjuge } from "@/lib/imoveis/proprietarios-extra";
 
 function texto(formData: FormData, campo: string): string | null {
@@ -107,6 +109,15 @@ export async function moverColunaAction(id: string, novaColuna: string) {
     entidadeId: id,
     antes: { coluna: antes.coluna },
     depois: { coluna: novaColuna }
+  });
+  avisarMovimento("gestao", sessao.parceiroId, async () => {
+    const g = await prisma.gestoes.findUnique({ where: { id }, select: { imoveis: { select: { endereco: true } }, clientes: { select: { nome: true } } } });
+    return {
+      titulo: `Gestão · ${g?.imoveis?.endereco ?? g?.clientes?.nome ?? "imóvel"}`,
+      corpo: `${labelColunaGestao(antes.coluna)} → ${labelColunaGestao(novaColuna)} · por ${primeiroNome(sessao.nome)}`,
+      url: `/gestoes/${id}`,
+      tag: `gestao-${id}`
+    };
   });
 }
 

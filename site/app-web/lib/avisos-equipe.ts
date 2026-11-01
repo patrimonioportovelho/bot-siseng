@@ -16,14 +16,14 @@ export const TIPOS_AVISO: Record<string, { icone: string; titulo: (nome: string)
   gestao: { icone: "📑", titulo: (n) => `${n} gerou um contrato de Gestão` }
 };
 
-const MINUTOS_SEM_REPETIR_LOGIN = 30;
+const MINUTOS_SEM_REPETIR_LOGIN = 10;
 
 // Grava um aviso. Nunca lança erro: aviso é complemento e não pode derrubar o
 // login nem o cadastro do corretor.
 export async function registrarAviso(params: { tipo: string; parceiroId: string; detalhe?: string | null; url?: string | null }) {
   try {
     if (!TIPOS_AVISO[params.tipo]) return;
-    // Quem entra várias vezes seguidas só avisa uma vez (a cada 30 min).
+    // Quem entra várias vezes seguidas só avisa uma vez (a cada 10 min).
     if (params.tipo === "login") {
       const recente = await prisma.avisos_equipe.findFirst({
         where: { tipo: "login", parceiro_id: params.parceiroId, created_at: { gt: new Date(Date.now() - MINUTOS_SEM_REPETIR_LOGIN * 60000) } },

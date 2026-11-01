@@ -26,3 +26,10 @@ body {
 .avisos-toast-entrada { animation: avisos-toast-entrada 0.25s ease-out both; }
 .avisos-toast-barra { animation-name: avisos-toast-barra; animation-timing-function: linear; animation-fill-mode: forwards; }
 .group:hover .avisos-toast-barra { animation-play-state: paused; }
+
+/* Aviso de entrada do corretor: sobe de baixo (slide-up) */
+@keyframes avisos-toast-sobe {
+  from { opacity: 0; transform: translateY(140%); }
+  to { opacity: 1; transform: none; }
+}
+.avisos-toast-sobe { animation: avisos-toast-sobe 0.35s cubic-bezier(0.2, 0.9, 0.3, 1) both; }

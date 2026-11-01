@@ -38,6 +38,7 @@ export async function GET(req: Request) {
     const nome = a.parceiros?.nome?.trim().split(/\s+/).slice(0, 2).join(" ") ?? "Um corretor";
     return {
       id: a.id,
+      tipo: a.tipo,
       icone: tipo?.icone ?? "🔔",
       titulo: tipo ? tipo.titulo(nome) : `${nome}: ${a.tipo}`,
       detalhe: a.detalhe,

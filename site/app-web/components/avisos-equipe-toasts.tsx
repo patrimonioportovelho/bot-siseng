@@ -3,11 +3,50 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
-type Aviso = { id: string; icone: string; titulo: string; detalhe: string | null; url: string | null; criadoEm: string };
+type Aviso = { id: string; tipo: string; icone: string; titulo: string; detalhe: string | null; url: string | null; criadoEm: string };
+
+// Aparência de cada tipo de aviso (mesmo formato do padrão pedido para o aviso
+// de entrada do corretor, USER_ONLINE). Tipo que não está aqui usa o PADRAO.
+type ConfigAviso = {
+  duration: number; // ms na tela
+  width: number | null; // px (null = largura padrão)
+  height: number | null; // px (null = altura do conteúdo)
+  borderRadius: number; // px
+  playSound: boolean;
+  animation: "slide-up" | "fade-up";
+};
+
+const PADRAO: ConfigAviso = { duration: 10000, width: null, height: null, borderRadius: 12, playSound: true, animation: "fade-up" };
+
+const CONFIG_POR_TIPO: Record<string, Partial<ConfigAviso>> = {
+  // corretor entrou no portal
+  login: { duration: 4000, width: 250, height: 116, borderRadius: 4, playSound: true, animation: "slide-up" }
+};
+
+const configDe = (tipo: string): ConfigAviso => ({ ...PADRAO, ...(CONFIG_POR_TIPO[tipo] ?? {}) });
 
 const INTERVALO_MS = 7000;
-const DURACAO_MS = 10000;
 const MAXIMO_NA_TELA = 5;
+// O ponto de partida da consulta fica guardado no aparelho: se o app (ex.: o atalho
+// do iPhone) for fechado pelo sistema e reaberto, ele recupera o que perdeu enquanto
+// estava fora (até 30 min, limite do servidor) em vez de começar do zero.
+const CHAVE_CURSOR = "sis_avisos_cursor";
+
+function lerCursor(): string | null {
+  try {
+    return window.localStorage.getItem(CHAVE_CURSOR);
+  } catch {
+    return null;
+  }
+}
+
+function gravarCursor(valor: string) {
+  try {
+    window.localStorage.setItem(CHAVE_CURSOR, valor);
+  } catch {
+    // sem localStorage
+  }
+}
 export const CHAVE_SOM = "sis_avisos_som"; // "0" = som desligado
 
 function somLigado(): boolean {
@@ -47,15 +86,17 @@ function tocarAviso() {
 }
 
 function Toast({ aviso, aoFechar, aoAbrir }: { aviso: Aviso; aoFechar: () => void; aoAbrir: () => void }) {
+  const cfg = configDe(aviso.tipo);
   return (
     <div
-      className="avisos-toast-entrada pointer-events-auto relative overflow-hidden bg-white border border-gray-200 rounded-xl shadow-lg w-80 max-w-[92vw] group"
+      className={`${cfg.animation === "slide-up" ? "avisos-toast-sobe" : "avisos-toast-entrada"} pointer-events-auto relative overflow-hidden bg-white border border-gray-200 shadow-lg max-w-[92vw] group flex flex-col ${cfg.width ? "" : "w-80"}`}
+      style={{ ...(cfg.width ? { width: cfg.width } : {}), ...(cfg.height ? { height: cfg.height } : {}), borderRadius: cfg.borderRadius }}
       role="status"
     >
       <button
         type="button"
         onClick={aviso.url ? aoAbrir : aoFechar}
-        className={`w-full text-left px-3 py-2.5 pr-7 flex items-start gap-2.5 ${aviso.url ? "hover:bg-gray-50 cursor-pointer" : "cursor-default"}`}
+        className={`w-full flex-1 min-h-0 text-left px-3 py-2.5 pr-7 flex items-start gap-2.5 ${aviso.url ? "hover:bg-gray-50 cursor-pointer" : "cursor-default"}`}
       >
         <span className="text-xl leading-none mt-0.5">{aviso.icone}</span>
         <span className="min-w-0">
@@ -69,7 +110,7 @@ function Toast({ aviso, aoFechar, aoAbrir }: { aviso: Aviso; aoFechar: () => voi
       </button>
       {/* barra de tempo: ao terminar, o aviso some; o mouse em cima pausa */}
       <div className="h-0.5 bg-gray-100">
-        <div className="avisos-toast-barra h-full bg-primary/60" style={{ animationDuration: `${DURACAO_MS}ms` }} onAnimationEnd={aoFechar} />
+        <div className="avisos-toast-barra h-full bg-primary/60" style={{ animationDuration: `${cfg.duration}ms` }} onAnimationEnd={aoFechar} />
       </div>
     </div>
   );
@@ -86,16 +127,18 @@ export function AvisosEquipeToasts() {
 
   const buscar = useCallback(async () => {
     try {
+      if (!cursor.current) cursor.current = lerCursor();
       const url = cursor.current ? `/api/avisos?desde=${encodeURIComponent(cursor.current)}` : "/api/avisos";
       const r = await fetch(url, { cache: "no-store" });
       if (!r.ok) return;
       const dados = (await r.json()) as { agora: string; avisos: Aviso[] };
       cursor.current = dados.agora;
+      gravarCursor(dados.agora);
       const novos = dados.avisos.filter((a) => !vistos.current.has(a.id));
       if (novos.length === 0) return;
       for (const a of novos) vistos.current.add(a.id);
       setAvisos((atual) => [...atual, ...novos].slice(-MAXIMO_NA_TELA));
-      if (somLigado()) tocarAviso();
+      if (somLigado() && novos.some((a) => configDe(a.tipo).playSound)) tocarAviso();
     } catch {
       // sem rede: tenta de novo no próximo ciclo
     }
@@ -114,10 +157,22 @@ export function AvisosEquipeToasts() {
     };
     // Aba escondida não consulta; ao voltar, busca o que aconteceu enquanto isso.
     const aoMudarVisibilidade = () => (document.visibilityState === "visible" ? iniciar() : parar());
+    const aoRetomar = () => {
+      if (document.visibilityState === "visible") {
+        iniciar();
+        void buscar();
+      }
+    };
     document.addEventListener("visibilitychange", aoMudarVisibilidade);
+    window.addEventListener("pageshow", aoRetomar);
+    window.addEventListener("focus", aoRetomar);
+    window.addEventListener("online", aoRetomar);
     if (document.visibilityState === "visible") iniciar();
     return () => {
       document.removeEventListener("visibilitychange", aoMudarVisibilidade);
+      window.removeEventListener("pageshow", aoRetomar);
+      window.removeEventListener("focus", aoRetomar);
+      window.removeEventListener("online", aoRetomar);
       parar();
     };
   }, [buscar]);
@@ -126,7 +181,10 @@ export function AvisosEquipeToasts() {
 
   if (avisos.length === 0) return null;
   return (
-    <div className="fixed bottom-4 right-4 z-[70] flex flex-col gap-2 items-end pointer-events-none">
+    <div
+      className="fixed right-4 z-[70] flex flex-col gap-2 items-end pointer-events-none"
+      style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 1rem)" }}
+    >
       {avisos.map((a) => (
         <Toast
           key={a.id}

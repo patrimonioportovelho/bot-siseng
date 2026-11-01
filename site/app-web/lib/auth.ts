@@ -274,6 +274,8 @@ async function concederAcesso(parceiroId: string, nome: string): Promise<LoginRe
   await prisma.logs_acesso.create({
     data: { parceiro_id: parceiroId, tipo_portal: "admin", acao: "login" }
   });
+  // Aviso estilo MSN para quem já está no administrativo: "fulano entrou".
+  await registrarAviso({ tipo: "login_admin", parceiroId });
 
   return { ok: true };
 }

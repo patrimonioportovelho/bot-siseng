@@ -20,7 +20,9 @@ const PADRAO: ConfigAviso = { duration: 10000, width: null, height: null, border
 
 const CONFIG_POR_TIPO: Record<string, Partial<ConfigAviso>> = {
   // corretor entrou no portal
-  login: { duration: 4000, width: 250, height: 116, borderRadius: 4, playSound: true, animation: "slide-up" }
+  login: { duration: 4000, width: 250, height: 116, borderRadius: 4, playSound: true, animation: "slide-up" },
+  // alguém da equipe entrou no administrativo (mesmo padrão)
+  login_admin: { duration: 4000, width: 250, height: 116, borderRadius: 4, playSound: true, animation: "slide-up" }
 };
 
 const configDe = (tipo: string): ConfigAviso => ({ ...PADRAO, ...(CONFIG_POR_TIPO[tipo] ?? {}) });

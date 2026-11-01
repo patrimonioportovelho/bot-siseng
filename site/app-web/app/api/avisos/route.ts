@@ -27,7 +27,8 @@ export async function GET(req: Request) {
   const desde = new Date(Math.max((Number.isNaN(pedido.getTime()) ? agora.getTime() : pedido.getTime()) - 3000, minimo.getTime()));
 
   const linhas = await prisma.avisos_equipe.findMany({
-    where: { created_at: { gt: desde } },
+    // não mostra para a própria pessoa o aviso da entrada dela (parceiro_id nulo entra: o NOT do SQL descartaria)
+    where: { created_at: { gt: desde }, OR: [{ parceiro_id: null }, { parceiro_id: { not: sessao.parceiroId } }] },
     orderBy: { created_at: "asc" },
     take: 15,
     include: { parceiros: { select: { nome: true } } }

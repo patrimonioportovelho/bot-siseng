@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 
 export const TIPOS_AVISO: Record<string, { icone: string; titulo: (nome: string) => string }> = {
   login: { icone: "👋", titulo: (n) => `${n} entrou no portal` },
+  login_admin: { icone: "🟢", titulo: (n) => `${n} entrou no administrativo` },
   proposta: { icone: "📝", titulo: (n) => `${n} fez uma proposta` },
   avaliacao_cpf: { icone: "🔎", titulo: (n) => `${n} cadastrou uma consulta de CPF` },
   avaliacao_credito: { icone: "🏦", titulo: (n) => `${n} cadastrou uma avaliação de crédito` },
@@ -24,9 +25,9 @@ export async function registrarAviso(params: { tipo: string; parceiroId: string;
   try {
     if (!TIPOS_AVISO[params.tipo]) return;
     // Quem entra várias vezes seguidas só avisa uma vez (a cada 10 min).
-    if (params.tipo === "login") {
+    if (params.tipo === "login" || params.tipo === "login_admin") {
       const recente = await prisma.avisos_equipe.findFirst({
-        where: { tipo: "login", parceiro_id: params.parceiroId, created_at: { gt: new Date(Date.now() - MINUTOS_SEM_REPETIR_LOGIN * 60000) } },
+        where: { tipo: params.tipo, parceiro_id: params.parceiroId, created_at: { gt: new Date(Date.now() - MINUTOS_SEM_REPETIR_LOGIN * 60000) } },
         select: { id: true }
       });
       if (recente) return;

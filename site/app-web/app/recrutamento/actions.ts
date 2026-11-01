@@ -3,7 +3,7 @@
 import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { requireAdminSession } from "@/lib/auth";
+import { requireEdicao } from "@/lib/auth";
 import { hojeComoDataCalendario } from "@/lib/format";
 import {
   CAMPOS_DATA,
@@ -51,7 +51,7 @@ export async function moverCardRecrutamentoAction(
   destino: ColunaId,
   opcoes?: { motivo?: string | null; motivoObs?: string | null; forcar?: boolean }
 ): Promise<void> {
-  const sessao = await requireAdminSession();
+  const sessao = await requireEdicao("recrutamento");
   if (!COLUNA_POR_ID.has(destino)) throw new Error("Coluna inválida.");
 
   // Leituras em paralelo (uma ida só ao banco em vez de várias em fila).
@@ -204,7 +204,7 @@ export async function salvarCampoRecrutamentoAction(
   campo: string,
   valor: string | null
 ): Promise<Resultado> {
-  await requireAdminSession();
+  await requireEdicao("recrutamento");
   try {
     let dados: Record<string, unknown>;
     if ((CAMPOS_TEXTO as readonly string[]).includes(campo)) {
@@ -246,7 +246,7 @@ export async function salvarCampoRecrutamentoAction(
 // Marca/desmarca um item de checklist (documentação, presença na turma,
 // acolhida e acessos). Alguns itens alimentam datas dos indicadores.
 export async function alternarTreinamentoAction(parceiroId: string, chave: string, feito: boolean): Promise<Resultado> {
-  await requireAdminSession();
+  await requireEdicao("recrutamento");
   if (!CHAVES_TREINAMENTO.has(chave)) return { ok: false, erro: "Treinamento inválido." };
   try {
     const atual = await prisma.recrutamento.findUnique({ where: { parceiro_id: parceiroId }, select: { treinamentos: true } });
@@ -274,7 +274,7 @@ export async function alternarTreinamentoAction(parceiroId: string, chave: strin
 
 // Respostas do diagnóstico da 1ª reunião (autosave por pergunta).
 export async function salvarDiagnosticoAction(parceiroId: string, chave: string, texto: string | null): Promise<Resultado> {
-  await requireAdminSession();
+  await requireEdicao("recrutamento");
   if (!CHAVES_DIAGNOSTICO.has(chave)) return { ok: false, erro: "Pergunta inválida." };
   try {
     const atual = await prisma.recrutamento.findUnique({ where: { parceiro_id: parceiroId }, select: { diagnostico: true } });
@@ -295,7 +295,7 @@ export async function salvarDiagnosticoAction(parceiroId: string, chave: string,
 
 // Cadência de follow-up (D+1 … D+30): marca cada passo como feito.
 export async function alternarFollowupAction(parceiroId: string, chave: string, feito: boolean): Promise<Resultado> {
-  await requireAdminSession();
+  await requireEdicao("recrutamento");
   if (!CADENCIA_FOLLOWUP.some((p) => p.chave === chave)) return { ok: false, erro: "Passo inválido." };
   try {
     const atual = await prisma.recrutamento.findUnique({ where: { parceiro_id: parceiroId }, select: { followups: true } });
@@ -329,7 +329,7 @@ export async function registrarAtividadeRecrutamentoAction(
   parceiroId: string,
   dados: { tipo: string; resultado: string | null; nota: string | null; proximaAcaoData: string | null }
 ): Promise<{ ok: true; atividade: AtividadeRegistrada } | { ok: false; erro: string }> {
-  const sessao = await requireAdminSession();
+  const sessao = await requireEdicao("recrutamento");
   const tipo = limpoOuNull(dados.tipo);
   if (!tipo) return { ok: false, erro: "Escolha o tipo de contato." };
   const proxima = limpoOuNull(dados.proximaAcaoData);
@@ -372,7 +372,7 @@ export async function registrarAtividadeRecrutamentoAction(
 // Responsável padrão de cada etapa (aparece no topo da coluna; ao mover um
 // card pra etapa, ele vira o responsável do card).
 export async function definirResponsavelEtapaAction(etapa: string, responsavelId: string | null): Promise<Resultado> {
-  await requireAdminSession();
+  await requireEdicao("recrutamento");
   if (!COLUNA_POR_ID.has(etapa as ColunaId)) return { ok: false, erro: "Etapa inválida." };
   try {
     const v = limpoOuNull(responsavelId);
@@ -394,7 +394,7 @@ export async function definirResponsavelEtapaAction(etapa: string, responsavelId
 const CAMPOS_TURMA_DATA = ["inicio", "passos_inicio", "passos_fim", "especificos_a", "especificos_b", "acolhida"] as const;
 
 export async function salvarCampoTurmaAction(turmaId: string, campo: string, valor: string | null): Promise<Resultado> {
-  await requireAdminSession();
+  await requireEdicao("recrutamento");
   try {
     let dados: Record<string, unknown>;
     if ((CAMPOS_TURMA_DATA as readonly string[]).includes(campo)) {
@@ -418,7 +418,7 @@ export async function salvarCampoTurmaAction(turmaId: string, campo: string, val
 }
 
 export async function criarTurmaAction(nome: string, inicio: string): Promise<Resultado> {
-  await requireAdminSession();
+  await requireEdicao("recrutamento");
   const n = limpoOuNull(nome);
   if (!n) return { ok: false, erro: "Informe o nome da turma." };
   if (!/^\d{4}-\d{2}-\d{2}$/.test(inicio)) return { ok: false, erro: "Informe a data de início." };

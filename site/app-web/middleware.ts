@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { verifySession, sessaoExpiradaPeloResetDiario } from "@/lib/session";
+import { acessosDaSessao, nivelNaRota } from "@/lib/acessos";
 
 const ADMIN_COOKIE = "sis_admin_session";
 const PORTAL_COOKIE = "sis_portal_session";
@@ -9,12 +10,18 @@ const PORTAL_COOKIE = "sis_portal_session";
 // mesmo com token ainda dentro do prazo normal — ver
 // lib/session.ts#sessaoExpiradaPeloResetDiario. Aplica pros dois acessos
 // (portal do corretor e administrativo).
+type PayloadSessao = { iat?: number; isAdm?: boolean; acessos?: string[] };
+
+async function lerSessao(token: string | undefined, secret: string | undefined): Promise<PayloadSessao | null> {
+  if (!secret || !token) return null;
+  const payload = await verifySession<PayloadSessao>(token, secret);
+  if (!payload) return null;
+  if (sessaoExpiradaPeloResetDiario(payload.iat)) return null;
+  return payload;
+}
+
 async function sessaoValida(token: string | undefined, secret: string | undefined) {
-  if (!secret || !token) return false;
-  const payload = await verifySession<{ iat?: number }>(token, secret);
-  if (!payload) return false;
-  if (sessaoExpiradaPeloResetDiario(payload.iat)) return false;
-  return true;
+  return (await lerSessao(token, secret)) !== null;
 }
 
 export async function middleware(req: NextRequest) {
@@ -47,9 +54,19 @@ export async function middleware(req: NextRequest) {
   }
 
   const token = req.cookies.get(ADMIN_COOKIE)?.value;
-  if (!(await sessaoValida(token, secret))) {
+  const sessao = await lerSessao(token, secret);
+  if (!sessao) {
     const url = new URL("/login", req.url);
     url.searchParams.set("next", pathname);
+    return NextResponse.redirect(url);
+  }
+
+  // Acessos (papéis): quem não pode nem ver a área volta ao Dashboard com aviso.
+  // (Gravar é checado dentro de cada Server Action — ver requireEdicao em lib/auth.ts.)
+  const nivel = nivelNaRota(acessosDaSessao(sessao), pathname, req.nextUrl.searchParams.get("embed") === "1");
+  if (nivel === null) {
+    const url = new URL("/dashboard", req.url);
+    url.searchParams.set("negado", "1");
     return NextResponse.redirect(url);
   }
   return NextResponse.next();

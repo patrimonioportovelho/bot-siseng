@@ -16,6 +16,12 @@ const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 dias
 const DOMINIO_PORTAL = "@remax.com.br";
 const FUNCOES_PORTAL = ["Corretor", "Corretor Estagiário"];
 
+// Portal do corretor: entra quem tem o acesso Corretor ou Diretor — e quem ainda
+// não recebeu nenhum acesso (cadastro anterior à tela de Acessos), para ninguém
+// perder o portal antes do Diretor configurar. Ex.: alguém com função Corretor
+// marcado só como Financeiro não entra no portal.
+const ACESSO_AO_PORTAL = [{ acessos: { isEmpty: true } }, { acessos: { has: "corretor" } }, { acessos: { has: "diretor" } }];
+
 function sessionSecret() {
   const secret = process.env.SESSION_SECRET;
   if (!secret) throw new Error("SESSION_SECRET não configurado no .env");
@@ -83,6 +89,7 @@ export async function verificarEmailPortal(email: string): Promise<VerificarEmai
     where: {
       status_funcao: "Ativo",
       funcao: { in: FUNCOES_PORTAL },
+      OR: ACESSO_AO_PORTAL,
       email: { equals: emailNorm, mode: "insensitive" }
     },
     select: { nome: true, senha_hash: true }
@@ -142,6 +149,7 @@ export async function loginPortal(email: string, senha: string): Promise<LoginPo
     where: {
       status_funcao: "Ativo",
       funcao: { in: FUNCOES_PORTAL },
+      OR: ACESSO_AO_PORTAL,
       email: { equals: emailNorm, mode: "insensitive" }
     },
     select: { id: true, nome: true, senha_hash: true }

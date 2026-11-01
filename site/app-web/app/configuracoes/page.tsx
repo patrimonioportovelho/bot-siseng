@@ -16,11 +16,12 @@ import {
   marcarErroVistoAction,
   criarSocioDashboardAction,
   removerSocioDashboardAction,
-  alternarAcessoCompletoAction
+  salvarAcessosAction
 } from "./actions";
 import { limparErrosAntigos } from "@/lib/erros";
 import { limparNoticiasAntigas } from "@/lib/publicacoes/limpeza";
 import { lojasSelecionadas } from "@/lib/lojas/filtro";
+import { ACESSOS } from "@/lib/acessos";
 
 export const dynamic = "force-dynamic";
 
@@ -48,9 +49,10 @@ export default async function ConfiguracoesPage({
     rejeitado?: string;
     salvo_publicacao?: string;
     salvo_socio?: string;
+    salvo_acessos?: string;
   }>;
 }) {
-  const { salvo, erro, aprovado, rejeitado, salvo_publicacao, salvo_socio } = await searchParams;
+  const { salvo, erro, aprovado, rejeitado, salvo_publicacao, salvo_socio, salvo_acessos } = await searchParams;
   const session = await getAdminSession();
 
   if (!session) {
@@ -100,7 +102,7 @@ export default async function ConfiguracoesPage({
     prisma.parceiros.findMany({
       where: { status_funcao: "Ativo" },
       orderBy: { nome: "asc" },
-      select: { id: true, nome: true, funcao: true, acesso_completo: true }
+      select: { id: true, nome: true, funcao: true, acesso_completo: true, acessos: true, senha_hash: true }
     }),
     // Sócios em destaque no dashboard externo (/login) — reaproveita a foto e
     // o nome do próprio Parceiro (ver socios_dashboard no schema). Ordenado
@@ -140,6 +142,9 @@ export default async function ConfiguracoesPage({
     })
   ]);
 
+  // Quem aparece na tela de Acessos: quem consegue entrar (tem senha) ou já tem acesso definido.
+  const pessoasComAcesso = parceirosAtivos.filter((p) => p.senha_hash !== null || p.acesso_completo || p.acessos.length > 0);
+
   return (
     <div>
       <Topbar />
@@ -157,6 +162,11 @@ export default async function ConfiguracoesPage({
       {rejeitado === "1" && (
         <div className="bg-green-50 border border-green-200 text-green-700 text-xs rounded-lg px-3 py-2 mb-4">
           Solicitação rejeitada.
+        </div>
+      )}
+      {salvo_acessos === "1" && (
+        <div className="bg-green-50 border border-green-200 text-green-700 text-xs rounded-lg px-3 py-2 mb-4">
+          Acessos salvos. Valem no próximo login da pessoa.
         </div>
       )}
       {salvo_publicacao === "1" && (
@@ -276,64 +286,57 @@ export default async function ConfiguracoesPage({
       </div>
 
       <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4">
-        <div className="text-sm font-bold text-gray-800 mb-1">Acesso completo</div>
+        <div className="text-sm font-bold text-gray-800 mb-1">Acessos</div>
         <p className="text-xs text-gray-500 mb-3">
-          Quem tem acesso completo pode aprovar/rejeitar solicitações, apagar cadastro de parceiro,
-          definir senha de qualquer um, gerenciar sócios do dashboard externo, mudar status de SAC
-          e ver o log de erros. Só aparecem aqui quem tem função <strong>Administrativo</strong> ou{" "}
-          <strong>Corretor</strong>. Quem não está marcado continua com acesso controlado — usa o
-          sistema no dia a dia sem essas ações.
+          Marque o que cada pessoa pode fazer. Dá para marcar mais de um (por exemplo, quem é Administrativo e também Corretor): vale a soma de tudo que cada
+          acesso permite. As alterações valem no próximo login da pessoa.
         </p>
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs min-w-[420px]">
-            <thead>
-              <tr className="text-left text-gray-500">
-                <th className="font-normal py-1.5 border-b border-gray-100">Nome</th>
-                <th className="font-normal py-1.5 border-b border-gray-100">Função</th>
-                <th className="font-normal py-1.5 border-b border-gray-100 w-44">Acesso</th>
-              </tr>
-            </thead>
-            <tbody>
-              {parceirosAtivos
-                .filter((p) => p.funcao === "Administrativo" || p.funcao === "Corretor")
-                .map((p) => {
-                  const fixo = idsAcessoFixo.includes(p.id);
-                  const completo = fixo || p.acesso_completo;
-                  return (
-                    <tr key={p.id}>
-                      <td className="py-2 border-b border-gray-50 font-medium text-gray-800">{p.nome}</td>
-                      <td className="py-2 border-b border-gray-50 text-gray-500">{p.funcao}</td>
-                      <td className="py-2 border-b border-gray-50">
-                        {fixo ? (
-                          <span
-                            className="text-[11px] text-gray-400"
-                            title="Definido no servidor (ADM_PARCEIRO_IDS), não dá pra tirar por aqui"
-                          >
-                            Completo (fixo)
-                          </span>
-                        ) : (
-                          <form action={alternarAcessoCompletoAction}>
-                            <input type="hidden" name="parceiroId" value={p.id} />
-                            <input type="hidden" name="acesso_completo" value={completo ? "false" : "true"} />
-                            <BotaoSubmit
-                              variante={completo ? "perigo" : "secundario"}
-                              carregandoTexto="Salvando..."
-                              className={`text-xs rounded-lg px-2 py-1 border ${
-                                completo
-                                  ? "border-red-200 text-red-600"
-                                  : "border-gray-300 text-gray-600"
-                              }`}
-                            >
-                              {completo ? "Completo — tornar controlado" : "Controlado — dar completo"}
-                            </BotaoSubmit>
-                          </form>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-            </tbody>
-          </table>
+        <div className="grid md:grid-cols-2 gap-x-6 gap-y-1 mb-4">
+          {ACESSOS.map((a) => (
+            <div key={a.id} className="text-[11px] text-gray-500">
+              <strong className="text-gray-700">{a.rotulo}:</strong> {a.descricao}
+            </div>
+          ))}
+        </div>
+        <div className="flex flex-col divide-y divide-gray-100 border border-gray-100 rounded-lg">
+          {pessoasComAcesso.map((p) => {
+            const fixo = idsAcessoFixo.includes(p.id);
+            const marcados = new Set<string>(p.acessos);
+            if (fixo || p.acesso_completo) marcados.add("diretor");
+            const legado = marcados.size === 0;
+            return (
+              <form key={p.id} action={salvarAcessosAction} className="flex items-center gap-x-4 gap-y-1 flex-wrap px-3 py-2">
+                <input type="hidden" name="parceiroId" value={p.id} />
+                <div className="w-52 min-w-0">
+                  <div className="text-xs font-medium text-gray-800 truncate">{p.nome}</div>
+                  <div className="text-[10px] text-gray-400">
+                    {p.funcao}
+                    {legado && " · sem acesso definido (mantém o de antes: tudo, menos Configurações)"}
+                    {fixo && " · Diretor fixo (definido no servidor)"}
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 flex-wrap flex-1">
+                  {ACESSOS.map((a) => (
+                    <label key={a.id} className="flex items-center gap-1 text-[11px] text-gray-600 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        name="acessos"
+                        value={a.id}
+                        defaultChecked={marcados.has(a.id)}
+                        disabled={fixo && a.id === "diretor"}
+                      />
+                      {a.rotulo}
+                    </label>
+                  ))}
+                  {fixo && <input type="hidden" name="acessos" value="diretor" />}
+                </div>
+                <BotaoSubmit carregandoTexto="Salvando..." className="text-xs bg-primary text-white rounded-lg px-3 py-1">
+                  Salvar
+                </BotaoSubmit>
+              </form>
+            );
+          })}
+          {pessoasComAcesso.length === 0 && <p className="text-xs text-gray-400 px-3 py-3">Nenhuma pessoa com senha de acesso cadastrada.</p>}
         </div>
       </div>
 

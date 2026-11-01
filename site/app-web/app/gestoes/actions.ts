@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { requireAdminSession, logAlteracao } from "@/lib/auth";
+import { logAlteracao, requireEdicao } from "@/lib/auth";
 import { valorEditavelParaDecimal, percentualParaDecimal } from "@/lib/format";
 import { registrarEJogarErro } from "@/lib/erros";
 import { logMovimentoQuadro } from "@/lib/quadro-log";
@@ -46,7 +46,7 @@ function data(formData: FormData, campo: string): Date | null {
 // aqui (nasceram do formulário do portal, mostrados só como leitura no
 // cabeçalho da página).
 export async function atualizarGestaoAction(formData: FormData) {
-  await requireAdminSession();
+  await requireEdicao("atividades");
 
   const id = texto(formData, "gestaoId");
   if (!id) throw new Error("Gestão inválida.");
@@ -91,7 +91,7 @@ export async function atualizarGestaoAction(formData: FormData) {
 // Manutenção (moverColunaAction em app/manutencao/actions.ts): o card já muda
 // de coluna na tela, aqui só grava e devolve rápido (log depois da resposta).
 export async function moverColunaAction(id: string, novaColuna: string) {
-  const sessao = await requireAdminSession();
+  const sessao = await requireEdicao("atividades");
 
   const antes = await prisma.gestoes.findUnique({ where: { id }, select: { coluna: true } });
   if (!antes) throw new Error("Gestão não encontrada.");
@@ -113,7 +113,7 @@ export async function moverColunaAction(id: string, novaColuna: string) {
 // Soft-delete — mesmo padrão do resto do sistema: marca excluido=true em vez
 // de apagar de verdade (histórico de checklist/atividades/notas continua).
 export async function apagarGestaoAction(formData: FormData) {
-  await requireAdminSession();
+  await requireEdicao("atividades");
 
   const id = texto(formData, "gestaoId");
   if (!id) throw new Error("Gestão inválida.");
@@ -131,7 +131,7 @@ export async function apagarGestaoAction(formData: FormData) {
 // --- Checklist ---
 
 export async function adicionarChecklistItemAction(formData: FormData) {
-  await requireAdminSession();
+  await requireEdicao("atividades");
 
   const gestaoId = texto(formData, "gestaoId");
   const label = texto(formData, "label");
@@ -152,7 +152,7 @@ export async function adicionarChecklistItemAction(formData: FormData) {
 }
 
 export async function marcarChecklistItemAction(id: string, gestaoId: string) {
-  await requireAdminSession();
+  await requireEdicao("atividades");
 
   const item = await prisma.gestao_checklist_itens.findUnique({ where: { id } });
   if (!item) throw new Error("Item não encontrado.");
@@ -165,7 +165,7 @@ export async function marcarChecklistItemAction(id: string, gestaoId: string) {
 }
 
 export async function removerChecklistItemAction(id: string, gestaoId: string) {
-  await requireAdminSession();
+  await requireEdicao("atividades");
 
   await prisma.gestao_checklist_itens
     .delete({ where: { id } })
@@ -177,7 +177,7 @@ export async function removerChecklistItemAction(id: string, gestaoId: string) {
 // --- Atividades (agendadas dentro da gestão, aparecem no Calendário) ---
 
 export async function criarAtividadeAction(formData: FormData) {
-  await requireAdminSession();
+  await requireEdicao("atividades");
 
   const gestaoId = texto(formData, "gestaoId");
   const tipo = texto(formData, "tipo");
@@ -206,7 +206,7 @@ export async function criarAtividadeAction(formData: FormData) {
 }
 
 export async function marcarAtividadeFeitaAction(id: string, gestaoId: string) {
-  await requireAdminSession();
+  await requireEdicao("atividades");
 
   const atividade = await prisma.gestao_atividades.findUnique({ where: { id } });
   if (!atividade) throw new Error("Atividade não encontrada.");
@@ -221,7 +221,7 @@ export async function marcarAtividadeFeitaAction(id: string, gestaoId: string) {
 }
 
 export async function removerAtividadeAction(id: string, gestaoId: string) {
-  await requireAdminSession();
+  await requireEdicao("atividades");
 
   await prisma.gestao_atividades
     .delete({ where: { id } })
@@ -235,7 +235,7 @@ export async function removerAtividadeAction(id: string, gestaoId: string) {
 // --- Notas (histórico, timestamp automático, ordem cronológica reversa) ---
 
 export async function adicionarNotaAction(formData: FormData) {
-  await requireAdminSession();
+  await requireEdicao("atividades");
 
   const gestaoId = texto(formData, "gestaoId");
   const textoNota = texto(formData, "texto");

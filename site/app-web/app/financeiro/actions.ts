@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { randomUUID } from "crypto";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { requireAdminSession, logAlteracao } from "@/lib/auth";
+import { logAlteracao, requireEdicao } from "@/lib/auth";
 import { valorEditavelParaDecimal, somarMeses, formatMoeda, hojePortoVelho } from "@/lib/format";
 import { registrarEJogarErro } from "@/lib/erros";
 import { saldoDevido } from "@/lib/financeiro/pagamentos-pix";
@@ -108,7 +108,7 @@ import type { ResultadoFormulario } from "@/lib/forms/resultado";
 export type { ResultadoFormulario } from "@/lib/forms/resultado";
 
 export async function criarMovimentacaoAction(_prev: unknown, formData: FormData): Promise<ResultadoFormulario> {
-  const sessao = await requireAdminSession();
+  const sessao = await requireEdicao("financeiro");
 
   const tipo = texto(formData, "tipo");
   const categoriaId = texto(formData, "categoria_id");
@@ -324,7 +324,7 @@ function camposEditaveis(formData: FormData) {
 }
 
 export async function atualizarMovimentacaoAction(_prev: unknown, formData: FormData): Promise<ResultadoFormulario> {
-  const sessao = await requireAdminSession();
+  const sessao = await requireEdicao("financeiro");
 
   const id = texto(formData, "movimentacaoId");
   if (!id) return { erro: "Movimentação inválida." };
@@ -450,7 +450,7 @@ async function sincronizarEfeitosStatus(
 // recebimento/transação ligados, quem exclui deve conferir antes se isso não
 // vai deixar outra tela (Rateio, Transação) com referência solta.
 export async function excluirMovimentacaoAction(formData: FormData) {
-  await requireAdminSession();
+  await requireEdicao("financeiro");
 
   const id = texto(formData, "movimentacaoId");
   const voltarPara = id ? `/financeiro/${id}` : "/financeiro";
@@ -506,7 +506,7 @@ export async function excluirMovimentacaoAction(formData: FormData) {
 //  - efeitos colaterais (pagamentos.status, auto-conferir repasse) em
 //    sincronizarEfeitosStatus, na mesma transação.
 export async function atualizarStatusPagamentoAction(formData: FormData) {
-  const sessao = await requireAdminSession();
+  const sessao = await requireEdicao("financeiro");
 
   const id = texto(formData, "movimentacaoId");
   const alvo = texto(formData, "alvo");
@@ -569,7 +569,7 @@ export async function atualizarStatusPagamentoAction(formData: FormData) {
 // alguém conferir/confirmar no sistema. Só mexe nessa data; não toca em
 // status_pagamento nem em quem conferiu/pagou.
 export async function atualizarDataPagamentoAction(formData: FormData) {
-  const sessao = await requireAdminSession();
+  const sessao = await requireEdicao("financeiro");
 
   const id = texto(formData, "movimentacaoId");
   const voltarPara = id ? `/financeiro/${id}` : "/financeiro";
@@ -628,7 +628,7 @@ export async function atualizarDataPagamentoAction(formData: FormData) {
 // movimentação-mãe automaticamente, pra não deixar pago=true com saldo
 // devedor > 0.
 export async function alternarPagamentoParcialAction(formData: FormData) {
-  await requireAdminSession();
+  await requireEdicao("financeiro");
 
   const id = texto(formData, "pagamentoPixId");
   let movimentacaoId: string | null = null;
@@ -745,7 +745,7 @@ type LinhaRateio = {
 // pro error boundary. Mesmo padrão { erro } + useActionState dos formulários
 // grandes: erro aparece inline, linhas ajustadas continuam na tela.
 export async function gerarRateioAction(_prev: unknown, formData: FormData): Promise<ResultadoFormulario> {
-  await requireAdminSession();
+  await requireEdicao("financeiro");
 
   const transacaoId = texto(formData, "transacao_id");
   const recebimentoId = texto(formData, "recebimento_id");

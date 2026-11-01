@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from "next";
 import { Suspense } from "react";
 import { AppShell } from "@/components/app-shell";
 import { CarregandoTelaCheia } from "@/components/carregando-tela-cheia";
+import { getAdminSession } from "@/lib/auth";
+import { acessosDaSessao } from "@/lib/acessos";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -24,16 +26,21 @@ export const viewport: Viewport = {
   themeColor: "#635bff"
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children
 }: {
   children: React.ReactNode;
 }) {
+  // Papéis de quem está logado no administrativo (filtra o menu e avisa
+  // "somente consulta") — null fora do administrativo. Quem de fato pode
+  // abrir/gravar é decidido no middleware e nas Server Actions.
+  const sessao = await getAdminSession();
+  const acessos = sessao ? acessosDaSessao(sessao) : null;
   return (
     <html lang="pt-BR">
       <body>
         <Suspense fallback={<CarregandoTelaCheia />}>
-          <AppShell>{children}</AppShell>
+          <AppShell acessos={acessos}>{children}</AppShell>
         </Suspense>
       </body>
     </html>

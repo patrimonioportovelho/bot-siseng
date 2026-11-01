@@ -3,7 +3,8 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { logAlteracao, requireAdm, requireAdminSession, aprovarSolicitacaoAction, rejeitarSolicitacaoAction, hashSenha } from "@/lib/auth";
+import { logAlteracao, requireAdm, requireAdminSession, aprovarSolicitacaoAction, rejeitarSolicitacaoAction, hashSenha, idsAcessoCompletoFixo } from "@/lib/auth";
+import { acessoValido } from "@/lib/acessos";
 import {
   apagarImagemPublicacao,
   criarUploadAssinadoImagemPublicacao,
@@ -54,47 +55,44 @@ export async function definirSenhaParceiroAction(formData: FormData) {
 // lista da tela (ver prisma/schema.prisma#parceiros.acesso_completo pro
 // resto do raciocínio, inclusive por que ADM_PARCEIRO_IDS continua existindo
 // como rede de segurança por cima disso).
-export async function alternarAcessoCompletoAction(formData: FormData) {
+// Papéis de uma pessoa (Diretor, Financeiro, Administrativo, Recrutador,
+// Corretor) — vários ao mesmo tempo. Só o Diretor altera. "Diretor" também
+// liga o acesso_completo (campo antigo, mantido em sincronia).
+export async function salvarAcessosAction(formData: FormData) {
   const admin = await requireAdm();
 
   const parceiroId = String(formData.get("parceiroId") ?? "");
-  const novoValor = formData.get("acesso_completo") === "true";
-  if (!parceiroId) {
-    redirect(`/configuracoes?erro=${encodeURIComponent("Parceiro inválido.")}`);
+  if (!parceiroId) redirect(`/configuracoes?erro=${encodeURIComponent("Pessoa inválida.")}`);
+
+  const escolhidos = [...new Set(formData.getAll("acessos").map((v) => String(v)).filter(acessoValido))];
+  const fixo = idsAcessoCompletoFixo().includes(parceiroId);
+  if (fixo && !escolhidos.includes("diretor")) escolhidos.push("diretor");
+
+  // Ninguém tira o próprio Diretor por aqui — evita se trancar fora sem querer.
+  if (parceiroId === admin.parceiroId && !escolhidos.includes("diretor")) {
+    redirect(`/configuracoes?erro=${encodeURIComponent("Você não pode remover o seu próprio acesso de Diretor — peça para outro Diretor.")}`);
   }
 
-  // Ninguém tira o próprio acesso completo por aqui — evita se trancar fora
-  // sem querer (a sessão atual continua valendo até expirar de qualquer
-  // jeito, mas do próximo login em diante ficaria sem acesso nenhum pra
-  // desfazer). Peça pra outro admin completo remover, se for o caso.
-  if (parceiroId === admin.parceiroId && !novoValor) {
-    redirect(`/configuracoes?erro=${encodeURIComponent("Você não pode remover o próprio acesso completo — peça para outro administrador.")}`);
-  }
-
-  const parceiro = await prisma.parceiros.findUnique({
-    where: { id: parceiroId },
-    select: { funcao: true }
-  });
-  if (!parceiro || !["Administrativo", "Corretor"].includes(parceiro.funcao)) {
-    redirect(
-      `/configuracoes?erro=${encodeURIComponent("Só é possível dar acesso completo para função Administrativo ou Corretor.")}`
-    );
-  }
+  const parceiro = await prisma.parceiros.findUnique({ where: { id: parceiroId }, select: { acessos: true, acesso_completo: true } });
+  if (!parceiro) redirect(`/configuracoes?erro=${encodeURIComponent("Pessoa não encontrada.")}`);
 
   await prisma.parceiros
-    .update({ where: { id: parceiroId }, data: { acesso_completo: novoValor } })
-    .catch((erro) =>
-      registrarEJogarErro({ entidadeTipo: "parceiros", entidadeId: parceiroId, acao: "alternar_acesso_completo", erro })
-    );
+    .update({
+      where: { id: parceiroId },
+      data: { acessos: escolhidos, acesso_completo: escolhidos.includes("diretor"), updated_at: new Date() }
+    })
+    .catch((erro) => registrarEJogarErro({ entidadeTipo: "parceiros", entidadeId: parceiroId, acao: "salvar_acessos", erro }));
 
   await logAlteracao({
     entidadeTipo: "parceiros",
     entidadeId: parceiroId,
-    acao: novoValor ? "conceder_acesso_completo" : "remover_acesso_completo"
+    acao: "salvar_acessos",
+    dadosAntes: { acessos: parceiro.acessos, acesso_completo: parceiro.acesso_completo },
+    dadosDepois: { acessos: escolhidos }
   });
 
   revalidatePath("/configuracoes");
-  redirect("/configuracoes?salvo=1");
+  redirect("/configuracoes?salvo_acessos=1");
 }
 
 export async function aprovarAcessoAction(formData: FormData) {
@@ -140,7 +138,7 @@ function dadosBasePublicacao(formData: FormData) {
 export async function prepararUploadImagemPublicacaoAction(
   nomeArquivo: string
 ): Promise<{ ok: true; caminho: string; token: string } | { ok: false; erro: string }> {
-  await requireAdminSession();
+  await requireAdm();
   try {
     const { caminho, token } = await criarUploadAssinadoImagemPublicacao(nomeArquivo);
     return { ok: true, caminho, token };
@@ -153,7 +151,7 @@ export async function prepararUploadImagemPublicacaoAction(
 // logado (não só isAdm) — pedido explícito do usuário, diferente do resto
 // desta tela (aprovação de acesso, senha, logs), que continua isAdm-only.
 export async function criarPublicacaoAction(formData: FormData) {
-  const admin = await requireAdminSession();
+  const admin = await requireAdm();
   const dados = dadosBasePublicacao(formData);
   if (!dados.titulo || !dados.corpo) {
     redirect(`/configuracoes?erro=${encodeURIComponent("Preencha título e texto da publicação.")}`);
@@ -182,7 +180,7 @@ export async function criarPublicacaoAction(formData: FormData) {
 }
 
 export async function atualizarPublicacaoAction(formData: FormData) {
-  await requireAdminSession();
+  await requireAdm();
   const id = String(formData.get("publicacaoId") ?? "");
   if (!id) redirect(`/configuracoes?erro=${encodeURIComponent("Publicação inválida.")}`);
   const dados = dadosBasePublicacao(formData);
@@ -233,7 +231,7 @@ export async function atualizarPublicacaoAction(formData: FormData) {
 }
 
 export async function alternarAtivoPublicacaoAction(formData: FormData) {
-  await requireAdminSession();
+  await requireAdm();
   const id = String(formData.get("publicacaoId") ?? "");
   if (!id) return;
 
@@ -264,7 +262,7 @@ export async function alternarAtivoPublicacaoAction(formData: FormData) {
 // cancelar uma publicação sem deixar registro/arquivo parado ocupando
 // espaço à toa. Some da tela e apaga também a imagem do Storage, se tiver.
 export async function excluirPublicacaoAction(formData: FormData) {
-  await requireAdminSession();
+  await requireAdm();
   const id = String(formData.get("publicacaoId") ?? "");
   if (!id) return;
 

@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { requireAdminSession, requireAdm, logAlteracao } from "@/lib/auth";
+import { requireAdm, logAlteracao, requireEdicao } from "@/lib/auth";
 import { percentualParaDecimal } from "@/lib/format";
 import { FUNCOES_EQUIPE } from "@/lib/parceiros/opcoes";
 import { registrarEJogarErro } from "@/lib/erros";
@@ -166,7 +166,7 @@ export async function prepararUploadFotoParceiroAction(
 }
 
 export async function criarParceiroAction(_prev: unknown, formData: FormData): Promise<ResultadoFormulario> {
-  const session = await requireAdminSession();
+  const session = await requireEdicao("parceiros");
 
   const nome = texto(formData, "nome");
   const funcao = texto(formData, "funcao");
@@ -235,7 +235,7 @@ export async function criarParceiroAction(_prev: unknown, formData: FormData): P
 }
 
 export async function atualizarParceiroAction(_prev: unknown, formData: FormData): Promise<ResultadoFormulario> {
-  const session = await requireAdminSession();
+  const session = await requireEdicao("parceiros");
 
   const id = texto(formData, "parceiroId");
   if (!id) return { erro: "Parceiro inválido." };
@@ -367,7 +367,7 @@ type LinhaComissionamento = { id: string; porc_proprietario: string; porc_intere
 // ser erro de cadastro do administrativo") — não é só reposição do que se
 // perdeu, é revisão geral de quem está com o campo vazio.
 export async function salvarComissionamentoLoteAction(_prev: unknown, formData: FormData): Promise<ResultadoFormulario> {
-  await requireAdminSession();
+  await requireEdicao("parceiros");
 
   const linhasTexto = texto(formData, "linhas");
   if (!linhasTexto) return { erro: "Nada pra salvar." };

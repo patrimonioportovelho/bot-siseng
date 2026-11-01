@@ -6,8 +6,9 @@ import { PortalSidebar } from "@/components/portal-sidebar";
 import { RouteLoadingBar } from "@/components/route-loading-bar";
 import { RodapePrivacidade } from "@/components/link-privacidade";
 import { AvisosEquipeToasts } from "@/components/avisos-equipe-toasts";
+import { nivelNaRota, modulosDaRota, type AcessoEfetivo } from "@/lib/acessos";
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({ children, acessos }: { children: React.ReactNode; acessos: AcessoEfetivo[] | null }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   // ?embed=1 é usado pelo painel lateral (drawer) da transação — abre
@@ -70,8 +71,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <>
       <RouteLoadingBar />
       <div className="flex flex-col md:flex-row min-h-screen">
-        <Sidebar />
+        <Sidebar acessos={acessos} />
         <main className="flex-1 min-w-0 p-4 md:p-6 flex flex-col">
+          {searchParams?.get("negado") === "1" && (
+            <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg px-3 py-2 mb-4">
+              Seu acesso não permite abrir ou alterar essa área. Se precisar dela, peça ao Diretor para ajustar seus acessos.
+            </div>
+          )}
+          {acessos && pathname && modulosDaRota(pathname) && nivelNaRota(acessos, pathname) === "ver" && (
+            <div className="bg-amber-50 border border-amber-200 text-amber-800 text-xs rounded-lg px-3 py-2 mb-4">
+              Somente consulta: seu acesso a esta área permite ver, mas não alterar.
+            </div>
+          )}
           <div className="flex-1">{children}</div>
           <RodapePrivacidade />
         </main>

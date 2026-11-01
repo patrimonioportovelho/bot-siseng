@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { requireAdminSession, requireAdm, logAlteracao } from "@/lib/auth";
+import { requireAdminSession, requireAdm, logAlteracao, requireEdicao } from "@/lib/auth";
 import { valorEditavelParaDecimal, percentualParaDecimal, hojeComoDataCalendario, statusCancelado } from "@/lib/format";
 import { registrarEJogarErro } from "@/lib/erros";
 import { sincronizarProprietariosExtra, sincronizarVinculosConjuge } from "@/lib/imoveis/proprietarios-extra";
@@ -345,7 +345,7 @@ import type { ResultadoFormulario } from "@/lib/forms/resultado";
 export type { ResultadoFormulario } from "@/lib/forms/resultado";
 
 export async function criarTransacaoAction(_prev: unknown, formData: FormData): Promise<ResultadoFormulario> {
-  await requireAdminSession();
+  await requireEdicao(["locacao", "compra_venda"]);
 
   const tipo = texto(formData, "tipo");
   const lojaId = texto(formData, "loja_id");
@@ -415,7 +415,7 @@ export async function criarTransacaoAction(_prev: unknown, formData: FormData): 
 }
 
 export async function atualizarTransacaoAction(_prev: unknown, formData: FormData): Promise<ResultadoFormulario> {
-  await requireAdminSession();
+  await requireEdicao(["locacao", "compra_venda"]);
 
   const id = texto(formData, "transacaoId");
   if (!id) return { erro: "Transação inválida." };
@@ -492,7 +492,7 @@ export async function atualizarTransacaoAction(_prev: unknown, formData: FormDat
 // de sucesso continua idêntico: sem redirect, só revalidatePath — o select
 // "salva sozinho" continua funcionando exatamente igual.
 export async function atualizarStatusTransacaoAction(formData: FormData) {
-  await requireAdminSession();
+  await requireEdicao(["locacao", "compra_venda"]);
 
   const idRaw = formData.get("transacaoId");
   const statusRaw = formData.get("status");
@@ -557,7 +557,7 @@ export async function atualizarStatusTransacaoAction(formData: FormData) {
 // já usado nos formulários grandes (ver ResultadoFormulario acima): o erro
 // aparece inline, sem sair da tela, com as linhas editadas intactas.
 export async function gerarBoletosAction(_prev: unknown, formData: FormData): Promise<ResultadoFormulario> {
-  await requireAdminSession();
+  await requireEdicao(["locacao", "compra_venda"]);
 
   const transacaoId = texto(formData, "transacao_id");
   const linhasTexto = texto(formData, "linhas");
@@ -626,7 +626,7 @@ export async function gerarBoletosAction(_prev: unknown, formData: FormData): Pr
 // o formulário inteiro. Só faz sentido pra Locação com forma_pagamento =
 // "Boleto" (o botão em si já só aparece nesse caso, ver transacao-detalhe.tsx).
 export async function alternarBoletoEmitidoAction(formData: FormData) {
-  await requireAdminSession();
+  await requireEdicao(["locacao", "compra_venda"]);
 
   const id = texto(formData, "transacaoId");
   const voltarPara = id ? `/transacoes/${id}` : "/transacoes/locacao";

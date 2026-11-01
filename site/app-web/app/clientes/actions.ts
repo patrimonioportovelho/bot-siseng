@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { requireAdminSession, requireAdm, logAlteracao } from "@/lib/auth";
+import { requireAdm, logAlteracao, requireEdicao } from "@/lib/auth";
 import { valorEditavelParaDecimal } from "@/lib/format";
 import { registrarEJogarErro } from "@/lib/erros";
 import { buscarClienteDuplicado } from "@/lib/clientes/duplicidade";
@@ -155,7 +155,7 @@ export type ResultadoFormulario = ResultadoFormularioBase<{ duplicado?: boolean 
 // ver comentário lá do porquê (não pode ficar sync num arquivo "use server").
 
 export async function criarClienteAction(_prev: unknown, formData: FormData): Promise<ResultadoFormulario> {
-  await requireAdminSession();
+  await requireEdicao("clientes");
 
   const nome = texto(formData, "nome");
   const tipoCliente = texto(formData, "tipo_cliente");
@@ -249,7 +249,7 @@ export async function criarClienteAction(_prev: unknown, formData: FormData): Pr
 }
 
 export async function atualizarClienteAction(_prev: unknown, formData: FormData): Promise<ResultadoFormulario> {
-  const sessao = await requireAdminSession();
+  const sessao = await requireEdicao("clientes");
 
   const id = texto(formData, "clienteId");
   if (!id) return { erro: "Cliente inválido." };
@@ -518,7 +518,7 @@ async function vincularSocio(pjClienteId: string, socioClienteId: string): Promi
 }
 
 export async function adicionarSocioAction(_prev: unknown, formData: FormData): Promise<ResultadoSocio> {
-  await requireAdminSession();
+  await requireEdicao("clientes");
 
   const pjClienteId = texto(formData, "pj_cliente_id");
   if (!pjClienteId) return { erro: "PJ inválida." };
@@ -645,7 +645,7 @@ async function processarSociosPendentes(pjClienteId: string, sociosPendentes: So
 }
 
 export async function removerSocioAction(formData: FormData) {
-  await requireAdminSession();
+  await requireEdicao("clientes");
 
   const vinculoId = texto(formData, "vinculo_id");
   const pjClienteId = texto(formData, "pj_cliente_id");

@@ -881,6 +881,8 @@ model parceiros {
   // esse campo seja mexido errado. Só tem efeito depois de um novo login
   // (fica gravado dentro da sessão assinada, não é checado a cada clique).
   acesso_completo                                                             Boolean                   @default(false)
+  // Papéis do administrativo (diretor, financeiro, administrativo, recrutador, corretor) — ver lib/acessos.ts.
+  acessos                                                                     String[]                  @default([])
   data_nascimento                                                             DateTime?                 @db.Date
   identidade                                                                  String?
   expedicao_estado                                                            String?

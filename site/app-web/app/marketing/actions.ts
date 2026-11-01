@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { requireAdminSession, logAlteracao } from "@/lib/auth";
+import { logAlteracao, requireEdicao } from "@/lib/auth";
 import { registrarEJogarErro } from "@/lib/erros";
 import { logMovimentoQuadro } from "@/lib/quadro-log";
 import { gerarProximoIdOrdemMarketing } from "@/lib/marketing/id-legado";
@@ -38,7 +38,7 @@ function numerico(formData: FormData, campo: string): number | null {
 // components/marketing-form.tsx) — não há trava adicional aqui no server
 // porque essa lista já é a única fonte disponível pro campo.
 export async function criarOrdemAction(formData: FormData) {
-  await requireAdminSession();
+  await requireEdicao("marketing");
 
   const titulo = texto(formData, "titulo");
   if (!titulo) throw new Error("Título é obrigatório.");
@@ -80,7 +80,7 @@ export async function criarOrdemAction(formData: FormData) {
 
 // Edição completa da ficha da Ordem.
 export async function atualizarOrdemAction(formData: FormData) {
-  await requireAdminSession();
+  await requireEdicao("marketing");
 
   const id = texto(formData, "ordemId");
   if (!id) throw new Error("Ordem de Marketing inválida.");
@@ -144,7 +144,7 @@ export async function atualizarOrdemAction(formData: FormData) {
 // preenchidos — é essa flag que a regra de negócio em moverColunaAction usa
 // pra decidir se a Ordem pode sair de "Aguardando briefing".
 export async function salvarBriefingAction(formData: FormData) {
-  await requireAdminSession();
+  await requireEdicao("marketing");
 
   const id = texto(formData, "ordemId");
   const briefingTipo = texto(formData, "briefing_tipo");
@@ -192,7 +192,7 @@ export async function salvarBriefingAction(formData: FormData) {
 // Chamada direto do arrastar-e-soltar do Kanban — mesmo padrão de
 // app/gestoes/actions.ts e app/manutencao/actions.ts.
 export async function moverColunaAction(id: string, novaColuna: string): Promise<{ ok: true } | { ok: false; erro: string }> {
-  const sessao = await requireAdminSession();
+  const sessao = await requireEdicao("marketing");
 
   const antes = await prisma.marketing_ordens.findUnique({
     where: { id },
@@ -234,7 +234,7 @@ export async function moverColunaAction(id: string, novaColuna: string): Promise
 
 // Soft-delete — mesmo padrão do resto do sistema.
 export async function apagarOrdemAction(formData: FormData) {
-  await requireAdminSession();
+  await requireEdicao("marketing");
 
   const id = texto(formData, "ordemId");
   if (!id) throw new Error("Ordem de Marketing inválida.");
@@ -258,7 +258,7 @@ export async function apagarOrdemAction(formData: FormData) {
 // --- Checklist ---
 
 export async function adicionarChecklistItemAction(formData: FormData) {
-  await requireAdminSession();
+  await requireEdicao("marketing");
 
   const ordemId = texto(formData, "ordemId");
   const label = texto(formData, "label");
@@ -283,7 +283,7 @@ export async function adicionarChecklistItemAction(formData: FormData) {
 // "+ Checklist do pilar atual" na ficha do card. Muda de conteúdo conforme o
 // card avança de coluna, em vez de ser uma lista única despejada no início.
 export async function adicionarChecklistPadraoAction(formData: FormData) {
-  await requireAdminSession();
+  await requireEdicao("marketing");
 
   const ordemId = texto(formData, "ordemId");
   if (!ordemId) throw new Error("Ordem de Marketing inválida.");
@@ -312,7 +312,7 @@ export async function adicionarChecklistPadraoAction(formData: FormData) {
 }
 
 export async function marcarChecklistItemAction(id: string, ordemId: string) {
-  await requireAdminSession();
+  await requireEdicao("marketing");
 
   const item = await prisma.marketing_checklist_itens.findUnique({ where: { id } });
   if (!item) throw new Error("Item não encontrado.");
@@ -325,7 +325,7 @@ export async function marcarChecklistItemAction(id: string, ordemId: string) {
 }
 
 export async function removerChecklistItemAction(id: string, ordemId: string) {
-  await requireAdminSession();
+  await requireEdicao("marketing");
 
   await prisma.marketing_checklist_itens
     .delete({ where: { id } })
@@ -338,7 +338,7 @@ export async function removerChecklistItemAction(id: string, ordemId: string) {
 //     compartilhado com Manutenção e Gestões) ---
 
 export async function criarAtividadeAction(formData: FormData) {
-  await requireAdminSession();
+  await requireEdicao("marketing");
 
   const ordemId = texto(formData, "ordemId");
   const tipo = texto(formData, "tipo");
@@ -378,7 +378,7 @@ export async function criarAtividadeAction(formData: FormData) {
 }
 
 export async function marcarAtividadeFeitaAction(id: string, ordemId: string) {
-  await requireAdminSession();
+  await requireEdicao("marketing");
 
   const atividade = await prisma.marketing_atividades.findUnique({ where: { id } });
   if (!atividade) throw new Error("Atividade não encontrada.");
@@ -398,7 +398,7 @@ export async function marcarAtividadeFeitaAction(id: string, ordemId: string) {
 }
 
 export async function removerAtividadeAction(id: string, ordemId: string) {
-  await requireAdminSession();
+  await requireEdicao("marketing");
 
   await prisma.marketing_atividades
     .delete({ where: { id } })
@@ -419,7 +419,7 @@ export async function removerAtividadeAction(id: string, ordemId: string) {
 //     seu próprio prazo/arquivo/nº de revisões. ---
 
 export async function criarProducaoAction(formData: FormData) {
-  await requireAdminSession();
+  await requireEdicao("marketing");
 
   const ordemId = texto(formData, "ordemId");
   const peca = texto(formData, "peca");
@@ -447,7 +447,7 @@ export async function criarProducaoAction(formData: FormData) {
 // progressivamente conforme a peça avança, por isso é uma action separada
 // da criação (formulário próprio, menor, dentro de cada linha da lista).
 export async function atualizarProducaoLinksAction(formData: FormData) {
-  await requireAdminSession();
+  await requireEdicao("marketing");
 
   const id = texto(formData, "producaoId");
   const ordemId = texto(formData, "ordemId");
@@ -469,7 +469,7 @@ export async function atualizarProducaoLinksAction(formData: FormData) {
 }
 
 export async function atualizarProducaoStatusAction(id: string, ordemId: string, status: string) {
-  await requireAdminSession();
+  await requireEdicao("marketing");
 
   await prisma.marketing_producoes
     .update({ where: { id }, data: { status, updated_at: new Date() } })
@@ -481,7 +481,7 @@ export async function atualizarProducaoStatusAction(id: string, ordemId: string,
 // Botão "+1 revisão" — conta quantas rodadas de ajuste a peça já teve (o
 // Manual seção 11 lista "rodadas de alteração" como um dos KPIs).
 export async function incrementarRevisaoProducaoAction(id: string, ordemId: string) {
-  await requireAdminSession();
+  await requireEdicao("marketing");
 
   await prisma.marketing_producoes
     .update({ where: { id }, data: { revisoes: { increment: 1 }, updated_at: new Date() } })
@@ -491,7 +491,7 @@ export async function incrementarRevisaoProducaoAction(id: string, ordemId: stri
 }
 
 export async function removerProducaoAction(id: string, ordemId: string) {
-  await requireAdminSession();
+  await requireEdicao("marketing");
 
   await prisma.marketing_producoes
     .delete({ where: { id } })
@@ -503,7 +503,7 @@ export async function removerProducaoAction(id: string, ordemId: string) {
 // --- Notas (histórico, timestamp automático, ordem cronológica reversa) ---
 
 export async function adicionarNotaAction(formData: FormData) {
-  await requireAdminSession();
+  await requireEdicao("marketing");
 
   const ordemId = texto(formData, "ordemId");
   const textoNota = texto(formData, "texto");
@@ -531,7 +531,7 @@ export async function adicionarNotaAction(formData: FormData) {
 // e só reativa/atualiza a atividade de captação dela, senão duplicava OM
 // toda vez que um mesmo pedido fosse reagendado.
 export async function confirmarSolicitacaoAgendaAction(formData: FormData) {
-  const admin = await requireAdminSession();
+  const admin = await requireEdicao("marketing");
 
   const id = texto(formData, "solicitacaoId");
   if (!id) throw new Error("Solicitação inválida.");
@@ -672,7 +672,7 @@ export async function confirmarSolicitacaoAgendaAction(formData: FormData) {
 // Ordem/atividade — fica tudo visível (inclusive no calendário geral) com o
 // motivo e quem cancelou, até alguém reagendar.
 export async function cancelarSolicitacaoAgendaAction(formData: FormData) {
-  const admin = await requireAdminSession();
+  const admin = await requireEdicao("marketing");
 
   const id = texto(formData, "solicitacaoId");
   const motivo = texto(formData, "motivo");
@@ -731,7 +731,7 @@ export async function cancelarSolicitacaoAgendaAction(formData: FormData) {
 // vale pro fluxo normal), então isso já volta pra "confirmada" direto, sem
 // passar por "pendente" de novo.
 export async function reagendarSolicitacaoAgendaAction(formData: FormData) {
-  const admin = await requireAdminSession();
+  const admin = await requireEdicao("marketing");
 
   const id = texto(formData, "solicitacaoId");
   const novaData = texto(formData, "nova_data");
@@ -805,7 +805,7 @@ export async function reagendarSolicitacaoAgendaAction(formData: FormData) {
 }
 
 export async function recusarSolicitacaoAgendaAction(formData: FormData) {
-  const admin = await requireAdminSession();
+  const admin = await requireEdicao("marketing");
 
   const id = texto(formData, "solicitacaoId");
   if (!id) throw new Error("Solicitação inválida.");

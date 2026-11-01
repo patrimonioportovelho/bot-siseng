@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { requireAdminSession, logAlteracao } from "@/lib/auth";
+import { logAlteracao, requireEdicao } from "@/lib/auth";
 import { registrarEJogarErro } from "@/lib/erros";
 
 function texto(formData: FormData, campo: string): string | null {
@@ -25,7 +25,7 @@ function data(formData: FormData, campo: string): Date | null {
 // só o campo de texto livre (marketing_ordens.empreendimento) quando não
 // houver um cadastro — ver app/marketing/actions.ts.
 export async function criarEmpreendimentoAction(formData: FormData) {
-  await requireAdminSession();
+  await requireEdicao("marketing");
 
   const nome = texto(formData, "nome");
   if (!nome) throw new Error("Nome do empreendimento é obrigatório.");
@@ -58,7 +58,7 @@ export async function criarEmpreendimentoAction(formData: FormData) {
 }
 
 export async function atualizarEmpreendimentoAction(formData: FormData) {
-  await requireAdminSession();
+  await requireEdicao("marketing");
 
   const id = texto(formData, "empreendimentoId");
   if (!id) throw new Error("Empreendimento inválido.");
@@ -103,7 +103,7 @@ export async function atualizarEmpreendimentoAction(formData: FormData) {
 // empreendimento_id pra este cadastro continuam com o vínculo (não some o
 // histórico), só deixa de aparecer como opção pra novas Ordens.
 export async function apagarEmpreendimentoAction(formData: FormData) {
-  await requireAdminSession();
+  await requireEdicao("marketing");
 
   const id = texto(formData, "empreendimentoId");
   if (!id) throw new Error("Empreendimento inválido.");

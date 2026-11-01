@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { requireAdminSession, requireAdm, logAlteracao } from "@/lib/auth";
+import { requireAdm, logAlteracao, requireEdicao } from "@/lib/auth";
 import { valorEditavelParaDecimal, percentualParaDecimal } from "@/lib/format";
 import { registrarEJogarErro } from "@/lib/erros";
 import { sincronizarProprietariosExtra, sincronizarVinculosConjuge } from "@/lib/imoveis/proprietarios-extra";
@@ -96,7 +96,7 @@ function camposEditaveis(formData: FormData) {
 }
 
 export async function criarAdministracaoAction(formData: FormData) {
-  await requireAdminSession();
+  await requireEdicao("administracoes");
 
   const lojaId = texto(formData, "loja_id");
   const clienteId = texto(formData, "cliente_id");
@@ -135,7 +135,7 @@ export async function criarAdministracaoAction(formData: FormData) {
 }
 
 export async function atualizarAdministracaoAction(formData: FormData) {
-  await requireAdminSession();
+  await requireEdicao("administracoes");
 
   const id = texto(formData, "administracaoId");
   if (!id) throw new Error("Administração inválida.");

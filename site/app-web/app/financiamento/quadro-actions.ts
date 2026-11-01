@@ -3,7 +3,7 @@
 import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { requireAdminSession } from "@/lib/auth";
+import { requireEdicao } from "@/lib/auth";
 import { hojeComoDataCalendario } from "@/lib/format";
 import {
   COLUNA_FIN_POR_ID,
@@ -102,7 +102,7 @@ export async function moverCardFinanciamentoAction(
   destino: ColunaFinId,
   opcoes?: { encerramento?: string | null; motivo?: string | null }
 ): Promise<void> {
-  const sessao = await requireAdminSession();
+  const sessao = await requireEdicao("financiamento");
   const colunaDestino = COLUNA_FIN_POR_ID.get(destino);
   if (!colunaDestino) throw new Error("Coluna inválida.");
 
@@ -238,7 +238,7 @@ export async function moverCardFinanciamentoAction(
 // vendedor" → "Aguardando Documentos do comprador"). Cada troca vira uma
 // atividade com tempo. Conforme/Inconforme têm botões próprios.
 export async function definirStatusAndamentoAction(avaliacaoId: string, novoStatus: string): Promise<Resultado> {
-  const sessao = await requireAdminSession();
+  const sessao = await requireEdicao("financiamento");
   try {
     if (STATUS_CONFORMIDADE.includes(novoStatus)) {
       return { ok: false, erro: "Use os botões Conforme / Registrar inconformidade." };
@@ -303,7 +303,7 @@ export async function registrarConformidadeAction(
   motivo: string | null,
   nota: string | null
 ): Promise<Resultado> {
-  const sessao = await requireAdminSession();
+  const sessao = await requireEdicao("financiamento");
   try {
     const [avaliacao, andamento] = await Promise.all([
       prisma.avaliacoes.findUnique({ where: { id: avaliacaoId }, select: { status: true } }),
@@ -364,7 +364,7 @@ export async function registrarConformidadeAction(
 // Inconformidade corrigida: fecha o registro (tempo de resolução) e devolve o
 // card para nova análise de conformidade.
 export async function resolverInconformidadeAction(avaliacaoId: string, atividadeId: string, nota: string | null): Promise<Resultado> {
-  const sessao = await requireAdminSession();
+  const sessao = await requireEdicao("financiamento");
   try {
     const atividade = await prisma.financiamento_atividades.findUnique({ where: { id: atividadeId } });
     if (!atividade || atividade.avaliacao_id !== avaliacaoId || atividade.tipo !== TIPO_INCONFORMIDADE || atividade.fim) {
@@ -393,7 +393,7 @@ export async function resolverInconformidadeAction(avaliacaoId: string, atividad
 const CAMPOS_TEXTO_FIN = ["proxima_acao_texto", "notas"] as const;
 
 export async function salvarCampoFinanciamentoAction(avaliacaoId: string, campo: string, valor: string | null): Promise<Resultado> {
-  await requireAdminSession();
+  await requireEdicao("financiamento");
   try {
     let dados: Record<string, unknown>;
     if ((CAMPOS_TEXTO_FIN as readonly string[]).includes(campo)) {
@@ -426,7 +426,7 @@ export async function salvarCampoFinanciamentoAction(avaliacaoId: string, campo:
 // Perguntas da Avaliação de crédito (respondidas pelo corretor no portal): a
 // correspondente confere e corrige direto na etiqueta. valor: "sim" | "nao" | null.
 export async function salvarRespostaCreditoAction(avaliacaoId: string, campo: string, valor: string | null): Promise<Resultado> {
-  const sessao = await requireAdminSession();
+  const sessao = await requireEdicao("financiamento");
   if (!(CAMPOS_CREDITO as readonly string[]).includes(campo)) return { ok: false, erro: "Campo não permitido." };
   try {
     const atual = await prisma.avaliacoes.findUnique({ where: { id: avaliacaoId }, select: { excluido: true, [campo]: true } });
@@ -456,7 +456,7 @@ export async function salvarRespostaCreditoAction(avaliacaoId: string, campo: st
 }
 
 export async function alternarChecklistFinanciamentoAction(avaliacaoId: string, chave: string, feito: boolean): Promise<Resultado> {
-  await requireAdminSession();
+  await requireEdicao("financiamento");
   if (!CHAVES_CHECKLIST.has(chave)) return { ok: false, erro: "Item inválido." };
   try {
     const atual = await prisma.financiamento_acompanhamento.findUnique({ where: { avaliacao_id: avaliacaoId }, select: { checklist: true } });
@@ -495,7 +495,7 @@ export async function registrarContatoFinanciamentoAction(
   avaliacaoId: string,
   dados: { tipo: string; resultado: string | null; nota: string | null }
 ): Promise<{ ok: true; atividade: AtividadeFinTela } | { ok: false; erro: string }> {
-  const sessao = await requireAdminSession();
+  const sessao = await requireEdicao("financiamento");
   const tipo = limpoOuNull(dados.tipo);
   if (!tipo || !TIPOS_CONTATO_VALIDOS.has(tipo)) return { ok: false, erro: "Escolha o tipo de contato." };
   try {
@@ -538,7 +538,7 @@ const TIPOS_CONTATO_VALIDOS = new Set(["WhatsApp", "Ligação", "E-mail", "Reuni
 
 // Responsável padrão de cada coluna.
 export async function definirResponsavelColunaFinAction(coluna: string, responsavelId: string | null): Promise<Resultado> {
-  await requireAdminSession();
+  await requireEdicao("financiamento");
   if (!COLUNAS_FIN.some((c) => c.id === coluna)) return { ok: false, erro: "Etapa inválida." };
   try {
     const v = limpoOuNull(responsavelId);

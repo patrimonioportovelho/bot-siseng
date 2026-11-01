@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { requireAdminSession, requireAdm, logAlteracao } from "@/lib/auth";
+import { requireAdm, logAlteracao, requireEdicao } from "@/lib/auth";
 import { valorEditavelParaDecimal, dataHoraPortoVelho } from "@/lib/format";
 import { registrarEJogarErro } from "@/lib/erros";
 import { gerarProximoIdEvento } from "@/lib/eventos/id-legado";
@@ -188,7 +188,7 @@ function dadosParaSalvar(c: ReturnType<typeof camposFormulario>) {
 export async function prepararUploadImagemEventoAction(
   nomeArquivo: string
 ): Promise<{ ok: true; caminho: string; token: string } | { ok: false; erro: string }> {
-  await requireAdminSession();
+  await requireEdicao("eventos");
   try {
     const { caminho, token } = await criarUploadAssinadoImagemEvento(nomeArquivo);
     return { ok: true, caminho, token };
@@ -198,7 +198,7 @@ export async function prepararUploadImagemEventoAction(
 }
 
 export async function criarEventoAction(formData: FormData) {
-  const admin = await requireAdminSession();
+  const admin = await requireEdicao("eventos");
 
   const campos = camposFormulario(formData);
   const erroValidacao = validarCampos(campos);
@@ -226,7 +226,7 @@ export async function criarEventoAction(formData: FormData) {
 }
 
 export async function atualizarEventoAction(formData: FormData) {
-  await requireAdminSession();
+  await requireEdicao("eventos");
 
   const id = texto(formData, "eventoId");
   if (!id) redirect(`/eventos?erro=${encodeURIComponent("Evento inválido.")}`);
@@ -276,7 +276,7 @@ export async function atualizarEventoAction(formData: FormData) {
 // Liga/desliga a publicação sem abrir o formulário inteiro — mesmo padrão
 // de alternarAtivoPublicacaoAction em app/configuracoes/actions.ts.
 export async function alternarAtivoEventoAction(formData: FormData) {
-  await requireAdminSession();
+  await requireEdicao("eventos");
   const id = texto(formData, "eventoId");
   if (!id) return;
 
@@ -330,7 +330,7 @@ export async function apagarEventoAction(formData: FormData) {
 // recebeu. Alterna (não é só "marcar pago") pra dar pra desfazer clique
 // errado sem precisar de uma segunda tela.
 export async function alternarPagoInscricaoAction(formData: FormData) {
-  await requireAdminSession();
+  await requireEdicao("eventos");
 
   const id = texto(formData, "inscricaoId");
   if (!id) return;
@@ -359,7 +359,7 @@ export async function alternarPagoInscricaoAction(formData: FormData) {
 // podem confirmar se vão ou não, não podem ser apagados, somente o
 // convidados".
 export async function apagarInscricaoAction(formData: FormData) {
-  await requireAdminSession();
+  await requireEdicao("eventos");
 
   const id = texto(formData, "inscricaoId");
   if (!id) return;
@@ -383,7 +383,7 @@ export async function apagarInscricaoAction(formData: FormData) {
 // (Fase 7, 14/08/2026) — mesmo espírito de alternarPagoInscricaoAction
 // acima, só que em eventos_confirmacoes em vez de eventos_inscricoes.
 export async function alternarPagoConfirmacaoAction(formData: FormData) {
-  await requireAdminSession();
+  await requireEdicao("eventos");
 
   const id = texto(formData, "confirmacaoId");
   if (!id) return;
@@ -410,7 +410,7 @@ export async function alternarPagoConfirmacaoAction(formData: FormData) {
 // da função de novo) — 3 estados, um clique por vez, mesmo espírito
 // "alternar" de alternarPagoInscricaoAction.
 export async function alternarIsencaoConfirmacaoAction(formData: FormData) {
-  await requireAdminSession();
+  await requireEdicao("eventos");
 
   const id = texto(formData, "confirmacaoId");
   if (!id) return;

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { requireAdminSession, logAlteracao } from "@/lib/auth";
+import { logAlteracao, requireEdicao } from "@/lib/auth";
 import { registrarEJogarErro } from "@/lib/erros";
 
 function texto(formData: FormData, campo: string): string | null {
@@ -25,7 +25,7 @@ function numero(formData: FormData, campo: string): number | null {
 // então a mesma action cria na primeira vez e atualiza depois — a tela não
 // precisa saber se já existe perfil ou não.
 export async function salvarPerfilCorretorAction(formData: FormData) {
-  await requireAdminSession();
+  await requireEdicao("marketing");
 
   const parceiroId = texto(formData, "parceiroId");
   if (!parceiroId) throw new Error("Corretor inválido.");

@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { requireAdminSession, logAlteracao } from "@/lib/auth";
+import { logAlteracao, requireEdicao } from "@/lib/auth";
 import { valorEditavelParaDecimal } from "@/lib/format";
 import { registrarEJogarErro } from "@/lib/erros";
 import { logMovimentoQuadro } from "@/lib/quadro-log";
@@ -57,7 +57,7 @@ async function sufixoDaFicha(): Promise<string> {
 // imóvel escolhido (ver components/manutencao-form.tsx), mas continua
 // editável/substituível pelo usuário.
 export async function criarManutencaoAction(formData: FormData) {
-  await requireAdminSession();
+  await requireEdicao("atividades");
 
   const imovelId = texto(formData, "imovel_id");
   const titulo = texto(formData, "titulo");
@@ -95,7 +95,7 @@ export async function criarManutencaoAction(formData: FormData) {
 
 // Edição completa da ficha do ticket (campos do modelo de dados).
 export async function atualizarManutencaoAction(formData: FormData) {
-  await requireAdminSession();
+  await requireEdicao("atividades");
 
   const id = texto(formData, "manutencaoId");
   if (!id) throw new Error("Manutenção inválida.");
@@ -140,7 +140,7 @@ export async function atualizarManutencaoAction(formData: FormData) {
 // mostra o card na coluna nova (movimento otimista), então aqui não recarrega a
 // página: só grava e devolve rápido. O log vai para depois da resposta.
 export async function moverColunaAction(id: string, novaColuna: string) {
-  const sessao = await requireAdminSession();
+  const sessao = await requireEdicao("atividades");
 
   const antes = await prisma.manutencoes.findUnique({ where: { id }, select: { coluna: true } });
   if (!antes) throw new Error("Manutenção não encontrada.");
@@ -164,7 +164,7 @@ export async function moverColunaAction(id: string, novaColuna: string) {
 // excluido=true em vez de apagar de verdade, porque o ticket pode ter
 // checklist/atividades/notas com histórico real.
 export async function apagarManutencaoAction(formData: FormData) {
-  await requireAdminSession();
+  await requireEdicao("atividades");
 
   const id = texto(formData, "manutencaoId");
   if (!id) throw new Error("Manutenção inválida.");
@@ -182,7 +182,7 @@ export async function apagarManutencaoAction(formData: FormData) {
 // --- Checklist ---
 
 export async function adicionarChecklistItemAction(formData: FormData) {
-  await requireAdminSession();
+  await requireEdicao("atividades");
 
   const manutencaoId = texto(formData, "manutencaoId");
   const label = texto(formData, "label");
@@ -203,7 +203,7 @@ export async function adicionarChecklistItemAction(formData: FormData) {
 }
 
 export async function marcarChecklistItemAction(id: string, manutencaoId: string) {
-  await requireAdminSession();
+  await requireEdicao("atividades");
 
   const item = await prisma.manutencao_checklist_itens.findUnique({ where: { id } });
   if (!item) throw new Error("Item não encontrado.");
@@ -216,7 +216,7 @@ export async function marcarChecklistItemAction(id: string, manutencaoId: string
 }
 
 export async function removerChecklistItemAction(id: string, manutencaoId: string) {
-  await requireAdminSession();
+  await requireEdicao("atividades");
 
   await prisma.manutencao_checklist_itens
     .delete({ where: { id } })
@@ -228,7 +228,7 @@ export async function removerChecklistItemAction(id: string, manutencaoId: strin
 // --- Atividades (agendadas dentro do ticket, aparecem no Calendário) ---
 
 export async function criarAtividadeAction(formData: FormData) {
-  await requireAdminSession();
+  await requireEdicao("atividades");
 
   const manutencaoId = texto(formData, "manutencaoId");
   const tipo = texto(formData, "tipo");
@@ -257,7 +257,7 @@ export async function criarAtividadeAction(formData: FormData) {
 }
 
 export async function marcarAtividadeFeitaAction(id: string, manutencaoId: string) {
-  await requireAdminSession();
+  await requireEdicao("atividades");
 
   const atividade = await prisma.manutencao_atividades.findUnique({ where: { id } });
   if (!atividade) throw new Error("Atividade não encontrada.");
@@ -272,7 +272,7 @@ export async function marcarAtividadeFeitaAction(id: string, manutencaoId: strin
 }
 
 export async function removerAtividadeAction(id: string, manutencaoId: string) {
-  await requireAdminSession();
+  await requireEdicao("atividades");
 
   await prisma.manutencao_atividades
     .delete({ where: { id } })
@@ -286,7 +286,7 @@ export async function removerAtividadeAction(id: string, manutencaoId: string) {
 // --- Notas (histórico, timestamp automático, ordem cronológica reversa) ---
 
 export async function adicionarNotaAction(formData: FormData) {
-  await requireAdminSession();
+  await requireEdicao("atividades");
 
   const manutencaoId = texto(formData, "manutencaoId");
   const textoNota = texto(formData, "texto");
@@ -307,7 +307,7 @@ export type NotaManutencao = { id: string; texto: string; criadoEm: string };
 
 // Campos que a etiqueta edita direto (salvamento automático).
 export async function salvarCampoManutencaoAction(id: string, campo: string, valor: string | null): Promise<ResultadoMan> {
-  const sessao = await requireAdminSession();
+  const sessao = await requireEdicao("atividades");
   try {
     const v = (valor ?? "").trim() || null;
     let dados: Record<string, unknown>;
@@ -363,7 +363,7 @@ export async function adicionarNotaRapidaAction(
   id: string,
   textoNota: string
 ): Promise<{ ok: true; nota: NotaManutencao } | { ok: false; erro: string }> {
-  await requireAdminSession();
+  await requireEdicao("atividades");
   const t = textoNota.trim();
   if (!t) return { ok: false, erro: "Escreva o texto da nota." };
   try {
@@ -379,7 +379,7 @@ export async function registrarContatoManutencaoAction(
   id: string,
   dados: { para: string; modelo: string; texto: string }
 ): Promise<{ ok: true; nota: NotaManutencao } | { ok: false; erro: string }> {
-  await requireAdminSession();
+  await requireEdicao("atividades");
   try {
     const texto = `📱 WhatsApp enviado — Para: ${dados.para}\nModelo: ${dados.modelo}\n${dados.texto}`;
     return { ok: true, nota: await criarNota(id, texto) };
@@ -401,7 +401,7 @@ export async function adicionarChecklistRapidoAction(
   id: string,
   label: string
 ): Promise<{ ok: true; item: ItemChecklistMan } | { ok: false; erro: string }> {
-  await requireAdminSession();
+  await requireEdicao("atividades");
   const l = label.trim();
   if (!l) return { ok: false, erro: "Informe o item do checklist." };
   try {
@@ -414,7 +414,7 @@ export async function adicionarChecklistRapidoAction(
 }
 
 export async function marcarChecklistRapidoAction(itemId: string, done: boolean): Promise<ResultadoMan> {
-  await requireAdminSession();
+  await requireEdicao("atividades");
   try {
     await prisma.manutencao_checklist_itens.update({ where: { id: itemId }, data: { done } });
     return { ok: true };
@@ -424,7 +424,7 @@ export async function marcarChecklistRapidoAction(itemId: string, done: boolean)
 }
 
 export async function removerChecklistRapidoAction(itemId: string): Promise<ResultadoMan> {
-  await requireAdminSession();
+  await requireEdicao("atividades");
   try {
     await prisma.manutencao_checklist_itens.delete({ where: { id: itemId } });
     return { ok: true };
@@ -437,7 +437,7 @@ export async function criarAtividadeRapidaAction(
   id: string,
   dados: { tipo: string; titulo: string; data: string; notas: string | null }
 ): Promise<{ ok: true; atividade: AtividadeMan } | { ok: false; erro: string }> {
-  await requireAdminSession();
+  await requireEdicao("atividades");
   const titulo = dados.titulo.trim();
   if (!TIPOS_ATIVIDADE.includes(dados.tipo) || !titulo || !/^\d{4}-\d{2}-\d{2}$/.test(dados.data)) {
     return { ok: false, erro: "Tipo, descrição e data são obrigatórios para agendar." };
@@ -453,7 +453,7 @@ export async function criarAtividadeRapidaAction(
 }
 
 export async function marcarAtividadeRapidaAction(atividadeId: string, feito: boolean): Promise<ResultadoMan> {
-  await requireAdminSession();
+  await requireEdicao("atividades");
   try {
     await prisma.manutencao_atividades.update({ where: { id: atividadeId }, data: { feito } });
     return { ok: true };
@@ -463,7 +463,7 @@ export async function marcarAtividadeRapidaAction(atividadeId: string, feito: bo
 }
 
 export async function removerAtividadeRapidaAction(atividadeId: string): Promise<ResultadoMan> {
-  await requireAdminSession();
+  await requireEdicao("atividades");
   try {
     await prisma.manutencao_atividades.delete({ where: { id: atividadeId } });
     return { ok: true };
@@ -508,7 +508,7 @@ export async function buscarCatalogoObraAction(
   categoria: string | null,
   termo: string
 ): Promise<{ itens: ItemCatalogo[]; total: number }> {
-  await requireAdminSession();
+  await requireEdicao("atividades");
   if (!GRUPOS.includes(grupo)) return { itens: [], total: 0 };
   const palavras = termo.trim().split(/\s+/).filter(Boolean).slice(0, 5);
   const where = {
@@ -546,7 +546,7 @@ export async function adicionarItemOrcamentoAction(
     catalogoId: string | null;
   }
 ): Promise<{ ok: true; item: ItemOrcamento } | { ok: false; erro: string }> {
-  await requireAdminSession();
+  await requireEdicao("atividades");
   const descricao = dados.descricao.trim();
   if (!GRUPOS.includes(dados.grupo) || !descricao || !dados.unidade.trim()) {
     return { ok: false, erro: "Informe a descrição e a unidade do item." };
@@ -581,7 +581,7 @@ export async function atualizarItemOrcamentoAction(
   itemId: string,
   patch: { quantidade?: number; valorUnitario?: number; descricao?: string; unidade?: string; fornecedor?: string | null }
 ): Promise<ResultadoMan> {
-  await requireAdminSession();
+  await requireEdicao("atividades");
   const dados: Record<string, unknown> = {};
   if (patch.quantidade !== undefined) {
     if (!(patch.quantidade > 0)) return { ok: false, erro: "A quantidade precisa ser maior que zero." };
@@ -609,7 +609,7 @@ export async function atualizarItemOrcamentoAction(
 }
 
 export async function removerItemOrcamentoAction(itemId: string): Promise<ResultadoMan> {
-  await requireAdminSession();
+  await requireEdicao("atividades");
   try {
     await prisma.manutencao_orcamento_itens.delete({ where: { id: itemId } });
     return { ok: true };
@@ -635,7 +635,7 @@ const dataValida = (v: string | null | undefined) => (v && /^\d{4}-\d{2}-\d{2}$/
 
 // quem_arca / quem_paga / obs do plano de pagamento.
 export async function salvarPagamentoCampoAction(id: string, campo: string, valor: string | null): Promise<ResultadoMan> {
-  await requireAdminSession();
+  await requireEdicao("atividades");
   const v = (valor ?? "").trim() || null;
   let dados: Record<string, unknown>;
   if (campo === "pagamento_quem_arca") {
@@ -661,7 +661,7 @@ export async function adicionarLinhaPagamentoAction(
   id: string,
   dados: { descricao: string; forma: string; valor: number; vencimento: string | null }
 ): Promise<{ ok: true; linha: LinhaPagamento } | { ok: false; erro: string }> {
-  await requireAdminSession();
+  await requireEdicao("atividades");
   if (!dados.descricao.trim() || !FORMAS_PAGAMENTO.some((f) => f.valor === dados.forma)) {
     return { ok: false, erro: "Informe a descrição e a forma de pagamento." };
   }
@@ -681,7 +681,7 @@ export async function atualizarLinhaPagamentoAction(
   linhaId: string,
   patch: { descricao?: string; forma?: string; valor?: number; vencimento?: string | null; pagoEm?: string | null }
 ): Promise<ResultadoMan> {
-  await requireAdminSession();
+  await requireEdicao("atividades");
   const dados: Record<string, unknown> = {};
   if (patch.descricao !== undefined) {
     if (!patch.descricao.trim()) return { ok: false, erro: "A descrição não pode ficar vazia." };
@@ -706,7 +706,7 @@ export async function atualizarLinhaPagamentoAction(
 }
 
 export async function removerLinhaPagamentoAction(linhaId: string): Promise<ResultadoMan> {
-  await requireAdminSession();
+  await requireEdicao("atividades");
   try {
     await prisma.manutencao_pagamento_linhas.delete({ where: { id: linhaId } });
     return { ok: true };
@@ -720,7 +720,7 @@ export async function gerarParcelasPagamentoAction(
   id: string,
   dados: { descricao: string; forma: string; total: number; parcelas: number; primeiroVencimento: string }
 ): Promise<{ ok: true; linhas: LinhaPagamento[] } | { ok: false; erro: string }> {
-  await requireAdminSession();
+  await requireEdicao("atividades");
   if (!dados.descricao.trim() || !FORMAS_PAGAMENTO.some((f) => f.valor === dados.forma)) {
     return { ok: false, erro: "Informe a descrição e a forma de pagamento." };
   }

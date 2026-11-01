@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { signSession, verifySession, sessaoExpiradaPeloResetDiario } from "@/lib/session";
+import { acessosDaSessao, nivelEmModulos, type ModuloId } from "@/lib/acessos";
 import { checarBloqueioLogin, registrarTentativaFalha, limparTentativas } from "@/lib/rate-limit";
 
 const ADMIN_COOKIE = "sis_admin_session";
@@ -46,7 +47,10 @@ export function idsAcessoCompletoFixo(): string[] {
 export type AdminSession = {
   parceiroId: string;
   nome: string;
+  // isAdm = é Diretor (acesso a tudo, inclusive Configurações).
   isAdm: boolean;
+  // Papéis gravados no login (ver lib/acessos.ts). Sessões antigas não têm.
+  acessos?: string[];
   iat: number;
   exp: number;
 };
@@ -150,6 +154,16 @@ export async function requireAdminSession(): Promise<AdminSession> {
   return session;
 }
 
+// Exige permissão de EDIÇÃO em um (ou, se vários, em algum) módulo. Usado no
+// começo das Server Actions de cada área: quem só pode consultar (ex.: o
+// Administrativo no Financeiro) é mandado de volta ao Dashboard com aviso.
+export async function requireEdicao(modulos: ModuloId | ModuloId[]): Promise<AdminSession> {
+  const session = await requireAdminSession();
+  const lista = Array.isArray(modulos) ? modulos : [modulos];
+  if (nivelEmModulos(acessosDaSessao(session), lista) !== "editar") redirect("/dashboard?negado=1");
+  return session;
+}
+
 export async function requireAdm(): Promise<AdminSession> {
   const session = await requireAdminSession();
   if (!session.isAdm) redirect("/dashboard");
@@ -235,10 +249,14 @@ export async function loginAdmin(email: string, senha: string): Promise<LoginRes
 
 async function concederAcesso(parceiroId: string, nome: string): Promise<LoginResult> {
   const now = Date.now();
+  const cadastro = await prisma.parceiros.findUnique({ where: { id: parceiroId }, select: { acessos: true } });
+  const acessosDoCadastro = cadastro?.acessos ?? [];
+  const isAdm = (await isAdmDoParceiro(parceiroId)) || acessosDoCadastro.includes("diretor");
   const payload: AdminSession = {
     parceiroId,
     nome,
-    isAdm: await isAdmDoParceiro(parceiroId),
+    isAdm,
+    acessos: acessosDoCadastro,
     iat: now,
     exp: now + SESSION_TTL_MS
   };

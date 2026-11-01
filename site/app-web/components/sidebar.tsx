@@ -4,20 +4,21 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { NAV_ITEMS } from "@/lib/nav";
+import { podeVerRotaDoMenu, type AcessoEfetivo } from "@/lib/acessos";
 
 // Menu do sistema interno (ADM). Em telas md+ fica fixo do lado esquerdo,
 // igual sempre foi. Abaixo de md vira uma barra fina com botão de menu (☰)
 // que abre um painel deslizante por cima do conteúdo — antes disso o menu
 // ficava sempre visível com largura fixa, espremendo qualquer tela de
 // celular.
-export function Sidebar() {
+export function Sidebar({ acessos }: { acessos: AcessoEfetivo[] | null }) {
   const pathname = usePathname();
   const [aberto, setAberto] = useState(false);
 
   function Links({ onNavigate }: { onNavigate?: () => void }) {
     return (
       <>
-        {NAV_ITEMS.map((item) => {
+        {NAV_ITEMS.filter((item) => !acessos || podeVerRotaDoMenu(acessos, item.href)).map((item) => {
           const active = pathname?.startsWith(item.href);
           return (
             <Link

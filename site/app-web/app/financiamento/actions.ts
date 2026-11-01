@@ -5,7 +5,7 @@ import { respostaParaBooleano } from "@/lib/financiamento/avaliacao-credito";
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { requireAdminSession, requireAdm, logAlteracao } from "@/lib/auth";
+import { requireAdm, logAlteracao, requireEdicao } from "@/lib/auth";
 import { registrarEJogarErro } from "@/lib/erros";
 import { valorEditavelParaDecimal } from "@/lib/format";
 import { enviarEmail } from "@/lib/email";
@@ -207,7 +207,7 @@ function camposAvaliacao(formData: FormData, clienteId: string | null) {
 export async function prepararUploadImagemConsultaAction(
   nomeArquivo: string
 ): Promise<{ ok: true; caminho: string; token: string } | { ok: false; erro: string }> {
-  await requireAdminSession();
+  await requireEdicao("financiamento");
   try {
     const { caminho, token } = await criarUploadAssinadoImagemConsulta(nomeArquivo);
     return { ok: true, caminho, token };
@@ -244,7 +244,7 @@ async function sufixoDaFicha(): Promise<string> {
 }
 
 export async function criarAvaliacaoAction(formData: FormData) {
-  await requireAdminSession();
+  await requireEdicao("financiamento");
 
   const parceiroId = texto(formData, "parceiro_id");
   const telefone = somenteDigitos(formData, "telefone");
@@ -283,7 +283,7 @@ export async function criarAvaliacaoAction(formData: FormData) {
 }
 
 export async function atualizarAvaliacaoAction(formData: FormData) {
-  await requireAdminSession();
+  await requireEdicao("financiamento");
 
   const id = texto(formData, "avaliacaoId");
   if (!id) throw new Error("Avaliação inválida.");
@@ -363,7 +363,7 @@ export async function apagarAvaliacaoAction(formData: FormData) {
 // 02/08/2026. Botão manual (não automático): o admin decide quando mandar,
 // depois de conferir que a imagem certa foi enviada.
 export async function enviarImagemConsultaCorretorAction(formData: FormData) {
-  await requireAdminSession();
+  await requireEdicao("financiamento");
 
   const avaliacaoId = texto(formData, "avaliacaoId");
   if (!avaliacaoId) throw new Error("Avaliação inválida.");
@@ -516,7 +516,7 @@ async function sincronizarStatusAvaliacao(avaliacaoId: string, statusAndamento: 
 }
 
 export async function criarAndamentoAction(formData: FormData) {
-  await requireAdminSession();
+  await requireEdicao("financiamento");
 
   const avaliacaoId = texto(formData, "avaliacaoId");
   if (!avaliacaoId) throw new Error("Avaliação inválida.");
@@ -542,7 +542,7 @@ export async function criarAndamentoAction(formData: FormData) {
 }
 
 export async function atualizarAndamentoAction(formData: FormData) {
-  await requireAdminSession();
+  await requireEdicao("financiamento");
 
   const id = texto(formData, "andamentoId");
   if (!id) throw new Error("Andamento inválido.");
@@ -607,7 +607,7 @@ export async function apagarAndamentoAction(formData: FormData) {
 // quem veio sem id é criado. Evita precisar de uma Server Action separada
 // pra cada linha só pra adicionar/remover/editar um lançamento.
 export async function sincronizarLancamentosAction(formData: FormData) {
-  await requireAdminSession();
+  await requireEdicao("financiamento");
 
   const andamentoId = texto(formData, "andamentoId");
   if (!andamentoId) throw new Error("Andamento inválido.");

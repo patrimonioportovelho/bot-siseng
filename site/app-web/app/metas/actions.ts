@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { requireAdminSession, requireAdm, logAlteracao } from "@/lib/auth";
+import { requireAdm, logAlteracao, requireEdicao } from "@/lib/auth";
 import { valorEditavelParaDecimal } from "@/lib/format";
 import { registrarEJogarErro } from "@/lib/erros";
 import { TIPOS_META } from "@/lib/metas/opcoes";
@@ -50,7 +50,7 @@ function camposEditaveis(formData: FormData) {
 }
 
 export async function criarMetaAction(formData: FormData) {
-  await requireAdminSession();
+  await requireEdicao("metas");
 
   // Loja obrigatória em toda meta nova (pedido do usuário em 01/08/2026) —
   // antes era opcional ("Todas as lojas"); essa opção deixou de existir.
@@ -79,7 +79,7 @@ export async function criarMetaAction(formData: FormData) {
 }
 
 export async function atualizarMetaAction(formData: FormData) {
-  await requireAdminSession();
+  await requireEdicao("metas");
 
   const id = texto(formData, "metaId");
   if (!id) throw new Error("Meta inválida.");

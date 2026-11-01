@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { requireAdminSession, requireAdm, logAlteracao } from "@/lib/auth";
+import { requireAdm, logAlteracao, requireEdicao } from "@/lib/auth";
 import { valorEditavelParaDecimal } from "@/lib/format";
 import { registrarEJogarErro } from "@/lib/erros";
 
@@ -123,7 +123,7 @@ async function sincronizarProprietarios(imovelId: string, formData: FormData) {
 }
 
 export async function criarImovelAction(formData: FormData) {
-  await requireAdminSession();
+  await requireEdicao("imoveis");
 
   // Loja obrigatória em todo cadastro novo (pedido do usuário em
   // 01/08/2026) — dá suporte ao filtro de loja no Topbar. Cadastro já
@@ -154,7 +154,7 @@ export async function criarImovelAction(formData: FormData) {
 }
 
 export async function atualizarImovelAction(formData: FormData) {
-  await requireAdminSession();
+  await requireEdicao("imoveis");
 
   const id = texto(formData, "imovelId");
   if (!id) throw new Error("Imóvel inválido.");

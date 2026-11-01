@@ -1,6 +1,7 @@
 "use client";
 
 import { memo, useCallback, useMemo, useState } from "react";
+import { DockArraste, useAutoRolagemArraste } from "@/components/dock-arraste";
 import Link from "next/link";
 import {
   COLUNAS_KANBAN,
@@ -120,6 +121,8 @@ export function ManutencaoKanban({
     desde: new Date().toISOString()
   }));
   const [arrastandoId, setArrastandoId] = useState<string | null>(null);
+  // rolagem automática do quadro enquanto o card é arrastado até a borda
+  useAutoRolagemArraste(arrastandoId !== null);
   const [colunaAlvo, setColunaAlvo] = useState<string | null>(null);
   const [busca, setBusca] = useState("");
   const [urgencia, setUrgencia] = useState("");
@@ -295,6 +298,7 @@ export function ManutencaoKanban({
         </span>
       </div>
 
+      <DockArraste ativo={arrastandoId !== null} colunas={COLUNAS_KANBAN} aoSoltar={(id) => aoSoltar(id)} />
       <div className="flex flex-col md:flex-row gap-3 md:overflow-x-auto pb-2">
         {COLUNAS_KANBAN.map((coluna) => {
           const lista = porColuna.get(coluna.id) ?? [];

@@ -1,6 +1,7 @@
 "use client";
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { DockArraste, useAutoRolagemArraste } from "@/components/dock-arraste";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { COLUNAS_FIN, COLUNA_FIN_POR_ID, ENCERRAMENTOS, situacaoSla, type ColunaFinId } from "@/lib/financiamento/quadro";
@@ -84,6 +85,8 @@ export function FinanciamentoKanban({
   }, [cardsServidor]);
 
   const [arrastandoId, setArrastandoId] = useState<string | null>(null);
+  // rolagem automática do quadro enquanto o card é arrastado até a borda
+  useAutoRolagemArraste(arrastandoId !== null);
   const [colunaAlvo, setColunaAlvo] = useState<ColunaFinId | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [busca, setBusca] = useState("");
@@ -267,6 +270,7 @@ export function FinanciamentoKanban({
         </div>
       )}
 
+      <DockArraste ativo={arrastandoId !== null} colunas={COLUNAS_FIN.map((c) => ({ id: c.id, label: c.label, cor: c.cor }))} aoSoltar={(id) => aoSoltar(id as ColunaFinId)} />
       <div className="flex flex-col md:flex-row gap-3 md:overflow-x-auto pb-2">
         {colunasVisiveis.map((coluna) => {
           const doGrupo = filtrados.filter((c) => c.coluna === coluna.id);

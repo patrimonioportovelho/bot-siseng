@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { DockArraste, useAutoRolagemArraste } from "@/components/dock-arraste";
 import Link from "next/link";
 import { formatMoeda } from "@/lib/format";
 import { COLUNAS_KANBAN, CHAVE_POSSE_LABEL } from "@/lib/gestoes/opcoes";
@@ -29,6 +30,8 @@ export function GestaoKanban({
   // O card muda de coluna na hora; o servidor grava em segundo plano.
   const { itens: gestoes, moverPara, erro, limparErro } = useQuadroOtimista(gestoesServidor, moverColuna);
   const [arrastandoId, setArrastandoId] = useState<string | null>(null);
+  // rolagem automática do quadro enquanto o card é arrastado até a borda
+  useAutoRolagemArraste(arrastandoId !== null);
   const [colunaAlvo, setColunaAlvo] = useState<string | null>(null);
 
   function onDrop(coluna: string) {
@@ -55,6 +58,7 @@ export function GestaoKanban({
           </button>
         </div>
       )}
+    <DockArraste ativo={arrastandoId !== null} colunas={COLUNAS_KANBAN} aoSoltar={(id) => onDrop(id)} />
     <div className="flex flex-col md:flex-row gap-3 md:overflow-x-auto pb-2">
       {COLUNAS_KANBAN.map((coluna) => {
         const gestoesColuna = porColuna.get(coluna.id) ?? [];

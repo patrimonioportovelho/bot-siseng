@@ -1,6 +1,7 @@
 "use client";
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { DockArraste, useAutoRolagemArraste } from "@/components/dock-arraste";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { COLUNAS, MOTIVOS_DESISTENCIA, type ColunaId } from "@/lib/recrutamento/opcoes";
@@ -95,6 +96,8 @@ export function RecrutamentoKanban({
     if (pendentes.current === 0) setCards(cardsServidor);
   }, [cardsServidor]);
   const [arrastandoId, setArrastandoId] = useState<string | null>(null);
+  // rolagem automática do quadro enquanto o card é arrastado até a borda
+  useAutoRolagemArraste(arrastandoId !== null);
   const [colunaAlvo, setColunaAlvo] = useState<ColunaId | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [busca, setBusca] = useState("");
@@ -255,6 +258,7 @@ export function RecrutamentoKanban({
       )}
 
       {/* Quadro */}
+      <DockArraste ativo={arrastandoId !== null} colunas={COLUNAS.map((c) => ({ id: c.id, label: c.label, cor: c.cor }))} aoSoltar={(id) => aoSoltar(id as ColunaId)} />
       <div className="flex flex-col md:flex-row gap-3 md:overflow-x-auto pb-2">
         {COLUNAS.map((coluna) => {
           const doGrupo = filtrados.filter((c) => c.coluna === coluna.id);

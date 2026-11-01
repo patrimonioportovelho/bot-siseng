@@ -9,6 +9,7 @@ import { TIPO_ATIVIDADE_LABEL as TIPO_ATIVIDADE_LABEL_GESTAO } from "@/lib/gesto
 import { TIPO_ATIVIDADE_LABEL as TIPO_ATIVIDADE_LABEL_MARKETING } from "@/lib/marketing/opcoes";
 import { lojasSelecionadas } from "@/lib/lojas/filtro";
 import { ocorrenciasNoIntervalo } from "@/lib/eventos/ocorrencias";
+import { aniversariantesClientes, aniversariantesParceiros, coberturaDatasNascimento, tituloAniversario } from "@/lib/aniversarios";
 
 export const dynamic = "force-dynamic";
 
@@ -28,9 +29,11 @@ function parseMes(mes: string | undefined): { ano: number; mesIndice: number } {
 export default async function ManutencaoCalendarioPage({
   searchParams
 }: {
-  searchParams: Promise<{ mes?: string }>;
+  searchParams: Promise<{ mes?: string; aniv?: string }>;
 }) {
-  const { mes } = await searchParams;
+  const { mes, aniv } = await searchParams;
+  // ?aniv=0 esconde os aniversários (por padrão aparecem)
+  const mostrarAniversarios = aniv !== "0";
   const { ano, mesIndice } = parseMes(mes);
 
   const inicioMes = new Date(ano, mesIndice, 1);
@@ -40,7 +43,7 @@ export default async function ManutencaoCalendarioPage({
   const lojasFiltro = await lojasSelecionadas();
   const filtroLojaImovel = { OR: [{ loja_id: { in: lojasFiltro } }, { loja_id: null }] };
 
-  const [atividadesManutencao, atividadesGestao, atividadesMarketing, eventos] = await Promise.all([
+  const [atividadesManutencao, atividadesGestao, atividadesMarketing, eventos, clientesAniv, parceirosAniv, cobertura] = await Promise.all([
     prisma.manutencao_atividades.findMany({
       where: {
         data: { gte: inicioMes, lt: fimMes },
@@ -90,10 +93,26 @@ export default async function ManutencaoCalendarioPage({
           { recorrencia: { not: "Nenhuma" }, data_inicio: { lt: fimMes }, recorrencia_ate: { gte: inicioMes } }
         ]
       }
-    })
+    }),
+    // Aniversários: todos os Clientes e Parceiros ativos com data de nascimento
+    // cadastrada (únicas fontes no sistema), respeitando o filtro de Loja.
+    mostrarAniversarios ? aniversariantesClientes({ ano, mesIndice, lojas: lojasFiltro }) : Promise.resolve([]),
+    mostrarAniversarios ? aniversariantesParceiros({ ano, mesIndice, lojas: lojasFiltro }) : Promise.resolve([]),
+    coberturaDatasNascimento({ incluirParceiros: true })
   ]);
 
   const agora = hojePortoVelho();
+
+  const itensAniversarios = [...clientesAniv, ...parceirosAniv].map((a) => ({
+    id: `aniversario-${a.tipo}-${a.id}`,
+    tipoLabel: a.tipo === "cliente" ? "Aniversário · Cliente" : "Aniversário · Parceiro",
+    titulo: tituloAniversario(a, ano),
+    data: new Date(ano, mesIndice, a.dia),
+    feito: false,
+    href: a.tipo === "cliente" ? `/clientes/${a.id}` : `/parceiros/${a.id}`,
+    contexto: a.tipo === "cliente" ? "Cliente" : "Parceiro",
+    aniversario: true
+  }));
 
   // Cada evento vira uma "atividade" por ocorrência dentro do mês — únicos
   // dão 1 item, recorrentes podem dar vários (uma por dia/semana/mês em que
@@ -114,6 +133,7 @@ export default async function ManutencaoCalendarioPage({
 
   const atividades = [
     ...itensEventos,
+    ...itensAniversarios,
     ...atividadesManutencao.map((a) => ({
       id: `manutencao-${a.id}`,
       tipoLabel: TIPO_ATIVIDADE_LABEL_MANUTENCAO[a.tipo] ?? a.tipo,
@@ -158,19 +178,19 @@ export default async function ManutencaoCalendarioPage({
       <Topbar />
 
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-        <div className="text-sm font-bold text-gray-800">Atividades · Manutenção, Gestões, Marketing &amp; Eventos</div>
+        <div className="text-sm font-bold text-gray-800">Atividades · Manutenção, Gestões, Marketing, Eventos &amp; Aniversários</div>
         <AtividadesTabs ativo="/manutencao/calendario" />
       </div>
 
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <div className="flex gap-2">
-          <Link href={`/manutencao/calendario?mes=${mesAnteriorTexto}`} className="text-xs border border-gray-300 bg-white rounded-lg px-3 py-1.5">
+          <Link href={`/manutencao/calendario?mes=${mesAnteriorTexto}${mostrarAniversarios ? "" : "&aniv=0"}`} className="text-xs border border-gray-300 bg-white rounded-lg px-3 py-1.5">
             ← Anterior
           </Link>
-          <Link href={`/manutencao/calendario?mes=${mesHojeTexto}`} className="text-xs border border-gray-300 bg-white rounded-lg px-3 py-1.5">
+          <Link href={`/manutencao/calendario?mes=${mesHojeTexto}${mostrarAniversarios ? "" : "&aniv=0"}`} className="text-xs border border-gray-300 bg-white rounded-lg px-3 py-1.5">
             Hoje
           </Link>
-          <Link href={`/manutencao/calendario?mes=${mesSeguinteTexto}`} className="text-xs border border-gray-300 bg-white rounded-lg px-3 py-1.5">
+          <Link href={`/manutencao/calendario?mes=${mesSeguinteTexto}${mostrarAniversarios ? "" : "&aniv=0"}`} className="text-xs border border-gray-300 bg-white rounded-lg px-3 py-1.5">
             Próximo →
           </Link>
         </div>
@@ -179,7 +199,26 @@ export default async function ManutencaoCalendarioPage({
         </div>
       </div>
 
+      <div className="flex items-center justify-between gap-2 flex-wrap mb-3 text-[11px] text-gray-500">
+        <span>
+          <span className="inline-block w-2.5 h-2.5 rounded-sm bg-pink-100 border border-pink-200 align-middle mr-1" />
+          🎂 Aniversários de clientes e parceiros ({clientesAniv.length + parceirosAniv.length} neste mês)
+        </span>
+        <Link
+          href={`/manutencao/calendario?mes=${ano}-${String(mesIndice + 1).padStart(2, "0")}${mostrarAniversarios ? "&aniv=0" : ""}`}
+          className="underline text-gray-400 hover:text-gray-700"
+        >
+          {mostrarAniversarios ? "ocultar aniversários" : "mostrar aniversários"}
+        </Link>
+      </div>
+
       <ManutencaoCalendario ano={ano} mesIndice={mesIndice} atividades={atividades} />
+
+      <p className="text-[11px] text-gray-400 mt-3">
+        Só aparece quem tem data de nascimento no cadastro: {cobertura.clientes.com} de {cobertura.clientes.total} clientes e{" "}
+        {cobertura.parceiros?.com ?? 0} de {cobertura.parceiros?.total ?? 0} parceiros ativos. Para incluir alguém, preencha a data de
+        nascimento na ficha.
+      </p>
     </div>
   );
 }

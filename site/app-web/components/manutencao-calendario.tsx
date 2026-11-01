@@ -18,6 +18,8 @@ type Atividade = {
   contexto: string;
   cancelado?: boolean;
   canceladoMotivo?: string | null;
+  // aniversário de cliente/parceiro: cor própria e nunca "atrasado"
+  aniversario?: boolean;
 };
 
 const DIAS_SEMANA = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
@@ -27,6 +29,7 @@ function mesmoDia(a: Date, b: Date): boolean {
 }
 
 function corBadgeAtividade(a: Atividade, atrasada: boolean): string {
+  if (a.aniversario) return "bg-pink-50 text-pink-700 border-pink-200";
   if (a.cancelado) return "bg-red-50 text-red-500 border-red-200 line-through";
   if (atrasada) return "bg-[#B14226]/10 text-[#B14226] border-[#B14226]/30 font-semibold";
   if (a.feito) return "bg-[#3C7A57]/10 text-[#3C7A57] border-[#3C7A57]/30";
@@ -90,7 +93,7 @@ export function ManutencaoCalendario({
               <div className="flex-1 min-w-0 flex flex-col gap-1 py-1">
                 {atividadesDoDia.length === 0 && <div className="text-[11px] text-gray-300">—</div>}
                 {atividadesDoDia.map((a) => {
-                  const atrasada = !a.feito && !a.cancelado && dia < hoje;
+                  const atrasada = !a.aniversario && !a.feito && !a.cancelado && dia < hoje;
                   const titulo = a.hora ? `${a.hora} ${a.titulo}` : a.titulo;
                   return (
                     <Link
@@ -141,7 +144,7 @@ export function ManutencaoCalendario({
               </span>
               <div className="flex flex-col gap-1">
                 {atividadesDoDia.map((a) => {
-                  const atrasada = !a.feito && !a.cancelado && dia < hoje;
+                  const atrasada = !a.aniversario && !a.feito && !a.cancelado && dia < hoje;
                   // hora avulsa (16/08/2026) — pedido do usuário: "para que
                   // se veja os horarios juntamente com o dia e a OM". Some
                   // do texto quando a atividade não tem horário definido.

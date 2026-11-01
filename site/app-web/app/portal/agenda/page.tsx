@@ -9,6 +9,7 @@ import { TIPO_ATIVIDADE_LABEL as TIPO_ATIVIDADE_LABEL_GESTAO } from "@/lib/gesto
 import { TIPO_ATIVIDADE_LABEL as TIPO_ATIVIDADE_LABEL_MARKETING, TIPOS_MATERIAL } from "@/lib/marketing/opcoes";
 import { BotaoSubmit } from "@/components/botao-submit";
 import { ocorrenciasNoIntervalo } from "@/lib/eventos/ocorrencias";
+import { aniversariantesClientes, coberturaDatasNascimento, tituloAniversario } from "@/lib/aniversarios";
 import { podeVerEvento } from "@/lib/eventos/opcoes";
 import { criarSolicitacaoAgendaAction, cancelarSolicitacaoAgendaCorretorAction, reagendarSolicitacaoAgendaCorretorAction } from "./actions";
 
@@ -59,7 +60,7 @@ export default async function PortalAgendaPage({
   const inicioMes = new Date(ano, mesIndice, 1);
   const fimMes = new Date(ano, mesIndice + 1, 1);
 
-  const [atividadesMarketing, atividadesGestao, atividadesManutencao, solicitacoes, meusImoveis, parceiro, eventos] = await Promise.all([
+  const [atividadesMarketing, atividadesGestao, atividadesManutencao, solicitacoes, meusImoveis, parceiro, eventos, clientesAniv, cobertura] = await Promise.all([
     // Editorial do Marketing — qualquer marketing_atividades já É um
     // compromisso com data real (é uma atividade explicitamente agendada,
     // não um prazo solto). Antes isso excluía coluna "recebido"/"aguardando
@@ -114,7 +115,10 @@ export default async function PortalAgendaPage({
           { recorrencia: { not: "Nenhuma" }, data_inicio: { lt: fimMes }, recorrencia_ate: { gte: inicioMes } }
         ]
       }
-    })
+    }),
+    // Aniversários dos clientes DESTE corretor (só os dele, só leitura).
+    aniversariantesClientes({ ano, mesIndice, parceiroId: session.parceiroId }),
+    coberturaDatasNascimento({ parceiroId: session.parceiroId })
   ]);
 
   const eventosVisiveis = eventos.filter((ev) => podeVerEvento(ev.visibilidade, parceiro?.funcao ?? null));
@@ -129,8 +133,18 @@ export default async function PortalAgendaPage({
     }))
   );
 
+  const itensAniversarios = clientesAniv.map((a) => ({
+    id: `aniv-${a.id}`,
+    tipoLabel: "Aniversário de cliente",
+    titulo: tituloAniversario(a, ano),
+    data: new Date(ano, mesIndice, a.dia),
+    contexto: "Seu cliente",
+    cor: "rosa" as const
+  }));
+
   const itens = [
     ...itensEventos,
+    ...itensAniversarios,
     ...atividadesMarketing.map((a) => ({
       id: `mkt-${a.id}`,
       tipoLabel: TIPO_ATIVIDADE_LABEL_MARKETING[a.tipo] ?? a.tipo,
@@ -183,7 +197,7 @@ export default async function PortalAgendaPage({
         <div className="text-lg font-bold text-gray-900 mb-1">Agenda</div>
         <p className="text-xs text-gray-500 mb-6">
           Acompanhe as atividades já confirmadas do escritório (Marketing, suas Gestões, Manutenções dos seus
-          imóveis e os Eventos abertos pra você). Pra marcar algo novo, use "Solicitar atividade" abaixo — o setor
+          imóveis e os Eventos abertos pra você) e os aniversários dos seus clientes. Pra marcar algo novo, use "Solicitar atividade" abaixo — o setor
           responde e confirma o horário.
         </p>
 
@@ -205,6 +219,10 @@ export default async function PortalAgendaPage({
         </div>
 
         <PortalAgendaCalendario ano={ano} mesIndice={mesIndice} itens={itens} />
+        <p className="text-[11px] text-gray-400 mt-2">
+          🎂 Aniversários dos seus clientes ({clientesAniv.length} neste mês). Aparecem os clientes que têm data de nascimento no cadastro:{" "}
+          {cobertura.clientes.com} de {cobertura.clientes.total} dos seus.
+        </p>
 
         <div className="grid md:grid-cols-2 gap-4 mt-5">
           <div className="bg-white border border-gray-200 rounded-xl p-4">

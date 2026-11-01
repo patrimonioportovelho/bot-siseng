@@ -77,6 +77,16 @@ export default async function RecrutamentoPage() {
     .map((p) => ({ p, coluna: colunaDoParceiro(p, p.recrutamento?.etapa) }))
     .filter((x): x is { p: (typeof parceiros)[number]; coluna: NonNullable<ReturnType<typeof colunaDoParceiro>> } => x.coluna !== null);
 
+  // Ordem dos cards em cada coluna: cadastro mais recente em cima; no mesmo dia
+  // (dia de Porto Velho, UTC-4 fixo), ordem alfabética pelo nome.
+  const diaCadastro = (d: Date) => new Date(d.getTime() - 4 * 3600000).toISOString().slice(0, 10);
+  comColuna.sort((x, y) => {
+    const dx = diaCadastro(x.p.created_at);
+    const dy = diaCadastro(y.p.created_at);
+    if (dx !== dy) return dx < dy ? 1 : -1;
+    return x.p.nome.localeCompare(y.p.nome, "pt-BR", { sensitivity: "base" });
+  });
+
   const idsEquipe = comColuna.filter((x) => x.coluna === "estagiario" || x.coluna === "corretor").map((x) => x.p);
   const metricas = await buscarMetricasCorretores(idsEquipe.map((p) => ({ id: p.id, data_entrada: p.data_entrada })));
 

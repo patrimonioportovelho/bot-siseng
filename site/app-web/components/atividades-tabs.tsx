@@ -5,11 +5,12 @@ import Link from "next/link";
 // módulos juntos — por isso só existe uma rota de Calendário e uma de Painel
 // (dentro de /manutencao por herança histórica, mas já trazem atividades de
 // Gestões e Marketing também).
+// O Calendário vem primeiro (é a tela de abertura de Atividades), depois os quadros.
 const TABS = [
+  { href: "/manutencao/calendario", label: "Calendário" },
   { href: "/manutencao", label: "Quadro · Manutenção" },
   { href: "/gestoes", label: "Quadro · Gestões" },
   { href: "/marketing", label: "Quadro · Marketing" },
-  { href: "/manutencao/calendario", label: "Calendário" },
   { href: "/manutencao/painel", label: "Painel" }
 ];
 

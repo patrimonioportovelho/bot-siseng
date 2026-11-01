@@ -1,6 +1,8 @@
 export type NavItem = {
   label: string;
   href: string;
+  // rotas que também deixam este item destacado no menu (além do próprio href)
+  ativoEm?: string[];
 };
 
 // Ordem espelha a navegação real do AppSheet (Parceiro, Clientes, Imóveis,
@@ -10,7 +12,8 @@ export type NavItem = {
 // misturado numa página só ficava difícil de bater o olho.
 export const NAV_ITEMS: NavItem[] = [
   { label: "Dashboard", href: "/dashboard" },
-  { label: "Atividades", href: "/manutencao" },
+  // Atividades abre no Calendário; os quadros (Manutenção, Gestões) e o Painel ficam dentro dela.
+  { label: "Atividades", href: "/manutencao/calendario", ativoEm: ["/manutencao", "/gestoes"] },
   { label: "Marketing", href: "/marketing" },
   { label: "Parceiros", href: "/parceiros" },
   { label: "Recrutamento", href: "/recrutamento" },

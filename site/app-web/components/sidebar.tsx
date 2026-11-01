@@ -19,7 +19,7 @@ export function Sidebar({ acessos }: { acessos: AcessoEfetivo[] | null }) {
     return (
       <>
         {NAV_ITEMS.filter((item) => !acessos || podeVerRotaDoMenu(acessos, item.href)).map((item) => {
-          const active = pathname?.startsWith(item.href);
+          const active = (item.ativoEm ?? [item.href]).some((p) => pathname?.startsWith(p));
           return (
             <Link
               key={item.href}

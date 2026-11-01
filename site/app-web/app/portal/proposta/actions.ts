@@ -51,6 +51,7 @@ type ClienteDigitado = {
   cidadeId: string;
   nomeMae: string;
   nomePai: string;
+  dataNascimento: string;
   estadoCivil: string;
   uniaoEstavel: string;
   profissao: string;
@@ -92,6 +93,7 @@ function parseCliente(formData: FormData): ClienteDigitado | null {
       cidadeId: String(c?.cidadeId ?? "").trim(),
       nomeMae: String(c?.nomeMae ?? "").trim(),
       nomePai: String(c?.nomePai ?? "").trim(),
+      dataNascimento: String(c?.dataNascimento ?? "").trim(),
       estadoCivil: String(c?.estadoCivil ?? "").trim(),
       uniaoEstavel: String(c?.uniaoEstavel ?? "").trim(),
       profissao: String(c?.profissao ?? "").trim(),
@@ -194,6 +196,10 @@ async function resolverClienteDaProposta(
     return { ok: false, erro: mensagemClienteDuplicado(duplicado, parceiroId) };
   }
 
+  const dataNascimentoValida = (v: string) => {
+    const d = v ? new Date(`${v}T00:00:00.000Z`) : null;
+    return d && !Number.isNaN(d.getTime()) ? d : null;
+  };
   const doc = digitos(clienteForm.cpfCnpj);
   // tipoCliente é sempre perguntado no formulário agora — o comprimento
   // do documento só entra como reforço pra rascunhos antigos sem o campo.
@@ -220,6 +226,7 @@ async function resolverClienteDaProposta(
         cnpj: ehCnpj ? doc : null,
         nome_mae: !ehCnpj ? clienteForm.nomeMae || null : null,
         nome_pai: !ehCnpj ? clienteForm.nomePai || null : null,
+        data_nascimento: !ehCnpj ? dataNascimentoValida(clienteForm.dataNascimento) : null,
         cep: !ehCnpj ? digitos(clienteForm.cep) : null,
         rua: !ehCnpj ? clienteForm.rua || null : null,
         n_predial: !ehCnpj ? clienteForm.nPredial || null : null,

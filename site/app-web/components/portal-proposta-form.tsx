@@ -39,6 +39,8 @@ type ClienteLinha = {
   cidadeId: string;
   nomeMae: string;
   nomePai: string;
+  // yyyy-mm-dd (opcional) — alimenta o calendário de aniversários
+  dataNascimento: string;
   estadoCivil: string;
   // "" (não perguntado), "true" ou "false" — só perguntado/mostrado quando
   // estadoCivil é um dos que pedem (ver ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL).
@@ -111,6 +113,7 @@ function clienteVazio(): ClienteLinha {
     cidadeId: "",
     nomeMae: "",
     nomePai: "",
+    dataNascimento: "",
     estadoCivil: "",
     uniaoEstavel: "",
     profissao: "",
@@ -581,6 +584,15 @@ export function PortalPropostaForm({
                 <div>
                   <label className={LABEL}>Nome do pai</label>
                   <input className={CAMPO} value={cliente.nomePai} onChange={(e) => atualizarCliente("nomePai", e.target.value)} />
+                </div>
+                <div>
+                  <label className={LABEL}>Data de nascimento</label>
+                  <input
+                    type="date"
+                    className={CAMPO}
+                    value={cliente.dataNascimento ?? ""}
+                    onChange={(e) => atualizarCliente("dataNascimento", e.target.value)}
+                  />
                 </div>
                 <div>
                   <label className={LABEL}>Estado civil</label>

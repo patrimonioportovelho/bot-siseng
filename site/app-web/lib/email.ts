@@ -1,5 +1,14 @@
 import nodemailer from "nodemailer";
 
+// ENVIO DE E-MAIL — dois caminhos (30/10/2026):
+//  1) Resend (preferido), com remetente do domínio do SisEng: usado quando
+//     RESEND_API_KEY está definida. Remetente em EMAIL_FROM (padrão:
+//     "SisEng <avisos@sisengimob.com.br>"; o domínio precisa estar verificado no
+//     Resend). Chamada direta à API REST, sem biblioteca nova.
+//  2) Gmail SMTP (abaixo): continua sendo o caminho quando não há chave do
+//     Resend e também o plano B se o Resend falhar (ex.: domínio ainda não
+//     verificado) — assim nenhum e-mail de aviso se perde durante a migração.
+
 // Envio de email transacional via Gmail SMTP — usado hoje só pela "Elaboração
 // de Compra e Venda" do portal do corretor (lib/erros.ts registra falha
 // técnica igual o resto do sistema, mas o envio de email nunca derruba a
@@ -78,15 +87,57 @@ export type EmailAnexo = {
   content: Buffer;
 };
 
-export type EnviarEmailResultado = { ok: true } | { ok: false; erro: string };
+export type EnviarEmailResultado = { ok: true; via?: "resend" | "gmail" } | { ok: false; erro: string };
 
-export async function enviarEmail(params: {
+type ParametrosEmail = {
   to: string | string[];
   subject: string;
   html: string;
   attachments?: EmailAnexo[];
   replyTo?: string;
-}): Promise<EnviarEmailResultado> {
+};
+
+const REMETENTE_PADRAO_RESEND = "SisEng <avisos@sisengimob.com.br>";
+const ESPERA_ENTRE_TENTATIVAS_MS = [1100, 2500, 5000];
+const dormir = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// Resend: POST /emails. O plano grátis limita a poucas requisições por segundo
+// (HTTP 429) — quando isso acontece, espera e tenta de novo, em vez de perder o
+// e-mail (importante no disparo de convites de evento, que manda vários em fila).
+async function enviarPeloResend(chave: string, params: ParametrosEmail): Promise<EnviarEmailResultado> {
+  const corpo = JSON.stringify({
+    from: process.env.EMAIL_FROM || REMETENTE_PADRAO_RESEND,
+    to: Array.isArray(params.to) ? params.to : [params.to],
+    subject: params.subject,
+    html: params.html,
+    ...(params.replyTo ? { reply_to: params.replyTo } : {}),
+    ...(params.attachments?.length
+      ? { attachments: params.attachments.map((a) => ({ filename: a.filename, content: a.content.toString("base64") })) }
+      : {})
+  });
+
+  let ultimoErro = "";
+  for (let tentativa = 0; tentativa <= ESPERA_ENTRE_TENTATIVAS_MS.length; tentativa++) {
+    try {
+      const r = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${chave}`, "Content-Type": "application/json" },
+        body: corpo
+      });
+      if (r.ok) return { ok: true, via: "resend" };
+      const detalhe = await r.text().catch(() => "");
+      ultimoErro = `Resend ${r.status}: ${detalhe.slice(0, 300)}`;
+      // só vale tentar de novo quando é limite de velocidade (429) ou erro do servidor deles (5xx)
+      if (r.status !== 429 && r.status < 500) break;
+    } catch (e) {
+      ultimoErro = `Resend: ${e instanceof Error ? e.message : String(e)}`;
+    }
+    if (tentativa < ESPERA_ENTRE_TENTATIVAS_MS.length) await dormir(ESPERA_ENTRE_TENTATIVAS_MS[tentativa]);
+  }
+  return { ok: false, erro: ultimoErro || "Falha ao enviar pelo Resend." };
+}
+
+async function enviarPeloGmail(params: ParametrosEmail): Promise<EnviarEmailResultado> {
   const endereco = process.env.GMAIL_USER;
   if (!endereco) {
     return { ok: false, erro: "GMAIL_USER não configurado no .env — veja .env.example." };
@@ -102,8 +153,25 @@ export async function enviarEmail(params: {
       replyTo: params.replyTo,
       attachments: params.attachments?.map((a) => ({ filename: a.filename, content: a.content }))
     });
-    return { ok: true };
+    return { ok: true, via: "gmail" };
   } catch (erro) {
     return { ok: false, erro: erro instanceof Error ? erro.message : String(erro) };
   }
+}
+
+export async function enviarEmail(params: ParametrosEmail): Promise<EnviarEmailResultado> {
+  const chaveResend = process.env.RESEND_API_KEY;
+  if (!chaveResend) return enviarPeloGmail(params);
+
+  const r = await enviarPeloResend(chaveResend, params);
+  if (r.ok) return r;
+  // Plano B: se o Resend recusou (domínio não verificado, chave errada...) e o Gmail está
+  // configurado, entrega por ele e deixa o motivo no log do servidor.
+  console.warn(`[email] ${r.erro} — usando o Gmail como plano B.`);
+  if (process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD) {
+    const g = await enviarPeloGmail(params);
+    if (g.ok) return g;
+    return { ok: false, erro: `${r.erro} | Gmail: ${g.erro}` };
+  }
+  return r;
 }

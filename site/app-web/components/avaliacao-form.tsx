@@ -1184,9 +1184,9 @@ export function AvaliacaoForm({
         </p>
         <div className="grid md:grid-cols-3 gap-3">
           {PERGUNTAS_CREDITO.map((p) => (
-            <div key={p.campo}>
+            <div key={p.campo} className="flex flex-col">
               <label className={LABEL}>{p.pergunta}</label>
-              <select className={CAMPO} name={p.campo} defaultValue={booleanoParaResposta(a?.[p.campo])}>
+              <select className={`${CAMPO} mt-auto`} name={p.campo} defaultValue={booleanoParaResposta(a?.[p.campo])}>
                 <option value="">— Não respondido</option>
                 <option value="sim">{p.sim}</option>
                 <option value="nao">{p.nao}</option>

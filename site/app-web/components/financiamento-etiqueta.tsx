@@ -285,17 +285,20 @@ export function FinanciamentoEtiqueta({
         <p className="text-[11px] text-gray-400 mb-3">Respondidas pelo corretor no portal. Confira com o cliente e corrija aqui, se preciso.</p>
         <div className="grid md:grid-cols-3 gap-3">
           {PERGUNTAS_CREDITO.map((p) => (
-            <div key={p.campo}>
+            // perguntas de 1 e 2 linhas: o campo desce junto (mt-auto) para os três ficarem alinhados
+            <div key={p.campo} className="flex flex-col">
               <Rotulo>{p.pergunta}</Rotulo>
-              <CampoSelectAuto
-                valor={d.respostasCredito[p.campo] || null}
-                vazio="Não respondido"
-                opcoes={[
-                  { valor: "sim", rotulo: p.sim },
-                  { valor: "nao", rotulo: p.nao }
-                ]}
-                salvar={(v) => acoes.salvarRespostaCredito(d.id, p.campo, v)}
-              />
+              <div className="mt-auto">
+                <CampoSelectAuto
+                  valor={d.respostasCredito[p.campo] || null}
+                  vazio="Não respondido"
+                  opcoes={[
+                    { valor: "sim", rotulo: p.sim },
+                    { valor: "nao", rotulo: p.nao }
+                  ]}
+                  salvar={(v) => acoes.salvarRespostaCredito(d.id, p.campo, v)}
+                />
+              </div>
             </div>
           ))}
         </div>

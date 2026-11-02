@@ -309,7 +309,7 @@ export default async function LoginPage({
 
       <footer className="bg-[color:var(--pri-dark)]">
         <div className="max-w-5xl mx-auto px-4 py-6 text-center text-white/50 text-[11px]">
-          RE/MAX Engimob · Porto Velho/RO — SisEng, sistema interno de gestão. ·{" "}
+          SisEng · Sistema de gestão imobiliária · Porto Velho/RO ·{" "}
           <LinkPrivacidade className="text-white/70 hover:text-white underline" />
         </div>
       </footer>

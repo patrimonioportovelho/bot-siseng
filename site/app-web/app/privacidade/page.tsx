@@ -31,6 +31,8 @@ function Lista({ itens }: { itens: string[] }) {
 
 export default function PrivacidadePage() {
   const { nomeEmpresa, cidade, cnpj, emailContato, ultimaAtualizacao } = PRIVACIDADE;
+  // Sem nome cadastrado, a controladora é "a imobiliária que contratou o SisEng".
+  const controladora = nomeEmpresa || "a imobiliária que contratou o SisEng";
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -45,11 +47,12 @@ export default function PrivacidadePage() {
         <div className="bg-white border border-gray-200 rounded-xl p-5 md:p-6">
           <Secao titulo="1. Quem somos">
             <p>
-              O SisEng é o sistema de gestão usado pela {nomeEmpresa} ({cidade}) para organizar clientes, imóveis,
-              contratos de locação e de compra e venda, financiamento, financeiro e o atendimento de corretores e
-              parceiros. A {nomeEmpresa}
-              {cnpj ? ` (CNPJ ${cnpj})` : ""} é a controladora dos dados pessoais tratados aqui, nos termos da Lei
-              Geral de Proteção de Dados (Lei nº 13.709/2018, a LGPD).
+              O SisEng é um sistema de gestão imobiliária usado por {controladora} ({cidade}) para organizar clientes,
+              imóveis, contratos de locação e de compra e venda, financiamento, financeiro e o atendimento de corretores e
+              parceiros. A imobiliária{nomeEmpresa ? ` ${nomeEmpresa}` : ""}
+              {cnpj ? ` (CNPJ ${cnpj})` : ""} é a controladora dos dados pessoais tratados aqui, e o SisEng atua como
+              fornecedor da tecnologia que os opera em nome dela, nos termos da Lei Geral de Proteção de Dados (Lei nº
+              13.709/2018, a LGPD).
             </p>
             <p>
               Esta política explica quais dados pessoais tratamos, para que usamos, com quem compartilhamos, por
@@ -182,8 +185,8 @@ export default function PrivacidadePage() {
 
           <Secao titulo="11. Como falar com a gente">
             <p>
-              Para exercer seus direitos ou tirar dúvidas sobre esta política, fale com o administrativo da{" "}
-              {nomeEmpresa} ({cidade})
+              Para exercer seus direitos ou tirar dúvidas sobre esta política, fale com o administrativo d
+              {nomeEmpresa ? `a ${nomeEmpresa}` : "a imobiliária"} ({cidade})
               {emailContato ? (
                 <>
                   {" "}
@@ -208,7 +211,7 @@ export default function PrivacidadePage() {
         </div>
 
         <div className="text-center text-[11px] text-gray-400 mt-6">
-          {nomeEmpresa} · {cidade} — SisEng
+          SisEng · {cidade}
           <div className="mt-1">
             <Link href="/login" className="underline hover:text-gray-600">
               Voltar ao início

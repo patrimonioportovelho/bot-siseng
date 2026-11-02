@@ -482,6 +482,45 @@ export async function carregarClienteParaCreditoAction(
   return { ok: true, cliente: clienteParaFormulario(c) };
 }
 
+// Dados para a janela "Transformar em Avaliação de crédito" do quadro do
+// corretor: o cadastro do cliente (para conferir e completar) e as listas do
+// formulário. Carregado só quando a janela abre — as ~5,5 mil cidades não vão
+// junto com o quadro.
+export async function prepararConversaoAction(avaliacaoId: string): Promise<
+  | {
+      ok: true;
+      cliente: ClienteAvaliacao;
+      bancos: { id: string; nome: string; codigo: string | null }[];
+      estados: { id: string; nome: string }[];
+      cidades: { id: string; nome: string; estado_id: string }[];
+    }
+  | { ok: false; erro: string }
+> {
+  const session = await requirePortalSession();
+  const avaliacao = await prisma.avaliacoes.findUnique({ where: { id: avaliacaoId }, include: { clientes: true } });
+  if (!avaliacao || avaliacao.excluido || avaliacao.parceiro_id !== session.parceiroId || !avaliacao.clientes) {
+    return { ok: false, erro: "Avaliação não encontrada." };
+  }
+  if (avaliacao.status !== "Consulta de CPF") {
+    return { ok: false, erro: `Esta avaliação já está em ${avaliacao.status} — só uma Consulta de CPF pode ser transformada em Avaliação de crédito.` };
+  }
+  if (avaliacao.clientes.parceiro_id !== session.parceiroId) {
+    return { ok: false, erro: "O cadastro deste cliente está em nome de outro corretor, então não dá para completá-lo por aqui. Fale com o administrativo." };
+  }
+  const [bancos, estados, cidades] = await Promise.all([
+    prisma.bancos.findMany({ orderBy: { nome: "asc" } }),
+    prisma.estados.findMany({ orderBy: { nome: "asc" } }),
+    prisma.cidades.findMany({ orderBy: { nome: "asc" } })
+  ]);
+  return {
+    ok: true,
+    cliente: clienteParaFormulario(avaliacao.clientes),
+    bancos: bancos.map((b) => ({ id: b.id, nome: b.nome, codigo: b.codigo })),
+    estados: estados.map((e) => ({ id: e.id, nome: e.nome })),
+    cidades: cidades.map((c) => ({ id: c.id, nome: c.nome, estado_id: c.estado_id }))
+  };
+}
+
 // Avaliação cadastrada pelo corretor. Duas modalidades:
 //  - "consulta" (Consulta de CPF): é a mesma "Consulta de CPF" que já existe no
 //    módulo Financiamento do administrativo (lib/financiamento/opcoes.ts), só

@@ -36,6 +36,14 @@ export type CardFinanciamento = {
 type Opcao = { id: string; nome: string };
 type OpcoesMover = { encerramento?: string | null; motivo?: string | null };
 
+// Painel do corretor: o mesmo quadro, só com os cards dele. O corretor não move
+// as etapas do administrativo; a única ação dele é arrastar uma Consulta de CPF
+// para "Montagem de processo", que abre o formulário completo da Avaliação de
+// crédito numa janela (como o motivo de "Sem interesse" no Recrutamento).
+export type ModoCorretor = {
+  renderMontagem: (a: { card: CardFinanciamento; fechar: () => void; concluir: () => void }) => React.ReactNode;
+};
+
 const grupoDe = (id: ColunaFinId) => COLUNA_FIN_POR_ID.get(id)?.grupo;
 
 function formatarMoeda(v: number | null) {
@@ -63,7 +71,8 @@ export function FinanciamentoKanban({
   parceiros,
   responsavelPorColuna,
   moverCard,
-  definirResponsavelColuna
+  definirResponsavelColuna,
+  modoCorretor
 }: {
   cards: CardFinanciamento[];
   hoje: string;
@@ -72,9 +81,11 @@ export function FinanciamentoKanban({
   bancos: string[];
   parceiros: Opcao[];
   responsavelPorColuna: Record<string, string | null>;
-  moverCard: (id: string, destino: ColunaFinId, opcoes?: OpcoesMover) => Promise<void>;
-  definirResponsavelColuna: (coluna: string, responsavelId: string | null) => Promise<ResultadoSalvar>;
+  moverCard?: (id: string, destino: ColunaFinId, opcoes?: OpcoesMover) => Promise<void>;
+  definirResponsavelColuna?: (coluna: string, responsavelId: string | null) => Promise<ResultadoSalvar>;
+  modoCorretor?: ModoCorretor;
 }) {
+  const corretor = !!modoCorretor;
   const router = useRouter();
   // Cópia local: o card muda de coluna NA HORA e a gravação roda em segundo plano
   // (mesma lógica do quadro de Recrutamento). Se o servidor recusar, o card volta.
@@ -89,12 +100,15 @@ export function FinanciamentoKanban({
   useAutoRolagemArraste(arrastandoId !== null);
   const [colunaAlvo, setColunaAlvo] = useState<ColunaFinId | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  const [sucesso, setSucesso] = useState<string | null>(null);
   const [busca, setBusca] = useState("");
   const [filtroResp, setFiltroResp] = useState("");
   const [filtroBanco, setFiltroBanco] = useState("");
   const [filtroParceiro, setFiltroParceiro] = useState("");
   const [soAlertas, setSoAlertas] = useState(false);
-  const [mostrarFim, setMostrarFim] = useState(true);
+  // Corretor: concluídos e encerrados começam escondidos (já contam no painel principal).
+  const [mostrarFim, setMostrarFim] = useState(!corretor);
+  const [montando, setMontando] = useState<CardFinanciamento | null>(null);
   const [pedindoDesfecho, setPedindoDesfecho] = useState<{ id: string } | null>(null);
   const [desfecho, setDesfecho] = useState("");
   const [motivo, setMotivo] = useState("");
@@ -102,10 +116,12 @@ export function FinanciamentoKanban({
 
   function cardEmAlerta(c: CardFinanciamento) {
     if (grupoDe(c.coluna) === "fim") return false;
-    if (situacaoSla(c.coluna, c.diasNaEtapa) === "atrasado") return true;
     if (c.inconformidadeAberta) return true;
-    const r = situacaoRetorno(c.proximaAcaoData, hoje);
-    if (r === "atrasado" || r === "hoje") return true;
+    if (!corretor) {
+      if (situacaoSla(c.coluna, c.diasNaEtapa) === "atrasado") return true;
+      const r = situacaoRetorno(c.proximaAcaoData, hoje);
+      if (r === "atrasado" || r === "hoje") return true;
+    }
     if (c.coluna === "aprovado" && c.validade && diasAte(c.validade, hoje) <= diasAlertaValidade) return true;
     return false;
   }
@@ -144,7 +160,7 @@ export function FinanciamentoKanban({
   const executarMover = useCallback(
     (id: string, coluna: ColunaFinId, opcoes?: OpcoesMover) => {
       const anterior = cards.find((c) => c.id === id);
-      if (!anterior || anterior.coluna === coluna) return;
+      if (!moverCard || !anterior || anterior.coluna === coluna) return;
       setErro(null);
       setCards((lista) =>
         lista.map((c) =>
@@ -185,6 +201,11 @@ export function FinanciamentoKanban({
     setArrastandoId(null);
     const atual = cards.find((c) => c.id === id);
     if (!atual || atual.coluna === coluna) return;
+    if (corretor) {
+      if (atual.coluna === "cpf" && coluna === "montagem") abrirMontagem(atual);
+      else setErro("Só o administrativo move o card para essa etapa. Você pode arrastar uma Consulta de CPF para “Montagem de processo” e completar a Avaliação de crédito.");
+      return;
+    }
     if (coluna === "encerrado") {
       setDesfecho("");
       setMotivo("");
@@ -192,6 +213,22 @@ export function FinanciamentoKanban({
       return;
     }
     executarMover(id, coluna);
+  }
+
+  function abrirMontagem(card: CardFinanciamento) {
+    setErro(null);
+    setMontando(card);
+  }
+
+  // A conversão já foi gravada pelo formulário: o card só passa para a coluna nova.
+  function concluirMontagem(id: string) {
+    setMontando(null);
+    setSucesso("Pronto! A consulta virou Avaliação de crédito e está em Montagem de processo. O administrativo já foi avisado.");
+    setTimeout(() => setSucesso(null), 8000);
+    setCards((lista) =>
+      lista.map((c) => (c.id === id ? { ...c, coluna: "montagem", statusAvaliacao: "Montagem de processo", diasNaEtapa: 0, estimado: false } : c))
+    );
+    startTransition(() => router.refresh());
   }
 
   function confirmarDesfecho() {
@@ -211,13 +248,13 @@ export function FinanciamentoKanban({
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
+      <div className={`grid grid-cols-2 gap-2 ${corretor ? "md:grid-cols-4" : "md:grid-cols-6"}`}>
         <Resumo rotulo="Em andamento" valor={resumo.ativos} />
         <Resumo rotulo="No processo" valor={resumo.noProcesso} />
-        <Resumo rotulo="Acima da meta de tempo" valor={resumo.atrasados} destaque={resumo.atrasados > 0 ? "vermelho" : undefined} />
+        {!corretor && <Resumo rotulo="Acima da meta de tempo" valor={resumo.atrasados} destaque={resumo.atrasados > 0 ? "vermelho" : undefined} />}
         <Resumo rotulo="Inconformidades abertas" valor={resumo.inconformes} destaque={resumo.inconformes > 0 ? "vermelho" : undefined} />
         <Resumo rotulo={`Aprovação vence em ${diasAlertaValidade} dias`} valor={resumo.validade} destaque={resumo.validade > 0 ? "ambar" : undefined} />
-        <Resumo rotulo="Retornos hoje/atrasados" valor={resumo.retornos} destaque={resumo.retornos > 0 ? "ambar" : undefined} />
+        {!corretor && <Resumo rotulo="Retornos hoje/atrasados" valor={resumo.retornos} destaque={resumo.retornos > 0 ? "ambar" : undefined} />}
       </div>
 
       <div className="flex items-center gap-2 flex-wrap">
@@ -228,29 +265,33 @@ export function FinanciamentoKanban({
           placeholder="Buscar por cliente, Id ou telefone..."
           className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full sm:w-64 outline-none focus:border-primary bg-white"
         />
-        <select value={filtroResp} onChange={(e) => setFiltroResp(e.target.value)} className="text-xs border border-gray-300 rounded-lg px-2 py-1.5 bg-white outline-none focus:border-primary">
-          <option value="">Todos os responsáveis</option>
-          <option value="__sem">Sem responsável</option>
-          {responsaveis.map((r) => (
-            <option key={r.id} value={r.id}>
-              {r.nome}
-            </option>
-          ))}
-        </select>
+        {!corretor && (
+          <select value={filtroResp} onChange={(e) => setFiltroResp(e.target.value)} className="text-xs border border-gray-300 rounded-lg px-2 py-1.5 bg-white outline-none focus:border-primary">
+            <option value="">Todos os responsáveis</option>
+            <option value="__sem">Sem responsável</option>
+            {responsaveis.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.nome}
+              </option>
+            ))}
+          </select>
+        )}
         <select value={filtroBanco} onChange={(e) => setFiltroBanco(e.target.value)} className="text-xs border border-gray-300 rounded-lg px-2 py-1.5 bg-white outline-none focus:border-primary">
           <option value="">Todos os bancos</option>
           {bancos.map((b) => (
             <option key={b}>{b}</option>
           ))}
         </select>
-        <select value={filtroParceiro} onChange={(e) => setFiltroParceiro(e.target.value)} className="text-xs border border-gray-300 rounded-lg px-2 py-1.5 bg-white outline-none focus:border-primary">
-          <option value="">Todos os corretores</option>
-          {parceiros.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.nome}
-            </option>
-          ))}
-        </select>
+        {!corretor && (
+          <select value={filtroParceiro} onChange={(e) => setFiltroParceiro(e.target.value)} className="text-xs border border-gray-300 rounded-lg px-2 py-1.5 bg-white outline-none focus:border-primary">
+            <option value="">Todos os corretores</option>
+            {parceiros.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.nome}
+              </option>
+            ))}
+          </select>
+        )}
         <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
           <input type="checkbox" checked={soAlertas} onChange={(e) => setSoAlertas(e.target.checked)} />
           Só com alerta
@@ -261,6 +302,15 @@ export function FinanciamentoKanban({
         </label>
       </div>
 
+      {sucesso && (
+        <div className="bg-green-50 border border-green-200 text-green-800 text-xs rounded-lg px-3 py-2 flex items-center justify-between gap-2">
+          <span>{sucesso}</span>
+          <button type="button" onClick={() => setSucesso(null)} className="text-green-500 hover:text-green-700">
+            ×
+          </button>
+        </div>
+      )}
+
       {erro && (
         <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg px-3 py-2 flex items-center justify-between gap-2">
           <span>{erro}</span>
@@ -270,7 +320,11 @@ export function FinanciamentoKanban({
         </div>
       )}
 
-      <DockArraste ativo={arrastandoId !== null} colunas={COLUNAS_FIN.map((c) => ({ id: c.id, label: c.label, cor: c.cor }))} aoSoltar={(id) => aoSoltar(id as ColunaFinId)} />
+      <DockArraste
+        ativo={arrastandoId !== null}
+        colunas={(corretor ? COLUNAS_FIN.filter((c) => c.id === "montagem") : COLUNAS_FIN).map((c) => ({ id: c.id, label: c.label, cor: c.cor }))}
+        aoSoltar={(id) => aoSoltar(id as ColunaFinId)}
+      />
       <div className="flex flex-col md:flex-row gap-3 md:overflow-x-auto pb-2">
         {colunasVisiveis.map((coluna) => {
           const doGrupo = filtrados.filter((c) => c.coluna === coluna.id);
@@ -294,15 +348,17 @@ export function FinanciamentoKanban({
                   <span className="text-[11px] font-semibold shrink-0">{doGrupo.length}</span>
                 </div>
                 <div className="text-[10px] opacity-80 leading-snug mt-0.5">{coluna.dica}</div>
-                {coluna.slaDias && <div className="text-[10px] opacity-70 mt-0.5">Meta: até {coluna.slaDias} dia(s) nesta etapa</div>}
-                <div className="mt-1.5">
-                  <CampoSelectAuto
-                    valor={responsavelPorColuna[coluna.id] ?? null}
-                    vazio="Responsável da etapa…"
-                    opcoes={responsaveis.map((r) => ({ valor: r.id, rotulo: r.nome }))}
-                    salvar={(v) => definirResponsavelColuna(coluna.id, v)}
-                  />
-                </div>
+                {!corretor && coluna.slaDias && <div className="text-[10px] opacity-70 mt-0.5">Meta: até {coluna.slaDias} dia(s) nesta etapa</div>}
+                {!corretor && definirResponsavelColuna && (
+                  <div className="mt-1.5">
+                    <CampoSelectAuto
+                      valor={responsavelPorColuna[coluna.id] ?? null}
+                      vazio="Responsável da etapa…"
+                      opcoes={responsaveis.map((r) => ({ valor: r.id, rotulo: r.nome }))}
+                      salvar={(v) => definirResponsavelColuna(coluna.id, v)}
+                    />
+                  </div>
+                )}
               </div>
 
               <div className="flex flex-col gap-2 md:max-h-[62vh] md:overflow-y-auto">
@@ -312,9 +368,11 @@ export function FinanciamentoKanban({
                     c={c}
                     hoje={hoje}
                     diasAlertaValidade={diasAlertaValidade}
+                    corretor={corretor}
                     arrastando={arrastandoId === c.id}
                     aoArrastar={iniciarArraste}
                     aoSoltarFim={terminarArraste}
+                    aoTransformar={abrirMontagem}
                   />
                 ))}
                 {doGrupo.length === 0 && <div className="text-[11px] text-gray-400 text-center py-4">Nenhum card</div>}
@@ -323,6 +381,8 @@ export function FinanciamentoKanban({
           );
         })}
       </div>
+
+      {modoCorretor && montando && modoCorretor.renderMontagem({ card: montando, fechar: () => setMontando(null), concluir: () => concluirMontagem(montando.id) })}
 
       {pedindoDesfecho && (
         <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4">
@@ -379,16 +439,20 @@ const Cartao = memo(function Cartao({
   c,
   hoje,
   diasAlertaValidade,
+  corretor,
   arrastando,
   aoArrastar,
-  aoSoltarFim
+  aoSoltarFim,
+  aoTransformar
 }: {
   c: CardFinanciamento;
   hoje: string;
   diasAlertaValidade: number;
+  corretor: boolean;
   arrastando: boolean;
   aoArrastar: (id: string) => void;
   aoSoltarFim: () => void;
+  aoTransformar: (c: CardFinanciamento) => void;
 }) {
   const grupo = grupoDe(c.coluna);
   const sla = situacaoSla(c.coluna, c.diasNaEtapa);
@@ -396,26 +460,23 @@ const Cartao = memo(function Cartao({
   const retorno = situacaoRetorno(c.proximaAcaoData, hoje);
   const diasValidade = c.validade ? diasAte(c.validade, hoje) : null;
   const validadeEmAlerta = (c.coluna === "aprovado" || c.coluna === "condicionado") && diasValidade !== null && diasValidade <= diasAlertaValidade;
-  const alerta = grupo !== "fim" && (sla === "atrasado" || !!c.inconformidadeAberta);
+  const alerta = grupo !== "fim" && ((!corretor && sla === "atrasado") || !!c.inconformidadeAberta);
+  // Corretor: só a Consulta de CPF se arrasta (para Montagem de processo).
+  const arrastavel = !corretor || c.coluna === "cpf";
+  const classe = `bg-white border rounded-lg p-2.5 flex flex-col gap-1 ${
+    arrastavel ? "hover:shadow-sm transition-shadow cursor-grab active:cursor-grabbing" : ""
+  } ${arrastando ? "opacity-50" : ""} ${alerta ? "border-red-300" : arrastavel ? "border-gray-200 hover:border-primary/40" : "border-gray-200"}`;
 
-  return (
-    <Link
-      href={`/financiamento/${c.id}/etiqueta`}
-      draggable
-      onDragStart={() => aoArrastar(c.id)}
-      onDragEnd={aoSoltarFim}
-      className={`bg-white border rounded-lg p-2.5 flex flex-col gap-1 hover:shadow-sm transition-shadow cursor-grab active:cursor-grabbing ${
-        arrastando ? "opacity-50" : ""
-      } ${alerta ? "border-red-300" : "border-gray-200 hover:border-primary/40"}`}
-    >
+  const conteudo = (
+    <>
       <div className="flex items-start justify-between gap-2">
         <span className="text-xs font-semibold text-gray-800 leading-snug">{c.cliente}</span>
         {grupo !== "fim" && (
           <span
-            className={`text-[10px] shrink-0 ${sla === "atrasado" ? "text-red-600 font-bold" : sla === "alerta" ? "text-amber-600" : "text-gray-400"}`}
-            title={`Tempo nesta etapa${c.estimado ? " (estimado a partir das datas cadastradas)" : ""}${meta ? ` — meta ${meta}d` : ""}`}
+            className={`text-[10px] shrink-0 ${!corretor && sla === "atrasado" ? "text-red-600 font-bold" : !corretor && sla === "alerta" ? "text-amber-600" : "text-gray-400"}`}
+            title={`Tempo nesta etapa${c.estimado ? " (estimado a partir das datas cadastradas)" : ""}${!corretor && meta ? ` — meta ${meta}d` : ""}`}
           >
-            {c.diasNaEtapa}d{meta ? `/${meta}` : ""}
+            {c.diasNaEtapa}d{!corretor && meta ? `/${meta}` : ""}
           </span>
         )}
       </div>
@@ -425,28 +486,52 @@ const Cartao = memo(function Cartao({
         {c.coluna === "encerrado" && <Selo cor="vermelho">{c.statusAvaliacao}</Selo>}
         {c.statusAndamento && grupo === "processo" && <Selo cor="azul">{c.statusAndamento}</Selo>}
         {c.inconformidadeAberta && <Selo cor="vermelho">Inconforme</Selo>}
-        {sla === "atrasado" && grupo !== "fim" && <Selo cor="vermelho">Acima da meta</Selo>}
+        {!corretor && sla === "atrasado" && grupo !== "fim" && <Selo cor="vermelho">Acima da meta</Selo>}
         {validadeEmAlerta && diasValidade !== null && (
           <Selo cor={diasValidade < 0 ? "vermelho" : "ambar"}>{diasValidade < 0 ? `Vencida há ${-diasValidade}d` : `Vence em ${diasValidade}d`}</Selo>
         )}
-        {grupo !== "fim" && retorno === "atrasado" && <Selo cor="vermelho">Retorno atrasado</Selo>}
-        {grupo !== "fim" && retorno === "hoje" && <Selo cor="ambar">Retorno hoje</Selo>}
+        {!corretor && grupo !== "fim" && retorno === "atrasado" && <Selo cor="vermelho">Retorno atrasado</Selo>}
+        {!corretor && grupo !== "fim" && retorno === "hoje" && <Selo cor="ambar">Retorno hoje</Selo>}
       </div>
 
       {c.inconformidadeAberta && <div className="text-[10px] text-red-600 leading-snug">{c.inconformidadeAberta}</div>}
       {c.imovel && <div className="text-[10px] text-gray-500 truncate">{c.imovel}</div>}
-      {c.proximaAcaoTexto && grupo !== "fim" && <div className="text-[11px] text-gray-600 leading-snug">{c.proximaAcaoTexto}</div>}
+      {!corretor && c.proximaAcaoTexto && grupo !== "fim" && <div className="text-[11px] text-gray-600 leading-snug">{c.proximaAcaoTexto}</div>}
 
       <div className="flex items-center justify-between gap-2 text-[10px] text-gray-500">
-        <span className="truncate">Corretor: {c.parceiroNome?.split(" ")[0] ?? "—"}</span>
+        <span className="truncate">{corretor ? (c.tipoAvaliacao ?? "Avaliação") : `Corretor: ${c.parceiroNome?.split(" ")[0] ?? "—"}`}</span>
         {c.valor !== null && <span className="font-medium text-gray-700 shrink-0">{formatarMoeda(c.valor)}</span>}
       </div>
       {grupo !== "fim" && (
         <div className="text-[10px] text-gray-500">
           Responsável: <span className="font-medium">{c.responsavelNome?.split(" ")[0] ?? "—"}</span>
-          {c.ultimoContatoDias !== null && ` · contato há ${c.ultimoContatoDias}d`}
+          {!corretor && c.ultimoContatoDias !== null && ` · contato há ${c.ultimoContatoDias}d`}
         </div>
       )}
+      {corretor && c.coluna === "cpf" && (
+        <button
+          type="button"
+          onClick={() => aoTransformar(c)}
+          className="mt-1 text-[11px] font-semibold text-primary border border-primary/40 rounded-lg px-2 py-1.5 hover:bg-primary/5 text-center"
+        >
+          Transformar em Avaliação de crédito →
+        </button>
+      )}
+    </>
+  );
+
+  // Elemento sem componente interno: um componente criado dentro do render seria
+  // remontado a cada atualização e quebraria o arraste.
+  if (corretor) {
+    return (
+      <div draggable={arrastavel} onDragStart={() => aoArrastar(c.id)} onDragEnd={aoSoltarFim} className={classe}>
+        {conteudo}
+      </div>
+    );
+  }
+  return (
+    <Link href={`/financiamento/${c.id}/etiqueta`} draggable onDragStart={() => aoArrastar(c.id)} onDragEnd={aoSoltarFim} className={classe}>
+      {conteudo}
     </Link>
   );
 });

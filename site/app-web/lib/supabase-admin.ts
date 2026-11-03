@@ -516,3 +516,32 @@ export async function resolverUrlDocumentoGerado(doc: {
   }
   return doc.arquivo_url ?? null;
 }
+
+// ==================== Disparo de e-mail (imagem da mensagem) ====================
+// Mesmo esquema de Eventos/Parceiros acima: bucket público próprio (o e-mail
+// mostra a imagem por URL pública, sem login), criado sozinho no primeiro upload.
+const BUCKET_EMAILS = "emails-marketing";
+
+async function garantirBucketEmails(): Promise<void> {
+  const supabase = supabaseAdmin();
+  const { data: buckets, error } = await supabase.storage.listBuckets();
+  if (error) throw new Error(`Não consegui verificar o armazenamento: ${error.message}`);
+  if (buckets?.some((b) => b.name === BUCKET_EMAILS)) return;
+
+  const { error: erroCriar } = await supabase.storage.createBucket(BUCKET_EMAILS, { public: true, fileSizeLimit: "10MB" });
+  if (erroCriar && !erroCriar.message.toLowerCase().includes("already exists")) {
+    throw new Error(`Não consegui preparar o armazenamento: ${erroCriar.message}`);
+  }
+}
+
+export async function criarUploadAssinadoImagemEmail(): Promise<{ caminho: string; token: string; urlPublica: string }> {
+  await garantirBucketEmails();
+  // o navegador já entrega a imagem recortada em JPEG
+  const caminho = `${randomUUID()}.jpg`;
+  const supabase = supabaseAdmin();
+  const { data, error } = await supabase.storage.from(BUCKET_EMAILS).createSignedUploadUrl(caminho);
+  if (error || !data) {
+    throw new Error(`Não consegui preparar o upload da imagem: ${error?.message ?? "erro desconhecido"}`);
+  }
+  return { caminho, token: data.token, urlPublica: supabase.storage.from(BUCKET_EMAILS).getPublicUrl(caminho).data.publicUrl };
+}

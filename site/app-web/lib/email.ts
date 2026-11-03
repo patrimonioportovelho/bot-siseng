@@ -175,3 +175,113 @@ export async function enviarEmail(params: ParametrosEmail): Promise<EnviarEmailR
   }
   return r;
 }
+
+// ---------------------------------------------------------------------------
+// Disparo em massa (Documentos > Disparo de e-mail) — 03/11/2026.
+// Só pelo Resend (nunca pelo Gmail: conta pessoal em rajada é bloqueada). Usa o
+// envio em lote do Resend (até 100 e-mails por chamada).
+// ---------------------------------------------------------------------------
+
+export type MensagemLote = { to: string; subject: string; html: string; replyTo?: string; headers?: Record<string, string> };
+
+export type ResultadoLote =
+  | { ok: true; resultados: ({ ok: true } | { ok: false; erro: string })[] }
+  // cota_diaria / cota_mensal: o limite do plano acabou — o disparo pausa e continua depois.
+  | { ok: false; erro: string; codigo: "cota_diaria" | "cota_mensal" | "sem_chave" | "outro" };
+
+// "SisEng <avisos@sisengimob.com.br>" -> avisos@sisengimob.com.br
+export function enderecoRemetente(): string {
+  const bruto = process.env.EMAIL_FROM || REMETENTE_PADRAO_RESEND;
+  return /<([^>]+)>/.exec(bruto)?.[1]?.trim() || bruto.trim();
+}
+
+function remetenteComNome(nome: string): string {
+  const limpo = nome.replace(/["<>\r\n]/g, "").trim() || "SisEng";
+  return `${limpo} <${enderecoRemetente()}>`;
+}
+
+function classificarErroResend(status: number, detalhe: string): "cota_diaria" | "cota_mensal" | "limite_taxa" | "outro" {
+  const t = detalhe.toLowerCase();
+  if (t.includes("daily_quota") || (t.includes("daily") && t.includes("quota"))) return "cota_diaria";
+  if (t.includes("monthly_quota") || (t.includes("monthly") && t.includes("quota"))) return "cota_mensal";
+  if (status === 429) return "limite_taxa";
+  return "outro";
+}
+
+// Um e-mail pelo Resend, sem plano B (usado no teste do disparo e quando o lote é recusado).
+export async function enviarUmPeloResend(params: ParametrosEmail & { nomeRemetente?: string }): Promise<EnviarEmailResultado> {
+  const chave = process.env.RESEND_API_KEY;
+  if (!chave) return { ok: false, erro: "RESEND_API_KEY não configurada." };
+  const r = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${chave}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      from: remetenteComNome(params.nomeRemetente ?? "SisEng"),
+      to: Array.isArray(params.to) ? params.to : [params.to],
+      subject: params.subject,
+      html: params.html,
+      ...(params.replyTo ? { reply_to: params.replyTo } : {})
+    })
+  }).catch((e: unknown) => e as Error);
+  if (r instanceof Error) return { ok: false, erro: `Resend: ${r.message}` };
+  if (r.ok) return { ok: true, via: "resend" };
+  return { ok: false, erro: `Resend ${r.status}: ${(await r.text().catch(() => "")).slice(0, 300)}` };
+}
+
+export async function enviarLoteResend(
+  mensagens: MensagemLote[],
+  opcoes: { nomeRemetente: string; idempotencyKey: string }
+): Promise<ResultadoLote> {
+  const chave = process.env.RESEND_API_KEY;
+  if (!chave) return { ok: false, erro: "RESEND_API_KEY não configurada.", codigo: "sem_chave" };
+
+  const corpo = JSON.stringify(
+    mensagens.map((m) => ({
+      from: remetenteComNome(opcoes.nomeRemetente),
+      to: [m.to],
+      subject: m.subject,
+      html: m.html,
+      ...(m.replyTo ? { reply_to: m.replyTo } : {}),
+      ...(m.headers ? { headers: m.headers } : {})
+    }))
+  );
+
+  let ultimoErro = "";
+  for (let tentativa = 0; tentativa <= ESPERA_ENTRE_TENTATIVAS_MS.length; tentativa++) {
+    try {
+      const r = await fetch("https://api.resend.com/emails/batch", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${chave}`,
+          "Content-Type": "application/json",
+          "Idempotency-Key": opcoes.idempotencyKey,
+          // endereço inválido derruba só aquele e-mail, não o lote inteiro
+          "x-batch-validation": "permissive"
+        },
+        body: corpo
+      });
+      const texto = await r.text().catch(() => "");
+      if (r.ok) {
+        let erros: { index: number; message?: string }[] = [];
+        try {
+          erros = (JSON.parse(texto) as { errors?: { index: number; message?: string }[] }).errors ?? [];
+        } catch {
+          // resposta sem JSON legível: trata como enviado
+        }
+        const porIndice = new Map(erros.map((e) => [e.index, e.message ?? "Endereço recusado pelo Resend."]));
+        return {
+          ok: true,
+          resultados: mensagens.map((_, i) => (porIndice.has(i) ? { ok: false as const, erro: porIndice.get(i) as string } : { ok: true as const }))
+        };
+      }
+      ultimoErro = `Resend ${r.status}: ${texto.slice(0, 300)}`;
+      const tipo = classificarErroResend(r.status, texto);
+      if (tipo === "cota_diaria" || tipo === "cota_mensal") return { ok: false, erro: ultimoErro, codigo: tipo };
+      if (tipo !== "limite_taxa" && r.status < 500) break;
+    } catch (e) {
+      ultimoErro = `Resend: ${e instanceof Error ? e.message : String(e)}`;
+    }
+    if (tentativa < ESPERA_ENTRE_TENTATIVAS_MS.length) await dormir(ESPERA_ENTRE_TENTATIVAS_MS[tentativa]);
+  }
+  return { ok: false, erro: ultimoErro || "Falha ao enviar o lote pelo Resend.", codigo: "outro" };
+}

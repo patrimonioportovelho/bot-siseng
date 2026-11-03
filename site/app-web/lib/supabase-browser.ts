@@ -45,3 +45,7 @@ export const BUCKET_EVENTOS = "eventos";
 // Precisa bater com BUCKET_PARCEIROS_FOTOS em lib/supabase-admin.ts —
 // upload direto da foto do Corretor (ranking de honorários).
 export const BUCKET_PARCEIROS_FOTOS = "parceiros-fotos";
+
+// Precisa bater com BUCKET_EMAILS em lib/supabase-admin.ts — upload direto da
+// imagem do disparo de e-mail em massa (Documentos).
+export const BUCKET_EMAILS = "emails-marketing";

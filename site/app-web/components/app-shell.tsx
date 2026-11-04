@@ -6,9 +6,11 @@ import { PortalSidebar } from "@/components/portal-sidebar";
 import { RouteLoadingBar } from "@/components/route-loading-bar";
 import { RodapePrivacidade } from "@/components/link-privacidade";
 import { AvisosEquipeToasts } from "@/components/avisos-equipe-toasts";
+import { PontoMonitor } from "@/components/ponto-monitor";
+import type { StatusPonto } from "@/lib/ponto/servidor";
 import { nivelNaRota, modulosDaRota, type AcessoEfetivo } from "@/lib/acessos";
 
-export function AppShell({ children, acessos }: { children: React.ReactNode; acessos: AcessoEfetivo[] | null }) {
+export function AppShell({ children, acessos, ponto }: { children: React.ReactNode; acessos: AcessoEfetivo[] | null; ponto?: StatusPonto | null }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   // ?embed=1 é usado pelo painel lateral (drawer) da transação — abre
@@ -89,6 +91,8 @@ export function AppShell({ children, acessos }: { children: React.ReactNode; ace
       </div>
       {/* Avisos estilo MSN: corretor entrou / fez proposta / cadastrou algo */}
       <AvisosEquipeToasts />
+      {/* Controle de ponto (só quem tem o uso controlado) */}
+      {ponto?.controlado && <PontoMonitor statusInicial={ponto} />}
     </>
   );
 }

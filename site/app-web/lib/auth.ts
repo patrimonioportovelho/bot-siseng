@@ -1,3 +1,5 @@
+import { fecharSessoesDoParceiro } from "@/lib/ponto/servidor";
+import { pessoaTemPonto } from "@/lib/ponto/regras";
 import { timingSafeEqual } from "node:crypto";
 import { avisoDeAcaoPortal, registrarAviso } from "@/lib/avisos-equipe";
 import { cookies } from "next/headers";
@@ -262,13 +264,17 @@ async function concederAcesso(parceiroId: string, nome: string): Promise<LoginRe
   };
   const token = await signSession(payload, sessionSecret());
 
+  // Quem tem o uso controlado como ponto recebe um cookie "de sessão" (sem validade própria): ele
+  // some quando o navegador é fechado, então fechar o navegador encerra a sessão.
+  const comPonto = pessoaTemPonto({ acessos: acessosDoCadastro, isAdm }) && ((await prisma.ponto_config.findUnique({ where: { parceiro_id: parceiroId }, select: { ativo: true } }))?.ativo ?? true);
+
   const store = await cookies();
   store.set(ADMIN_COOKIE, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
-    maxAge: SESSION_TTL_MS / 1000
+    ...(comPonto ? {} : { maxAge: SESSION_TTL_MS / 1000 })
   });
 
   await prisma.logs_acesso.create({
@@ -285,6 +291,8 @@ export async function logoutAdmin() {
   const store = await cookies();
   store.delete(ADMIN_COOKIE);
   if (session) {
+    // fecha o período de uso do ponto (se tiver) no último sinal de vida
+    await fecharSessoesDoParceiro(session.parceiroId, "logout").catch(() => undefined);
     await prisma.logs_acesso.create({
       data: { parceiro_id: session.parceiroId, tipo_portal: "admin", acao: "logout" }
     });

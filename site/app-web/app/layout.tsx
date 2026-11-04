@@ -4,6 +4,8 @@ import { AppShell } from "@/components/app-shell";
 import { CarregandoTelaCheia } from "@/components/carregando-tela-cheia";
 import { getAdminSession } from "@/lib/auth";
 import { acessosDaSessao } from "@/lib/acessos";
+import { pessoaTemPonto } from "@/lib/ponto/regras";
+import { lerStatusPonto } from "@/lib/ponto/servidor";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -36,11 +38,13 @@ export default async function RootLayout({
   // abrir/gravar é decidido no middleware e nas Server Actions.
   const sessao = await getAdminSession();
   const acessos = sessao ? acessosDaSessao(sessao) : null;
+  // Controle de ponto: só para quem tem acesso Administrativo/Financeiro/Recrutador (sem ser Diretor).
+  const ponto = sessao && pessoaTemPonto(sessao) ? await lerStatusPonto(sessao.parceiroId).catch(() => null) : null;
   return (
     <html lang="pt-BR">
       <body>
         <Suspense fallback={<CarregandoTelaCheia />}>
-          <AppShell acessos={acessos}>{children}</AppShell>
+          <AppShell acessos={acessos} ponto={ponto}>{children}</AppShell>
         </Suspense>
       </body>
     </html>

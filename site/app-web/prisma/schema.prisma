@@ -2250,3 +2250,55 @@ model disparos_email_destinatarios {
 
   @@index([disparo_id, status], map: "idx_disparos_email_dest_status")
 }
+
+/// Jornada de quem tem o uso do sistema controlado como ponto (padrão: seg a sex, 08h-18h,
+/// almoço 12h-14h, teto de 40h/semana). Horários "HH:MM" em hora de Porto Velho.
+model ponto_config {
+  parceiro_id       String   @id @db.Uuid
+  ativo             Boolean  @default(true)
+  carga_semanal_min Int      @default(2400)
+  entrada           String   @default("08:00")
+  saida             String   @default("18:00")
+  almoco_inicio     String   @default("12:00")
+  almoco_fim        String   @default("14:00")
+  updated_at        DateTime @default(now()) @db.Timestamptz(6)
+  updated_by        String?  @db.Uuid
+}
+
+/// Período de uso do sistema (só o tempo de uso real). Nunca se apaga: um período errado é "anulado".
+model ponto_sessoes {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  parceiro_id    String    @db.Uuid
+  inicio         DateTime  @db.Timestamptz(6)
+  ultimo_sinal   DateTime  @db.Timestamptz(6)
+  fim            DateTime? @db.Timestamptz(6)
+  motivo_fim     String?
+  segundos_extra Int       @default(0)
+  origem         String    @default("auto")
+  anulada        Boolean   @default(false)
+  justificativa  String?
+  ajustado_por   String?   @db.Uuid
+  created_at     DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@index([parceiro_id, inicio(sort: Desc)], map: "idx_ponto_sessoes_parceiro_inicio")
+}
+
+/// Pedido de hora extra / uso fora do expediente e a decisão da diretoria.
+/// status: pendente | aprovada | negada.
+model ponto_liberacoes {
+  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  parceiro_id         String    @db.Uuid
+  motivo              String
+  minutos_solicitados Int
+  status              String    @default("pendente")
+  minutos_aprovados   Int?
+  usado_seg           Int       @default(0)
+  valida_ate          DateTime? @db.Timestamptz(6)
+  decidido_por        String?   @db.Uuid
+  decidido_em         DateTime? @db.Timestamptz(6)
+  observacao_decisao  String?
+  solicitado_em       DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@index([parceiro_id, solicitado_em(sort: Desc)], map: "idx_ponto_liberacoes_parceiro")
+  @@index([status], map: "idx_ponto_liberacoes_status")
+}

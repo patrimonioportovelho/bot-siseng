@@ -22,6 +22,10 @@ import { limparErrosAntigos } from "@/lib/erros";
 import { limparNoticiasAntigas } from "@/lib/publicacoes/limpeza";
 import { lojasSelecionadas } from "@/lib/lojas/filtro";
 import { ACESSOS } from "@/lib/acessos";
+import { AcessoPessoaForm } from "@/components/acesso-pessoa-form";
+import { PontoSecao } from "./ponto-secao";
+import { configDeLinha } from "@/lib/ponto/servidor";
+import { PONTO_PADRAO } from "@/lib/ponto/regras";
 
 export const dynamic = "force-dynamic";
 
@@ -50,9 +54,11 @@ export default async function ConfiguracoesPage({
     salvo_publicacao?: string;
     salvo_socio?: string;
     salvo_acessos?: string;
+    salvo_ponto?: string;
+    semana?: string;
   }>;
 }) {
-  const { salvo, erro, aprovado, rejeitado, salvo_publicacao, salvo_socio, salvo_acessos } = await searchParams;
+  const { salvo, erro, aprovado, rejeitado, salvo_publicacao, salvo_socio, salvo_acessos, salvo_ponto, semana } = await searchParams;
   const session = await getAdminSession();
 
   if (!session) {
@@ -142,6 +148,8 @@ export default async function ConfiguracoesPage({
     })
   ]);
 
+  const configPorPessoa = new Map((await prisma.ponto_config.findMany()).map((c) => [c.parceiro_id, configDeLinha(c)]));
+
   // Quem aparece na tela de Acessos: quem consegue entrar (tem senha) ou já tem acesso definido.
   const pessoasComAcesso = parceirosAtivos.filter((p) => p.senha_hash !== null || p.acesso_completo || p.acessos.length > 0);
 
@@ -167,6 +175,11 @@ export default async function ConfiguracoesPage({
       {salvo_acessos === "1" && (
         <div className="bg-green-50 border border-green-200 text-green-700 text-xs rounded-lg px-3 py-2 mb-4">
           Acessos salvos. Valem no próximo login da pessoa.
+        </div>
+      )}
+      {salvo_ponto === "1" && (
+        <div className="bg-green-50 border border-green-200 text-green-700 text-xs rounded-lg px-3 py-2 mb-4">
+          Decisão registrada. Vale na hora para a pessoa.
         </div>
       )}
       {salvo_publicacao === "1" && (
@@ -304,41 +317,27 @@ export default async function ConfiguracoesPage({
             const marcados = new Set<string>(p.acessos);
             if (fixo || p.acesso_completo) marcados.add("diretor");
             const legado = marcados.size === 0;
+            const cfg = configPorPessoa.get(p.id) ?? PONTO_PADRAO;
             return (
-              <form key={p.id} action={salvarAcessosAction} className="flex items-center gap-x-4 gap-y-1 flex-wrap px-3 py-2">
-                <input type="hidden" name="parceiroId" value={p.id} />
-                <div className="w-52 min-w-0">
-                  <div className="text-xs font-medium text-gray-800 truncate">{p.nome}</div>
-                  <div className="text-[10px] text-gray-400">
-                    {p.funcao}
-                    {legado && " · sem acesso definido (mantém o de antes: tudo, menos Configurações)"}
-                    {fixo && " · Diretor fixo (definido no servidor)"}
-                  </div>
-                </div>
-                <div className="flex items-center gap-3 flex-wrap flex-1">
-                  {ACESSOS.map((a) => (
-                    <label key={a.id} className="flex items-center gap-1 text-[11px] text-gray-600 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        name="acessos"
-                        value={a.id}
-                        defaultChecked={marcados.has(a.id)}
-                        disabled={fixo && a.id === "diretor"}
-                      />
-                      {a.rotulo}
-                    </label>
-                  ))}
-                  {fixo && <input type="hidden" name="acessos" value="diretor" />}
-                </div>
-                <BotaoSubmit carregandoTexto="Salvando..." className="text-xs bg-primary text-white rounded-lg px-3 py-1">
-                  Salvar
-                </BotaoSubmit>
-              </form>
+              <AcessoPessoaForm
+                key={p.id}
+                acao={salvarAcessosAction}
+                parceiroId={p.id}
+                nome={p.nome}
+                funcao={p.funcao}
+                nota={`${legado ? " · sem acesso definido (mantém o de antes: tudo, menos Configurações)" : ""}${fixo ? " · Diretor fixo (definido no servidor)" : ""}`}
+                acessos={ACESSOS.map((a) => ({ id: a.id, rotulo: a.rotulo }))}
+                marcadosIniciais={[...marcados]}
+                fixoDiretor={fixo}
+                config={{ ativo: cfg.ativo, cargaHoras: cfg.cargaMin / 60, entrada: cfg.entrada, saida: cfg.saida, almocoInicio: cfg.almocoInicio, almocoFim: cfg.almocoFim }}
+              />
             );
           })}
           {pessoasComAcesso.length === 0 && <p className="text-xs text-gray-400 px-3 py-3">Nenhuma pessoa com senha de acesso cadastrada.</p>}
         </div>
       </div>
+
+      <PontoSecao semana={semana} />
 
       <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4">
         <div className="text-sm font-bold text-gray-800 mb-1">Sócios (dashboard externo)</div>

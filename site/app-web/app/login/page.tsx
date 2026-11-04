@@ -44,9 +44,12 @@ export default async function LoginPage({
     sac_erro?: string;
     erro_portal?: string;
     email_portal?: string;
+    motivo?: string;
   }>;
 }) {
-  const { erro, next, sac_ok, sac_erro, erro_portal, email_portal } = await searchParams;
+  const { erro, next, sac_ok, sac_erro, erro_portal, email_portal, motivo } = await searchParams;
+  // Controle de ponto: a sessão encerra sozinha depois de 10 min sem uso.
+  const erroAdmin = erro ?? (motivo === "inatividade" ? "Sua sessão foi encerrada por inatividade (10 minutos sem uso). Entre de novo para continuar." : undefined);
 
   // Ranking de honorários do mês (29/08/2026) — pedido do usuário, ver
   // lib/parceiros/ranking-honorarios.ts. RankingHonorarios já não renderiza
@@ -129,7 +132,7 @@ export default async function LoginPage({
           </div>
           <div className="flex items-center gap-2">
             <PortalLoginPanel action={loginPortalViaSiteAction} erro={erro_portal} emailInicial={email_portal} />
-            <AdminLoginPanel action={loginAction} erro={erro} next={next} />
+            <AdminLoginPanel action={loginAction} erro={erroAdmin} next={next} />
           </div>
         </div>
       </header>

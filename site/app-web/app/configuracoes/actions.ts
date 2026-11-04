@@ -11,6 +11,7 @@ import {
   publicUrlImagemPublicacao
 } from "@/lib/supabase-admin";
 import { registrarEJogarErro } from "@/lib/erros";
+import { salvarConfigPontoDoForm } from "@/lib/ponto/config-form";
 
 // Libera (ou troca) o acesso de alguém direto, sem passar pela fila de
 // solicitação — útil pro cadastro inicial de cada parceiro e também pra você
@@ -90,6 +91,11 @@ export async function salvarAcessosAction(formData: FormData) {
     dadosAntes: { acessos: parceiro.acessos, acesso_completo: parceiro.acesso_completo },
     dadosDepois: { acessos: escolhidos }
   });
+
+  // Caixa "Controle de ponto" (aparece no formulário quando a pessoa tem acesso Administrativo,
+  // Financeiro ou Recrutador): jornada e teto semanal.
+  const erroPonto = await salvarConfigPontoDoForm(parceiroId, formData, admin.parceiroId, escolhidos);
+  if (erroPonto) redirect(`/configuracoes?erro=${encodeURIComponent(`Acessos salvos, mas o controle de ponto não: ${erroPonto}`)}`);
 
   revalidatePath("/configuracoes");
   redirect("/configuracoes?salvo_acessos=1");

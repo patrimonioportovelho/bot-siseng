@@ -113,7 +113,7 @@ export async function obterNotificacoes(isAdm: boolean, parceiroId: string | nul
     data_validade: { not: null }
   };
 
-  const [sac, acessos, avaliacoes, transacoes, administracoes, ordensMarketing, eventosComLembrete] = await Promise.all([
+  const [sac, acessos, avaliacoes, transacoes, administracoes, ordensMarketing, eventosComLembrete, pedidosPonto] = await Promise.all([
     // Mensagens do SAC e solicitações de acesso só entram pra quem também
     // vê essas seções em Configurações (isAdm) — senão o sino levaria pra
     // um link que a pessoa não consegue ver.
@@ -189,10 +189,28 @@ export async function obterNotificacoes(isAdm: boolean, parceiroId: string | nul
           },
           take: LIMITE_POR_GRUPO
         })
-      : Promise.resolve([])
+      : Promise.resolve([]),
+    // Pedidos de liberação de horas (controle de ponto) — só a diretoria decide.
+    isAdm ? prisma.ponto_liberacoes.findMany({ where: { status: "pendente" }, orderBy: { solicitado_em: "asc" }, take: LIMITE_POR_GRUPO }) : Promise.resolve([])
   ]);
 
   const itens: Notificacao[] = [];
+
+  if (pedidosPonto.length > 0) {
+    const nomes = new Map(
+      (await prisma.parceiros.findMany({ where: { id: { in: pedidosPonto.map((p) => p.parceiro_id) } }, select: { id: true, nome: true } })).map((p) => [p.id, p.nome])
+    );
+    for (const p of pedidosPonto) {
+      itens.push({
+        id: `ponto-${p.id}`,
+        titulo: `Pedido de liberação de horas — ${nomes.get(p.parceiro_id) ?? "funcionário"}`,
+        detalhe: p.motivo.slice(0, 80),
+        href: "/configuracoes#ponto",
+        data: p.solicitado_em,
+        urgente: true
+      });
+    }
+  }
 
   for (const m of sac) {
     itens.push({

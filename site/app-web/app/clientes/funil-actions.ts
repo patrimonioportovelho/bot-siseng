@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { logAlteracao, requireEdicao } from "@/lib/auth";
 import { etapaDoCliente } from "@/lib/clientes/funil-servidor";
 import { movimentoPermitido, type EtapaFunilId } from "@/lib/clientes/funil";
+import { FUNCOES_CORRETOR } from "@/lib/transacoes/opcoes";
 
 export type ContatoCliente = { id: string; tipo: string; resultado: string | null; nota: string | null; data: string; por: string | null };
 
@@ -52,4 +53,49 @@ export async function registrarContatoClienteAction(
   });
   revalidatePath("/clientes");
   return { ok: true, contato: { id: c.id, tipo: c.tipo, resultado: c.resultado, nota: c.nota, data: c.data.toISOString(), por: admin.nome } };
+}
+
+// Transfere o cliente para outro corretor (só Corretor e Corretor Estagiário em atividade). Feito pelo
+// administrativo, por exemplo para redistribuir leads cujo corretor já saiu da imobiliária. O cliente
+// passa a aparecer no portal do novo corretor e a transferência fica no histórico do cliente.
+export async function transferirClienteAction(
+  clienteId: string,
+  novoCorretorId: string,
+  motivo: string | null
+): Promise<{ ok: true; corretorNome: string; contato: ContatoCliente } | { ok: false; erro: string }> {
+  const admin = await requireEdicao("clientes");
+
+  const [cliente, novo] = await Promise.all([
+    prisma.clientes.findUnique({ where: { id: clienteId }, select: { id: true, parceiro_id: true, parceiros: { select: { nome: true } } } }),
+    prisma.parceiros.findFirst({ where: { id: novoCorretorId, funcao: { in: FUNCOES_CORRETOR }, status_funcao: "Ativo" }, select: { id: true, nome: true } })
+  ]);
+  if (!cliente) return { ok: false, erro: "Cliente não encontrado." };
+  if (!novo) return { ok: false, erro: "Escolha um Corretor ou Corretor Estagiário ativo." };
+  if (cliente.parceiro_id === novo.id) return { ok: false, erro: `${novo.nome} já é o corretor deste cliente.` };
+
+  const anterior = cliente.parceiros?.nome ?? "sem corretor";
+  await prisma.clientes.update({ where: { id: clienteId }, data: { parceiro_id: novo.id, updated_at: new Date() } });
+  const contato = await prisma.clientes_contatos.create({
+    data: {
+      cliente_id: clienteId,
+      tipo: "Transferência",
+      resultado: `${anterior} → ${novo.nome}`,
+      nota: motivo?.trim().slice(0, 1000) || null,
+      por_parceiro_id: admin.parceiroId
+    }
+  });
+  await logAlteracao({
+    entidadeTipo: "clientes",
+    entidadeId: clienteId,
+    acao: "transferir_corretor_cliente",
+    dadosAntes: { parceiro_id: cliente.parceiro_id, corretor: anterior },
+    dadosDepois: { parceiro_id: novo.id, corretor: novo.nome, motivo: motivo?.trim() || null }
+  }).catch(() => undefined);
+
+  revalidatePath("/clientes");
+  return {
+    ok: true,
+    corretorNome: novo.nome,
+    contato: { id: contato.id, tipo: contato.tipo, resultado: contato.resultado, nota: contato.nota, data: contato.data.toISOString(), por: admin.nome }
+  };
 }

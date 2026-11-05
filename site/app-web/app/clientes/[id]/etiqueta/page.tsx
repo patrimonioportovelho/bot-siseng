@@ -4,10 +4,12 @@ import { Topbar } from "@/components/topbar";
 import { ClienteEtiqueta, type DadosClienteEtiqueta } from "@/components/cliente-etiqueta";
 import { prisma } from "@/lib/prisma";
 import { requireAdminSession } from "@/lib/auth";
+import { acessosDaSessao, nivelEmModulos } from "@/lib/acessos";
+import { FUNCOES_CORRETOR } from "@/lib/transacoes/opcoes";
 import { formatTelefone } from "@/lib/format";
 import { etapaDoCliente } from "@/lib/clientes/funil-servidor";
 import { carregarVinculosCliente } from "@/lib/clientes/vinculos-servidor";
-import { moverClienteFunilAction, registrarContatoClienteAction } from "../../funil-actions";
+import { moverClienteFunilAction, registrarContatoClienteAction, transferirClienteAction } from "../../funil-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -17,10 +19,10 @@ export default async function EtiquetaClientePage({ params }: { params: Promise<
   const sessao = await requireAdminSession();
   const { id } = await params;
 
-  const [cliente, etapa, vinculos, contatos, remetentes] = await Promise.all([
+  const [cliente, etapa, vinculos, contatos, remetentes, corretoresAtivos] = await Promise.all([
     prisma.clientes.findUnique({
       where: { id },
-      select: { id: true, id_legado: true, nome: true, telefone: true, email: true, created_at: true, status_cadastro: true, parceiro_id: true, parceiros: { select: { nome: true } } }
+      select: { id: true, id_legado: true, nome: true, telefone: true, email: true, created_at: true, status_cadastro: true, parceiro_id: true, parceiros: { select: { nome: true, funcao: true, status_funcao: true } } }
     }),
     etapaDoCliente(id),
     carregarVinculosCliente(id),
@@ -29,6 +31,12 @@ export default async function EtiquetaClientePage({ params }: { params: Promise<
       where: { funcao: { in: ["Administrativo", "Corretor"] }, status_funcao: "Ativo" },
       orderBy: [{ funcao: "asc" }, { nome: "asc" }],
       select: { id: true, nome: true }
+    }),
+    // quem pode receber clientes: só Corretor e Corretor Estagiário em atividade
+    prisma.parceiros.findMany({
+      where: { funcao: { in: FUNCOES_CORRETOR }, status_funcao: "Ativo" },
+      orderBy: [{ funcao: "asc" }, { nome: "asc" }],
+      select: { id: true, nome: true, funcao: true }
     })
   ]);
   if (!cliente || !etapa) notFound();
@@ -46,6 +54,7 @@ export default async function EtiquetaClientePage({ params }: { params: Promise<
     email: cliente.email,
     corretorNome: cliente.parceiros?.nome ?? null,
     corretorId: cliente.parceiro_id,
+    corretorAtivo: !!cliente.parceiros && FUNCOES_CORRETOR.includes(cliente.parceiros.funcao) && cliente.parceiros.status_funcao === "Ativo",
     criadoEm: cliente.created_at.toISOString(),
     etapa: etapa.derivacao.etapa,
     motivo: etapa.derivacao.motivo,
@@ -76,7 +85,10 @@ export default async function EtiquetaClientePage({ params }: { params: Promise<
         }))}
         remetentes={remetentes}
         remetenteLogado={{ id: sessao.parceiroId, primeiroNome: (sessao.nome ?? "").trim().split(/\s+/)[0] ?? "" }}
-        acoes={{ mover: moverClienteFunilAction, registrarContato: registrarContatoClienteAction }}
+        // transferir cliente: só quem edita Clientes (acesso Administrativo ou Diretor)
+        podeTransferir={nivelEmModulos(acessosDaSessao(sessao), ["clientes"]) === "editar"}
+        corretoresParaTransferir={corretoresAtivos}
+        acoes={{ mover: moverClienteFunilAction, registrarContato: registrarContatoClienteAction, transferir: transferirClienteAction }}
       />
     </div>
   );

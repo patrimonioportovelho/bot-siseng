@@ -73,6 +73,8 @@ export function ClientesKanban({
       if (termo && !c.nome.toLowerCase().includes(termo) && !(c.idLegado ?? "").toLowerCase().includes(termo) && !(digitos && (c.telefoneDigitos ?? "").includes(digitos))) return false;
       if (filtroCorretor === "__sem") {
         if (c.corretorNome) return false;
+      } else if (filtroCorretor === "__inativo") {
+        if (c.corretorAtivo) return false; // sem corretor ativo: precisa de transferência
       } else if (filtroCorretor && c.corretorNome !== filtroCorretor) return false;
       if (soSemContato && c.ultimoContatoDias !== null && c.ultimoContatoDias < 7) return false;
       return true;
@@ -114,6 +116,7 @@ export function ClientesKanban({
         <select value={filtroCorretor} onChange={(e) => setFiltroCorretor(e.target.value)} className="text-xs border border-gray-300 rounded-lg px-2 py-1.5 bg-white outline-none focus:border-primary">
           <option value="">Todos os corretores</option>
           <option value="__sem">Sem corretor</option>
+          <option value="__inativo">Sem corretor ativo (precisa de transferência)</option>
           {corretores.map((n) => (
             <option key={n}>{n}</option>
           ))}
@@ -239,6 +242,7 @@ const Cartao = memo(function Cartao({
         <span className="truncate">{c.telefone ?? "Sem telefone"}</span>
         <span className="truncate shrink-0 max-w-[45%]">{c.corretorNome?.split(" ")[0] ?? "—"}</span>
       </div>
+      {!c.corretorAtivo && <div className="text-[10px] text-red-600">Sem corretor ativo</div>}
       {precisaContato && (
         <div className={`text-[10px] ${c.ultimoContatoDias === null ? "text-amber-600" : c.ultimoContatoDias >= 7 ? "text-red-600" : "text-gray-400"}`}>
           {c.ultimoContatoDias === null ? "Nunca contatado" : `Contato há ${c.ultimoContatoDias}d`}

@@ -17,6 +17,7 @@ export type DadosClienteEtiqueta = {
   email: string | null;
   corretorNome: string | null;
   corretorId: string | null;
+  corretorAtivo: boolean;
   criadoEm: string;
   etapa: EtapaFunilId;
   motivo: string;
@@ -32,6 +33,11 @@ type Acoes = {
     clienteId: string,
     dados: { tipo: string; resultado: string | null; nota: string | null }
   ) => Promise<{ ok: true; contato: ContatoCliente } | { ok: false; erro: string }>;
+  transferir: (
+    clienteId: string,
+    novoCorretorId: string,
+    motivo: string | null
+  ) => Promise<{ ok: true; corretorNome: string; contato: ContatoCliente } | { ok: false; erro: string }>;
 };
 
 const TIPOS_CONTATO = ["WhatsApp", "Ligação", "E-mail", "Reunião", "Visita", "Nota"];
@@ -49,6 +55,8 @@ export function ClienteEtiqueta({
   contatosIniciais,
   remetentes,
   remetenteLogado,
+  podeTransferir,
+  corretoresParaTransferir,
   acoes
 }: {
   d: DadosClienteEtiqueta;
@@ -56,6 +64,8 @@ export function ClienteEtiqueta({
   contatosIniciais: ContatoCliente[];
   remetentes: { id: string; nome: string }[];
   remetenteLogado: { id: string; primeiroNome: string };
+  podeTransferir: boolean;
+  corretoresParaTransferir: { id: string; nome: string; funcao: string }[];
   acoes: Acoes;
 }) {
   const router = useRouter();
@@ -93,7 +103,32 @@ export function ClienteEtiqueta({
     setResultado("");
   }
 
-  const jaContatado = contatos.some((c) => c.tipo !== "Nota");
+  const jaContatado = contatos.some((c) => c.tipo !== "Nota" && c.tipo !== "Transferência");
+
+  // ---- transferir para outro corretor
+  const [corretorAtual, setCorretorAtual] = useState({ id: d.corretorId, nome: d.corretorNome, ativo: d.corretorAtivo });
+  const [transferindo, setTransferindo] = useState(false);
+  const [novoCorretor, setNovoCorretor] = useState("");
+  const [motivoTransf, setMotivoTransf] = useState("");
+  const [enviandoTransf, setEnviandoTransf] = useState(false);
+
+  async function transferir() {
+    if (!novoCorretor) return;
+    setEnviandoTransf(true);
+    setErro("");
+    const r = await acoes.transferir(d.id, novoCorretor, motivoTransf.trim() || null);
+    setEnviandoTransf(false);
+    if (!r.ok) {
+      setErro(r.erro);
+      return;
+    }
+    setCorretorAtual({ id: novoCorretor, nome: r.corretorNome, ativo: true });
+    setContatos((l) => [r.contato, ...l]);
+    setTransferindo(false);
+    setNovoCorretor("");
+    setMotivoTransf("");
+    startTransition(() => router.refresh());
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -116,7 +151,10 @@ export function ClienteEtiqueta({
             <div className="text-xs text-gray-600 mt-2 flex flex-wrap gap-x-4 gap-y-0.5">
               <span>{d.telefone ?? "Sem telefone"}</span>
               {d.email && <span>{d.email}</span>}
-              <span>Corretor: {d.corretorNome ?? "—"}</span>
+              <span>
+                Corretor: {corretorAtual.nome ?? "—"}
+                {!corretorAtual.ativo && <span className="ml-1 text-[10px] font-bold rounded-full px-1.5 py-0.5 border bg-red-50 text-red-600 border-red-200">sem corretor ativo</span>}
+              </span>
               <span>Cadastrado em {dia(d.criadoEm)}</span>
               {d.idLegado && <span className="text-gray-400">Id {d.idLegado}</span>}
             </div>
@@ -137,6 +175,57 @@ export function ClienteEtiqueta({
             </Link>
           </div>
         </div>
+        {podeTransferir && (
+          <div className={`mt-3 rounded-lg border px-3 py-2 ${corretorAtual.ativo ? "border-gray-200 bg-gray-50" : "border-red-200 bg-red-50/60"}`}>
+            {!transferindo ? (
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="text-[11px] text-gray-600">
+                  {corretorAtual.ativo
+                    ? "Quer que outro corretor atenda este cliente?"
+                    : "O corretor deste cliente não está mais ativo. Passe o cliente para um corretor em atividade."}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setTransferindo(true)}
+                  className="text-xs border border-gray-300 bg-white rounded-lg px-3 py-1.5 font-semibold text-gray-700 hover:bg-gray-50"
+                >
+                  Transferir para outro corretor
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-end gap-2 flex-wrap">
+                <label className="text-[11px] text-gray-600 flex-1 min-w-52">
+                  Novo corretor (Corretor e Corretor Estagiário ativos)
+                  <select value={novoCorretor} onChange={(e) => setNovoCorretor(e.target.value)} className={`${CAMPO} mt-0.5`}>
+                    <option value="">Escolha...</option>
+                    {corretoresParaTransferir
+                      .filter((c) => c.id !== corretorAtual.id)
+                      .map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.nome} — {c.funcao}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+                <label className="text-[11px] text-gray-600 flex-1 min-w-52">
+                  Motivo (opcional)
+                  <input value={motivoTransf} onChange={(e) => setMotivoTransf(e.target.value)} maxLength={1000} placeholder="Ex.: corretor anterior saiu da imobiliária" className={`${CAMPO} mt-0.5`} />
+                </label>
+                <button
+                  type="button"
+                  onClick={() => void transferir()}
+                  disabled={!novoCorretor || enviandoTransf}
+                  className="text-xs bg-primary text-white rounded-lg px-3 py-1.5 font-semibold disabled:opacity-50"
+                >
+                  {enviandoTransf ? "Transferindo..." : "Transferir"}
+                </button>
+                <button type="button" onClick={() => setTransferindo(false)} className="text-xs text-gray-500 hover:text-gray-800 px-2 py-1.5">
+                  Cancelar
+                </button>
+              </div>
+            )}
+          </div>
+        )}
         {erro && <div className="mt-3 text-xs text-red-600">{erro}</div>}
       </div>
 

@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { formatTelefone } from "@/lib/format";
 import { STATUS_AVALIACAO_ATIVOS } from "@/lib/financiamento/opcoes";
+import { FUNCOES_CORRETOR } from "@/lib/transacoes/opcoes";
 import {
   DIAS_PROPOSTA_RECENTE,
   STATUS_COMPRA_FINALIZADA,
@@ -24,6 +25,8 @@ export type ClienteFunil = {
   telefoneDigitos: string | null;
   email: string | null;
   corretorNome: string | null;
+  // o responsável é um Corretor ou Corretor Estagiário em atividade? (senão o cliente precisa de transferência)
+  corretorAtivo: boolean;
   criadoEm: string;
   coluna: EtapaFunilId;
   motivo: string;
@@ -111,7 +114,7 @@ export async function carregarFunil(where: object): Promise<ClienteFunil[]> {
     prisma.clientes.findMany({
       where,
       orderBy: { created_at: "desc" },
-      select: { id: true, id_legado: true, nome: true, telefone: true, email: true, created_at: true, atendimento_desde: true, parceiros: { select: { nome: true } } }
+      select: { id: true, id_legado: true, nome: true, telefone: true, email: true, created_at: true, atendimento_desde: true, parceiros: { select: { nome: true, funcao: true, status_funcao: true } } }
     }),
     carregarSinais(null),
     prisma.clientes_contatos.groupBy({ by: ["cliente_id"], _max: { data: true } })
@@ -130,6 +133,7 @@ export async function carregarFunil(where: object): Promise<ClienteFunil[]> {
       telefoneDigitos: digitos || null,
       email: c.email,
       corretorNome: c.parceiros?.nome ?? null,
+      corretorAtivo: !!c.parceiros && FUNCOES_CORRETOR.includes(c.parceiros.funcao) && c.parceiros.status_funcao === "Ativo",
       criadoEm: c.created_at.toISOString(),
       coluna: d.etapa,
       motivo: d.motivo,

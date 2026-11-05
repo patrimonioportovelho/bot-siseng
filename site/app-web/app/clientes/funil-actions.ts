@@ -6,6 +6,7 @@ import { logAlteracao, requireEdicao } from "@/lib/auth";
 import { etapaDoCliente } from "@/lib/clientes/funil-servidor";
 import { movimentoPermitido, type EtapaFunilId } from "@/lib/clientes/funil";
 import { FUNCOES_CORRETOR } from "@/lib/transacoes/opcoes";
+import { registrarAviso } from "@/lib/avisos-equipe";
 
 export type ContatoCliente = { id: string; tipo: string; resultado: string | null; nota: string | null; data: string; por: string | null };
 
@@ -66,7 +67,7 @@ export async function transferirClienteAction(
   const admin = await requireEdicao("clientes");
 
   const [cliente, novo] = await Promise.all([
-    prisma.clientes.findUnique({ where: { id: clienteId }, select: { id: true, parceiro_id: true, parceiros: { select: { nome: true } } } }),
+    prisma.clientes.findUnique({ where: { id: clienteId }, select: { id: true, nome: true, parceiro_id: true, parceiros: { select: { nome: true } } } }),
     prisma.parceiros.findFirst({ where: { id: novoCorretorId, funcao: { in: FUNCOES_CORRETOR }, status_funcao: "Ativo" }, select: { id: true, nome: true } })
   ]);
   if (!cliente) return { ok: false, erro: "Cliente não encontrado." };
@@ -74,7 +75,19 @@ export async function transferirClienteAction(
   if (cliente.parceiro_id === novo.id) return { ok: false, erro: `${novo.nome} já é o corretor deste cliente.` };
 
   const anterior = cliente.parceiros?.nome ?? "sem corretor";
-  await prisma.clientes.update({ where: { id: clienteId }, data: { parceiro_id: novo.id, updated_at: new Date() } });
+  // repasse_desde: o cliente fica "novo para o corretor" (sino e quadro dele) até o primeiro movimento na etiqueta
+  await prisma.clientes.update({
+    where: { id: clienteId },
+    data: { parceiro_id: novo.id, updated_at: new Date(), repasse_desde: new Date(), repasse_por: admin.parceiroId }
+  });
+  // aviso estilo MSN: aparece na hora para o corretor, se ele estiver no portal
+  await registrarAviso({
+    tipo: "cliente_recebido",
+    parceiroId: admin.parceiroId,
+    paraParceiroId: novo.id,
+    detalhe: cliente.nome,
+    url: `/portal/clientes/${clienteId}`
+  });
   const contato = await prisma.clientes_contatos.create({
     data: {
       cliente_id: clienteId,

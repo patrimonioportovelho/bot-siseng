@@ -14,14 +14,17 @@ export const TIPOS_AVISO: Record<string, { icone: string; titulo: (nome: string)
   compra_venda: { icone: "🏠", titulo: (n) => `${n} cadastrou uma Compra e Venda` },
   locacao: { icone: "🔑", titulo: (n) => `${n} cadastrou uma Locação` },
   administracao: { icone: "📋", titulo: (n) => `${n} cadastrou uma Administração` },
-  gestao: { icone: "📑", titulo: (n) => `${n} gerou um contrato de Gestão` }
+  gestao: { icone: "📑", titulo: (n) => `${n} gerou um contrato de Gestão` },
+  // dirigido ao corretor (portal): o administrativo passou um cliente para ele
+  cliente_recebido: { icone: "📥", titulo: (n) => `${n} passou um cliente para você` }
 };
 
 const MINUTOS_SEM_REPETIR_LOGIN = 10;
 
 // Grava um aviso. Nunca lança erro: aviso é complemento e não pode derrubar o
 // login nem o cadastro do corretor.
-export async function registrarAviso(params: { tipo: string; parceiroId: string; detalhe?: string | null; url?: string | null }) {
+// paraParceiroId: aviso dirigido (só essa pessoa vê, no portal do corretor); sem ele, é aviso da equipe.
+export async function registrarAviso(params: { tipo: string; parceiroId: string; detalhe?: string | null; url?: string | null; paraParceiroId?: string | null }) {
   try {
     if (!TIPOS_AVISO[params.tipo]) return;
     // Quem entra várias vezes seguidas só avisa uma vez (a cada 10 min).
@@ -33,7 +36,7 @@ export async function registrarAviso(params: { tipo: string; parceiroId: string;
       if (recente) return;
     }
     await prisma.avisos_equipe.create({
-      data: { tipo: params.tipo, parceiro_id: params.parceiroId, detalhe: params.detalhe ?? null, url: params.url ?? null }
+      data: { tipo: params.tipo, parceiro_id: params.parceiroId, detalhe: params.detalhe ?? null, url: params.url ?? null, para_parceiro_id: params.paraParceiroId ?? null }
     });
     // limpeza: de vez em quando apaga o que tem mais de 7 dias
     if (Math.random() < 0.05) {

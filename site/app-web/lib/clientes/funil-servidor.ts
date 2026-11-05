@@ -33,6 +33,8 @@ export type ClienteFunil = {
   papeis: string[];
   voltaParaLeads: boolean;
   atendimentoDesde: string | null;
+  // repassado ao corretor e ainda sem movimento dele (aparece como "novo para você" no portal)
+  repasseDesde: string | null;
   ultimoContatoDias: number | null;
 };
 
@@ -108,16 +110,19 @@ export async function etapasDosClientes(clientes: { id: string; atendimento_desd
   );
 }
 
-// Os cards do quadro. `where` é o filtro de clientes (arquivados, loja).
-export async function carregarFunil(where: object): Promise<ClienteFunil[]> {
-  const [clientes, sinais, contatos] = await Promise.all([
-    prisma.clientes.findMany({
+// Os cards do quadro. `where` é o filtro de clientes (arquivados, loja). Com `restrito` (portal do
+// corretor, só os clientes dele) os vínculos e contatos são buscados só desses clientes.
+export async function carregarFunil(where: object, opcoes: { restrito?: boolean } = {}): Promise<ClienteFunil[]> {
+  const baseClientes = await prisma.clientes.findMany({
       where,
       orderBy: { created_at: "desc" },
-      select: { id: true, id_legado: true, nome: true, telefone: true, email: true, created_at: true, atendimento_desde: true, parceiros: { select: { nome: true, funcao: true, status_funcao: true } } }
-    }),
-    carregarSinais(null),
-    prisma.clientes_contatos.groupBy({ by: ["cliente_id"], _max: { data: true } })
+      select: { id: true, id_legado: true, nome: true, telefone: true, email: true, created_at: true, atendimento_desde: true, repasse_desde: true, parceiros: { select: { nome: true, funcao: true, status_funcao: true } } }
+  });
+  const clientes = baseClientes;
+  const ids = opcoes.restrito ? clientes.map((c) => c.id) : null;
+  const [sinais, contatos] = await Promise.all([
+    carregarSinais(ids),
+    prisma.clientes_contatos.groupBy({ by: ["cliente_id"], where: ids ? { cliente_id: { in: ids } } : {}, _max: { data: true } })
   ]);
   const ultimoContato = new Map(contatos.map((c) => [c.cliente_id, c._max.data]));
   const agora = new Date();
@@ -140,6 +145,7 @@ export async function carregarFunil(where: object): Promise<ClienteFunil[]> {
       papeis: d.papeis,
       voltaParaLeads: d.voltaParaLeads,
       atendimentoDesde: c.atendimento_desde ? c.atendimento_desde.toISOString() : null,
+      repasseDesde: c.repasse_desde ? c.repasse_desde.toISOString() : null,
       ultimoContatoDias: contato ? Math.max(0, Math.floor((agora.getTime() - contato.getTime()) / DIA_MS)) : null
     };
   });

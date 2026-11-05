@@ -34,17 +34,17 @@ const MAXIMO_NA_TELA = 5;
 // estava fora (até 30 min, limite do servidor) em vez de começar do zero.
 const CHAVE_CURSOR = "sis_avisos_cursor";
 
-function lerCursor(): string | null {
+function lerCursor(chave: string): string | null {
   try {
-    return window.localStorage.getItem(CHAVE_CURSOR);
+    return window.localStorage.getItem(chave);
   } catch {
     return null;
   }
 }
 
-function gravarCursor(valor: string) {
+function gravarCursor(chave: string, valor: string) {
   try {
-    window.localStorage.setItem(CHAVE_CURSOR, valor);
+    window.localStorage.setItem(chave, valor);
   } catch {
     // sem localStorage
   }
@@ -121,7 +121,8 @@ function Toast({ aviso, aoFechar, aoAbrir }: { aviso: Aviso; aoFechar: () => voi
 // Janelinha estilo MSN no canto da tela: quando um corretor entra no portal, faz
 // uma proposta ou cadastra algo, aparece um aviso por ~10 s; os novos entram por
 // baixo e empurram os antigos para cima. Só no administrativo (AppShell).
-export function AvisosEquipeToasts() {
+// endpoint/chaveCursor: no portal do corretor os avisos vêm de /api/portal/avisos (dirigidos a ele).
+export function AvisosEquipeToasts({ endpoint = "/api/avisos", chaveCursor = CHAVE_CURSOR }: { endpoint?: string; chaveCursor?: string } = {}) {
   const router = useRouter();
   const [avisos, setAvisos] = useState<Aviso[]>([]);
   const cursor = useRef<string | null>(null);
@@ -129,13 +130,13 @@ export function AvisosEquipeToasts() {
 
   const buscar = useCallback(async () => {
     try {
-      if (!cursor.current) cursor.current = lerCursor();
-      const url = cursor.current ? `/api/avisos?desde=${encodeURIComponent(cursor.current)}` : "/api/avisos";
+      if (!cursor.current) cursor.current = lerCursor(chaveCursor);
+      const url = cursor.current ? `${endpoint}?desde=${encodeURIComponent(cursor.current)}` : endpoint;
       const r = await fetch(url, { cache: "no-store" });
       if (!r.ok) return;
       const dados = (await r.json()) as { agora: string; avisos: Aviso[] };
       cursor.current = dados.agora;
-      gravarCursor(dados.agora);
+      gravarCursor(chaveCursor, dados.agora);
       const novos = dados.avisos.filter((a) => !vistos.current.has(a.id));
       if (novos.length === 0) return;
       for (const a of novos) vistos.current.add(a.id);
@@ -144,7 +145,7 @@ export function AvisosEquipeToasts() {
     } catch {
       // sem rede: tenta de novo no próximo ciclo
     }
-  }, []);
+  }, [endpoint, chaveCursor]);
 
   useEffect(() => {
     let timer: ReturnType<typeof setInterval> | null = null;

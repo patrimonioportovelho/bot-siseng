@@ -65,6 +65,8 @@ export function AppShell({ children, acessos, ponto }: { children: React.ReactNo
             <RodapePrivacidade />
           </main>
         </div>
+        {/* Avisos estilo MSN dirigidos ao corretor (ex.: o administrativo passou um cliente para ele) */}
+        <AvisosEquipeToasts endpoint="/api/portal/avisos" chaveCursor="sis_avisos_cursor_portal" />
       </>
     );
   }

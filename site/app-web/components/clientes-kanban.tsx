@@ -21,19 +21,23 @@ function formatarDias(iso: string): number {
   return Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86400000));
 }
 
+// modoCorretor: o mesmo quadro no portal do corretor, só com os clientes dele. Não se arrasta nada (o
+// corretor só complementa dados e acompanha) e o card abre a etiqueta do portal.
 export function ClientesKanban({
   cards: cardsServidor,
-  mover
+  mover,
+  modoCorretor = false
 }: {
   cards: ClienteFunil[];
-  mover: (id: string, destino: EtapaFunilId) => Promise<{ ok: boolean; erro?: string }>;
+  mover?: (id: string, destino: EtapaFunilId) => Promise<{ ok: boolean; erro?: string }>;
+  modoCorretor?: boolean;
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
 
   // O card muda de coluna na hora e a gravação roda em segundo plano (mesmo comportamento dos
   // outros quadros); se o servidor recusar, o card volta e o motivo aparece.
-  const { itens: cards, moverPara, erro, limparErro } = useQuadroOtimista<ClienteFunil>(cardsServidor, mover as (id: string, destino: string) => Promise<{ ok: boolean; erro?: string }>, (c, destino) =>
+  const { itens: cards, moverPara, erro, limparErro } = useQuadroOtimista<ClienteFunil>(cardsServidor, (mover ?? (async () => ({ ok: false, erro: "Sem permissão para mover." }))) as (id: string, destino: string) => Promise<{ ok: boolean; erro?: string }>, (c, destino) =>
     destino === "atendimento"
       ? { motivo: "Marcado em atendimento", voltaParaLeads: true, atendimentoDesde: new Date().toISOString() }
       : { motivo: "Apenas cadastrado", voltaParaLeads: false, atendimentoDesde: null }
@@ -81,6 +85,8 @@ export function ClientesKanban({
     });
   }, [cards, busca, filtroCorretor, soSemContato]);
 
+  const novosParaVoce = useMemo(() => (modoCorretor ? cards.filter((c) => c.repasseDesde).length : 0), [modoCorretor, cards]);
+
   const iniciarArraste = useCallback((id: string) => setArrastandoId(id), []);
   const terminarArraste = useCallback(() => {
     setArrastandoId(null);
@@ -89,7 +95,7 @@ export function ClientesKanban({
 
   function aoSoltar(destino: EtapaFunilId) {
     setColunaAlvo(null);
-    if (!arrastandoId) return;
+    if (modoCorretor || !arrastandoId) return;
     const id = arrastandoId;
     setArrastandoId(null);
     const c = cards.find((x) => x.id === id);
@@ -113,14 +119,16 @@ export function ClientesKanban({
           placeholder="Buscar por nome, Id ou telefone..."
           className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full sm:w-64 outline-none focus:border-primary bg-white"
         />
-        <select value={filtroCorretor} onChange={(e) => setFiltroCorretor(e.target.value)} className="text-xs border border-gray-300 rounded-lg px-2 py-1.5 bg-white outline-none focus:border-primary">
-          <option value="">Todos os corretores</option>
-          <option value="__sem">Sem corretor</option>
-          <option value="__inativo">Sem corretor ativo (precisa de transferência)</option>
-          {corretores.map((n) => (
-            <option key={n}>{n}</option>
-          ))}
-        </select>
+        {!modoCorretor && (
+          <select value={filtroCorretor} onChange={(e) => setFiltroCorretor(e.target.value)} className="text-xs border border-gray-300 rounded-lg px-2 py-1.5 bg-white outline-none focus:border-primary">
+            <option value="">Todos os corretores</option>
+            <option value="__sem">Sem corretor</option>
+            <option value="__inativo">Sem corretor ativo (precisa de transferência)</option>
+            {corretores.map((n) => (
+              <option key={n}>{n}</option>
+            ))}
+          </select>
+        )}
         <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer">
           <input type="checkbox" checked={soSemContato} onChange={(e) => setSoSemContato(e.target.checked)} />
           Sem contato há 7 dias ou mais
@@ -144,14 +152,24 @@ export function ClientesKanban({
         </div>
       )}
 
+      {novosParaVoce > 0 && (
+        <div className="bg-amber-50 border border-amber-200 text-amber-800 text-xs rounded-lg px-3 py-2">
+          Você tem <strong>{novosParaVoce}</strong> cliente{novosParaVoce === 1 ? "" : "s"} novo{novosParaVoce === 1 ? "" : "s"} para atender. Eles ficam em destaque até você abrir a etiqueta e fazer o primeiro movimento
+          (contato, nota ou dados complementados).
+        </div>
+      )}
+
       <DockArraste
-        ativo={arrastandoId !== null}
+        ativo={!modoCorretor && arrastandoId !== null}
         colunas={ETAPAS_FUNIL.filter((e) => e.manual).map((c) => ({ id: c.id, label: c.label, cor: c.cor }))}
         aoSoltar={(id) => aoSoltar(id as EtapaFunilId)}
       />
       <div className="flex flex-col md:flex-row gap-3 md:overflow-x-auto pb-2">
         {ETAPAS_FUNIL.map((coluna) => {
-          const doGrupo = filtrados.filter((c) => c.coluna === coluna.id);
+          // os repassados ao corretor (ainda sem movimento dele) vêm primeiro
+          const doGrupo = filtrados
+            .filter((c) => c.coluna === coluna.id)
+            .sort((a, b) => Number(!!b.repasseDesde) - Number(!!a.repasseDesde));
           const limite = limites[coluna.id] ?? POR_COLUNA_INICIAL;
           const visiveis = doGrupo.slice(0, limite);
           const emDestaque = colunaAlvo === coluna.id;
@@ -172,12 +190,12 @@ export function ClientesKanban({
                   <span className="text-[11px] font-semibold shrink-0">{doGrupo.length}</span>
                 </div>
                 <div className="text-[10px] opacity-80 leading-snug mt-0.5">{coluna.dica}</div>
-                {!coluna.manual && <div className="text-[10px] opacity-60 mt-0.5">Etapa automática</div>}
+                {!coluna.manual && !modoCorretor && <div className="text-[10px] opacity-60 mt-0.5">Etapa automática</div>}
               </div>
 
               <div className="flex flex-col gap-2 md:max-h-[68vh] md:overflow-y-auto">
                 {visiveis.map((c) => (
-                  <Cartao key={c.id} c={c} arrastando={arrastandoId === c.id} aoArrastar={iniciarArraste} aoSoltarFim={terminarArraste} />
+                  <Cartao key={c.id} c={c} corretor={modoCorretor} arrastando={arrastandoId === c.id} aoArrastar={iniciarArraste} aoSoltarFim={terminarArraste} />
                 ))}
                 {doGrupo.length === 0 && <div className="text-[11px] text-gray-400 text-center py-4">Nenhum cliente</div>}
                 {doGrupo.length > limite && (
@@ -200,11 +218,13 @@ export function ClientesKanban({
 
 const Cartao = memo(function Cartao({
   c,
+  corretor,
   arrastando,
   aoArrastar,
   aoSoltarFim
 }: {
   c: ClienteFunil;
+  corretor: boolean;
   arrastando: boolean;
   aoArrastar: (id: string) => void;
   aoSoltarFim: () => void;
@@ -216,12 +236,15 @@ const Cartao = memo(function Cartao({
 
   return (
     <Link
-      href={`/clientes/${c.id}/etiqueta`}
-      draggable
+      href={corretor ? `/portal/clientes/${c.id}` : `/clientes/${c.id}/etiqueta`}
+      draggable={!corretor}
       onDragStart={() => aoArrastar(c.id)}
       onDragEnd={aoSoltarFim}
-      className={`bg-white border border-gray-200 hover:border-primary/40 rounded-lg p-2.5 flex flex-col gap-1 hover:shadow-sm transition-shadow cursor-grab active:cursor-grabbing ${arrastando ? "opacity-50" : ""}`}
+      className={`bg-white border rounded-lg p-2.5 flex flex-col gap-1 hover:shadow-sm transition-shadow ${corretor ? "" : "cursor-grab active:cursor-grabbing"} ${arrastando ? "opacity-50" : ""} ${
+        c.repasseDesde && corretor ? "border-amber-400 ring-1 ring-amber-300 bg-amber-50/40" : "border-gray-200 hover:border-primary/40"
+      }`}
     >
+      {c.repasseDesde && corretor && <div className="text-[10px] font-bold text-amber-700">📥 Novo para você</div>}
       <div className="flex items-start justify-between gap-2">
         <span className="text-xs font-semibold text-gray-800 leading-snug">{c.nome}</span>
         <span className="text-[10px] text-gray-400 shrink-0" title="Dias desde o cadastro">
@@ -242,7 +265,7 @@ const Cartao = memo(function Cartao({
         <span className="truncate">{c.telefone ?? "Sem telefone"}</span>
         <span className="truncate shrink-0 max-w-[45%]">{c.corretorNome?.split(" ")[0] ?? "—"}</span>
       </div>
-      {!c.corretorAtivo && <div className="text-[10px] text-red-600">Sem corretor ativo</div>}
+      {!corretor && !c.corretorAtivo && <div className="text-[10px] text-red-600">Sem corretor ativo</div>}
       {precisaContato && (
         <div className={`text-[10px] ${c.ultimoContatoDias === null ? "text-amber-600" : c.ultimoContatoDias >= 7 ? "text-red-600" : "text-gray-400"}`}>
           {c.ultimoContatoDias === null ? "Nunca contatado" : `Contato há ${c.ultimoContatoDias}d`}

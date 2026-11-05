@@ -349,6 +349,31 @@ export async function obterNotificacoesPortal(funcaoDoParceiro: string | null, p
   const dispensados = await buscarIdsDispensados(parceiroId);
   const itensVisiveis = dispensados.size > 0 ? itens.filter((i) => !dispensados.has(i.id)) : itens;
 
+  // Clientes que o administrativo passou para este corretor e que ainda não tiveram o primeiro movimento
+  // (contato, nota ou complemento de dados na etiqueta). Não podem ser dispensados: ficam no painel até ele agir.
+  const repassados = await prisma.clientes.findMany({
+    where: { parceiro_id: parceiroId, repasse_desde: { not: null } },
+    orderBy: { repasse_desde: "desc" },
+    take: LIMITE_POR_GRUPO,
+    select: { id: true, nome: true, repasse_desde: true, repasse_por: true }
+  });
+  if (repassados.length > 0) {
+    const porIds = [...new Set(repassados.map((c) => c.repasse_por).filter((x): x is string => !!x))];
+    const nomes = new Map(
+      (await prisma.parceiros.findMany({ where: { id: { in: porIds } }, select: { id: true, nome: true } })).map((p) => [p.id, p.nome])
+    );
+    for (const c of repassados) {
+      itensVisiveis.push({
+        id: `repasse-${c.id}`,
+        titulo: `Novo cliente para você — ${c.nome}`,
+        detalhe: `Passado por ${nomes.get(c.repasse_por ?? "")?.split(" ")[0] ?? "o administrativo"}. Abra a etiqueta e faça o primeiro contato.`,
+        href: `/portal/clientes/${c.id}`,
+        data: c.repasse_desde as Date,
+        urgente: true
+      });
+    }
+  }
+
   itensVisiveis.sort((x, y) => {
     if (x.urgente !== y.urgente) return x.urgente ? -1 : 1;
     return y.data.getTime() - x.data.getTime();

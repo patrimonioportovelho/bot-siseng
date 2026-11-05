@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ClienteWhatsapp } from "@/components/cliente-whatsapp";
@@ -25,15 +25,17 @@ export type DadosClienteEtiqueta = {
   voltaParaLeads: boolean;
   atendimentoDesde: string | null;
   imovelReferencia: string | null;
+  // repassado ao corretor e ainda sem movimento dele (só no portal)
+  repasseDesde?: string | null;
 };
 
 type Acoes = {
-  mover: (id: string, destino: EtapaFunilId) => Promise<{ ok: true } | { ok: false; erro: string }>;
+  mover?: (id: string, destino: EtapaFunilId) => Promise<{ ok: true } | { ok: false; erro: string }>;
   registrarContato: (
     clienteId: string,
     dados: { tipo: string; resultado: string | null; nota: string | null }
   ) => Promise<{ ok: true; contato: ContatoCliente } | { ok: false; erro: string }>;
-  transferir: (
+  transferir?: (
     clienteId: string,
     novoCorretorId: string,
     motivo: string | null
@@ -55,8 +57,10 @@ export function ClienteEtiqueta({
   contatosIniciais,
   remetentes,
   remetenteLogado,
-  podeTransferir,
-  corretoresParaTransferir,
+  podeTransferir = false,
+  corretoresParaTransferir = [],
+  modoCorretor = false,
+  extra,
   acoes
 }: {
   d: DadosClienteEtiqueta;
@@ -64,8 +68,12 @@ export function ClienteEtiqueta({
   contatosIniciais: ContatoCliente[];
   remetentes: { id: string; nome: string }[];
   remetenteLogado: { id: string; primeiroNome: string };
-  podeTransferir: boolean;
-  corretoresParaTransferir: { id: string; nome: string; funcao: string }[];
+  podeTransferir?: boolean;
+  corretoresParaTransferir?: { id: string; nome: string; funcao: string }[];
+  // portal do corretor: sem mover etapa, sem ficha do administrativo e sem transferência
+  modoCorretor?: boolean;
+  // conteúdo extra logo depois do WhatsApp (ex.: "Complementar dados")
+  extra?: ReactNode;
   acoes: Acoes;
 }) {
   const router = useRouter();
@@ -84,6 +92,7 @@ export function ClienteEtiqueta({
 
   async function mover(destino: EtapaFunilId) {
     setErro("");
+    if (!acoes.mover) return;
     const r = await acoes.mover(d.id, destino);
     if (!r.ok) setErro(r.erro);
     else startTransition(() => router.refresh());
@@ -113,7 +122,7 @@ export function ClienteEtiqueta({
   const [enviandoTransf, setEnviandoTransf] = useState(false);
 
   async function transferir() {
-    if (!novoCorretor) return;
+    if (!novoCorretor || !acoes.transferir) return;
     setEnviandoTransf(true);
     setErro("");
     const r = await acoes.transferir(d.id, novoCorretor, motivoTransf.trim() || null);
@@ -160,22 +169,29 @@ export function ClienteEtiqueta({
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            {d.etapa === "leads" && podeAtender.ok && (
+            {!modoCorretor && d.etapa === "leads" && podeAtender.ok && (
               <button type="button" onClick={() => void mover("atendimento")} className="text-xs bg-amber-600 text-white rounded-lg px-3 py-1.5 font-semibold hover:opacity-90">
                 Marcar em atendimento
               </button>
             )}
-            {d.etapa === "atendimento" && podeVoltar.ok && (
+            {!modoCorretor && d.etapa === "atendimento" && podeVoltar.ok && (
               <button type="button" onClick={() => void mover("leads")} className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 font-semibold text-gray-600">
                 Voltar para Leads
               </button>
             )}
-            <Link href={`/clientes/${d.id}`} className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 font-semibold text-gray-600 hover:bg-gray-50">
-              Abrir ficha completa
-            </Link>
+            {!modoCorretor && (
+              <Link href={`/clientes/${d.id}`} className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 font-semibold text-gray-600 hover:bg-gray-50">
+                Abrir ficha completa
+              </Link>
+            )}
           </div>
         </div>
-        {podeTransferir && (
+        {modoCorretor && d.repasseDesde && (
+          <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            📥 Este cliente foi passado para você em {dia(d.repasseDesde)}. Faça o primeiro movimento — registre um contato (use o WhatsApp abaixo), escreva uma nota ou complete os dados — e ele deixa de aparecer como novo.
+          </div>
+        )}
+        {!modoCorretor && podeTransferir && (
           <div className={`mt-3 rounded-lg border px-3 py-2 ${corretorAtual.ativo ? "border-gray-200 bg-gray-50" : "border-red-200 bg-red-50/60"}`}>
             {!transferindo ? (
               <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -243,6 +259,8 @@ export function ClienteEtiqueta({
         registrar={acoes.registrarContato}
         aoRegistrar={(c) => setContatos((l) => [c, ...l])}
       />
+
+      {extra}
 
       <div className="grid lg:grid-cols-2 gap-4">
         {/* Vínculos */}

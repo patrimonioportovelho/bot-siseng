@@ -38,6 +38,8 @@ export const DIAS_PROPOSTA_RECENTE = 60;
 
 // Locação "ativa" = contrato rodando. Compra e Venda "finalizada" = comprador de fato.
 export const STATUS_LOCACAO_ATIVA = ["Imóvel em Locação", "Imóvel em locação sem administração"];
+// Locação finalizada sem administração: continua valendo enquanto o contrato estiver no prazo (data de vencimento).
+export const STATUS_LOCACAO_SEM_ADM = "Transação Finalizada sem administração";
 export const STATUS_COMPRA_FINALIZADA = ["Transação Finalizada"];
 export const prefixoElaboracao = "Elaboração";
 
@@ -51,6 +53,10 @@ export type SinaisCliente = {
   contratoEmElaboracao: string | null; // "Locação" | "Compra e Venda"
   propostaEm: Date | null;
   avaliacaoAtiva: string | null; // status da avaliação em andamento
+  avaliacaoEm: Date | null; // quando essa avaliação foi aberta
+  // quando o contrato mais recente do cliente (como locatário/comprador) foi criado: proposta e avaliação
+  // anteriores a ele já deram resultado (viraram o contrato) e não seguram mais o cliente nessas etapas
+  contratoEm: Date | null;
   atendimentoManual: boolean;
 };
 
@@ -75,12 +81,15 @@ export function derivarEtapa(s: SinaisCliente, agora: Date = new Date()): Deriva
   if (s.locacaoAtiva) papeis.push("Inquilino");
   if (s.compraFinalizada) papeis.push("Comprador");
 
-  const propostaValida = s.propostaEm !== null && agora.getTime() - s.propostaEm.getTime() <= DIAS_PROPOSTA_RECENTE * 86400000;
+  // só vale o que veio DEPOIS do contrato mais recente (quem já fechou e começa um novo processo volta ao funil)
+  const depoisDoContrato = (d: Date | null) => d !== null && (s.contratoEm === null || d.getTime() > s.contratoEm.getTime());
+  const propostaValida = depoisDoContrato(s.propostaEm) && agora.getTime() - (s.propostaEm as Date).getTime() <= DIAS_PROPOSTA_RECENTE * 86400000;
+  const avaliacaoValida = s.avaliacaoAtiva !== null && depoisDoContrato(s.avaliacaoEm);
   const resultado = (etapa: EtapaFunilId, motivo: string, voltaParaLeads = false): Derivacao => ({ etapa, motivo, papeis, voltaParaLeads });
 
   if (s.contratoEmElaboracao) return resultado("negocio", `Contrato de ${s.contratoEmElaboracao} em elaboração`);
   if (propostaValida && s.propostaEm) return resultado("proposta", `Proposta criada em ${dataCurta(s.propostaEm)}`);
-  if (s.avaliacaoAtiva) return resultado("atendimento", `Avaliação em andamento: ${s.avaliacaoAtiva}`);
+  if (avaliacaoValida) return resultado("atendimento", `Avaliação em andamento: ${s.avaliacaoAtiva}`);
   if (s.atendimentoManual) return resultado("atendimento", "Marcado em atendimento", true);
   if (s.proprietario) return resultado("proprietarios", "Vínculo de proprietário");
   if (s.locacaoAtiva) return resultado("inquilinos", "Contrato de locação ativo");

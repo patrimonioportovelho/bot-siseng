@@ -6,6 +6,7 @@ import {
   DIAS_PROPOSTA_RECENTE,
   STATUS_COMPRA_FINALIZADA,
   STATUS_LOCACAO_ATIVA,
+  STATUS_LOCACAO_SEM_ADM,
   derivarEtapa,
   prefixoElaboracao,
   type Derivacao,
@@ -39,7 +40,17 @@ export type ClienteFunil = {
 };
 
 function sinaisVazios(): SinaisCliente {
-  return { proprietario: false, locacaoAtiva: false, compraFinalizada: false, contratoEmElaboracao: null, propostaEm: null, avaliacaoAtiva: null, atendimentoManual: false };
+  return {
+    proprietario: false,
+    locacaoAtiva: false,
+    compraFinalizada: false,
+    contratoEmElaboracao: null,
+    propostaEm: null,
+    avaliacaoAtiva: null,
+    avaliacaoEm: null,
+    contratoEm: null,
+    atendimentoManual: false
+  };
 }
 
 // Tudo que o sistema sabe de cada cliente, em poucas consultas (e só dos `ids`, quando
@@ -54,16 +65,16 @@ export async function carregarSinais(ids: string[] | null): Promise<Map<string, 
     prisma.gestoes.findMany({ where: { ...(filtro ? { cliente_id: filtro } : {}), excluido: false }, select: { cliente_id: true } }),
     prisma.transacoes.findMany({
       where: { excluido: false, ...(filtro ? { OR: [{ cliente_id: filtro }, { cliente_contraparte_id: filtro }] } : {}) },
-      select: { tipo: true, status: true, cliente_id: true, cliente_contraparte_id: true }
+      select: { tipo: true, status: true, cliente_id: true, cliente_contraparte_id: true, created_at: true, data_vencimento: true }
     }),
     prisma.transacoes_contrapartes.findMany({
       where: { ...(filtro ? { cliente_id: filtro } : {}), transacoes: { excluido: false } },
-      select: { cliente_id: true, transacoes: { select: { tipo: true, status: true } } }
+      select: { cliente_id: true, transacoes: { select: { tipo: true, status: true, created_at: true, data_vencimento: true } } }
     }),
     prisma.propostas.findMany({ where: { ...(filtro ? { cliente_id: filtro } : {}), created_at: { gte: desdeProposta } }, select: { cliente_id: true, created_at: true } }),
     prisma.avaliacoes.findMany({
       where: { cliente_id: filtro ?? { not: null }, excluido: false, status: { in: STATUS_AVALIACAO_ATIVOS } },
-      select: { cliente_id: true, status: true }
+      select: { cliente_id: true, status: true, created_at: true }
     })
   ]);
 
@@ -76,11 +87,25 @@ export async function carregarSinais(ids: string[] | null): Promise<Map<string, 
     }
     return s;
   };
-  const lado = (id: string, tipo: string, status: string | null) => {
+  const hoje = new Date();
+  const lado = (id: string, tipo: string, status: string | null, criadoEm: Date, vencimento: Date | null) => {
     const s = de(id);
-    if (tipo === "Locação" && status && STATUS_LOCACAO_ATIVA.includes(status)) s.locacaoAtiva = true;
-    if (tipo === "Compra e Venda" && status && STATUS_COMPRA_FINALIZADA.includes(status)) s.compraFinalizada = true;
-    if (status?.startsWith(prefixoElaboracao)) s.contratoEmElaboracao = tipo;
+    let contrato = false;
+    // "Transação Finalizada sem administração" com o contrato ainda no prazo também é locação ativa
+    const semAdmVigente = tipo === "Locação" && status === STATUS_LOCACAO_SEM_ADM && vencimento !== null && vencimento >= hoje;
+    if (tipo === "Locação" && ((status && STATUS_LOCACAO_ATIVA.includes(status)) || semAdmVigente)) {
+      s.locacaoAtiva = true;
+      contrato = true;
+    }
+    if (tipo === "Compra e Venda" && status && STATUS_COMPRA_FINALIZADA.includes(status)) {
+      s.compraFinalizada = true;
+      contrato = true;
+    }
+    if (status?.startsWith(prefixoElaboracao)) {
+      s.contratoEmElaboracao = tipo;
+      contrato = true;
+    }
+    if (contrato && (!s.contratoEm || criadoEm > s.contratoEm)) s.contratoEm = criadoEm;
   };
 
   for (const i of imoveis) de(i.cliente_id).proprietario = true;
@@ -90,14 +115,25 @@ export async function carregarSinais(ids: string[] | null): Promise<Map<string, 
     // lado proprietário/vendedor
     if (!t.status || !STATUS_CANCELADOS.includes(t.status)) de(t.cliente_id).proprietario = true;
     // lado locatário/comprador
-    lado(t.cliente_contraparte_id, t.tipo, t.status);
+    lado(t.cliente_contraparte_id, t.tipo, t.status, t.created_at, t.data_vencimento);
   }
-  for (const c of contrapartes) lado(c.cliente_id, c.transacoes.tipo, c.transacoes.status);
+  for (const c of contrapartes) lado(c.cliente_id, c.transacoes.tipo, c.transacoes.status, c.transacoes.created_at, c.transacoes.data_vencimento);
   for (const p of propostas) {
     const s = de(p.cliente_id);
     if (!s.propostaEm || p.created_at > s.propostaEm) s.propostaEm = p.created_at;
   }
-  for (const a of avaliacoes) if (a.cliente_id) de(a.cliente_id).avaliacaoAtiva = a.status;
+  for (const a of avaliacoes) {
+    if (!a.cliente_id) continue;
+    const s = de(a.cliente_id);
+    // Quem já tem contrato: avaliação anterior a ele já virou o contrato, e avaliação "Aprovado" depois dele é o
+    // financiamento da própria compra (não é um novo atendimento). Só uma análise nova, depois do contrato, conta.
+    if (s.contratoEm && (a.created_at <= s.contratoEm || a.status === "Aprovado")) continue;
+    // vale a avaliação em andamento mais recente
+    if (!s.avaliacaoEm || a.created_at > s.avaliacaoEm) {
+      s.avaliacaoAtiva = a.status;
+      s.avaliacaoEm = a.created_at;
+    }
+  }
   return mapa;
 }
 

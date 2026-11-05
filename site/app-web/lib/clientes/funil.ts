@@ -29,7 +29,7 @@ export const ETAPAS_FUNIL: EtapaFunil[] = [
   { id: "compradores", label: "Compradores", dica: "Compraram: contrato de compra e venda finalizado.", cor: "bg-sky-50 text-sky-700 border-sky-200", manual: false },
   { id: "atendimento", label: "Em atendimento", dica: "Sendo atendidos: marcados pelo administrativo ou com avaliação de crédito em andamento.", cor: "bg-amber-50 text-amber-700 border-amber-200", manual: true },
   { id: "proposta", label: "Proposta criada", dica: "Proposta feita nos últimos 60 dias.", cor: "bg-orange-50 text-orange-700 border-orange-200", manual: false },
-  { id: "negocio", label: "Negócio fechado", dica: "Contrato (locação ou compra e venda) em elaboração.", cor: "bg-green-50 text-green-700 border-green-200", manual: false }
+  { id: "negocio", label: "Negócio fechado", dica: "Contrato fechado, com o processo ainda em andamento (elaboração do contrato, financiamento, registro).", cor: "bg-green-50 text-green-700 border-green-200", manual: false }
 ];
 
 export const ETAPA_FUNIL_POR_ID = new Map(ETAPAS_FUNIL.map((e) => [e.id, e]));
@@ -49,6 +49,10 @@ export type SinaisCliente = {
   proprietario: boolean;
   locacaoAtiva: boolean;
   compraFinalizada: boolean;
+  // compra e venda assinada, mas com o andamento do contrato ainda em curso (escritura, registro...)
+  compraEmCurso: boolean;
+  // financiamento aprovado ainda em processo (documentação, engenharia, conformidade, contrato, registro)
+  financiamentoEmCurso: boolean;
   // contrato em elaboração como locatário/comprador (negócio fechado)
   contratoEmElaboracao: string | null; // "Locação" | "Compra e Venda"
   propostaEm: Date | null;
@@ -87,7 +91,12 @@ export function derivarEtapa(s: SinaisCliente, agora: Date = new Date()): Deriva
   const avaliacaoValida = s.avaliacaoAtiva !== null && depoisDoContrato(s.avaliacaoEm);
   const resultado = (etapa: EtapaFunilId, motivo: string, voltaParaLeads = false): Derivacao => ({ etapa, motivo, papeis, voltaParaLeads });
 
+  // Negócio fechado: contrato em elaboração, ou compra e venda já assinada com o processo ainda em andamento
+  // (andamento do contrato ou financiamento). Quando o processo termina, vira Comprador.
   if (s.contratoEmElaboracao) return resultado("negocio", `Contrato de ${s.contratoEmElaboracao} em elaboração`);
+  if (s.compraFinalizada && s.compraEmCurso && s.financiamentoEmCurso) return resultado("negocio", "Compra e venda assinada · contrato e financiamento em andamento");
+  if (s.compraFinalizada && s.financiamentoEmCurso) return resultado("negocio", "Compra e venda assinada · financiamento em andamento");
+  if (s.compraFinalizada && s.compraEmCurso) return resultado("negocio", "Compra e venda assinada · contrato em andamento");
   if (propostaValida && s.propostaEm) return resultado("proposta", `Proposta criada em ${dataCurta(s.propostaEm)}`);
   if (avaliacaoValida) return resultado("atendimento", `Avaliação em andamento: ${s.avaliacaoAtiva}`);
   if (s.atendimentoManual) return resultado("atendimento", "Marcado em atendimento", true);

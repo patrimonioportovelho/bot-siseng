@@ -4,6 +4,8 @@ import { Pagination } from "@/components/pagination";
 import { prisma } from "@/lib/prisma";
 import { lojasSelecionadas, whereLojaFiltro } from "@/lib/lojas/filtro";
 import { ehNovo, SELO_NOVO_CLASSES, LINHA_NOVA_CLASSES } from "@/lib/novo";
+import { etapasDosClientes } from "@/lib/clientes/funil-servidor";
+import { ETAPA_FUNIL_POR_ID } from "@/lib/clientes/funil";
 
 export const dynamic = "force-dynamic";
 
@@ -54,6 +56,8 @@ export default async function ClientesPage({
   ]);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  // Etapa de cada cliente da página (a mesma do Kanban)
+  const etapas = await etapasDosClientes(clientes);
 
   return (
     <div>
@@ -86,6 +90,9 @@ export default async function ClientesPage({
                 Buscar
               </button>
             </form>
+            <Link href="/clientes/funil" className="text-xs bg-white border border-gray-300 text-gray-600 rounded-lg px-3 py-1.5 font-semibold whitespace-nowrap">
+              Ver em Kanban
+            </Link>
             <Link
               href="/clientes/novo"
               className="text-xs bg-primary text-white rounded-lg px-3 py-1.5 font-semibold whitespace-nowrap"
@@ -95,9 +102,10 @@ export default async function ClientesPage({
           </div>
         </div>
 
-        <div className="hidden md:grid md:grid-cols-[1.2fr_2.4fr_2fr_auto] gap-3 px-3 py-1.5 text-[11px] text-gray-400 border-b border-gray-100">
+        <div className="hidden md:grid md:grid-cols-[1.2fr_2.4fr_1.4fr_2fr_auto] gap-3 px-3 py-1.5 text-[11px] text-gray-400 border-b border-gray-100">
           <span>Id cliente</span>
           <span>Nome</span>
+          <span>Etapa</span>
           <span>Parceiro responsável</span>
           <span></span>
         </div>
@@ -108,7 +116,7 @@ export default async function ClientesPage({
               <Link
                 key={c.id}
                 href={`/clientes/${c.id}`}
-                className={`grid grid-cols-1 gap-0.5 md:grid-cols-[1.2fr_2.4fr_2fr_auto] md:gap-3 md:items-center px-3 py-2.5 rounded-lg transition-colors ${
+                className={`grid grid-cols-1 gap-0.5 md:grid-cols-[1.2fr_2.4fr_1.4fr_2fr_auto] md:gap-3 md:items-center px-3 py-2.5 rounded-lg transition-colors ${
                   nova ? LINHA_NOVA_CLASSES : "hover:bg-gray-50"
                 }`}
               >
@@ -116,6 +124,13 @@ export default async function ClientesPage({
                 <span className="text-xs font-medium text-gray-800 truncate flex items-center gap-1.5">
                   {nova && <span className={SELO_NOVO_CLASSES}>Novo</span>}
                   {c.nome}
+                </span>
+                <span>
+                  {(() => {
+                    const e = etapas.get(c.id);
+                    const info = e ? ETAPA_FUNIL_POR_ID.get(e.etapa) : null;
+                    return info ? <span className={`text-[10px] font-bold rounded-full px-2 py-0.5 border ${info.cor}`}>{info.label}</span> : null;
+                  })()}
                 </span>
                 <span className="text-xs text-gray-500 truncate">{c.parceiros?.nome ?? "—"}</span>
                 <span className="text-gray-300 text-xs">›</span>

@@ -300,6 +300,9 @@ model clientes {
   // brasileiro/brasileira pelo campo "sexo" nesse caso (ver qualificacaoTexto
   // em lib/documentos/gerar.ts).
   nacionalidade                                          String?
+  // Quadro de Clientes: marcado "Em atendimento" pelo administrativo (a etapa em si é calculada, ver lib/clientes/funil.ts).
+  atendimento_desde                                      DateTime?     @db.Timestamptz(6)
+  atendimento_por                                        String?       @db.Uuid
   created_at                                             DateTime      @default(now()) @db.Timestamptz(6)
   updated_at                                             DateTime      @default(now()) @db.Timestamptz(6)
   adm_imoveis                                            adm_imoveis[]
@@ -2301,4 +2304,18 @@ model ponto_liberacoes {
 
   @@index([parceiro_id, solicitado_em(sort: Desc)], map: "idx_ponto_liberacoes_parceiro")
   @@index([status], map: "idx_ponto_liberacoes_status")
+}
+
+/// Contatos (WhatsApp, ligação...) e notas de um cliente, registrados na etiqueta do quadro de Clientes.
+model clientes_contatos {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cliente_id      String   @db.Uuid
+  tipo            String
+  resultado       String?
+  nota            String?
+  data            DateTime @default(now()) @db.Timestamptz(6)
+  por_parceiro_id String?  @db.Uuid
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([cliente_id, data(sort: Desc)], map: "idx_clientes_contatos_cliente")
 }

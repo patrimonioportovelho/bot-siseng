@@ -22,6 +22,18 @@ const FUNCOES_PORTAL = ["Corretor", "Corretor Estagiário"];
 // marcado só como Financeiro não entra no portal.
 const ACESSO_AO_PORTAL = [{ acessos: { isEmpty: true } }, { acessos: { has: "corretor" } }, { acessos: { has: "diretor" } }];
 
+// Quem pode entrar no portal (além do email @remax.com.br e da senha), sempre Ativo:
+//  - função Corretor ou Corretor Estagiário (com o acesso do parágrafo acima); ou
+//  - função Administrativo que também tem o acesso "Corretor" marcado em Configurações (é corretor
+//    e administrativo ao mesmo tempo: liberado em 06/11/2026). Administrativo sem esse acesso não entra.
+const QUEM_ENTRA_NO_PORTAL = [
+  { funcao: { in: FUNCOES_PORTAL }, OR: ACESSO_AO_PORTAL },
+  { funcao: "Administrativo", acessos: { has: "corretor" } }
+];
+
+const ERRO_SEM_CADASTRO =
+  "Email não encontrado como Corretor ou Corretor Estagiário ativo no cadastro (ou Administrativo com o acesso de Corretor marcado). Peça para um administrador conferir sua ficha de parceiro (email, função e acessos).";
+
 function sessionSecret() {
   const secret = process.env.SESSION_SECRET;
   if (!secret) throw new Error("SESSION_SECRET não configurado no .env");
@@ -88,19 +100,14 @@ export async function verificarEmailPortal(email: string): Promise<VerificarEmai
   const parceiro = await prisma.parceiros.findFirst({
     where: {
       status_funcao: "Ativo",
-      funcao: { in: FUNCOES_PORTAL },
-      OR: ACESSO_AO_PORTAL,
+      OR: QUEM_ENTRA_NO_PORTAL,
       email: { equals: emailNorm, mode: "insensitive" }
     },
     select: { nome: true, senha_hash: true }
   });
 
   if (!parceiro) {
-    return {
-      ok: false,
-      error:
-        "Email não encontrado como Corretor ou Corretor Estagiário ativo no cadastro. Peça para um administrador conferir sua ficha de parceiro (email e função)."
-    };
+    return { ok: false, error: ERRO_SEM_CADASTRO };
   }
 
   return { ok: true, nome: parceiro.nome, primeiroAcesso: !parceiro.senha_hash };
@@ -148,8 +155,7 @@ export async function loginPortal(email: string, senha: string): Promise<LoginPo
   const parceiro = await prisma.parceiros.findFirst({
     where: {
       status_funcao: "Ativo",
-      funcao: { in: FUNCOES_PORTAL },
-      OR: ACESSO_AO_PORTAL,
+      OR: QUEM_ENTRA_NO_PORTAL,
       email: { equals: emailNorm, mode: "insensitive" }
     },
     select: { id: true, nome: true, senha_hash: true }
@@ -157,11 +163,7 @@ export async function loginPortal(email: string, senha: string): Promise<LoginPo
 
   if (!parceiro) {
     registrarTentativaFalha(chaveLimite);
-    return {
-      ok: false,
-      error:
-        "Email não encontrado como Corretor ou Corretor Estagiário ativo no cadastro. Peça para um administrador conferir sua ficha de parceiro (email e função)."
-    };
+    return { ok: false, error: ERRO_SEM_CADASTRO };
   }
 
   if (!parceiro.senha_hash) {

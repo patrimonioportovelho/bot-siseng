@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAdm } from "@/lib/auth";
 import { adicionarPeriodoPontoAction, anularPeriodoPontoAction } from "@/lib/ponto/actions";
 import { espelhoDoPeriodo } from "@/lib/ponto/relatorio";
+import { CATEGORIAS_ATIVIDADE, atividadesDoPeriodo } from "@/lib/ponto/atividades";
 import { obterConfigPonto } from "@/lib/ponto/servidor";
 import { NOMES_DIA, formatarMin, instanteDoDia, partesLocais } from "@/lib/ponto/regras";
 
@@ -29,11 +30,11 @@ export default async function EspelhoPontoPage({
   searchParams
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ de?: string; ate?: string; ok?: string; erro?: string }>;
+  searchParams: Promise<{ de?: string; ate?: string; ok?: string; erro?: string; cat?: string }>;
 }) {
   await requireAdm();
   const { id } = await params;
-  const { de: deParam, ate: ateParam, ok, erro } = await searchParams;
+  const { de: deParam, ate: ateParam, ok, erro, cat } = await searchParams;
 
   const pessoa = await prisma.parceiros.findUnique({ where: { id }, select: { id: true, nome: true, funcao: true } });
   if (!pessoa) notFound();
@@ -48,10 +49,18 @@ export default async function EspelhoPontoPage({
   const ateYmd = partesLocais(new Date(ate.getTime() - 86400000)).ymd;
 
   const cfg = await obterConfigPonto(id);
-  const [dias, liberacoes] = await Promise.all([
+  const [dias, liberacoes, atividades] = await Promise.all([
     espelhoDoPeriodo(id, cfg, de, ate),
-    prisma.ponto_liberacoes.findMany({ where: { parceiro_id: id, solicitado_em: { gte: de, lt: ate } }, orderBy: { solicitado_em: "asc" } })
+    prisma.ponto_liberacoes.findMany({ where: { parceiro_id: id, solicitado_em: { gte: de, lt: ate } }, orderBy: { solicitado_em: "asc" } }),
+    atividadesDoPeriodo(id, cfg, de, ate)
   ]);
+  // contagem por categoria e filtro (?cat=)
+  const porCategoria = new Map<string, number>();
+  for (const a of atividades.itens) porCategoria.set(a.categoria, (porCategoria.get(a.categoria) ?? 0) + 1);
+  const itensAtividade = cat ? atividades.itens.filter((a) => a.categoria === cat) : atividades.itens;
+  const foraDoExpediente = atividades.itens.filter((a) => a.fora).length;
+  const semPonto = atividades.itens.filter((a) => a.semPonto).length;
+  const linkCat = (c: string | null) => `/configuracoes/ponto/${id}?de=${deYmd}&ate=${ateYmd}${c ? `&cat=${encodeURIComponent(c)}` : ""}#atividades`;
 
   const total = dias.reduce((acc, d) => acc + d.totalMin, 0);
   const totalAlmoco = dias.reduce((acc, d) => acc + d.almocoMin, 0);
@@ -239,6 +248,76 @@ export default async function EspelhoPontoPage({
             Lançar
           </BotaoSubmit>
         </form>
+      </div>
+
+      {/* Relatório de atividades: o que a pessoa fez no sistema no período */}
+      <div className="bg-white border border-gray-200 rounded-xl p-4 mt-4" id="atividades">
+        <div className="flex items-start justify-between gap-2 flex-wrap mb-1">
+          <div className="text-sm font-bold text-gray-800">Atividades no sistema</div>
+          <a
+            href={`/configuracoes/ponto/${id}/csv?tipo=atividades&de=${deYmd}&ate=${ateYmd}`}
+            className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 font-semibold text-gray-600 hover:bg-gray-50 print:hidden"
+          >
+            Baixar atividades (CSV)
+          </a>
+        </div>
+        <p className="text-[11px] text-gray-500 mb-3">
+          O que {pessoa.nome.split(" ")[0]} alterou no sistema de {rotuloData(deYmd)} a {rotuloData(ateYmd)}: etiquetas e quadros movidos, cadastros editados, documentos gerados, contatos
+          registrados. Só aparecem ações que mudam algo: abrir ou olhar uma tela não deixa registro. A coluna de avisos cruza cada ação com o ponto.
+        </p>
+
+        {atividades.itens.length === 0 ? (
+          <p className="text-xs text-gray-400 py-2">Nenhuma atividade registrada no período.</p>
+        ) : (
+          <>
+            <div className="flex items-center gap-1.5 flex-wrap mb-3 print:hidden">
+              <Link href={linkCat(null)} className={`text-[11px] rounded-full border px-2.5 py-1 ${!cat ? "bg-primary text-white border-primary" : "border-gray-300 text-gray-600 hover:bg-gray-50"}`}>
+                Todas ({atividades.itens.length})
+              </Link>
+              {CATEGORIAS_ATIVIDADE.filter((c) => porCategoria.has(c)).map((c) => (
+                <Link key={c} href={linkCat(c)} className={`text-[11px] rounded-full border px-2.5 py-1 ${cat === c ? "bg-primary text-white border-primary" : "border-gray-300 text-gray-600 hover:bg-gray-50"}`}>
+                  {c} ({porCategoria.get(c)})
+                </Link>
+              ))}
+            </div>
+            {(foraDoExpediente > 0 || semPonto > 0) && (
+              <div className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
+                {foraDoExpediente > 0 && <span>{foraDoExpediente} ação(ões) fora do expediente. </span>}
+                {semPonto > 0 && <span>{semPonto} ação(ões) sem período de uso registrado no ponto (pode ser uma sessão não registrada ou uma ação feita por outro caminho).</span>}
+              </div>
+            )}
+            <div className="flex flex-col divide-y divide-gray-100">
+              {itensAtividade.map((a, i) => {
+                const dia = a.quando.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", weekday: "short", timeZone: "America/Porto_Velho" });
+                const anterior = i > 0 ? itensAtividade[i - 1].quando.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", weekday: "short", timeZone: "America/Porto_Velho" }) : null;
+                return (
+                  <div key={a.id}>
+                    {dia !== anterior && <div className="text-[11px] font-bold text-gray-500 bg-gray-50 -mx-4 px-4 py-1 mt-2 first:mt-0">{dia}</div>}
+                    <div className="flex items-start gap-2 py-1.5 text-xs">
+                      <span className="text-gray-400 w-10 shrink-0">{hora(a.quando)}</span>
+                      <span className="text-[10px] font-bold rounded-full border border-gray-200 bg-gray-50 text-gray-600 px-2 py-0.5 shrink-0">{a.categoria}</span>
+                      <span className="flex-1 min-w-0 text-gray-800">
+                        {a.href ? (
+                          <Link href={a.href} className="hover:text-primary hover:underline">
+                            {a.titulo}
+                          </Link>
+                        ) : (
+                          a.titulo
+                        )}
+                      </span>
+                      <span className="flex items-center gap-1 shrink-0">
+                        {a.fora && <span className="text-[9px] font-bold rounded-full border border-red-200 bg-red-50 text-red-700 px-1.5">fora do expediente</span>}
+                        {a.almoco && <span className="text-[9px] font-bold rounded-full border border-amber-200 bg-amber-50 text-amber-700 px-1.5">almoço</span>}
+                        {a.semPonto && <span className="text-[9px] font-bold rounded-full border border-gray-300 bg-white text-gray-500 px-1.5">sem ponto</span>}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            {atividades.truncado && <p className="text-[11px] text-gray-400 mt-2">Mostrando as 500 mais recentes do período. Para ver as mais antigas, reduza o período.</p>}
+          </>
+        )}
       </div>
     </div>
   );

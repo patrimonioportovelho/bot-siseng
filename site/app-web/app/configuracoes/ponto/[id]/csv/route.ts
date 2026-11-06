@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAdminSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { espelhoDoPeriodo } from "@/lib/ponto/relatorio";
+import { atividadesDoPeriodo } from "@/lib/ponto/atividades";
 import { obterConfigPonto } from "@/lib/ponto/servidor";
 import { NOMES_DIA, instanteDoDia, partesLocais } from "@/lib/ponto/regras";
 
@@ -27,6 +28,32 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const ate = new Date(Math.min(ateIncl.getTime() + 86400000, de.getTime() + 62 * 86400000));
 
   const cfg = await obterConfigPonto(id);
+
+  // ?tipo=atividades: o relatório de atividades (o que a pessoa fez no sistema) em vez do espelho de horas
+  if (request.nextUrl.searchParams.get("tipo") === "atividades") {
+    const { itens } = await atividadesDoPeriodo(id, cfg, de, ate);
+    const linhasAtv = [["Data", "Hora", "Categoria", "Atividade", "Fora do expediente", "No almoço", "Sem ponto registrado"].map(campo).join(";")];
+    for (const a of itens) {
+      linhasAtv.push(
+        [
+          a.quando.toLocaleDateString("pt-BR", { timeZone: "America/Porto_Velho" }),
+          hora(a.quando),
+          a.categoria,
+          a.titulo,
+          a.fora ? "sim" : "",
+          a.almoco ? "sim" : "",
+          a.semPonto ? "sim" : ""
+        ]
+          .map(campo)
+          .join(";")
+      );
+    }
+    const arquivo = `atividades-${pessoa.nome.normalize("NFD").replace(/[^\w]+/g, "-").toLowerCase()}-${partesLocais(de).ymd}.csv`;
+    return new NextResponse("\uFEFF" + linhasAtv.join("\r\n"), {
+      headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="${arquivo}"`, "Cache-Control": "no-store" }
+    });
+  }
+
   const dias = await espelhoDoPeriodo(id, cfg, de, ate);
 
   const linhas: string[] = [["Data", "Dia", "Entrada", "Saída", "Minutos", "Origem", "Anulado", "Justificativa", "Total do dia (min)", "Almoço (min)", "Fora do expediente (min)", "Extra autorizada (min)"].map(campo).join(";")];

@@ -15,7 +15,7 @@ export default async function PortalGestaoPage() {
   const session = await requirePortalSession();
 
   const gestoes = await prisma.gestoes.findMany({
-    where: { parceiro_id: session.parceiroId, excluido: false },
+    where: { parceiro_id: session.parceiroId, excluido: false, tipo: "gestao" },
     orderBy: { created_at: "desc" },
     select: {
       id: true,
@@ -46,7 +46,7 @@ export default async function PortalGestaoPage() {
           </Link>
         </div>
         <p className="text-xs text-gray-500 mb-4">
-          Suas gestões — o estágio muda aqui conforme o administrativo avança no quadro (Captação, Gestão Ativa,
+          Imóvel sem exclusividade? Use a <Link href="/portal/captacao" className="text-primary underline">Ficha de Captação</Link>. Suas gestões — o estágio muda aqui conforme o administrativo avança no quadro (Captação, Gestão Ativa,
           Comercialização, Visitas, Proposta/Negociação).
         </p>
 

@@ -12,6 +12,8 @@ export type ColunaKanban = {
 // Percurso da gestão, nesta ordem exata — Captação (exclusiva) é onde a
 // etiqueta nasce sozinha assim que o corretor gera o contrato pelo portal.
 export const COLUNAS_KANBAN: ColunaKanban[] = [
+  // Ficha de captação (sem exclusividade): nasce aqui quando o corretor gera a ficha pelo portal.
+  { id: "captacao_ficha", label: "Captação (sem exclusividade)" },
   { id: "captacao_exclusiva", label: "Captação (exclusiva)" },
   { id: "gestao_ativa", label: "Gestão Ativa do Imóvel" },
   { id: "comercializacao", label: "Comercialização" },
@@ -52,3 +54,6 @@ export const TIPO_ATIVIDADE_LABEL: Record<string, string> = {
   documento: "Documento",
   outro: "Outro"
 };
+
+// Tipos de card do quadro "Gestões / Captações".
+export const TIPO_GESTAO_LABEL: Record<string, string> = { gestao: "Gestão", captacao: "Captação" };

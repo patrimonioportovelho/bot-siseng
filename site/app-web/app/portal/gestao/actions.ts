@@ -10,6 +10,7 @@ import { buscarClienteDuplicado, mensagemClienteDuplicado } from "@/lib/clientes
 import { validarCpfCnpj } from "@/lib/clientes/validacao";
 import { montarEnderecoPF } from "@/lib/clientes/endereco";
 import { gerarProximoIdCliente, criarClientesEmSequencia } from "@/lib/clientes/id-legado";
+import { fichaDoJson } from "@/lib/gestoes/ficha";
 
 function texto(formData: FormData, campo: string): string | null {
   const v = formData.get(campo);
@@ -157,7 +158,12 @@ function validarCamposObrigatorios(clientesNovos: ClienteDigitado[]): string | n
   return null;
 }
 
-// Gera o Contrato de Gestão a partir do formulário do portal: reaproveita
+// Gera o Contrato de Gestão — ou, com modo = "captacao", a Ficha de Captação (imóvel sem gestão/exclusividade,
+// 12/11/2026) — a partir do formulário do portal. A ficha segue o mesmo caminho do contrato: cliente vai para
+// Clientes (e para o Kanban de Clientes), o imóvel para Imóveis e a etiqueta para o quadro de Gestões / Captações
+// (primeira coluna "Captação (sem exclusividade)"); o que muda é o que se pede (características e honorários, sem
+// prazo de exclusividade) e o documento gerado (ficha_captacao.docx).
+// Reaproveita
 // cliente(s)/imóvel já cadastrados quando escolhidos na lista (evita criar
 // duplicata do mesmo nome a cada contrato novo — cadastro existente nunca é
 // editado por aqui, só vinculado), cria os que forem realmente novos, cria o
@@ -172,6 +178,17 @@ export async function gerarContratoGestaoAction(
   const session = await requirePortalSession();
 
   try {
+    const captacao = texto(formData, "modo") === "captacao";
+    const ficha = (() => {
+      const bruto = texto(formData, "fichaJson");
+      if (!captacao || !bruto) return null;
+      try {
+        return fichaDoJson(JSON.parse(bruto));
+      } catch {
+        return null;
+      }
+    })();
+
     const clientesForm = parseClientes(formData);
     if (clientesForm.length === 0) {
       return { ok: false, erro: "Cadastre ao menos um cliente." };
@@ -207,9 +224,16 @@ export async function gerarContratoGestaoAction(
     if (!tipoImovel || !rua) {
       return { ok: false, erro: "Preencha ao menos o tipo do imóvel e a rua." };
     }
-    if (!prazoGestaoDias) {
+    if (captacao) {
+      if (!porcHonorario) return { ok: false, erro: "Informe a comissão (honorários) da ficha." };
+    } else if (!prazoGestaoDias) {
       return { ok: false, erro: "Informe o prazo da gestão em dias." };
     }
+    // Validade da autorização da ficha (dias) — opcional; gera o lembrete de vencimento no quadro.
+    const validadeFichaDias = (() => {
+      const n = Number(ficha?.campos.validadeDias);
+      return Number.isFinite(n) && n > 0 ? Math.round(n) : null;
+    })();
 
     // Confere que todo clienteId enviado realmente pertence a este corretor
     // (não dá pra reaproveitar cadastro de outro parceiro por aqui) e busca
@@ -390,6 +414,7 @@ export async function gerarContratoGestaoAction(
             matricula,
             inscricao: inscricaoMunicipal,
             valor_venda: valorVenda,
+            descricao: captacao ? ficha?.descricaoAnuncios || null : null,
             parceiro_id: session.parceiroId,
             imoveis_proprietarios: {
               create: clientesResultado.map((c, ordem) => ({ cliente_id: c.id, ordem }))
@@ -417,9 +442,11 @@ export async function gerarContratoGestaoAction(
           parceiro_id: session.parceiroId,
           valor_venda: valorVenda,
           porc_honorario: porcHonorario,
-          prazo_gestao_dias: prazoGestaoDias,
+          prazo_gestao_dias: captacao ? validadeFichaDias : prazoGestaoDias,
           data_assinatura: dataFechamento,
-          coluna: "captacao_exclusiva",
+          coluna: captacao ? "captacao_ficha" : "captacao_exclusiva",
+          tipo: captacao ? "captacao" : "gestao",
+          ficha: captacao && ficha ? (ficha as object) : undefined,
           criado_no_portal: true
         }
       })
@@ -428,19 +455,21 @@ export async function gerarContratoGestaoAction(
     // Primeira atividade já nasce agendada: vencimento do contrato, direto
     // no quadro/calendário/painel de Gestões — é assim que o vencimento cai
     // sozinho no radar sem o corretor precisar lançar nada a mais.
-    const vencimento = new Date(dataFechamento.getTime() + prazoGestaoDias * 24 * 60 * 60 * 1000);
-    await prisma.gestao_atividades.create({
-      data: {
-        gestao_id: gestao.id,
-        tipo: "vencimento_contrato",
-        titulo: "Vencimento do contrato de gestão",
-        data: vencimento,
-        feito: false
-      }
-    });
+    const diasVencimento = captacao ? validadeFichaDias : prazoGestaoDias;
+    if (diasVencimento) {
+      await prisma.gestao_atividades.create({
+        data: {
+          gestao_id: gestao.id,
+          tipo: "vencimento_contrato",
+          titulo: captacao ? "Vencimento da autorização de comercialização (ficha de captação)" : "Vencimento do contrato de gestão",
+          data: new Date(dataFechamento.getTime() + diasVencimento * 24 * 60 * 60 * 1000),
+          feito: false
+        }
+      });
+    }
 
     const url = await gerarDocumento({
-      tipoDocumento: "contrato_gestao",
+      tipoDocumento: captacao ? "ficha_captacao" : "contrato_gestao",
       entidadeTipo: "gestao",
       entidadeId: gestao.id
     });
@@ -449,7 +478,7 @@ export async function gerarContratoGestaoAction(
       parceiroId: session.parceiroId,
       entidadeTipo: "gestoes",
       entidadeId: gestao.id,
-      acao: "gerar_contrato_gestao",
+      acao: captacao ? "gerar_ficha_captacao" : "gerar_contrato_gestao",
       dadosDepois: { imovel: enderecoCompleto, cliente: principal.nome, url }
     });
 

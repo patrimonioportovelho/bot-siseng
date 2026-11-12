@@ -121,6 +121,7 @@ export default async function PortalPage() {
     imoveisQtd,
     gestoesQtd,
     gestoesEmCaptacaoQtd,
+    fichasCaptacaoQtd,
     propostasQtd,
     vendaTotal,
     vendaAbertas,
@@ -179,8 +180,10 @@ export default async function PortalPage() {
       where: { parceiro_id: pid, OR: [{ status_cadastro: null }, { status_cadastro: { not: "Arquivado" } }] }
     }),
     prisma.imoveis.count({ where: { parceiro_id: pid, excluido: false } }),
-    prisma.gestoes.count({ where: { parceiro_id: pid, excluido: false } }),
-    prisma.gestoes.count({ where: { parceiro_id: pid, excluido: false, coluna: "captacao_exclusiva" } }),
+    // contratos de gestão (exclusividade) e fichas de captação (sem exclusividade) contam separados
+    prisma.gestoes.count({ where: { parceiro_id: pid, excluido: false, tipo: "gestao" } }),
+    prisma.gestoes.count({ where: { parceiro_id: pid, excluido: false, tipo: "gestao", coluna: "captacao_exclusiva" } }),
+    prisma.gestoes.count({ where: { parceiro_id: pid, excluido: false, tipo: "captacao" } }),
     prisma.propostas.count({ where: { parceiro_id: pid } }),
     prisma.transacoes.count({
       where: { excluido: false, tipo: "Compra e Venda", OR: [{ corretor_proprietario_id: pid }, { corretor_contraparte_id: pid }] }
@@ -421,6 +424,7 @@ export default async function PortalPage() {
                 value={String(gestoesQtd)}
                 sub={gestoesEmCaptacaoQtd > 0 ? `${gestoesEmCaptacaoQtd} em captação` : undefined}
               />
+              <Kpi label="Fichas de captação" value={String(fichasCaptacaoQtd)} sub="imóveis sem exclusividade" />
               <Kpi label="Propostas enviadas" value={String(propostasQtd)} />
             </div>
           </Secao>

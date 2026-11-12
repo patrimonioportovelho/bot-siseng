@@ -90,6 +90,7 @@ const DOCUMENTOS: Record<string, string> = {
   contrato_administracao: "contrato de administração",
   contrato_compra_venda: "contrato de compra e venda",
   contrato_gestao: "contrato de gestão",
+  ficha_captacao: "ficha de captação",
   contrato_associacao_corretor: "contrato de associação de corretor",
   contrato_associacao_corretor_estagiario: "contrato de associação de corretor estagiário",
   proposta_compra_venda: "proposta de compra e venda",

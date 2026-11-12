@@ -9,7 +9,7 @@ import Link from "next/link";
 const TABS = [
   { href: "/manutencao/calendario", label: "Calendário" },
   { href: "/manutencao", label: "Quadro · Manutenção" },
-  { href: "/gestoes", label: "Quadro · Gestões" },
+  { href: "/gestoes", label: "Quadro · Gestões / Captações" },
   { href: "/marketing", label: "Quadro · Marketing" },
   { href: "/manutencao/painel", label: "Painel" }
 ];

@@ -11,6 +11,7 @@ export type TipoDocumento =
   | "repasse_administracao"
   | "repasse_primeira_locacao"
   | "contrato_gestao"
+  | "ficha_captacao"
   | "proposta_compra_venda";
 
 export type CampoDocumento = {
@@ -273,6 +274,69 @@ export const CAMPOS_DOCUMENTO: Record<TipoDocumento, CampoDocumento[]> = {
     { campo: "Corretor", descricao: "Nome do corretor responsável (parceiro logado no portal)" },
     { campo: "CorretorCpf", descricao: "CPF do corretor responsável" },
     { campo: "Creci", descricao: "CRECI do corretor responsável" }
+  ],
+  // Ficha de Captação de Imóvel (imóveis sem gestão/exclusividade) — nasce do formulário "Ficha de Captação"
+  // no portal do corretor (mesmo formato do Contrato de Gestão: cliente principal, imóvel, características
+  // e o texto de autorização com os honorários). As listas marcadas (Piso, Lazer...) já chegam prontas
+  // como "(X) Opção   (  ) Opção ...".
+  ficha_captacao: [
+    { campo: "TipoImovel", descricao: "Tipo do imóvel (ex.: Apartamento)" },
+    { campo: "DataFicha", descricao: "Data da ficha (dd/mm/aaaa)" },
+    { campo: "Corretor", descricao: "Corretor captador (parceiro logado no portal)" },
+    { campo: "Creci", descricao: "CRECI do corretor" },
+    { campo: "NomeRazaoSocial", descricao: "Nome/razão social do proprietário (cliente principal)" },
+    { campo: "CpfCnpj", descricao: "CPF ou CNPJ do proprietário" },
+    { campo: "RG", descricao: "RG do proprietário" },
+    { campo: "Email", descricao: "E-mail do proprietário" },
+    { campo: "Telefones", descricao: "Telefone(s) do proprietário" },
+    { campo: "AssinaturasAdicionais", descricao: "Bloco de assinatura dos demais proprietários (um por linha)" },
+    { campo: "ValorVenda", descricao: "Valor de venda (R$)" },
+    { campo: "ValorLocacao", descricao: "Valor de locação (R$)" },
+    { campo: "Padrao", descricao: "Padrão do imóvel, com a opção marcada" },
+    { campo: "Finalidade", descricao: "Finalidade do imóvel" },
+    { campo: "Financiado", descricao: "Imóvel financiado? (Sim/Não marcado)" },
+    { campo: "Localizacao", descricao: "Localização, com a opção marcada" },
+    { campo: "NomeEdificio", descricao: "Nome do edifício" },
+    { campo: "NomeCondominio", descricao: "Nome do condomínio" },
+    { campo: "ValorCondominio", descricao: "Valor do condomínio (R$)" },
+    { campo: "ValorIptu", descricao: "Valor do IPTU (R$)" },
+    { campo: "Situacao", descricao: "Situação do imóvel (Desocupado, Ocupado, Construção, Lançamento, Reservado), marcada" },
+    { campo: "OcupadoAte", descricao: "Ocupado até (data)" },
+    { campo: "Pelo", descricao: "Ocupado pelo (Proprietário/Inquilino), marcado" },
+    { campo: "AutorizadoNegociacao", descricao: "Autorizado para negociação? (Sim/Não marcado)" },
+    { campo: "Exclusividade", descricao: "Exclusividade (Sim/Não marcado)" },
+    { campo: "InicioContrato", descricao: "Início do contrato (data)" },
+    { campo: "ValidadeDias", descricao: "Validade da autorização em dias" },
+    { campo: "CondicaoComercial", descricao: "Condição comercial" },
+    { campo: "UsouFgts", descricao: "Usou FGTS nos últimos 3 anos? (Sim/Não marcado)" },
+    { campo: "AreaTotal", descricao: "Área total (m²)" },
+    { campo: "AreaUtil", descricao: "Área útil (m²)" },
+    { campo: "AreaExterna", descricao: "Área externa (m²)" },
+    { campo: "Face", descricao: "Face do imóvel (L, O, N, S), marcadas" },
+    { campo: "Piso", descricao: "Lista de pisos, marcada" },
+    { campo: "Armarios", descricao: "Lista de armários, marcada" },
+    { campo: "Intima", descricao: "Área íntima, marcada" },
+    { campo: "Social", descricao: "Área social, marcada" },
+    { campo: "Lazer", descricao: "Lazer, marcado" },
+    { campo: "Servicos", descricao: "Serviços, marcados" },
+    { campo: "Infraestrutura", descricao: "Infraestrutura, marcada" },
+    { campo: "CaracteristicasObs", descricao: "Observações e quantidades das características" },
+    { campo: "EnderecoImovel", descricao: "Endereço completo do imóvel" },
+    { campo: "Bairro", descricao: "Bairro do imóvel" },
+    { campo: "Cidade", descricao: "Cidade do imóvel" },
+    { campo: "Cep", descricao: "CEP do imóvel" },
+    { campo: "LocalChave", descricao: "Local da chave" },
+    { campo: "AnoConstrucao", descricao: "Ano da construção" },
+    { campo: "AnoReforma", descricao: "Ano da reforma" },
+    { campo: "NumeroMatricula", descricao: "Matrícula do imóvel" },
+    { campo: "InscricaoMunicipal", descricao: "Inscrição imobiliária" },
+    { campo: "Eletricidade", descricao: "Eletricidade (identificação/consumo)" },
+    { campo: "Agua", descricao: "Água (identificação/consumo)" },
+    { campo: "Placa", descricao: "Placa no local? (Sim/Não marcado)" },
+    { campo: "DescricaoAnuncios", descricao: "Descrição para anúncios (site e jornal)" },
+    { campo: "ComentarioInterno", descricao: "Comentário interno" },
+    { campo: "PorcentagemHonorarios", descricao: "Comissão (honorários) combinada, em %" },
+    { campo: "IdFicha", descricao: "Identificador da ficha (rodapé)" }
   ],
   // Nasce do formulário "Proposta de Compra e Venda" no portal do corretor
   // (app/portal/proposta/novo) — diferente do Contrato de Gestão, o imóvel

@@ -6,8 +6,9 @@ import { prisma } from "@/lib/prisma";
 import { supabaseAdmin, subirDocumentoGerado, criarUrlAssinadaDocumentoGerado } from "@/lib/supabase-admin";
 import type { TipoDocumento } from "./campos";
 import { valorPorExtenso, dataPorExtenso, dataPorExtensoComZero, formatarCpf } from "./extenso";
-import { formatTelefone, formatInscricao, formatCnpj, hojeComoDataCalendario, somarMeses } from "@/lib/format";
+import { formatTelefone, formatInscricao, formatCnpj, hojeComoDataCalendario, somarMeses, valorEditavelParaDecimal } from "@/lib/format";
 import { ESTADOS_CIVIS_PEDE_UNIAO_ESTAVEL } from "@/lib/clientes/opcoes";
+import { CAMPOS_FICHA, ESCOLHAS_FICHA, GRUPOS_FICHA, fichaDoJson, marcarOpcoes } from "@/lib/gestoes/ficha";
 
 // Nome do arquivo .docx (com o timbrado já formatado) que corresponde a cada
 // tipo de documento. Os arquivos ficam em site/app-web/templates/ — ver
@@ -25,6 +26,7 @@ const ARQUIVO_TEMPLATE: Record<TipoDocumento, string> = {
   repasse_administracao: "repasse_administracao.docx",
   repasse_primeira_locacao: "repasse_primeira_locacao.docx",
   contrato_gestao: "contrato_gestao.docx",
+  ficha_captacao: "ficha_captacao.docx",
   proposta_compra_venda: "PROPOSTA DE COMPRA E VENDA.docx"
 };
 
@@ -68,6 +70,7 @@ export const ENTIDADE_POR_DOCUMENTO: Record<TipoDocumento, GerarDocumentoParams[
   repasse_administracao: "movimentacao",
   repasse_primeira_locacao: "movimentacao",
   contrato_gestao: "gestao",
+  ficha_captacao: "gestao",
   proposta_compra_venda: "proposta"
 };
 
@@ -265,6 +268,8 @@ async function montarDadosDoMerge(
       return montarDadosMovimentacao(tipoDocumento, entidadeId);
     case "contrato_gestao":
       return montarDadosContratoGestao(entidadeId);
+    case "ficha_captacao":
+      return montarDadosFichaCaptacao(entidadeId);
     case "proposta_compra_venda":
       return montarDadosProposta(entidadeId);
   }
@@ -1018,6 +1023,114 @@ async function montarDadosContratoGestao(gestaoId: string): Promise<Record<strin
     CorretorCpf: formatarCpf(g.parceiros?.cpf ?? ""),
     Creci: g.parceiros?.creci ?? ""
   };
+}
+
+// Ficha de Captação de Imóvel (sem gestão/exclusividade). Mesma base do Contrato de Gestão (cliente principal,
+// demais proprietários só na assinatura, imóvel, corretor) + o que o corretor marcou na ficha
+// (gestoes.ficha, ver lib/gestoes/ficha.ts): cada lista chega como "(X) Opção   (  ) Opção ...".
+export async function montarDadosFichaCaptacao(gestaoId: string): Promise<Record<string, unknown>> {
+  const g = await prisma.gestoes.findUnique({
+    where: { id: gestaoId },
+    include: {
+      clientes: { include: { cidades: true, estados: true } },
+      parceiros: true,
+      imoveis: {
+        include: {
+          cidades: true,
+          estados: true,
+          imoveis_proprietarios: { orderBy: { ordem: "asc" }, include: { clientes: { include: { cidades: true, estados: true } } } }
+        }
+      }
+    }
+  });
+  if (!g) throw new Error(`Ficha de captação "${gestaoId}" não encontrada.`);
+
+  const ficha = fichaDoJson(g.ficha);
+  const demais = g.imoveis.imoveis_proprietarios.map((v) => v.clientes).filter((c) => c.id !== g.clientes.id);
+  const [principal] = await comSociosRepresentantes([g.clientes]);
+  const demaisProprietarios = await comSociosRepresentantes(demais);
+
+  const campo = (id: string) => ficha.campos[id] ?? "";
+  const moeda = (id: string) => (campo(id) ? `R$ ${numero(valorEditavelParaDecimal(campo(id)))}` : "");
+  const data = (id: string) => (campo(id) ? dataCurta(new Date(`${campo(id)}T00:00:00Z`)) : "");
+  const escolha = (id: string) => {
+    const e = ESCOLHAS_FICHA.find((x) => x.id === id)!;
+    return marcarOpcoes(e.opcoes, ficha.escolhas[id]);
+  };
+  const grupo = (id: string) => {
+    const gr = GRUPOS_FICHA.find((x) => x.id === id)!;
+    return marcarOpcoes(gr.opcoes, ficha.grupos[id]);
+  };
+
+  const enderecoImovel = [
+    [g.imoveis.rua, g.imoveis.n_predial].filter(Boolean).join(", ") || null,
+    g.imoveis.complemento
+  ]
+    .filter((p): p is string => Boolean(p))
+    .join(" - ");
+  const hoje = hojeComoDataCalendario();
+
+  const dados: Record<string, unknown> = {
+    TipoImovel: g.imoveis.tipo_imovel ?? "",
+    DataFicha: dataCurta(g.data_assinatura ?? hoje),
+    Corretor: g.parceiros?.nome ?? "",
+    Creci: g.parceiros?.creci ?? "",
+    NomeRazaoSocial: principal.nome,
+    CpfCnpj: docTexto(principal),
+    RG: principal.rg ?? "",
+    Email: principal.email ?? "",
+    Telefones: formatTelefone(principal.telefone),
+    AssinaturasAdicionais: demaisProprietarios.length > 0 ? demaisProprietarios.map((c) => blocoAssinaturaCliente(c, "PROPRIETÁRIO(A)")).join("\n\n") : "",
+    ValorVenda: g.valor_venda != null ? `R$ ${numero(g.valor_venda)}` : "",
+    ValorLocacao: moeda("valorLocacao"),
+    Padrao: escolha("padrao"),
+    Finalidade: campo("finalidade"),
+    Financiado: escolha("financiado"),
+    Localizacao: escolha("localizacao"),
+    NomeEdificio: campo("nomeEdificio"),
+    NomeCondominio: campo("nomeCondominio"),
+    ValorCondominio: moeda("valorCondominio"),
+    ValorIptu: moeda("valorIptu"),
+    Situacao: escolha("situacao"),
+    OcupadoAte: data("ocupadoAte"),
+    Pelo: escolha("pelo"),
+    AutorizadoNegociacao: escolha("autorizadoNegociacao"),
+    Exclusividade: escolha("exclusividade"),
+    InicioContrato: data("inicioContrato"),
+    ValidadeDias: campo("validadeDias") ? `${campo("validadeDias")} dias` : "",
+    CondicaoComercial: campo("condicaoComercial"),
+    UsouFgts: escolha("usouFgts"),
+    AreaTotal: campo("areaTotal") ? `${campo("areaTotal")} m²` : "",
+    AreaUtil: campo("areaUtil") ? `${campo("areaUtil")} m²` : "",
+    AreaExterna: campo("areaExterna") ? `${campo("areaExterna")} m²` : "",
+    Face: escolha("face"),
+    Piso: grupo("piso"),
+    Armarios: grupo("armarios"),
+    Intima: grupo("intima"),
+    Social: grupo("social"),
+    Lazer: grupo("lazer"),
+    Servicos: grupo("servicos"),
+    Infraestrutura: grupo("infra"),
+    CaracteristicasObs: ficha.caracteristicasObs,
+    EnderecoImovel: enderecoImovel,
+    Bairro: g.imoveis.bairro ?? "",
+    Cidade: g.imoveis.cidades?.nome ?? "",
+    Cep: g.imoveis.cep ?? "",
+    LocalChave: campo("localChave"),
+    AnoConstrucao: campo("anoConstrucao"),
+    AnoReforma: campo("anoReforma"),
+    NumeroMatricula: g.imoveis.matricula ?? "",
+    InscricaoMunicipal: formatInscricao(g.imoveis.inscricao),
+    Eletricidade: campo("eletricidade"),
+    Agua: campo("agua"),
+    Placa: escolha("placa"),
+    DescricaoAnuncios: ficha.descricaoAnuncios,
+    ComentarioInterno: ficha.comentarioInterno,
+    PorcentagemHonorarios: percentual(g.porc_honorario),
+    IdFicha: g.id_legado ?? g.id.slice(0, 8)
+  };
+  void CAMPOS_FICHA;
+  return dados;
 }
 
 // Proposta de Compra e Venda — nasce do formulário homônimo no portal do

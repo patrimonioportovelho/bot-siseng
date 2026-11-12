@@ -17,6 +17,7 @@ export const PORTAL_NAV_ITEMS: NavItem[] = [
   { label: "Agenda", href: "/portal/agenda" },
   { label: "Eventos", href: "/portal/eventos" },
   { label: "Elaboração de Contrato de Gestão", href: "/portal/gestao" },
+  { label: "Ficha de Captação", href: "/portal/captacao" },
   { label: "Proposta de Compra e Venda", href: "/portal/proposta" },
   { label: "Elaboração de Compra e Venda", href: "/portal/compra-venda" },
   { label: "Avaliação de CPF", href: "/portal/avaliacao-cpf" },

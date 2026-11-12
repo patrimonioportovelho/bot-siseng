@@ -4,12 +4,14 @@ import { useMemo, useState } from "react";
 import { DockArraste, useAutoRolagemArraste } from "@/components/dock-arraste";
 import Link from "next/link";
 import { formatMoeda } from "@/lib/format";
-import { COLUNAS_KANBAN, CHAVE_POSSE_LABEL } from "@/lib/gestoes/opcoes";
+import { COLUNAS_KANBAN, CHAVE_POSSE_LABEL, TIPO_GESTAO_LABEL } from "@/lib/gestoes/opcoes";
 import { useQuadroOtimista } from "@/components/use-quadro-otimista";
 
 type GestaoKanban = {
   id: string;
   coluna: string;
+  // "gestao" (contrato com exclusividade) ou "captacao" (ficha de captação, sem exclusividade)
+  tipo: string;
   valor_venda: unknown;
   chave_posse: string;
   imoveis: { id: string; id_legado: string | null; endereco: string | null };
@@ -33,6 +35,7 @@ export function GestaoKanban({
   // rolagem automática do quadro enquanto o card é arrastado até a borda
   useAutoRolagemArraste(arrastandoId !== null);
   const [colunaAlvo, setColunaAlvo] = useState<string | null>(null);
+  const [filtroTipo, setFiltroTipo] = useState<"" | "gestao" | "captacao">("");
 
   function onDrop(coluna: string) {
     setColunaAlvo(null);
@@ -44,9 +47,12 @@ export function GestaoKanban({
 
   const porColuna = useMemo(() => {
     const mapa = new Map<string, GestaoKanban[]>();
-    for (const g of gestoes) mapa.set(g.coluna, [...(mapa.get(g.coluna) ?? []), g]);
+    for (const g of gestoes) {
+      if (filtroTipo && g.tipo !== filtroTipo) continue;
+      mapa.set(g.coluna, [...(mapa.get(g.coluna) ?? []), g]);
+    }
     return mapa;
-  }, [gestoes]);
+  }, [gestoes, filtroTipo]);
 
   return (
     <div className="flex flex-col gap-3">
@@ -58,6 +64,24 @@ export function GestaoKanban({
           </button>
         </div>
       )}
+      <div className="flex items-center gap-1.5 flex-wrap">
+        {(
+          [
+            { id: "", rotulo: "Todos" },
+            { id: "gestao", rotulo: "Gestões (exclusividade)" },
+            { id: "captacao", rotulo: "Captações (sem exclusividade)" }
+          ] as const
+        ).map((f) => (
+          <button
+            key={f.id}
+            type="button"
+            onClick={() => setFiltroTipo(f.id)}
+            className={`text-[11px] rounded-full border px-2.5 py-1 ${filtroTipo === f.id ? "bg-primary text-white border-primary font-semibold" : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"}`}
+          >
+            {f.rotulo}
+          </button>
+        ))}
+      </div>
     <DockArraste ativo={arrastandoId !== null} colunas={COLUNAS_KANBAN} aoSoltar={(id) => onDrop(id)} />
     <div className="flex flex-col md:flex-row gap-3 md:overflow-x-auto pb-2">
       {COLUNAS_KANBAN.map((coluna) => {
@@ -97,6 +121,13 @@ export function GestaoKanban({
                   <div className="text-xs font-semibold text-gray-800 leading-snug truncate">
                     {g.imoveis.endereco ?? g.imoveis.id_legado ?? "Sem endereço"}
                   </div>
+                  <span
+                    className={`self-start text-[9px] font-bold rounded-full border px-1.5 py-0.5 ${
+                      g.tipo === "captacao" ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-indigo-50 text-indigo-700 border-indigo-200"
+                    }`}
+                  >
+                    {TIPO_GESTAO_LABEL[g.tipo] ?? "Gestão"}
+                  </span>
                   <div className="text-[11px] text-gray-500 truncate">Cliente: {g.clientes.nome}</div>
                   {g.parceiros?.nome && (
                     <div className="text-[11px] text-gray-500 truncate">Corretor: {g.parceiros.nome}</div>
@@ -112,7 +143,7 @@ export function GestaoKanban({
                 </Link>
               ))}
               {gestoesColuna.length === 0 && (
-                <div className="text-[11px] text-gray-300 text-center py-4">Nenhuma gestão aqui.</div>
+                <div className="text-[11px] text-gray-300 text-center py-4">Nenhum card aqui.</div>
               )}
             </div>
           </div>

@@ -499,6 +499,10 @@ model gestoes {
   prazo_gestao_meses Int?                        @db.SmallInt
   porc_honorario     Decimal?                    @db.Decimal(6, 4)
   coluna             String                      @default("captacao_exclusiva")
+  // "gestao" = contrato de gestão (exclusividade); "captacao" = ficha de captação (sem exclusividade), no mesmo quadro.
+  tipo               String                      @default("gestao")
+  // O que o corretor marcou na ficha de captação (ver lib/gestoes/ficha.ts).
+  ficha              Json?
   chave_posse        String                      @default("imobiliaria")
   chave_com          String?
   chave_atualizado_em DateTime?                  @db.Timestamptz(6)

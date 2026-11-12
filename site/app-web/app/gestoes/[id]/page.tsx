@@ -8,6 +8,7 @@ import { GestaoEditarForm } from "@/components/gestao-editar-form";
 import { GestaoChecklist } from "@/components/gestao-checklist";
 import { GestaoAtividades } from "@/components/gestao-atividades";
 import { formatData } from "@/lib/format";
+import { CAMPOS_FICHA, ESCOLHAS_FICHA, GRUPOS_FICHA, fichaDoJson } from "@/lib/gestoes/ficha";
 import {
   atualizarGestaoAction,
   apagarGestaoAction,
@@ -59,7 +60,7 @@ export default async function GestaoDetalhePage({
       select: { id: true, nome: true }
     }),
     prisma.documentos_gerados.findFirst({
-      where: { entidade_tipo: "gestao", entidade_id: gestao.id, tipo_documento: "contrato_gestao", status: "Sucesso" },
+      where: { entidade_tipo: "gestao", entidade_id: gestao.id, tipo_documento: gestao.tipo === "captacao" ? "ficha_captacao" : "contrato_gestao", status: "Sucesso" },
       orderBy: { gerado_em: "desc" }
     }),
     // Pra oferecer "+ Adicionar proprietário" direto na ficha da Gestão (ver
@@ -90,7 +91,7 @@ export default async function GestaoDetalhePage({
 
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
         <Link href="/gestoes" className="text-xs text-gray-500 hover:text-gray-800">
-          ← Voltar para Gestões
+          ← Voltar para Gestões / Captações
         </Link>
         {!gestao.excluido && (
           <form action={apagarGestaoAction}>
@@ -112,6 +113,13 @@ export default async function GestaoDetalhePage({
         <div className="flex items-center justify-between mb-1 flex-wrap gap-2">
           <div className="text-sm font-bold text-gray-800">
             {gestao.imoveis.endereco ?? gestao.imoveis.id_legado ?? "Imóvel"}
+            <span
+              className={`ml-2 align-middle text-[10px] font-bold rounded-full border px-2 py-0.5 ${
+                gestao.tipo === "captacao" ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-indigo-50 text-indigo-700 border-indigo-200"
+              }`}
+            >
+              {gestao.tipo === "captacao" ? "Captação (sem exclusividade)" : "Gestão (exclusividade)"}
+            </span>
           </div>
           <Link href={`/imoveis/${gestao.imoveis.id}`} className="text-xs text-primary font-semibold hover:underline">
             Abrir imóvel →
@@ -133,10 +141,71 @@ export default async function GestaoDetalhePage({
             rel="noopener noreferrer"
             className="text-xs text-primary underline inline-block mt-2"
           >
-            Ver contrato de gestão gerado ({formatData(ultimoDocumento.gerado_em)})
+            {gestao.tipo === "captacao" ? "Ver ficha de captação gerada" : "Ver contrato de gestão gerado"} ({formatData(ultimoDocumento.gerado_em)})
           </a>
         )}
       </div>
+
+      {gestao.tipo === "captacao" && (
+        <div className="bg-white border border-gray-200 rounded-xl p-4 mb-5">
+          <div className="text-sm font-bold text-gray-800 mb-2">Ficha de captação</div>
+          {(() => {
+            const f = fichaDoJson(gestao.ficha);
+            const escolhas = ESCOLHAS_FICHA.filter((e) => (f.escolhas[e.id] ?? []).length > 0);
+            const campos = CAMPOS_FICHA.filter((c) => f.campos[c.id]);
+            const grupos = GRUPOS_FICHA.filter((g) => (f.grupos[g.id] ?? []).length > 0);
+            if (escolhas.length + campos.length + grupos.length === 0 && !f.descricaoAnuncios && !f.comentarioInterno) {
+              return <p className="text-xs text-gray-400">Nenhuma característica marcada.</p>;
+            }
+            return (
+              <div className="flex flex-col gap-2 text-xs text-gray-700">
+                <div className="flex flex-wrap gap-x-5 gap-y-1">
+                  {escolhas.map((e) => (
+                    <span key={e.id}>
+                      <span className="text-gray-400">{e.rotulo}: </span>
+                      {(f.escolhas[e.id] ?? []).join(", ")}
+                    </span>
+                  ))}
+                  {campos.map((c) => (
+                    <span key={c.id}>
+                      <span className="text-gray-400">{c.rotulo}: </span>
+                      {f.campos[c.id]}
+                    </span>
+                  ))}
+                </div>
+                {grupos.map((g) => (
+                  <div key={g.id}>
+                    <span className="text-gray-400">{g.titulo}: </span>
+                    {(f.grupos[g.id] ?? []).join(", ")}
+                  </div>
+                ))}
+                {f.caracteristicasObs && (
+                  <div>
+                    <span className="text-gray-400">Observações: </span>
+                    {f.caracteristicasObs}
+                  </div>
+                )}
+                {f.descricaoAnuncios && (
+                  <div>
+                    <span className="text-gray-400">Anúncio: </span>
+                    {f.descricaoAnuncios}
+                  </div>
+                )}
+                {f.comentarioInterno && (
+                  <div>
+                    <span className="text-gray-400">Comentário interno: </span>
+                    {f.comentarioInterno}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+          <p className="text-[11px] text-gray-400 mt-2">
+            Honorários combinados: {gestao.porc_honorario != null ? `${(Number(gestao.porc_honorario) * 100).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%` : "não informado"}. Para
+            gerar a ficha de novo, use Documentos &gt; Gerar documentos &gt; Ficha de captação.
+          </p>
+        </div>
+      )}
 
       <div className="flex flex-col gap-5">
         <GestaoEditarForm

@@ -14,6 +14,8 @@ import {
 import { validarCpfCnpj } from "@/lib/clientes/validacao";
 import { buscarCep, UF_PARA_ESTADO } from "@/lib/enderecos";
 import { gerarContratoGestaoAction } from "@/app/portal/gestao/actions";
+import { FichaCaptacaoCampos } from "@/components/ficha-captacao-campos";
+import { fichaVazia, type FichaDados } from "@/lib/gestoes/ficha";
 
 type Banco = { id: string; nome: string; codigo: string | null };
 type BairroCadastrado = { cidade_id: string | null; bairro: string | null };
@@ -148,7 +150,8 @@ function hojeISO(): string {
 // Rascunho salvo no navegador (localStorage) — mesmo padrão dos demais
 // formulários do portal (Compra e Venda/Locação/Administração/Avaliação de
 // CPF): só avisa que existe ao carregar, nunca aplica sozinho.
-const RASCUNHO_KEY = "sis_rascunho_gestao";
+const RASCUNHO_KEY_GESTAO = "sis_rascunho_gestao";
+const RASCUNHO_KEY_CAPTACAO = "sis_rascunho_captacao";
 
 type RascunhoGestao = {
   salvoEm: number;
@@ -168,6 +171,7 @@ type RascunhoGestao = {
   prazoDias: string;
   porcHonorario: string;
   dataFechamento: string;
+  ficha?: FichaDados;
 };
 
 function formatarDataHoraRascunho(ms: number): string {
@@ -184,8 +188,12 @@ export function PortalGestaoForm({
   cidades,
   clientesDoCorretor,
   bancos,
-  bairrosCadastrados
+  bairrosCadastrados,
+  modo = "gestao"
 }: {
+  // "captacao" = Ficha de Captação (imóvel sem gestão/exclusividade): mesmo formulário, com as características
+  // do imóvel no lugar das cláusulas de exclusividade e a autorização de comercialização com os honorários.
+  modo?: "gestao" | "captacao";
   corretor: { id: string; nome: string; creci: string | null; cpf: string | null };
   estados: { id: string; nome: string }[];
   cidades: { id: string; nome: string; estado_id: string }[];
@@ -193,6 +201,9 @@ export function PortalGestaoForm({
   bancos: Banco[];
   bairrosCadastrados: BairroCadastrado[];
 }) {
+  const captacao = modo === "captacao";
+  const RASCUNHO_KEY = captacao ? RASCUNHO_KEY_CAPTACAO : RASCUNHO_KEY_GESTAO;
+  const [ficha, setFicha] = useState<FichaDados>(fichaVazia());
   const [clientes, setClientes] = useState<ClienteLinha[]>([clienteVazio()]);
 
   const [imovelId, setImovelId] = useState("");
@@ -246,7 +257,8 @@ export function PortalGestaoForm({
       inscricaoMunicipal,
       prazoDias,
       porcHonorario,
-      dataFechamento
+      dataFechamento,
+      ficha
     };
   }
 
@@ -275,7 +287,8 @@ export function PortalGestaoForm({
     inscricaoMunicipal,
     prazoDias,
     porcHonorario,
-    dataFechamento
+    dataFechamento,
+    ficha
   ]);
 
   function restaurarRascunho() {
@@ -297,6 +310,7 @@ export function PortalGestaoForm({
     setPrazoDias(r.prazoDias);
     setPorcHonorario(r.porcHonorario);
     setDataFechamento(r.dataFechamento);
+    if (r.ficha) setFicha(r.ficha);
     setRascunhoEncontrado(null);
   }
 
@@ -535,6 +549,8 @@ export function PortalGestaoForm({
       formData.set("prazo_gestao_dias", prazoDias);
       formData.set("porc_honorario", porcHonorario);
       formData.set("data_fechamento", dataFechamento);
+      formData.set("modo", modo);
+      if (captacao) formData.set("fichaJson", JSON.stringify(ficha));
 
       const r = await gerarContratoGestaoAction(formData);
       setResultado(r);
@@ -582,7 +598,7 @@ export function PortalGestaoForm({
     !erroCadastroCliente &&
     tipoImovel &&
     rua.trim().length > 0 &&
-    prazoDias.trim().length > 0;
+    (captacao ? porcHonorario.trim().length > 0 : prazoDias.trim().length > 0);
 
   return (
     <div className="flex flex-col gap-5">
@@ -610,7 +626,7 @@ export function PortalGestaoForm({
       <div className="bg-white border border-gray-200 rounded-xl p-4">
         <div className="text-sm font-bold text-gray-800 mb-1">1. Cliente(s)</div>
         <p className="text-[11px] text-gray-400 mb-3">
-          Só o primeiro cliente aparece no corpo do contrato — os demais (se houver) só assinam. Se o
+          {captacao ? "Só o primeiro cliente (proprietário principal) aparece na ficha — os demais (se houver) só assinam." : "Só o primeiro cliente aparece no corpo do contrato — os demais (se houver) só assinam."} Se o
           cliente já tem cadastro, escolha ele na lista em vez de digitar de novo (evita duplicar).
         </p>
 
@@ -1170,6 +1186,38 @@ export function PortalGestaoForm({
         </div>
       </div>
 
+      {captacao ? (
+        <>
+          <div className="bg-white border border-gray-200 rounded-xl p-4">
+            <div className="text-sm font-bold text-gray-800 mb-1">3. Características do imóvel</div>
+            <p className="text-[11px] text-gray-400 mb-3">
+              Marque o que o imóvel tem: tudo que você marcar sai na ficha de captação, do mesmo jeito que na ficha impressa.
+            </p>
+            <FichaCaptacaoCampos ficha={ficha} aoMudar={setFicha} />
+          </div>
+
+          <div className="bg-white border border-gray-200 rounded-xl p-4">
+            <div className="text-sm font-bold text-gray-800 mb-1">4. Autorização de comercialização</div>
+            <p className="text-xs text-gray-600 leading-relaxed mb-3">
+              Fica a RE/MAX ENGIMOB autorizada a colocação de placas, anunciar, promover e intermediar a venda e/ou locação do imóvel acima descrito,
+              reservando-nos o direito de intermediação em caso de venda, comissão de <strong>{porcHonorario.trim() || "___"}%</strong> sobre o valor das
+              transações, ou comissão igual ao valor de 1 (um) aluguel no caso de locação a qual será paga no ato da assinatura do contrato. Os
+              proprietários reservam o direito de promover, também, a venda do imóvel sem que haja obrigação em pagar a RE/MAX ENGIMOB comissões, desde que o
+              cliente não tenha sido por ela apresentado.
+            </p>
+            <div className="grid md:grid-cols-3 gap-3">
+              <div>
+                <label className={LABEL}>Comissão / honorários (%) *</label>
+                <input className={CAMPO} placeholder="6" value={porcHonorario} onChange={(e) => setPorcHonorario(e.target.value)} />
+              </div>
+              <div>
+                <label className={LABEL}>Data da ficha</label>
+                <input type="date" className={CAMPO} value={dataFechamento} onChange={(e) => setDataFechamento(e.target.value)} />
+              </div>
+            </div>
+          </div>
+        </>
+      ) : (
       <div className="bg-white border border-gray-200 rounded-xl p-4">
         <div className="text-sm font-bold text-gray-800 mb-3">3. Cláusulas</div>
         <div className="grid md:grid-cols-3 gap-3">
@@ -1202,9 +1250,10 @@ export function PortalGestaoForm({
           </div>
         </div>
       </div>
+      )}
 
       <div className="bg-white border border-gray-200 rounded-xl p-4">
-        <div className="text-sm font-bold text-gray-800 mb-3">4. Corretor responsável</div>
+        <div className="text-sm font-bold text-gray-800 mb-3">{captacao ? "5." : "4."} Corretor responsável</div>
         <div className="grid md:grid-cols-2 gap-3 text-xs text-gray-700">
           <div>
             <span className="text-gray-400">Corretor: </span>
@@ -1228,7 +1277,7 @@ export function PortalGestaoForm({
           className="bg-primary text-white rounded-lg px-5 py-2 text-sm font-semibold disabled:opacity-40 hover:opacity-90 disabled:cursor-wait inline-flex items-center justify-center gap-1.5"
         >
           {enviando && <span className="w-3 h-3 border-2 rounded-full animate-spin border-white/40 border-t-white shrink-0" />}
-          {enviando ? "Gerando..." : "Gerar contrato"}
+          {enviando ? "Gerando..." : captacao ? "Gerar ficha de captação" : "Gerar contrato"}
         </button>
         <button
           type="button"
@@ -1246,7 +1295,7 @@ export function PortalGestaoForm({
             rel="noopener noreferrer"
             className="text-xs text-primary underline font-semibold"
           >
-            Baixar contrato gerado
+            {captacao ? "Baixar ficha gerada" : "Baixar contrato gerado"}
           </a>
         )}
         {resultado && !resultado.ok && <span className="text-xs text-red-600">{resultado.erro}</span>}

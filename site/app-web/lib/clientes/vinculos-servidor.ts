@@ -28,7 +28,7 @@ export async function carregarVinculosCliente(id: string): Promise<{ vinculos: V
       select: { transacoes: { select: { id: true, id_legado: true, tipo: true, status: true, created_at: true, imoveis: { select: { endereco: true } } } } }
     }),
     prisma.adm_imoveis.findMany({ where: { cliente_id: id, excluido: false }, orderBy: { created_at: "desc" }, select: { id: true, status: true, created_at: true, imoveis: { select: { endereco: true } } } }),
-    prisma.gestoes.findMany({ where: { cliente_id: id, excluido: false }, orderBy: { created_at: "desc" }, take: 10, select: { id: true, created_at: true } }),
+    prisma.gestoes.findMany({ where: { cliente_id: id, excluido: false }, orderBy: { created_at: "desc" }, take: 10, select: { id: true, created_at: true, tipo: true } }),
     prisma.propostas.findMany({ where: { cliente_id: id }, orderBy: { created_at: "desc" }, take: 10, select: { id: true, descricao: true, rua: true, numero: true, bairro: true, valor_proposta: true, created_at: true } }),
     prisma.avaliacoes.findMany({ where: { cliente_id: id, excluido: false }, orderBy: { created_at: "desc" }, take: 10, select: { id: true, id_legado: true, status: true, tipo_avaliacao: true, created_at: true } })
   ]);
@@ -89,7 +89,7 @@ export async function carregarVinculosCliente(id: string): Promise<{ vinculos: V
     vinculos.push({ id: `adm-${a.id}`, tipo: "Administração", titulo: a.imoveis?.endereco ?? "Administração", detalhe: a.status, href: `/administracoes/${a.id}`, data: a.created_at.toISOString() });
   }
   for (const g of gestoes) {
-    vinculos.push({ id: `gestao-${g.id}`, tipo: "Gestão", titulo: "Contrato de gestão", detalhe: "Proprietário", href: `/gestoes/${g.id}`, data: g.created_at.toISOString() });
+    vinculos.push({ id: `gestao-${g.id}`, tipo: "Gestão", titulo: g.tipo === "captacao" ? "Ficha de captação (sem exclusividade)" : "Contrato de gestão", detalhe: "Proprietário", href: `/gestoes/${g.id}`, data: g.created_at.toISOString() });
   }
   return { vinculos, imovelReferencia };
 }

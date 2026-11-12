@@ -15,6 +15,7 @@ export const TIPOS_AVISO: Record<string, { icone: string; titulo: (nome: string)
   locacao: { icone: "🔑", titulo: (n) => `${n} cadastrou uma Locação` },
   administracao: { icone: "📋", titulo: (n) => `${n} cadastrou uma Administração` },
   gestao: { icone: "📑", titulo: (n) => `${n} gerou um contrato de Gestão` },
+  ficha_captacao: { icone: "🏷️", titulo: (n) => `${n} gerou uma Ficha de Captação` },
   // dirigido ao corretor (portal): o administrativo passou um cliente para ele
   cliente_recebido: { icone: "📥", titulo: (n) => `${n} passou um cliente para você` }
 };
@@ -75,6 +76,8 @@ export function avisoDeAcaoPortal(acao: string, entidadeId: string | null | unde
       return { tipo: "administracao", detalhe: [texto(d.id_legado), texto(d.cliente)].filter(Boolean).join(" — ") || null, url: entidadeId ? `/administracoes/${entidadeId}` : null };
     case "gerar_contrato_gestao":
       return { tipo: "gestao", detalhe: [texto(d.cliente), texto(d.imovel)].filter(Boolean).join(" — ") || null, url: entidadeId ? `/gestoes/${entidadeId}` : null };
+    case "gerar_ficha_captacao":
+      return { tipo: "ficha_captacao", detalhe: [texto(d.cliente), texto(d.imovel)].filter(Boolean).join(" — ") || null, url: entidadeId ? `/gestoes/${entidadeId}` : null };
     default:
       return null;
   }

@@ -49,7 +49,7 @@ export default async function GestoesPage({
       <Topbar />
 
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-        <div className="text-sm font-bold text-gray-800">Gestões · Captação Exclusiva</div>
+        <div className="text-sm font-bold text-gray-800">Gestões / Captações</div>
         <AtividadesTabs ativo="/gestoes" />
       </div>
 
@@ -64,7 +64,7 @@ export default async function GestoesPage({
           />
         </form>
         <p className="text-[11px] text-gray-400">
-          Toda gestão nasce sozinha aqui quando um corretor gera o Contrato de Gestão pelo portal.
+          Todo card nasce sozinho aqui quando um corretor gera o Contrato de Gestão (exclusividade) ou a Ficha de Captação (sem exclusividade) pelo portal.
         </p>
       </div>
 

@@ -732,7 +732,7 @@ export function RecrutamentoEtiqueta({
             <Indicador rotulo="Compra e Venda" valor={String(m.vendas)} />
             <Indicador rotulo="Administrações captadas" valor={String(m.administracoes)} />
             <Indicador rotulo="Financiamentos (avaliações)" valor={String(m.avaliacoes)} />
-            <Indicador rotulo="Gestões" valor={String(m.gestoes)} />
+            <Indicador rotulo="Gestões / captações" valor={String(m.gestoes)} />
             <Indicador rotulo="Honorário recebido" valor={m.honorarioRecebido} />
             <Indicador rotulo="Dias na casa" valor={d.diasNaCasa !== null ? String(d.diasNaCasa) : "—"} />
             <Indicador rotulo="Último acesso ao portal" valor={m.ultimoAcessoPortal ?? "Nunca acessou"} />

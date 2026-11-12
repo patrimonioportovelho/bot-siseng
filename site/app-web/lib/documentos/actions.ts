@@ -76,14 +76,19 @@ export async function buscarRegistrosAction(
     }
     case "gestao": {
       const rows = await prisma.gestoes.findMany({
-        where: termo
-          ? {
-              OR: [
-                { imoveis: { endereco: { contains: termo, mode: "insensitive" } } },
-                { clientes: { nome: { contains: termo, mode: "insensitive" } } }
-              ]
-            }
-          : undefined,
+        where: {
+          excluido: false,
+          // a ficha de captação só lista captações; contrato de gestão e carta, as gestões com exclusividade
+          ...(tipoDocumento === "ficha_captacao" ? { tipo: "captacao" } : tipoDocumento === "contrato_gestao" ? { tipo: "gestao" } : {}),
+          ...(termo
+            ? {
+                OR: [
+                  { imoveis: { endereco: { contains: termo, mode: "insensitive" as const } } },
+                  { clientes: { nome: { contains: termo, mode: "insensitive" as const } } }
+                ]
+              }
+            : {})
+        },
         include: { imoveis: true, clientes: true },
         orderBy: { created_at: "desc" },
         take: 20

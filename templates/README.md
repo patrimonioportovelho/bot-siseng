@@ -24,6 +24,7 @@ sistema troca pelos dados reais.
 | `repasse_administracao.docx` | Movimentação |
 | `repasse_primeira_locacao.docx` | Movimentação |
 | `contrato_gestao.docx` | Gestão |
+| `ficha_captacao.docx` | Gestão (tipo captação — Ficha de Captação, imóvel sem gestão/exclusividade; mesmo cabeçalho e rodapé do contrato de compra e venda) |
 | `PROPOSTA DE COMPRA E VENDA.docx` | Proposta (portal do corretor) |
 | `ata_reuniao.docx` | Evento (Ata de Reunião — gerada na hora, não fica salva no sistema) |
 

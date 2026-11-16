@@ -12,16 +12,19 @@ import type { NavItem } from "@/lib/nav";
 // pra ver o rascunho fora da tela exata de criação. Cada painel tem seu
 // próprio botão "+ Novo" pra chegar no formulário.
 export const PORTAL_NAV_ITEMS: NavItem[] = [
+  // Ordem pedida pelo usuário: primeiro o dia a dia do corretor (painel, agenda, eventos, financeiro e clientes),
+  // depois os documentos, na ordem em que o imóvel costuma andar (captação → gestão → proposta → venda →
+  // administração → locação).
   { label: "Painel", href: "/portal" },
-  { label: "Financeiro", href: "/portal/financeiro" },
   { label: "Agenda", href: "/portal/agenda" },
   { label: "Eventos", href: "/portal/eventos" },
-  { label: "Elaboração de Contrato de Gestão", href: "/portal/gestao" },
+  { label: "Financeiro", href: "/portal/financeiro" },
+  { label: "Meus Clientes", href: "/portal/clientes" },
+  { label: "Avaliação de CPF", href: "/portal/avaliacao-cpf" },
   { label: "Ficha de Captação", href: "/portal/captacao" },
+  { label: "Elaboração de Contrato de Gestão", href: "/portal/gestao" },
   { label: "Proposta de Compra e Venda", href: "/portal/proposta" },
   { label: "Elaboração de Compra e Venda", href: "/portal/compra-venda" },
-  { label: "Avaliação de CPF", href: "/portal/avaliacao-cpf" },
   { label: "Elaboração de Contrato de Administração", href: "/portal/administracao" },
-  { label: "Elaboração de Locação", href: "/portal/locacao" },
-  { label: "Meus clientes", href: "/portal/clientes" }
+  { label: "Elaboração de Locação", href: "/portal/locacao" }
 ];

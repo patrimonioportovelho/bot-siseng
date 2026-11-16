@@ -31,7 +31,7 @@ export default async function PortalClientesPage() {
           ← Voltar
         </Link>
 
-        <div className="text-lg font-bold text-gray-900 mb-1">Meus clientes</div>
+        <div className="text-lg font-bold text-gray-900 mb-1">Meus Clientes</div>
         <p className="text-xs text-gray-500 mb-4">
           Seus clientes por etapa. Cada um cai na etapa certa sozinho: lead recém-cadastrado, proprietário, inquilino, comprador, em atendimento, proposta criada
           ou negócio fechado. Clique no cliente para abrir a etiqueta: mensagens de WhatsApp, vínculos, contatos e notas, e para complementar os dados.

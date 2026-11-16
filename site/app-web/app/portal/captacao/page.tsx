@@ -3,8 +3,7 @@ import { requirePortalSession } from "@/lib/portal-auth";
 import { PortalHeader } from "@/components/portal-header";
 import { PortalRascunhoAviso } from "@/components/portal-rascunho-aviso";
 import { prisma } from "@/lib/prisma";
-import { formatDataCalendario } from "@/lib/format";
-import { labelColuna } from "@/lib/gestoes/opcoes";
+import { GestaoKanbanCorretor } from "@/components/gestao-kanban-corretor";
 
 export const dynamic = "force-dynamic";
 
@@ -19,11 +18,10 @@ export default async function PortalCaptacaoPage() {
     orderBy: { created_at: "desc" },
     select: {
       id: true,
-      id_legado: true,
       coluna: true,
-      created_at: true,
+      tipo: true,
       clientes: { select: { nome: true } },
-      imoveis: { select: { endereco: true, anuncio_id: true, anuncio_url: true } }
+      imoveis: { select: { endereco: true, id_legado: true, anuncio_id: true } }
     }
   });
 
@@ -31,7 +29,7 @@ export default async function PortalCaptacaoPage() {
     <div className="min-h-screen bg-gray-50">
       <PortalHeader nome={session.nome} />
 
-      <div className="max-w-3xl mx-auto px-4 py-6">
+      <div className="px-4 py-6 max-w-[1800px] mx-auto">
         <Link href="/portal" className="text-xs text-gray-500 hover:text-gray-800 inline-block mb-3">
           ← Voltar
         </Link>
@@ -46,7 +44,8 @@ export default async function PortalCaptacaoPage() {
           </Link>
         </div>
         <p className="text-xs text-gray-500 mb-4">
-          Imóveis captados sem gestão (exclusividade). O estágio muda aqui conforme o administrativo avança no quadro de Gestões / Captações. Para imóvel com
+          Imóveis captados sem gestão (exclusividade). O quadro é o mesmo do administrativo: o card muda de coluna aqui sozinho conforme o administrativo avança.
+          Clique no card para abrir a etiqueta (ficha e mensagens de WhatsApp para o proprietário). Para imóvel com
           exclusividade, use o <Link href="/portal/gestao" className="text-primary underline">Contrato de Gestão</Link>.
         </p>
 
@@ -59,37 +58,7 @@ export default async function PortalCaptacaoPage() {
             <p className="text-xs text-gray-400">Nenhuma ficha de captação no momento.</p>
           </div>
         ) : (
-          <div className="flex flex-col gap-2">
-            {gestoes.map((g) => (
-              <div key={g.id} className="bg-white border border-gray-200 rounded-xl p-4">
-                <div className="flex items-center justify-between gap-3 flex-wrap mb-1">
-                  <span className="text-sm font-semibold text-gray-800">
-                    {g.imoveis?.endereco ?? "Imóvel sem endereço"}
-                  </span>
-                  <span className="text-[11px] font-semibold px-2 py-1 rounded-lg border bg-blue-50 text-blue-700 border-blue-200 whitespace-nowrap">
-                    {labelColuna(g.coluna)}
-                  </span>
-                </div>
-                <div className="text-[11px] text-gray-400">
-                  {g.id_legado ?? g.id} · cadastrado em {formatDataCalendario(g.created_at)}
-                  {g.clientes?.nome && <> · Cliente: {g.clientes.nome}</>}
-                </div>
-                {g.imoveis?.anuncio_id && (
-                  <div className="text-[11px] text-green-700 mt-1">
-                    🌐 Anunciado no site · ID {g.imoveis.anuncio_id}
-                    {g.imoveis.anuncio_url && (
-                      <>
-                        {" · "}
-                        <a href={g.imoveis.anuncio_url} target="_blank" rel="noreferrer" className="text-primary underline">
-                          Abrir anúncio ↗
-                        </a>
-                      </>
-                    )}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
+          <GestaoKanbanCorretor cards={gestoes} hrefBase="/portal/captacao" />
         )}
       </div>
     </div>

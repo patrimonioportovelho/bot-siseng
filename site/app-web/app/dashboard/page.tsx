@@ -79,7 +79,10 @@ export default async function DashboardPage({
   // depois desse horário, isso funciona na prática como um resumo do que
   // entrou "de um dia pro outro" toda vez que o administrativo acessa.
   const adminSession = await getAdminSession();
-  const novasCompraVendaDesdeReset = await prisma.transacoes.findMany({
+  // As três consultas de "o que entrou desde o reset" saem juntas (e junto com as demais do Dashboard,
+  // ver o await mais abaixo): cada consulta ao banco custa uma viagem de rede, então em fila ficava lento.
+  const novasDesdeResetPromise = Promise.all([
+  prisma.transacoes.findMany({
     where: {
       excluido: false,
       tipo: "Compra e Venda",
@@ -94,12 +97,12 @@ export default async function DashboardPage({
       clientes_transacoes_cliente_idToclientes: { select: { nome: true } },
       clientes_transacoes_cliente_contraparte_idToclientes: { select: { nome: true } }
     }
-  });
+  }),
 
   // Mesma lógica, agora pras Avaliações de CPF cadastradas pelo corretor via
   // portal (/portal/avaliacao-cpf) — pedido do usuário: "no bom dia, aparecer
   // também por favor".
-  const novasAvaliacoesCpfDesdeReset = await prisma.avaliacoes.findMany({
+  prisma.avaliacoes.findMany({
     where: {
       excluido: false,
       criado_no_portal: true,
@@ -113,7 +116,7 @@ export default async function DashboardPage({
       clientes: { select: { nome: true } },
       parceiros: { select: { nome: true } }
     }
-  });
+  }),
 
   // Mesma lógica, agora pras Administrações cadastradas pelo corretor via
   // portal (/portal/administracao) — pedido do usuário em 06/08/2026.
@@ -122,7 +125,7 @@ export default async function DashboardPage({
   // portal" — cadastro direto pelo administrativo normalmente não passa por
   // esse campo (ver app/administracoes/actions.ts x
   // app/portal/administracao/actions.ts).
-  const novasAdministracoesDesdeReset = await prisma.adm_imoveis.findMany({
+  prisma.adm_imoveis.findMany({
     where: {
       excluido: false,
       parceiro_id: { not: null },
@@ -137,7 +140,68 @@ export default async function DashboardPage({
       imoveis: { select: { endereco: true } },
       parceiros: { select: { nome: true } }
     }
-  });
+  }),
+  ]);
+  novasDesdeResetPromise.catch(() => undefined);
+
+  // Financiamento (carteira de hoje + movimentação + quem precisa de contato) e as seções "Perfil de Clientes e
+  // Imóveis" e "Marketing" não dependem de nada do que vem da consulta principal: disparam já, junto com ela,
+  // em vez de esperar uma depois da outra (ver lib/financiamento/dashboard.ts).
+  const dadosFinanciamentoPromise = buscarDashboardFinanciamento({ inicio, fimExclusivo, lojasFiltro });
+  dadosFinanciamentoPromise.catch(() => undefined);
+
+  // Seção "Perfil de Clientes e Imóveis": carteira inteira, NÃO filtrada pelo período (pedido do usuário).
+  const perfilPromise = Promise.all([
+    prisma.clientes.findMany({
+      where: whereLojaFiltro(lojasFiltro),
+      select: { estado_civil: true, renda_bruta: true, data_nascimento: true }
+    }),
+    prisma.imoveis.findMany({
+      where: { excluido: false, ...whereLojaFiltro(lojasFiltro) },
+      select: {
+        valor_venda: true,
+        valor_avaliacao: true,
+        bairro: true,
+        tipo_imovel: true,
+        cidades: { select: { nome: true } }
+      }
+    }),
+    prisma.clientes.groupBy({
+      by: ["parceiro_id"],
+      where: { parceiro_id: { not: null }, ...whereLojaFiltro(lojasFiltro) },
+      _count: { _all: true },
+      orderBy: { _count: { parceiro_id: "desc" } },
+      take: 5
+    }),
+    prisma.imoveis.groupBy({
+      by: ["parceiro_id"],
+      where: { excluido: false, parceiro_id: { not: null }, ...whereLojaFiltro(lojasFiltro) },
+      _count: { _all: true },
+      orderBy: { _count: { parceiro_id: "desc" } },
+      take: 5
+    })
+  ]);
+  perfilPromise.catch(() => undefined);
+
+  // Seção "Marketing": foto do estado atual do pipeline, também sem filtro de período.
+  const marketingPromise = Promise.all([
+    prisma.marketing_ordens.findMany({
+      where: { excluido: false },
+      select: {
+        coluna: true,
+        tipo: true,
+        briefing_completo: true,
+        data_captacao: true,
+        data_publicacao: true,
+        coluna_atualizada_em: true,
+        resultados: true
+      }
+    }),
+    prisma.marketing_producoes.findMany({ where: { excluido: false }, select: { status: true, revisoes: true } }),
+    prisma.marketing_empreendimentos.count({ where: { excluido: false, status: "Ativo" } }),
+    prisma.marketing_corretores.count()
+  ]);
+  marketingPromise.catch(() => undefined);
 
   const [
     totalImoveis,
@@ -394,11 +458,20 @@ export default async function DashboardPage({
   // Situação do honorário no Financeiro (Não lançado / Pendente / Parcial /
   // Pago) de cada transação da tabela "Transações do período" — uma consulta
   // só (ver lib/financeiro/honorario-lancado.ts).
-  const resumoHonorarioPorTransacao = await buscarResumoHonorarios(transacoesDoPeriodo);
-
-  // Financiamento: carteira de hoje + movimentação do período + quem precisa de
-  // contato (ver lib/financiamento/dashboard.ts).
-  const dadosFinanciamento = await buscarDashboardFinanciamento({ inicio, fimExclusivo, lojasFiltro });
+  // "A Receber" por corretor também sai junto: depende só dos corretores ativos (já buscados acima).
+  const [novasCompraVendaDesdeReset, novasAvaliacoesCpfDesdeReset, novasAdministracoesDesdeReset] = await novasDesdeResetPromise;
+  const [resumoHonorarioPorTransacao, dadosFinanciamento, aReceberPorParceiro] = await Promise.all([
+    buscarResumoHonorarios(transacoesDoPeriodo),
+    dadosFinanciamentoPromise,
+    buscarAReceberPorParceiro(
+      corretoresAtivos.map((c) => ({
+        id: c.id,
+        porc_proprietario: c.porc_proprietario != null ? Number(c.porc_proprietario) : null,
+        porc_interessado: c.porc_interessado != null ? Number(c.porc_interessado) : null
+      })),
+      lojasFiltro
+    )
+  ]);
 
   // Gráfico "Evolução do período": agrupa as Movimentações de negócio (só
   // Compra e Venda/Locação, ver query acima) dia a dia, e calcula o saldo
@@ -610,14 +683,6 @@ export default async function DashboardPage({
   // SEM recorte de período: pode ficar vários meses em aberto. Fora:
   // Cancelado / Locação cancelada (ver lib/financeiro/a-receber-corretores.ts).
   const recebidoPorParceiro = honorariosRecebidosPorParceiro;
-  const aReceberPorParceiro = await buscarAReceberPorParceiro(
-    corretoresAtivos.map((c) => ({
-      id: c.id,
-      porc_proprietario: c.porc_proprietario != null ? Number(c.porc_proprietario) : null,
-      porc_interessado: c.porc_interessado != null ? Number(c.porc_interessado) : null
-    })),
-    lojasFiltro
-  );
 
   // Colunas de quantidade do quadro Corretores (pedido do usuário): Clientes
   // Aprovados vem do Financiamento (Avaliação com status Aprovado, mesma
@@ -703,36 +768,7 @@ export default async function DashboardPage({
   // captados. Deliberadamente NÃO filtrado pelo período do dashboard (essas
   // características são da carteira inteira, não fazem sentido "só do mês")
   // — confirmado com o usuário.
-  const [clientesPerfil, imoveisPerfil, topParceirosClientes, topParceirosImoveisCaptados] = await Promise.all([
-    prisma.clientes.findMany({
-      where: whereLojaFiltro(lojasFiltro),
-      select: { estado_civil: true, renda_bruta: true, data_nascimento: true }
-    }),
-    prisma.imoveis.findMany({
-      where: { excluido: false, ...whereLojaFiltro(lojasFiltro) },
-      select: {
-        valor_venda: true,
-        valor_avaliacao: true,
-        bairro: true,
-        tipo_imovel: true,
-        cidades: { select: { nome: true } }
-      }
-    }),
-    prisma.clientes.groupBy({
-      by: ["parceiro_id"],
-      where: { parceiro_id: { not: null }, ...whereLojaFiltro(lojasFiltro) },
-      _count: { _all: true },
-      orderBy: { _count: { parceiro_id: "desc" } },
-      take: 5
-    }),
-    prisma.imoveis.groupBy({
-      by: ["parceiro_id"],
-      where: { excluido: false, parceiro_id: { not: null }, ...whereLojaFiltro(lojasFiltro) },
-      _count: { _all: true },
-      orderBy: { _count: { parceiro_id: "desc" } },
-      take: 5
-    })
-  ]);
+  const [clientesPerfil, imoveisPerfil, topParceirosClientes, topParceirosImoveisCaptados] = await perfilPromise;
 
   const idsParceirosPerfil = [...topParceirosClientes, ...topParceirosImoveisCaptados]
     .map((p) => p.parceiro_id)
@@ -748,23 +784,7 @@ export default async function DashboardPage({
   // em si. Deliberadamente NÃO filtrado pelo período do dashboard, mesmo
   // critério já usado em "Perfil de Clientes e Imóveis" acima — é uma foto
   // do estado atual do pipeline, não faz sentido "só do mês".
-  const [todasOrdensMarketing, producoesMarketing, empreendimentosAtivosQtd, corretoresComPerfilQtd] = await Promise.all([
-    prisma.marketing_ordens.findMany({
-      where: { excluido: false },
-      select: {
-        coluna: true,
-        tipo: true,
-        briefing_completo: true,
-        data_captacao: true,
-        data_publicacao: true,
-        coluna_atualizada_em: true,
-        resultados: true
-      }
-    }),
-    prisma.marketing_producoes.findMany({ where: { excluido: false }, select: { status: true, revisoes: true } }),
-    prisma.marketing_empreendimentos.count({ where: { excluido: false, status: "Ativo" } }),
-    prisma.marketing_corretores.count()
-  ]);
+  const [todasOrdensMarketing, producoesMarketing, empreendimentosAtivosQtd, corretoresComPerfilQtd] = await marketingPromise;
 
   const omsEmAtrasoMarketing = todasOrdensMarketing.filter(
     (o) => slaDaOrdem(o.coluna, o.tipo, o.coluna_atualizada_em)?.atrasado

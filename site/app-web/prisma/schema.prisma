@@ -573,6 +573,10 @@ model imoveis {
   tipo_imovel           String?
   parceiro_id           String?                 @db.Uuid
   pasta_url             String?
+  // Anúncio no site (ID no padrão 721551039-63 + link) — preenchido na confirmação de "Comercialização" do
+  // quadro Gestões / Captações ou direto no cadastro do imóvel. ID e link andam juntos (um exige o outro).
+  anuncio_id            String?
+  anuncio_url           String?
   inscricao             String?
   cep                   String?
   rua                   String?

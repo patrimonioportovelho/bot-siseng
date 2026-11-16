@@ -38,7 +38,7 @@ export default async function GestoesPage({
     },
     orderBy: { created_at: "desc" },
     include: {
-      imoveis: { select: { id: true, id_legado: true, endereco: true } },
+      imoveis: { select: { id: true, id_legado: true, endereco: true, anuncio_id: true, anuncio_url: true } },
       clientes: { select: { nome: true } },
       parceiros: { select: { nome: true } }
     }

@@ -6,6 +6,8 @@ import Link from "next/link";
 import { formatMoeda } from "@/lib/format";
 import { COLUNAS_KANBAN, CHAVE_POSSE_LABEL, TIPO_GESTAO_LABEL } from "@/lib/gestoes/opcoes";
 import { useQuadroOtimista } from "@/components/use-quadro-otimista";
+import { ConfirmarAnuncioModal } from "@/components/confirmar-anuncio-modal";
+import type { AnuncioInformado } from "@/lib/gestoes/anuncio";
 
 type GestaoKanban = {
   id: string;
@@ -14,7 +16,7 @@ type GestaoKanban = {
   tipo: string;
   valor_venda: unknown;
   chave_posse: string;
-  imoveis: { id: string; id_legado: string | null; endereco: string | null };
+  imoveis: { id: string; id_legado: string | null; endereco: string | null; anuncio_id: string | null; anuncio_url: string | null };
   clientes: { nome: string };
   parceiros: { nome: string } | null;
 };
@@ -27,10 +29,19 @@ export function GestaoKanban({
   moverColuna
 }: {
   gestoes: GestaoKanban[];
-  moverColuna: (id: string, novaColuna: string) => Promise<void>;
+  // Indo para Comercialização, `anuncio` traz a confirmação do anúncio no site (o servidor recusa sem ela).
+  moverColuna: (id: string, novaColuna: string, anuncio?: AnuncioInformado) => Promise<void | { ok: boolean; erro?: string }>;
 }) {
   // O card muda de coluna na hora; o servidor grava em segundo plano.
-  const { itens: gestoes, moverPara, erro, limparErro } = useQuadroOtimista(gestoesServidor, moverColuna);
+  const { itens: gestoes, moverPara, erro, limparErro } = useQuadroOtimista<GestaoKanban, AnuncioInformado>(
+    gestoesServidor,
+    moverColuna,
+    // o cadastro do imóvel já mostra o anúncio novo no card, sem esperar o servidor
+    (g, _destino, anuncio) =>
+      anuncio ? { imoveis: { ...g.imoveis, anuncio_id: anuncio.anunciado ? anuncio.id : null, anuncio_url: anuncio.anunciado ? anuncio.url : null } } : {}
+  );
+  // Janela "Imóvel já anunciado no site?" ao soltar um card em Comercialização.
+  const [pedindoAnuncio, setPedindoAnuncio] = useState<{ id: string } | null>(null);
   const [arrastandoId, setArrastandoId] = useState<string | null>(null);
   // rolagem automática do quadro enquanto o card é arrastado até a borda
   useAutoRolagemArraste(arrastandoId !== null);
@@ -42,6 +53,11 @@ export function GestaoKanban({
     if (!arrastandoId) return;
     const id = arrastandoId;
     setArrastandoId(null);
+    const card = gestoes.find((g) => g.id === id);
+    if (coluna === "comercializacao" && card && card.coluna !== "comercializacao") {
+      setPedindoAnuncio({ id });
+      return;
+    }
     moverPara(id, coluna);
   }
 
@@ -140,6 +156,7 @@ export function GestaoKanban({
                       🔑 {CHAVE_POSSE_LABEL[g.chave_posse] ?? g.chave_posse}
                     </span>
                   </div>
+                  {g.imoveis.anuncio_id && <div className="text-[10px] text-green-700 truncate">🌐 Anúncio {g.imoveis.anuncio_id}</div>}
                 </Link>
               ))}
               {gestoesColuna.length === 0 && (
@@ -150,6 +167,22 @@ export function GestaoKanban({
         );
       })}
     </div>
+      {pedindoAnuncio &&
+        (() => {
+          const card = gestoes.find((g) => g.id === pedindoAnuncio.id);
+          if (!card) return null;
+          return (
+            <ConfirmarAnuncioModal
+              endereco={card.imoveis.endereco ?? card.imoveis.id_legado ?? "Imóvel"}
+              inicial={{ id: card.imoveis.anuncio_id, url: card.imoveis.anuncio_url }}
+              aoConfirmar={(anuncio) => {
+                setPedindoAnuncio(null);
+                moverPara(card.id, "comercializacao", anuncio);
+              }}
+              aoCancelar={() => setPedindoAnuncio(null)}
+            />
+          );
+        })()}
     </div>
   );
 }

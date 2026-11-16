@@ -8,6 +8,7 @@ import { valorEditavelParaDecimal, percentualParaDecimal } from "@/lib/format";
 import { registrarEJogarErro } from "@/lib/erros";
 import { logMovimentoQuadro } from "@/lib/quadro-log";
 import { sincronizarProprietariosExtra, sincronizarVinculosConjuge } from "@/lib/imoveis/proprietarios-extra";
+import { validarAnuncio, type AnuncioInformado } from "@/lib/gestoes/anuncio";
 
 function texto(formData: FormData, campo: string): string | null {
   const v = formData.get(campo);
@@ -42,6 +43,30 @@ function data(formData: FormData, campo: string): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+// Ao mandar o card para "Comercialização" o administrativo confirma se o imóvel já foi anunciado no site. Se foi,
+// o ID e o link do anúncio ficam no cadastro do imóvel (imoveis.anuncio_id / anuncio_url); se não foi, o que
+// estiver lá é apagado.
+async function gravarAnuncioNoImovel(imovelId: string, anuncio: AnuncioInformado) {
+  const antes = await prisma.imoveis.findUnique({ where: { id: imovelId }, select: { anuncio_id: true, anuncio_url: true } });
+  const novo = anuncio.anunciado ? { anuncio_id: anuncio.id.trim(), anuncio_url: anuncio.url.trim() } : { anuncio_id: null, anuncio_url: null };
+  if (antes?.anuncio_id === novo.anuncio_id && antes?.anuncio_url === novo.anuncio_url) return;
+  await prisma.imoveis
+    .update({ where: { id: imovelId }, data: { ...novo, updated_at: new Date() } })
+    .catch((erro) => registrarEJogarErro({ entidadeTipo: "imoveis", entidadeId: imovelId, acao: "editar", erro }));
+  await logAlteracao({ entidadeTipo: "imoveis", entidadeId: imovelId, acao: "editar", dadosAntes: antes, dadosDepois: novo });
+  revalidatePath(`/imoveis/${imovelId}`);
+  revalidatePath("/imoveis");
+}
+
+// A confirmação chega do formulário da ficha da gestão como três campos: anuncio_resposta ("sim" | "nao"),
+// anuncio_id e anuncio_url.
+function anuncioDoFormulario(formData: FormData): AnuncioInformado | null {
+  const resposta = texto(formData, "anuncio_resposta");
+  if (resposta === "nao") return { anunciado: false };
+  if (resposta === "sim") return { anunciado: true, id: texto(formData, "anuncio_id") ?? "", url: texto(formData, "anuncio_url") ?? "" };
+  return null;
+}
+
 // Edição completa da ficha da Gestão — Cliente/Imóvel não são editáveis
 // aqui (nasceram do formulário do portal, mostrados só como leitura no
 // cabeçalho da página).
@@ -56,6 +81,16 @@ export async function atualizarGestaoAction(formData: FormData) {
 
   await sincronizarProprietariosExtra(antes.imovel_id, formData);
   await sincronizarVinculosConjuge(formData);
+
+  // Indo para Comercialização, exige a confirmação do anúncio (a tela abre a janela antes de salvar; isto é a
+  // garantia do servidor).
+  const colunaNova = texto(formData, "coluna");
+  const indoParaComercializacao = colunaNova === "comercializacao" && antes.coluna !== "comercializacao";
+  const anuncio = indoParaComercializacao ? anuncioDoFormulario(formData) : null;
+  if (indoParaComercializacao) {
+    const erroAnuncio = validarAnuncio(anuncio);
+    if (erroAnuncio) throw new Error(erroAnuncio);
+  }
 
   const novaChavePosse = texto(formData, "chave_posse") ?? "imobiliaria";
   const novaChaveCom = texto(formData, "chave_com");
@@ -79,6 +114,8 @@ export async function atualizarGestaoAction(formData: FormData) {
     })
     .catch((erro) => registrarEJogarErro({ entidadeTipo: "gestoes", entidadeId: id, acao: "editar", erro }));
 
+  if (anuncio) await gravarAnuncioNoImovel(antes.imovel_id, anuncio);
+
   await logAlteracao({ entidadeTipo: "gestoes", entidadeId: id, acao: "editar", dadosAntes: antes, dadosDepois: depois });
 
   revalidatePath(`/gestoes/${id}`);
@@ -90,12 +127,20 @@ export async function atualizarGestaoAction(formData: FormData) {
 // Chamada direto do arrastar-e-soltar do Kanban — mesmo padrão do quadro de
 // Manutenção (moverColunaAction em app/manutencao/actions.ts): o card já muda
 // de coluna na tela, aqui só grava e devolve rápido (log depois da resposta).
-export async function moverColunaAction(id: string, novaColuna: string) {
+// Indo para "Comercialização" exige a confirmação do anúncio (`anuncio`); sem ela, recusa e o card volta. Recusa
+// de regra volta como { ok: false, erro } porque em produção o Next esconde a mensagem de um erro lançado.
+export async function moverColunaAction(id: string, novaColuna: string, anuncio?: AnuncioInformado): Promise<void | { ok: false; erro: string }> {
   const sessao = await requireEdicao("atividades");
 
-  const antes = await prisma.gestoes.findUnique({ where: { id }, select: { coluna: true } });
+  const antes = await prisma.gestoes.findUnique({ where: { id }, select: { coluna: true, imovel_id: true } });
   if (!antes) throw new Error("Gestão não encontrada.");
   if (antes.coluna === novaColuna) return;
+
+  if (novaColuna === "comercializacao") {
+    const erroAnuncio = validarAnuncio(anuncio);
+    if (erroAnuncio) return { ok: false, erro: erroAnuncio };
+    await gravarAnuncioNoImovel(antes.imovel_id, anuncio!);
+  }
 
   await prisma.gestoes
     .update({ where: { id }, data: { coluna: novaColuna, updated_at: new Date() } })

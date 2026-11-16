@@ -23,7 +23,7 @@ export default async function PortalGestaoPage() {
       coluna: true,
       created_at: true,
       clientes: { select: { nome: true } },
-      imoveis: { select: { endereco: true } }
+      imoveis: { select: { endereco: true, anuncio_id: true, anuncio_url: true } }
     }
   });
 
@@ -74,6 +74,19 @@ export default async function PortalGestaoPage() {
                   {g.id_legado ?? g.id} · cadastrado em {formatDataCalendario(g.created_at)}
                   {g.clientes?.nome && <> · Cliente: {g.clientes.nome}</>}
                 </div>
+                {g.imoveis?.anuncio_id && (
+                  <div className="text-[11px] text-green-700 mt-1">
+                    🌐 Anunciado no site · ID {g.imoveis.anuncio_id}
+                    {g.imoveis.anuncio_url && (
+                      <>
+                        {" · "}
+                        <a href={g.imoveis.anuncio_url} target="_blank" rel="noreferrer" className="text-primary underline">
+                          Abrir anúncio ↗
+                        </a>
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
           </div>

@@ -41,6 +41,8 @@ export default async function GestaoDetalhePage({
           id: true,
           id_legado: true,
           endereco: true,
+          anuncio_id: true,
+          anuncio_url: true,
           imoveis_proprietarios: { orderBy: { ordem: "asc" }, include: { clientes: { select: { id: true, nome: true } } } }
         }
       },
@@ -213,6 +215,7 @@ export default async function GestaoDetalhePage({
           parceiros={parceiros}
           clientes={clientes}
           proprietariosAtuais={todosProprietarios}
+          imovel={{ endereco: gestao.imoveis.endereco, anuncio_id: gestao.imoveis.anuncio_id, anuncio_url: gestao.imoveis.anuncio_url }}
           action={atualizarGestaoAction}
         />
 

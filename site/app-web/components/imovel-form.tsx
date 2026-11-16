@@ -5,6 +5,7 @@ import { TIPOS_IMOVEL, STATUS_IMOVEL, TIPOS_OFERTA } from "@/lib/imoveis/opcoes"
 import { formatValorEditavel, formatInscricao } from "@/lib/format";
 import { BotaoSubmit } from "@/components/botao-submit";
 import { CampoLink } from "@/components/campo-link";
+import { CamposAnuncio } from "@/components/campos-anuncio";
 import { buscarCep, UF_PARA_ESTADO } from "@/lib/enderecos";
 
 // Mesmo helper de máscara duplicado em todo formulário com CEP (ver
@@ -29,6 +30,8 @@ type ImovelExistente = {
   parceiro_id: string | null;
   loja_id: string | null;
   pasta_url: string | null;
+  anuncio_id: string | null;
+  anuncio_url: string | null;
   inscricao: string | null;
   cep: string | null;
   rua: string | null;
@@ -83,6 +86,8 @@ export function ImovelForm({
   // Um imóvel pode ter mais de um proprietário (ex.: herdeiros) — cada um é
   // um Cliente cadastrado separadamente, adicionado aqui à lista.
   const [proprietarios, setProprietarios] = useState<ClienteOpcao[]>(proprietariosIniciais);
+  const [anuncioId, setAnuncioId] = useState(i?.anuncio_id ?? "");
+  const [anuncioUrl, setAnuncioUrl] = useState(i?.anuncio_url ?? "");
   const [buscaCliente, setBuscaCliente] = useState("");
   const [mostrarLista, setMostrarLista] = useState(false);
   const [parceiroId, setParceiroId] = useState(i?.parceiro_id ?? "");
@@ -252,6 +257,19 @@ export function ImovelForm({
             </select>
           </div>
           <CampoLink label="Pasta (link)" name="pasta_url" defaultValue={i?.pasta_url} />
+          {/* Anúncio no site: preenchido sozinho ao mandar o card da gestão/captação para Comercialização (quadro
+              Atividades), mas pode ser ajustado aqui. O link é obrigatório quando há ID. */}
+          <CamposAnuncio
+            grade
+            id={anuncioId}
+            url={anuncioUrl}
+            aoMudar={(novoId, novaUrl) => {
+              setAnuncioId(novoId);
+              setAnuncioUrl(novaUrl);
+            }}
+            nomeId="anuncio_id"
+            nomeUrl="anuncio_url"
+          />
         </div>
       </div>
 

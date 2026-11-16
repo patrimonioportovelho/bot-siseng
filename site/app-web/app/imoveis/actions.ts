@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAdm, logAlteracao, requireEdicao } from "@/lib/auth";
 import { valorEditavelParaDecimal } from "@/lib/format";
 import { registrarEJogarErro } from "@/lib/erros";
+import { idDoLinkAnuncio, validarIdELink } from "@/lib/gestoes/anuncio";
 
 function texto(formData: FormData, campo: string): string | null {
   const v = formData.get(campo);
@@ -74,6 +75,16 @@ async function montarEndereco(formData: FormData): Promise<string | null> {
   return partes.length > 0 ? partes.join(" - ") : null;
 }
 
+// Anúncio no site: ID e link andam juntos (o link é obrigatório quando há ID). Se só vier o link, o ID é tirado do
+// final dele (o link termina com o ID).
+function anuncioDoFormulario(formData: FormData): { anuncio_id: string | null; anuncio_url: string | null } {
+  const url = texto(formData, "anuncio_url");
+  const id = texto(formData, "anuncio_id") ?? (url ? idDoLinkAnuncio(url) : null);
+  const erro = validarIdELink(id ?? "", url ?? "");
+  if (erro) throw new Error(erro);
+  return { anuncio_id: id, anuncio_url: url };
+}
+
 async function camposEditaveis(formData: FormData) {
   return {
     tipo_imovel: texto(formData, "tipo_imovel"),
@@ -83,6 +94,7 @@ async function camposEditaveis(formData: FormData) {
     matricula: texto(formData, "matricula"),
     loja_id: texto(formData, "loja_id"),
     pasta_url: texto(formData, "pasta_url"),
+    ...anuncioDoFormulario(formData),
     cep: somenteDigitos(formData, "cep"),
     rua: texto(formData, "rua"),
     n_predial: texto(formData, "n_predial"),

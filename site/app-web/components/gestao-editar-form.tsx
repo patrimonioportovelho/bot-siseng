@@ -5,6 +5,8 @@ import { formatValorEditavel, formatPercentual } from "@/lib/format";
 import { BotaoSubmit } from "@/components/botao-submit";
 import { COLUNAS_KANBAN, CHAVE_POSSE, CHAVE_POSSE_LABEL } from "@/lib/gestoes/opcoes";
 import { AdicionarProprietarioImovel } from "@/components/adicionar-proprietario-imovel";
+import { ConfirmarAnuncioModal } from "@/components/confirmar-anuncio-modal";
+import type { AnuncioInformado } from "@/lib/gestoes/anuncio";
 
 type ParceiroOpcao = { id: string; nome: string };
 type ClienteOpcao = { id: string; nome: string; id_legado: string | null; parceiro_id: string | null };
@@ -39,9 +41,12 @@ export function GestaoEditarForm({
   parceiros,
   clientes,
   proprietariosAtuais,
+  imovel,
   action
 }: {
   gestao: GestaoExistente;
+  // Anúncio do imóvel no site (cadastro do imóvel) — pedido ao mandar a etapa para Comercialização.
+  imovel: { endereco: string | null; anuncio_id: string | null; anuncio_url: string | null };
   parceiros: ParceiroOpcao[];
   clientes: ClienteOpcao[];
   proprietariosAtuais: { id: string; nome: string }[];
@@ -49,17 +54,54 @@ export function GestaoEditarForm({
 }) {
   const g = gestao;
   const [chavePosse, setChavePosse] = useState(g.chave_posse);
+  const [coluna, setColuna] = useState(g.coluna);
+  const [pedindoAnuncio, setPedindoAnuncio] = useState(false);
+  const [anuncio, setAnuncio] = useState<AnuncioInformado | null>(null);
+  const indoParaComercializacao = coluna === "comercializacao" && g.coluna !== "comercializacao";
 
   return (
     <form action={action} className="flex flex-col gap-5">
       <input type="hidden" name="gestaoId" value={g.id} />
+      {indoParaComercializacao && anuncio && (
+        <>
+          <input type="hidden" name="anuncio_resposta" value={anuncio.anunciado ? "sim" : "nao"} />
+          <input type="hidden" name="anuncio_id" value={anuncio.anunciado ? anuncio.id : ""} />
+          <input type="hidden" name="anuncio_url" value={anuncio.anunciado ? anuncio.url : ""} />
+        </>
+      )}
+      {pedindoAnuncio && (
+        <ConfirmarAnuncioModal
+          endereco={imovel.endereco ?? "Imóvel"}
+          inicial={{ id: imovel.anuncio_id, url: imovel.anuncio_url }}
+          aoConfirmar={(a) => {
+            setAnuncio(a);
+            setColuna("comercializacao");
+            setPedindoAnuncio(false);
+          }}
+          aoCancelar={() => setPedindoAnuncio(false)}
+        />
+      )}
 
       <div className="bg-white border border-gray-200 rounded-xl p-4">
         <div className="text-sm font-bold text-gray-800 mb-3">Contrato</div>
         <div className="grid md:grid-cols-2 gap-3">
           <div>
             <label className={LABEL}>Etapa (quadro)</label>
-            <select className={CAMPO} name="coluna" defaultValue={g.coluna}>
+            <select
+              className={CAMPO}
+              name="coluna"
+              value={coluna}
+              onChange={(e) => {
+                const nova = e.target.value;
+                // Indo para Comercialização, abre antes a janela "Imóvel já anunciado no site?" (a etapa só muda ao confirmar).
+                if (nova === "comercializacao" && g.coluna !== "comercializacao") {
+                  setPedindoAnuncio(true);
+                  return;
+                }
+                setColuna(nova);
+                setAnuncio(null);
+              }}
+            >
               {COLUNAS_KANBAN.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.label}
@@ -95,6 +137,31 @@ export function GestaoEditarForm({
             <input type="date" className={CAMPO} name="data_assinatura" defaultValue={inputDate(g.data_assinatura)} />
           </div>
         </div>
+
+        {(imovel.anuncio_id || indoParaComercializacao) && (
+          <div className="mt-3 text-[11px] text-gray-600">
+            Anúncio no site:{" "}
+            {indoParaComercializacao && anuncio ? (
+              anuncio.anunciado ? (
+                <span className="font-semibold text-green-700">{anuncio.id} (será salvo ao salvar a ficha)</span>
+              ) : (
+                <span className="font-semibold text-amber-700">não anunciado (será salvo ao salvar a ficha)</span>
+              )
+            ) : (
+              <span className="font-semibold text-green-700">
+                {imovel.anuncio_id}
+                {imovel.anuncio_url && (
+                  <>
+                    {" · "}
+                    <a href={imovel.anuncio_url} target="_blank" rel="noreferrer" className="text-primary underline">
+                      Abrir anúncio ↗
+                    </a>
+                  </>
+                )}
+              </span>
+            )}
+          </div>
+        )}
 
         <div className="mt-3 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
           <div className="text-[11px] text-blue-700 font-semibold mb-1.5">Proprietário(s) do imóvel</div>

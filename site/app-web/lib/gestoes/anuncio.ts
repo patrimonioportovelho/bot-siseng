@@ -13,6 +13,16 @@ export const EXEMPLO_ID_ANUNCIO = "721551039-63";
 // Resposta da confirmação: "não foi anunciado" ou "foi, com este ID e este link".
 export type AnuncioInformado = { anunciado: false } | { anunciado: true; id: string; url: string };
 
+// Card em Comercialização que ainda não teve a pergunta "já foi anunciado no site?" respondida (e cujo imóvel não
+// tem ID de anúncio cadastrado). Vale para os cards que já estavam em Comercialização antes da pergunta existir:
+// ao abrir a ficha ou tentar mover, a confirmação aparece para não ficarem desatualizados.
+export function anuncioPendente(
+  g: { coluna: string; anuncio_confirmado_em?: Date | string | null },
+  anuncioIdDoImovel: string | null | undefined
+): boolean {
+  return g.coluna === "comercializacao" && !g.anuncio_confirmado_em && !anuncioIdDoImovel;
+}
+
 // Devolve o ID que está no fim do link do anúncio (ou null se o link não termina num ID).
 export function idDoLinkAnuncio(url: string): string | null {
   const m = url.trim().match(/(\d{5,}-\d{1,4})\/?(?:[?#].*)?$/);

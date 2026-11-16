@@ -7,6 +7,8 @@ import { resolverUrlDocumentoGerado } from "@/lib/supabase-admin";
 import { GestaoEditarForm } from "@/components/gestao-editar-form";
 import { GestaoChecklist } from "@/components/gestao-checklist";
 import { GestaoAtividades } from "@/components/gestao-atividades";
+import { GestaoAnuncioPendente } from "@/components/gestao-anuncio-pendente";
+import { anuncioPendente } from "@/lib/gestoes/anuncio";
 import { formatData } from "@/lib/format";
 import { CAMPOS_FICHA, ESCOLHAS_FICHA, GRUPOS_FICHA, fichaDoJson } from "@/lib/gestoes/ficha";
 import {
@@ -18,7 +20,8 @@ import {
   criarAtividadeAction,
   marcarAtividadeFeitaAction,
   removerAtividadeAction,
-  adicionarNotaAction
+  adicionarNotaAction,
+  confirmarAnuncioAction
 } from "../actions";
 
 export const dynamic = "force-dynamic";
@@ -90,6 +93,15 @@ export default async function GestaoDetalhePage({
   return (
     <div>
       <Topbar />
+
+      {/* Card que já estava em Comercialização antes da pergunta do anúncio existir: pede a confirmação ao abrir. */}
+      {anuncioPendente(gestao, gestao.imoveis.anuncio_id) && (
+        <GestaoAnuncioPendente
+          gestaoId={gestao.id}
+          endereco={gestao.imoveis.endereco ?? gestao.imoveis.id_legado ?? "Imóvel"}
+          confirmar={confirmarAnuncioAction}
+        />
+      )}
 
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
         <Link href="/gestoes" className="text-xs text-gray-500 hover:text-gray-800">

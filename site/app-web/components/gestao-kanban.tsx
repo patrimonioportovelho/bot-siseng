@@ -7,13 +7,15 @@ import { formatMoeda } from "@/lib/format";
 import { COLUNAS_KANBAN, CHAVE_POSSE_LABEL, TIPO_GESTAO_LABEL } from "@/lib/gestoes/opcoes";
 import { useQuadroOtimista } from "@/components/use-quadro-otimista";
 import { ConfirmarAnuncioModal } from "@/components/confirmar-anuncio-modal";
-import type { AnuncioInformado } from "@/lib/gestoes/anuncio";
+import { anuncioPendente, type AnuncioInformado } from "@/lib/gestoes/anuncio";
 
 type GestaoKanban = {
   id: string;
   coluna: string;
   // "gestao" (contrato com exclusividade) ou "captacao" (ficha de captação, sem exclusividade)
   tipo: string;
+  // quando o administrativo respondeu "o imóvel já foi anunciado no site?" (nulo = ainda não)
+  anuncio_confirmado_em: Date | string | null;
   valor_venda: unknown;
   chave_posse: string;
   imoveis: { id: string; id_legado: string | null; endereco: string | null; anuncio_id: string | null; anuncio_url: string | null };
@@ -38,10 +40,17 @@ export function GestaoKanban({
     moverColuna,
     // o cadastro do imóvel já mostra o anúncio novo no card, sem esperar o servidor
     (g, _destino, anuncio) =>
-      anuncio ? { imoveis: { ...g.imoveis, anuncio_id: anuncio.anunciado ? anuncio.id : null, anuncio_url: anuncio.anunciado ? anuncio.url : null } } : {}
+      anuncio
+        ? {
+            anuncio_confirmado_em: new Date(),
+            imoveis: { ...g.imoveis, anuncio_id: anuncio.anunciado ? anuncio.id : null, anuncio_url: anuncio.anunciado ? anuncio.url : null }
+          }
+        : {}
   );
   // Janela "Imóvel já anunciado no site?" ao soltar um card em Comercialização.
-  const [pedindoAnuncio, setPedindoAnuncio] = useState<{ id: string } | null>(null);
+  // `destino` = para onde o card vai depois de confirmar (Comercialização, ou outra coluna se o card já estava em
+  // Comercialização sem confirmação).
+  const [pedindoAnuncio, setPedindoAnuncio] = useState<{ id: string; destino: string } | null>(null);
   const [arrastandoId, setArrastandoId] = useState<string | null>(null);
   // rolagem automática do quadro enquanto o card é arrastado até a borda
   useAutoRolagemArraste(arrastandoId !== null);
@@ -55,7 +64,12 @@ export function GestaoKanban({
     setArrastandoId(null);
     const card = gestoes.find((g) => g.id === id);
     if (coluna === "comercializacao" && card && card.coluna !== "comercializacao") {
-      setPedindoAnuncio({ id });
+      setPedindoAnuncio({ id, destino: coluna });
+      return;
+    }
+    // Card que já estava em Comercialização e nunca teve o anúncio confirmado: pergunta antes de deixar mover.
+    if (card && coluna !== card.coluna && anuncioPendente(card, card.imoveis.anuncio_id)) {
+      setPedindoAnuncio({ id, destino: coluna });
       return;
     }
     moverPara(id, coluna);
@@ -157,6 +171,11 @@ export function GestaoKanban({
                     </span>
                   </div>
                   {g.imoveis.anuncio_id && <div className="text-[10px] text-green-700 truncate">🌐 Anúncio {g.imoveis.anuncio_id}</div>}
+                  {anuncioPendente(g, g.imoveis.anuncio_id) && (
+                    <span className="self-start text-[9px] font-bold rounded-full border px-1.5 py-0.5 bg-amber-50 text-amber-700 border-amber-200">
+                      Confirmar anúncio
+                    </span>
+                  )}
                 </Link>
               ))}
               {gestoesColuna.length === 0 && (
@@ -175,9 +194,15 @@ export function GestaoKanban({
             <ConfirmarAnuncioModal
               endereco={card.imoveis.endereco ?? card.imoveis.id_legado ?? "Imóvel"}
               inicial={{ id: card.imoveis.anuncio_id, url: card.imoveis.anuncio_url }}
+              textoIntro={
+                pedindoAnuncio.destino === "comercializacao"
+                  ? undefined
+                  : "Este card já está em Comercialização e ainda não tem a confirmação do anúncio. Informe se o imóvel já foi anunciado no site antes de movê-lo; se foi, coloque o ID e o link do anúncio."
+              }
               aoConfirmar={(anuncio) => {
+                const destino = pedindoAnuncio.destino;
                 setPedindoAnuncio(null);
-                moverPara(card.id, "comercializacao", anuncio);
+                moverPara(card.id, destino, anuncio);
               }}
               aoCancelar={() => setPedindoAnuncio(null)}
             />

@@ -506,6 +506,9 @@ model gestoes {
   chave_posse        String                      @default("imobiliaria")
   chave_com          String?
   chave_atualizado_em DateTime?                  @db.Timestamptz(6)
+  // Quando o administrativo respondeu "o imóvel já foi anunciado no site?" (Sim ou Não) para este card. Nulo em
+  // Comercialização = ainda falta confirmar (ver lib/gestoes/anuncio.ts, anuncioPendente).
+  anuncio_confirmado_em DateTime?                @db.Timestamptz(6)
   excluido           Boolean                     @default(false)
   data_assinatura    DateTime?                   @db.Date
   // Prazo de exclusividade em DIAS — o texto do contrato de gestão fala em

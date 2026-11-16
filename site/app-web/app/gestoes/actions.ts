@@ -101,6 +101,7 @@ export async function atualizarGestaoAction(formData: FormData) {
       where: { id },
       data: {
         coluna: texto(formData, "coluna") ?? undefined,
+        anuncio_confirmado_em: anuncio ? new Date() : undefined,
         parceiro_id: texto(formData, "parceiro_id"),
         valor_venda: valorMonetario(formData, "valor_venda"),
         porc_honorario: percentual(formData, "porc_honorario"),
@@ -136,14 +137,16 @@ export async function moverColunaAction(id: string, novaColuna: string, anuncio?
   if (!antes) throw new Error("Gestão não encontrada.");
   if (antes.coluna === novaColuna) return;
 
-  if (novaColuna === "comercializacao") {
+  // Indo para Comercialização a confirmação é obrigatória. Saindo dela, só vem quando o card ainda estava sem
+  // confirmação (a tela pergunta antes de mover) — se vier, também é validada e gravada.
+  if (novaColuna === "comercializacao" || anuncio) {
     const erroAnuncio = validarAnuncio(anuncio);
     if (erroAnuncio) return { ok: false, erro: erroAnuncio };
     await gravarAnuncioNoImovel(antes.imovel_id, anuncio!);
   }
 
   await prisma.gestoes
-    .update({ where: { id }, data: { coluna: novaColuna, updated_at: new Date() } })
+    .update({ where: { id }, data: { coluna: novaColuna, updated_at: new Date(), ...(anuncio ? { anuncio_confirmado_em: new Date() } : {}) } })
     .catch((erro) => registrarEJogarErro({ entidadeTipo: "gestoes", entidadeId: id, acao: "mover_coluna", erro }));
 
   logMovimentoQuadro({
@@ -153,6 +156,27 @@ export async function moverColunaAction(id: string, novaColuna: string, anuncio?
     antes: { coluna: antes.coluna },
     depois: { coluna: novaColuna }
   });
+}
+
+// Confirma o anúncio de um card que JÁ está em Comercialização (os que estavam lá antes da pergunta existir), sem
+// mover nada: grava ID e link no imóvel (ou apaga, se a resposta for "Não") e marca o card como confirmado.
+export async function confirmarAnuncioAction(id: string, anuncio: AnuncioInformado): Promise<{ ok: true } | { ok: false; erro: string }> {
+  await requireEdicao("atividades");
+
+  const erroAnuncio = validarAnuncio(anuncio);
+  if (erroAnuncio) return { ok: false, erro: erroAnuncio };
+
+  const gestao = await prisma.gestoes.findUnique({ where: { id }, select: { imovel_id: true } });
+  if (!gestao) return { ok: false, erro: "Gestão não encontrada." };
+
+  await gravarAnuncioNoImovel(gestao.imovel_id, anuncio);
+  await prisma.gestoes
+    .update({ where: { id }, data: { anuncio_confirmado_em: new Date(), updated_at: new Date() } })
+    .catch((erro) => registrarEJogarErro({ entidadeTipo: "gestoes", entidadeId: id, acao: "editar", erro }));
+
+  revalidatePath(`/gestoes/${id}`);
+  revalidatePath("/gestoes");
+  return { ok: true };
 }
 
 // Soft-delete — mesmo padrão do resto do sistema: marca excluido=true em vez

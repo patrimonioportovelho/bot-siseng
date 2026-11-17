@@ -15,6 +15,8 @@ import { calcularAlcancado, avaliarMeta } from "@/lib/metas/calculo";
 import { PortalMetasPainel } from "@/components/portal-metas-painel";
 import { buscarRankingHonorariosMes, avaliarRankingCorretor } from "@/lib/parceiros/ranking-honorarios";
 import { PortalRankingHonorarioBanner } from "@/components/portal-ranking-honorario-banner";
+import { PortalDesempenho } from "@/components/portal-desempenho";
+import { buscarDesempenho, resolverPeriodo } from "@/lib/portal/desempenho";
 
 const IMOBVIEW_URL = "https://www.imobview.pro/login";
 
@@ -91,11 +93,17 @@ function Secao({ titulo, children }: { titulo: string; children: ReactNode }) {
 // público (/login), filtrando só quem foi marcado com "portal_corretor" em
 // Configurações — antes disso existia uma tabela "noticias" separada, sem
 // nenhuma tela de cadastro (só dava pra popular direto no banco).
-export default async function PortalPage() {
+export default async function PortalPage({
+  searchParams
+}: {
+  searchParams: Promise<{ periodo?: string; de?: string; ate?: string }>;
+}) {
   const session = await requirePortalSession();
   const pid = session.parceiroId;
 
   const hoje = hojePortoVelho();
+  // Período do bloco "Desempenho" (padrão: o ano, como no relatório do iList); filtro por ?periodo= ou ?de=&ate=.
+  const periodoDesempenho = resolverPeriodo(await searchParams, hoje);
 
   // Início da janela do gráfico: primeiro dia do mês, MESES_GRAFICO-1 meses
   // atrás (inclui o mês atual inteiro).
@@ -118,10 +126,6 @@ export default async function PortalPage() {
     parceiroFuncao,
     eventosBrutos,
     clientesQtd,
-    imoveisQtd,
-    gestoesQtd,
-    gestoesEmCaptacaoQtd,
-    fichasCaptacaoQtd,
     propostasQtd,
     vendaTotal,
     vendaAbertas,
@@ -135,7 +139,8 @@ export default async function PortalPage() {
     honorariosPendentes,
     honorariosPagoDireto,
     transacoesGrafico,
-    administracoesGrafico
+    administracoesGrafico,
+    desempenho
   ] = await Promise.all([
     // Pedidos de Agenda que o setor já respondeu e o corretor ainda não
     // abriu — vira o banner de notificação abaixo (some sozinho assim que
@@ -179,11 +184,6 @@ export default async function PortalPage() {
     prisma.clientes.count({
       where: { parceiro_id: pid, OR: [{ status_cadastro: null }, { status_cadastro: { not: "Arquivado" } }] }
     }),
-    prisma.imoveis.count({ where: { parceiro_id: pid, excluido: false } }),
-    // contratos de gestão (exclusividade) e fichas de captação (sem exclusividade) contam separados
-    prisma.gestoes.count({ where: { parceiro_id: pid, excluido: false, tipo: "gestao" } }),
-    prisma.gestoes.count({ where: { parceiro_id: pid, excluido: false, tipo: "gestao", coluna: "captacao_exclusiva" } }),
-    prisma.gestoes.count({ where: { parceiro_id: pid, excluido: false, tipo: "captacao" } }),
     prisma.propostas.count({ where: { parceiro_id: pid } }),
     prisma.transacoes.count({
       where: { excluido: false, tipo: "Compra e Venda", OR: [{ corretor_proprietario_id: pid }, { corretor_contraparte_id: pid }] }
@@ -273,7 +273,8 @@ export default async function PortalPage() {
     prisma.adm_imoveis.findMany({
       where: { parceiro_id: pid, excluido: false, data_assinatura: { gte: inicioGrafico } },
       select: { data_assinatura: true }
-    })
+    }),
+    buscarDesempenho(pid, periodoDesempenho)
   ]);
 
   // Link absoluto pro compartilhar (ShareButton/WhatsApp) funcionar mesmo
@@ -369,9 +370,9 @@ export default async function PortalPage() {
 
       <div className="max-w-5xl mx-auto px-4 py-6">
         <div className="text-lg font-bold text-gray-900 mb-1">Seu painel</div>
-        <p className="text-xs text-gray-500 mb-6">
-          Um resumo rápido de tudo que está no seu nome: clientes, imóveis, negócios em andamento, avaliações de
-          crédito e honorários. As ações pra criar um novo cadastro ficaram no menu ao lado.
+        <p className="text-xs text-gray-500 mb-4">
+          Seu desempenho no período, a carteira, os negócios em andamento, as avaliações de crédito e os honorários.
+          As ações pra criar um novo cadastro ficaram no menu ao lado.
         </p>
 
         {pedidosAgendaRespondidos.length > 0 && (
@@ -389,6 +390,8 @@ export default async function PortalPage() {
         )}
 
         {situacaoRanking && <PortalRankingHonorarioBanner situacao={situacaoRanking} />}
+
+        <PortalDesempenho d={desempenho} />
 
         <PortalMetasPainel metas={metasComProgresso} />
 
@@ -414,23 +417,9 @@ export default async function PortalPage() {
           )}
         </div>
 
-        <div className="grid md:grid-cols-2 gap-4 mb-4">
-          <Secao titulo="Sua carteira">
-            <div className="grid grid-cols-2 gap-2">
-              <Kpi label="Clientes" value={String(clientesQtd)} />
-              <Kpi label="Imóveis captados" value={String(imoveisQtd)} />
-              <Kpi
-                label="Contratos de gestão"
-                value={String(gestoesQtd)}
-                sub={gestoesEmCaptacaoQtd > 0 ? `${gestoesEmCaptacaoQtd} em captação` : undefined}
-              />
-              <Kpi label="Fichas de captação" value={String(fichasCaptacaoQtd)} sub="imóveis sem exclusividade" />
-              <Kpi label="Propostas enviadas" value={String(propostasQtd)} />
-            </div>
-          </Secao>
-
-          <Secao titulo="Negócios">
-            <div className="grid grid-cols-3 gap-2">
+        <div className="mb-4">
+          <Secao titulo="Negócios e cadastros (total, sem filtro de período)">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
               <Kpi
                 tone="azul"
                 label="Compra e venda"
@@ -449,6 +438,8 @@ export default async function PortalPage() {
                 value={`${administracoesAtivas} ativas`}
                 sub={`${administracoesTotal} no total`}
               />
+              <Kpi label="Clientes" value={String(clientesQtd)} />
+              <Kpi label="Propostas enviadas" value={String(propostasQtd)} />
             </div>
           </Secao>
         </div>

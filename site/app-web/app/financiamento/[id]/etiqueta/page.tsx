@@ -24,6 +24,7 @@ import {
   DIAS_ALERTA_VALIDADE,
   TIPO_ETAPA,
   colunaDoCard,
+  diasNaColuna,
   normalizarStatusAndamento
 } from "@/lib/financiamento/quadro";
 import { verificacoesAutomaticas, type EstadoChecklist } from "@/lib/financiamento/conformidade";
@@ -138,7 +139,7 @@ export default async function EtiquetaFinanciamentoPage({ params }: { params: Pr
     proximaAcaoTexto: acomp?.proxima_acao_texto ?? null,
     notas: acomp?.notas ?? null,
     checklist: ((acomp?.checklist as EstadoChecklist | null) ?? {}) as EstadoChecklist,
-    diasNaEtapa: etapaAberta ? Math.max(0, Math.floor((Date.now() - etapaAberta.inicio.getTime()) / 86400000)) : 0,
+    diasNaEtapa: etapaAberta ? Math.max(0, Math.floor(diasNaColuna(coluna, etapaAberta.inicio, Date.now()))) : 0,
     estimado: etapaAberta?.estimado ?? false,
     verificacoes: verificacoesAutomaticas({
       rendaTotal: rendaTotal > 0 ? rendaTotal : null,

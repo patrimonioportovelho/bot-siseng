@@ -77,6 +77,7 @@ export const STATUS_ANDAMENTO_OPCOES = [
   "Dotação Orçamentária",
   "Assinando Contrato",
   "Aguardando Registro",
+  "Aguardando Garantia Habitacional",
   "Concluído"
 ];
 
@@ -108,6 +109,7 @@ export const STATUS_ANDAMENTO_COM_OPCOES: Record<string, string[]> = {
     "Registro com Despachante externo",
     "Registro por conta do comprador"
   ],
+  "Aguardando Garantia Habitacional": ["Documentação registrada entregue à Caixa", "Aguardando liberação do valor ao vendedor"],
   Concluído: ["Documentação entregue ao gerente", "Valor de financiamento pago", "Processo arquivado"]
 };
 

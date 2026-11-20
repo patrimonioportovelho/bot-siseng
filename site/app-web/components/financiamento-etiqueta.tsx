@@ -14,7 +14,8 @@ import {
   TIPO_INCONFORMIDADE,
   TIPO_NOTA_FIN,
   situacaoSla,
-  type ColunaFinId
+  type ColunaFinId,
+  unidadeSla
 } from "@/lib/financiamento/quadro";
 import {
   GRUPOS_CHECKLIST,
@@ -347,7 +348,7 @@ export function FinanciamentoEtiqueta({
           <div className="text-sm font-bold text-gray-800">Acompanhamento</div>
           {grupo !== "fim" && (
             <div className={`text-[11px] ${sla === "atrasado" ? "text-red-600 font-semibold" : sla === "alerta" ? "text-amber-600" : "text-gray-500"}`}>
-              Nesta etapa há {d.diasNaEtapa} dia(s){meta ? ` (meta ${meta})` : ""}
+              Nesta etapa há {d.diasNaEtapa} {unidadeSla(colunaAtual)}{meta ? ` (meta ${meta})` : ""}
               {d.estimado ? " · estimado a partir das datas cadastradas" : ""}
             </div>
           )}

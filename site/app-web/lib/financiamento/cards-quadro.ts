@@ -2,7 +2,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { formatTelefone } from "@/lib/format";
 import type { CardFinanciamento } from "@/components/financiamento-kanban";
-import { TIPO_CONTATO_FIN, TIPO_ETAPA, TIPO_INCONFORMIDADE, colunaDoCard, normalizarStatusAndamento } from "@/lib/financiamento/quadro";
+import { TIPO_CONTATO_FIN, TIPO_ETAPA, TIPO_INCONFORMIDADE, colunaDoCard, diasNaColuna, normalizarStatusAndamento } from "@/lib/financiamento/quadro";
 
 const DIA_MS = 86400000;
 
@@ -82,7 +82,7 @@ export async function carregarCardsFinanciamento(filtro: Prisma.avaliacoesWhereI
       responsavelNome: acomp?.responsavel?.nome ?? null,
       proximaAcaoData: acomp?.proxima_acao_data ? acomp.proxima_acao_data.toISOString().slice(0, 10) : null,
       proximaAcaoTexto: acomp?.proxima_acao_texto ?? null,
-      diasNaEtapa: etapaAberta ? Math.max(0, Math.floor((agora - etapaAberta.inicio.getTime()) / DIA_MS)) : 0,
+      diasNaEtapa: etapaAberta ? Math.max(0, Math.floor(diasNaColuna(coluna, etapaAberta.inicio, agora))) : 0,
       estimado: etapaAberta?.estimado ?? false,
       inconformidadeAberta: inconf?.motivo ?? null,
       ultimoContatoDias: contato ? Math.max(0, Math.floor((agora - contato.getTime()) / DIA_MS)) : null,

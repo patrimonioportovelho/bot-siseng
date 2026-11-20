@@ -5,7 +5,8 @@ import {
   TIPO_CONTATO_FIN,
   TIPO_ETAPA,
   TIPO_INCONFORMIDADE,
-  type ColunaFinId
+  type ColunaFinId,
+  diasNaColuna
 } from "@/lib/financiamento/quadro";
 
 // Relatório do Financiamento: tempo por etapa, gargalos, conformidade e
@@ -107,7 +108,7 @@ export async function gerarRelatorioFinanciamento(params: { de: Date; ate: Date;
   for (const a of noPeriodo) {
     if (a.tipo !== TIPO_ETAPA || !a.etapa || !a.fim) continue;
     const e = reg(a.etapa, a.coluna);
-    const dias = (a.fim.getTime() - a.inicio.getTime()) / DIA_MS;
+    const dias = diasNaColuna(a.coluna, a.inicio, a.fim);
     e.dias.push(dias);
     if (a.estimado) e.estimadas += 1;
     const meta = metaDe(a.coluna);
@@ -118,7 +119,7 @@ export async function gerarRelatorioFinanciamento(params: { de: Date; ate: Date;
     if (!a.etapa) continue;
     const e = reg(a.etapa, a.coluna);
     e.abertas += 1;
-    const dias = (agora - a.inicio.getTime()) / DIA_MS;
+    const dias = diasNaColuna(a.coluna, a.inicio, agora);
     const meta = metaDe(a.coluna);
     if (meta && dias > meta) {
       e.abertasAcima += 1;

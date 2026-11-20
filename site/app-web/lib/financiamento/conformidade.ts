@@ -123,8 +123,17 @@ export const GRUPOS_CHECKLIST: GrupoChecklist[] = [
     itens: [
       { chave: "reg_protocolo", titulo: "Contrato protocolado no cartório" },
       { chave: "reg_exigencia", titulo: "Nota de exigência do cartório atendida (se houver)" },
-      { chave: "reg_registro", titulo: "Registro e alienação fiduciária averbados na matrícula", ref: "Lei 9.514/97" },
-      { chave: "reg_entrega", titulo: "Documentação entregue ao gerente" }
+      { chave: "reg_registro", titulo: "Registro e alienação fiduciária averbados na matrícula", ref: "Lei 9.514/97" }
+    ]
+  },
+  {
+    id: "garantia",
+    coluna: "garantia",
+    titulo: "Garantia Habitacional",
+    itens: [
+      // a chave reg_entrega é a mesma de antes (vinha no grupo Registro): o que já foi marcado continua marcado
+      { chave: "reg_entrega", titulo: "Documentação registrada entregue à Caixa (gerente)" },
+      { chave: "gar_pagamento", titulo: "Valor financiado liberado ao vendedor" }
     ]
   }
 ];

@@ -1,3 +1,5 @@
+import { diasUteisDecorridos } from "@/lib/dias-uteis";
+
 // Financiamento em Kanban (30/10/2026). Cada card é uma Avaliação; do crédito
 // (Consulta de CPF → Montagem de processo → Aprovado) ela entra no PROCESSO
 // quando o Andamento começa (Documentação → Engenharia → Conformidade →
@@ -17,6 +19,7 @@ export type ColunaFinId =
   | "comite"
   | "contrato"
   | "registro"
+  | "garantia"
   | "concluido"
   | "encerrado";
 
@@ -29,6 +32,8 @@ export type ColunaFin = {
   // Meta sugerida de permanência na coluna, em dias (ajustável aqui). Passou
   // da meta = card em atraso. null = sem meta.
   slaDias: number | null;
+  // A meta conta em dias ÚTEIS (sem fim de semana e feriado bancário), como a Caixa conta o prazo. Padrão: dias corridos.
+  slaUteis?: boolean;
   // Colunas de crédito: valor de avaliacoes.status.
   statusAvaliacao?: string;
   // Colunas de processo: valores de andamentos.status_andamento (o 1º é o
@@ -49,6 +54,7 @@ export const COLUNAS_FIN: ColunaFin[] = [
   { id: "comite", label: "Comitê e dotação", grupo: "processo", dica: "Aprovação do comitê e dotação orçamentária.", cor: "bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200", slaDias: 15, statusAndamento: ["Aguardando comitê", "Dotação Orçamentária"] },
   { id: "contrato", label: "Assinatura do contrato", grupo: "processo", dica: "Assinar o contrato (alienação fiduciária).", cor: "bg-teal-50 text-teal-700 border-teal-200", slaDias: 7, statusAndamento: ["Assinando Contrato"] },
   { id: "registro", label: "Registro", grupo: "processo", dica: "Registro do contrato na matrícula, em cartório.", cor: "bg-lime-50 text-lime-700 border-lime-200", slaDias: 30, statusAndamento: ["Aguardando Registro"] },
+  { id: "garantia", label: "Garantia Habitacional", grupo: "processo", dica: "A correspondente entrega a documentação registrada à Caixa para o vendedor receber o valor financiado.", cor: "bg-emerald-50 text-emerald-700 border-emerald-200", slaDias: 5, slaUteis: true, statusAndamento: ["Aguardando Garantia Habitacional"] },
   { id: "concluido", label: "Concluído", grupo: "fim", dica: "Financiamento concluído.", cor: "bg-green-50 text-green-700 border-green-200", slaDias: null, statusAvaliacao: "Concluído", statusAndamento: ["Concluído"] },
   { id: "encerrado", label: "Encerrados", grupo: "fim", dica: "Reprovação, avaliação cancelada ou vencida.", cor: "bg-gray-50 text-gray-500 border-gray-200", slaDias: null }
 ];
@@ -101,6 +107,21 @@ export function etapaDoCard(avaliacaoStatus: string, andamentoStatus: string | n
 // Dias de antecedência pro alerta de validade de uma aprovação (mesmo valor da
 // lista antiga do Financiamento).
 export const DIAS_ALERTA_VALIDADE = 30;
+
+// Tempo (em dias) que o card passou na coluna, na unidade da meta dela: dias úteis nas colunas com meta em dias úteis,
+// dias corridos nas demais. `coluna` pode ser nulo (atividade antiga sem coluna).
+export function diasNaColuna(coluna: string | null | undefined, inicio: Date | number, fim: Date | number): number {
+  const c = coluna ? COLUNA_FIN_POR_ID.get(coluna as ColunaFinId) : null;
+  if (c?.slaUteis) return diasUteisDecorridos(inicio, fim);
+  const a = typeof inicio === "number" ? inicio : inicio.getTime();
+  const b = typeof fim === "number" ? fim : fim.getTime();
+  return (b - a) / 86_400_000;
+}
+
+// "dia(s) útil(eis)" ou "dia(s)", conforme a unidade da meta da coluna.
+export function unidadeSla(coluna: string | null | undefined): string {
+  return coluna && COLUNA_FIN_POR_ID.get(coluna as ColunaFinId)?.slaUteis ? "dia(s) útil(eis)" : "dia(s)";
+}
 
 export type SituacaoSla = "ok" | "alerta" | "atrasado" | "sem_meta";
 

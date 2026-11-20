@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { COLUNA_FIN_POR_ID, type ColunaFinId } from "@/lib/financiamento/quadro";
 import { Topbar } from "@/components/topbar";
 import { prisma } from "@/lib/prisma";
 import { requireAdminSession } from "@/lib/auth";
@@ -128,14 +129,17 @@ export default async function RelatorioFinanciamentoPage({
           <tbody>
             {r.etapas.map((e) => (
               <tr key={e.etapa}>
-                <td className="py-1.5 border-b border-gray-50 text-gray-800 font-medium">{e.etapa}</td>
+                <td className="py-1.5 border-b border-gray-50 text-gray-800 font-medium">
+                  {e.etapa}
+                  {COLUNA_FIN_POR_ID.get(e.coluna as ColunaFinId)?.slaUteis && <span className="text-[10px] text-gray-400 font-normal"> · em dias úteis</span>}
+                </td>
                 <td className="py-1.5 border-b border-gray-50 text-right text-gray-600">
                   {e.passagens}
                   {e.estimadas > 0 && <span className="text-[10px] text-gray-400"> ({e.estimadas} est.)</span>}
                 </td>
                 <td className="py-1.5 border-b border-gray-50 text-right font-semibold text-gray-800">{fmtDias(e.mediaDias)}</td>
                 <td className="py-1.5 border-b border-gray-50 text-right text-gray-600">{fmtDias(e.maxDias)}</td>
-                <td className="py-1.5 border-b border-gray-50 text-right text-gray-500">{e.metaDias ? `${e.metaDias} d` : "—"}</td>
+                <td className="py-1.5 border-b border-gray-50 text-right text-gray-500">{e.metaDias ? `${e.metaDias} ${COLUNA_FIN_POR_ID.get(e.coluna as ColunaFinId)?.slaUteis ? "du" : "d"}` : "—"}</td>
                 <td className={`py-1.5 border-b border-gray-50 text-right ${e.acimaDaMeta > 0 ? "text-red-600 font-semibold" : "text-gray-500"}`}>
                   {e.acimaDaMeta}
                 </td>

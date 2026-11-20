@@ -4,7 +4,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState, useTransition 
 import { DockArraste, useAutoRolagemArraste } from "@/components/dock-arraste";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { COLUNAS_FIN, COLUNA_FIN_POR_ID, ENCERRAMENTOS, situacaoSla, type ColunaFinId } from "@/lib/financiamento/quadro";
+import { COLUNAS_FIN, COLUNA_FIN_POR_ID, ENCERRAMENTOS, situacaoSla, unidadeSla, type ColunaFinId } from "@/lib/financiamento/quadro";
 import { CampoSelectAuto, type ResultadoSalvar } from "@/components/recrutamento-campos";
 
 export type CardFinanciamento = {
@@ -348,7 +348,7 @@ export function FinanciamentoKanban({
                   <span className="text-[11px] font-semibold shrink-0">{doGrupo.length}</span>
                 </div>
                 <div className="text-[10px] opacity-80 leading-snug mt-0.5">{coluna.dica}</div>
-                {!corretor && coluna.slaDias && <div className="text-[10px] opacity-70 mt-0.5">Meta: até {coluna.slaDias} dia(s) nesta etapa</div>}
+                {!corretor && coluna.slaDias && <div className="text-[10px] opacity-70 mt-0.5">Meta: até {coluna.slaDias} {unidadeSla(coluna.id)} nesta etapa</div>}
                 {!corretor && definirResponsavelColuna && (
                   <div className="mt-1.5">
                     <CampoSelectAuto
@@ -474,9 +474,9 @@ const Cartao = memo(function Cartao({
         {grupo !== "fim" && (
           <span
             className={`text-[10px] shrink-0 ${!corretor && sla === "atrasado" ? "text-red-600 font-bold" : !corretor && sla === "alerta" ? "text-amber-600" : "text-gray-400"}`}
-            title={`Tempo nesta etapa${c.estimado ? " (estimado a partir das datas cadastradas)" : ""}${!corretor && meta ? ` — meta ${meta}d` : ""}`}
+            title={`Tempo nesta etapa${c.estimado ? " (estimado a partir das datas cadastradas)" : ""}${!corretor && meta ? ` — meta ${meta} ${unidadeSla(c.coluna)}` : ""}`}
           >
-            {c.diasNaEtapa}d{!corretor && meta ? `/${meta}` : ""}
+            {c.diasNaEtapa}{COLUNA_FIN_POR_ID.get(c.coluna)?.slaUteis ? "du" : "d"}{!corretor && meta ? `/${meta}` : ""}
           </span>
         )}
       </div>

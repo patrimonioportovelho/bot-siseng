@@ -10,7 +10,8 @@ import {
   TIPO_INCONFORMIDADE,
   colunaDoCard,
   situacaoSla,
-  type ColunaFinId
+  type ColunaFinId,
+  diasNaColuna
 } from "@/lib/financiamento/quadro";
 
 // Financiamento no Dashboard geral (30/10/2026). A visão deixa de depender só da
@@ -154,7 +155,7 @@ export async function buscarDashboardFinanciamento(params: {
     linha.total += 1;
 
     const aberta = etapaAberta.get(a.id) ?? null;
-    const diasNaEtapa = aberta ? Math.max(0, Math.floor((agora - aberta.inicio.getTime()) / DIA_MS)) : 0;
+    const diasNaEtapa = aberta ? Math.max(0, Math.floor(diasNaColuna(coluna, aberta.inicio, agora))) : 0;
     const sla = situacaoSla(coluna, diasNaEtapa) === "atrasado";
     if (sla) acimaDaMeta += 1;
 

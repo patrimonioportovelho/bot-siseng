@@ -1,13 +1,13 @@
 // Indicadores de mercado da faixa do cabeçalho do portal do corretor: dólar, euro, Selic, inflação (IPCA) e Ibovespa.
 // Só leitura de fontes públicas, sem enviar nenhum dado de usuário:
 //   - Câmbio: AwesomeAPI (economia.awesomeapi.com.br), cotação comercial em tempo quase real.
-//   - Selic (meta) e IPCA: API de dados abertos do Banco Central (SGS 432, 13522 e 433).
+//   - Selic (meta), IPCA, IGP-M e INCC: API de dados abertos do Banco Central (SGS 432, 13522, 433, 189 e 192).
 //   - Ibovespa: Yahoo Finance (não oficial; se sair do ar, só o Ibovespa some da faixa).
 // Cada indicador falha sozinho: se uma fonte não responder, os outros continuam aparecendo. O cache do Next
 // (revalidate) evita bater nas fontes a cada página aberta: 10 min para câmbio/bolsa, 6 h para Selic/inflação.
 
 export type Indicador = {
-  id: "usd" | "eur" | "selic" | "ipca" | "ibov";
+  id: "usd" | "eur" | "selic" | "ipca" | "ibov" | "igpm" | "incc";
   rotulo: string;
   valor: string;
   // variação com sinal, já formatada ("+0,19%"); null quando a fonte não informa
@@ -56,6 +56,32 @@ function variacaoPct(n: number | null): string | null {
 
 type Awesome = Record<string, { bid?: string; pctChange?: string; create_date?: string }>;
 type Cotacao = { preco: number; pct: number | null; quando: Date | null };
+
+
+const MESES_ABREV = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+
+// Índice mensal do Banco Central (IGP-M, INCC): acumulado dos últimos 12 meses, a variação dele em relação ao mês
+// anterior (em pontos percentuais) e o resultado do último mês divulgado.
+async function indiceMensal12m(serie: number, id: "igpm" | "incc", rotulo: string): Promise<Indicador | null> {
+  const j = await buscarJson<PontoBcb[]>(`https://api.bcb.gov.br/dados/serie/bcdata.sgs.${serie}/dados/ultimos/13?formato=json`, REVALIDAR_BCB);
+  if (!Array.isArray(j) || j.length < 13) return null;
+  const v = j.map((p) => num(p.valor));
+  if (v.some((x) => x === null)) return null;
+  const acumulado = (de: number, ate: number) => (v.slice(de, ate).reduce<number>((prod, x) => prod * (1 + (x as number) / 100), 1) - 1) * 100;
+  const atual = acumulado(1, 13);
+  const anterior = acumulado(0, 12);
+  const delta = atual - anterior;
+  const ultimo = j[j.length - 1];
+  const data = dataBcb(ultimo.data);
+  return {
+    id,
+    rotulo,
+    valor: `${fmt(atual)}% em 12m`,
+    variacao: `${delta > 0 ? "+" : delta < 0 ? "−" : ""}${fmt(Math.abs(delta))} p.p.`,
+    tendencia: tendenciaDe(delta),
+    detalhe: `${MESES_ABREV[data.getMonth()]}/${String(data.getFullYear()).slice(2)}: ${fmt(v[12] as number)}% no mês`
+  };
+}
 
 type Yahoo = {
   chart?: { result?: { meta?: { regularMarketPrice?: number; regularMarketChangePercent?: number; regularMarketTime?: number } }[] };
@@ -184,10 +210,10 @@ async function ibovespa(): Promise<{ item: Indicador | null; data: Date | null }
 }
 
 export async function buscarMercado(): Promise<Mercado> {
-  const [c, s, i, b] = await Promise.all([cambio(), selic(), ipca(), ibovespa()]);
-  const itens: Indicador[] = [...c.itens, ...(s ? [s] : []), ...(i ? [i] : []), ...(b.item ? [b.item] : [])];
-  // ordem fixa: dólar, euro, selic, inflação, bolsa
-  const ordem = ["usd", "eur", "selic", "ipca", "ibov"];
+  const [c, s, i, b, igpm, incc] = await Promise.all([cambio(), selic(), ipca(), ibovespa(), indiceMensal12m(189, "igpm", "IGP-M"), indiceMensal12m(192, "incc", "INCC")]);
+  const itens: Indicador[] = [...c.itens, ...(s ? [s] : []), ...(i ? [i] : []), ...(b.item ? [b.item] : []), ...(igpm ? [igpm] : []), ...(incc ? [incc] : [])];
+  // ordem fixa: dólar, euro, selic, inflação, bolsa, IGP-M, INCC
+  const ordem = ["usd", "eur", "selic", "ipca", "ibov", "igpm", "incc"];
   itens.sort((x, y) => ordem.indexOf(x.id) - ordem.indexOf(y.id));
   return { itens, atualizadoEm: c.data ?? b.data };
 }

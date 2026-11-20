@@ -54,7 +54,7 @@ function Tile({
 
 function Bloco({ titulo, sub, children, className = "" }: { titulo: string; sub?: string; children: ReactNode; className?: string }) {
   return (
-    <section className={`bg-white border border-gray-200 rounded-xl p-4 ${className}`}>
+    <section className={`min-w-0 bg-white border border-gray-200 rounded-xl p-4 ${className}`}>
       <div className="text-sm font-bold text-gray-800">{titulo}</div>
       {sub && <p className="text-[11px] text-gray-400 mt-0.5">{sub}</p>}
       <div className="mt-3">{children}</div>
@@ -67,7 +67,7 @@ function LinhaComparativo({ rotulo, c, formatar }: { rotulo: string; c: Comparat
   const maior = Math.max(c.voce, c.media, 1);
   const larg = (v: number) => `${v > 0 ? Math.max(2, (v / maior) * 100) : 0}%`;
   return (
-    <div className="grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-1">
+    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1">
       <div className="text-xs font-semibold text-gray-700">{rotulo}</div>
       <PosicaoPill c={c} />
       <div className="col-span-2 flex flex-col gap-1">
@@ -193,7 +193,7 @@ export function PortalDesempenho({ d }: { d: DesempenhoCorretor }) {
       </div>
 
       {/* Leads por mês + comparativo */}
-      <div className="grid lg:grid-cols-2 gap-4">
+      <div className="grid lg:grid-cols-2 gap-4 [&>*]:min-w-0">
         <Bloco titulo="Leads por mês" sub="Clientes cadastrados no seu nome, mês a mês, dentro do período.">
           <GraficoBarras
             dados={d.leadsPorMes}

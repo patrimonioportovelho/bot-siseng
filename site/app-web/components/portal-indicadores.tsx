@@ -21,7 +21,7 @@ export async function PortalIndicadores() {
     <div className="border-t border-white/10 bg-black/15">
       <div className="px-4 md:px-6 py-2 flex items-stretch gap-2 overflow-x-auto">
         {itens.map((i) => (
-          <div key={i.id} className="shrink-0 rounded-lg bg-white/5 border border-white/10 px-3 py-1.5 min-w-[118px]" title={i.detalhe ?? undefined}>
+          <div key={i.id} className="shrink-0 rounded-lg bg-white/5 border border-white/10 px-2.5 md:px-3 py-1.5 min-w-[104px] md:min-w-[118px]" title={i.detalhe ?? undefined}>
             <div className="text-[10px] uppercase tracking-wide text-white/55 leading-none">{i.rotulo}</div>
             <div className="mt-1 flex items-baseline gap-1.5">
               <span className="text-[13px] font-bold text-white leading-none whitespace-nowrap">{i.valor}</span>
@@ -34,7 +34,11 @@ export async function PortalIndicadores() {
             {i.detalhe && <div className="text-[9px] text-white/45 mt-0.5 whitespace-nowrap">{i.detalhe}</div>}
           </div>
         ))}
-        <div className="shrink-0 ml-auto self-center pl-2 text-[9px] leading-snug text-white/40 text-right whitespace-nowrap">
+        {/* celular: só a hora; telas maiores: hora e fontes */}
+        <div className="md:hidden shrink-0 self-center pl-1 text-[9px] leading-snug text-white/40 whitespace-nowrap">
+          Atualização<br />automática{quando && <><br />{quando}</>}
+        </div>
+        <div className="hidden md:block shrink-0 ml-auto self-center pl-2 text-[9px] leading-snug text-white/40 text-right whitespace-nowrap">
           Atualização automática
           {quando && <> · {quando}</>}
           <br />

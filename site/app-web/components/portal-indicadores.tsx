@@ -19,7 +19,7 @@ export async function PortalIndicadores() {
 
   return (
     <div className="border-t border-white/10 bg-black/15">
-      <div className="max-w-6xl mx-auto px-4 py-2 flex items-stretch gap-2 overflow-x-auto">
+      <div className="px-4 md:px-6 py-2 flex items-stretch gap-2 overflow-x-auto">
         {itens.map((i) => (
           <div key={i.id} className="shrink-0 rounded-lg bg-white/5 border border-white/10 px-3 py-1.5 min-w-[118px]" title={i.detalhe ?? undefined}>
             <div className="text-[10px] uppercase tracking-wide text-white/55 leading-none">{i.rotulo}</div>
@@ -49,7 +49,7 @@ export async function PortalIndicadores() {
 export function PortalIndicadoresCarregando() {
   return (
     <div className="border-t border-white/10 bg-black/15">
-      <div className="max-w-6xl mx-auto px-4 py-2 flex gap-2 overflow-hidden">
+      <div className="px-4 md:px-6 py-2 flex gap-2 overflow-hidden">
         {Array.from({ length: 5 }).map((_, n) => (
           <div key={n} className="shrink-0 rounded-lg bg-white/5 border border-white/10 min-w-[118px] h-[46px] animate-pulse" />
         ))}

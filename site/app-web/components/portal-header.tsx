@@ -30,11 +30,10 @@ export async function PortalHeader({ nome }: { nome: string }) {
 
   return (
     <header className="bg-primary">
-      <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between gap-2 flex-wrap">
-        <div className="flex items-center gap-2">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo-192.png" alt="SisEng" className="h-9 w-9" />
-          <div className="text-white/60 text-[11px] leading-tight">Portal do corretor · Olá, {nome}</div>
+      {/* A marca fica só no menu lateral (e na barra do celular): aqui não repete o logo. */}
+      <div className="px-4 md:px-6 py-3 flex items-center justify-between gap-2 flex-wrap">
+        <div className="text-white/80 text-xs leading-tight">
+          <span className="font-semibold text-white">Portal do corretor</span> · Olá, {nome}
         </div>
         <div className="flex items-center gap-3">
           <NotificacoesSino itens={notificacoes} />

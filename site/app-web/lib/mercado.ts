@@ -55,26 +55,62 @@ function variacaoPct(n: number | null): string | null {
 }
 
 type Awesome = Record<string, { bid?: string; pctChange?: string; create_date?: string }>;
+type Cotacao = { preco: number; pct: number | null; quando: Date | null };
 
+type Yahoo = {
+  chart?: { result?: { meta?: { regularMarketPrice?: number; regularMarketChangePercent?: number; regularMarketTime?: number } }[] };
+};
+
+// Cotação de um símbolo do Yahoo Finance (câmbio "BRL=X", "EURBRL=X", índice "^BVSP").
+async function yahoo(simbolo: string): Promise<Cotacao | null> {
+  const j = await buscarJson<Yahoo>(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(simbolo)}?range=5d&interval=1d`, REVALIDAR_COTACAO);
+  const meta = j?.chart?.result?.[0]?.meta;
+  const preco = num(meta?.regularMarketPrice);
+  if (preco === null) return null;
+  const t = num(meta?.regularMarketTime);
+  return { preco, pct: num(meta?.regularMarketChangePercent), quando: t ? new Date(t * 1000) : null };
+}
+
+// Último e penúltimo valor de uma série diária do Banco Central (PTAX venda): cotação oficial do dia útil anterior.
+async function ptax(serie: number): Promise<Cotacao | null> {
+  const j = await buscarJson<PontoBcb[]>(`https://api.bcb.gov.br/dados/serie/bcdata.sgs.${serie}/dados/ultimos/2?formato=json`, REVALIDAR_BCB);
+  if (!Array.isArray(j) || !j.length) return null;
+  const atual = num(j[j.length - 1]?.valor);
+  if (atual === null) return null;
+  const anterior = num(j[j.length - 2]?.valor);
+  return { preco: atual, pct: anterior ? ((atual - anterior) / anterior) * 100 : null, quando: dataBcb(j[j.length - 1].data) };
+}
+
+// Dólar e euro: AwesomeAPI (tempo quase real); se ela falhar (ex.: recusar o servidor), Yahoo; por último o PTAX do
+// Banco Central (fechamento do dia útil anterior).
 async function cambio(): Promise<{ itens: Indicador[]; data: Date | null }> {
   const j = await buscarJson<Awesome>("https://economia.awesomeapi.com.br/json/last/USD-BRL,EUR-BRL", REVALIDAR_COTACAO);
+  const doAwesome = (chave: string): Cotacao | null => {
+    const bid = num(j?.[chave]?.bid);
+    if (bid === null) return null;
+    const cd = j?.[chave]?.create_date;
+    // create_date vem no horário de Brasília ("2026-11-20 12:18:23")
+    const d = cd ? new Date(cd.replace(" ", "T") + "-03:00") : null;
+    return { preco: bid, pct: num(j?.[chave]?.pctChange), quando: d && !Number.isNaN(d.getTime()) ? d : null };
+  };
+
+  const moedas = [
+    { id: "usd", rotulo: "Dólar", chave: "USDBRL", yahoo: "BRL=X", ptax: 10813 },
+    { id: "eur", rotulo: "Euro", chave: "EURBRL", yahoo: "EURBRL=X", ptax: 21619 }
+  ] as const;
+
+  const cotacoes = await Promise.all(
+    moedas.map(async (m) => doAwesome(m.chave) ?? (await yahoo(m.yahoo)) ?? (await ptax(m.ptax)))
+  );
+
   const itens: Indicador[] = [];
   let data: Date | null = null;
-  for (const [chave, id, rotulo] of [
-    ["USDBRL", "usd", "Dólar"],
-    ["EURBRL", "eur", "Euro"]
-  ] as const) {
-    const bid = num(j?.[chave]?.bid);
-    if (bid === null) continue;
-    const pct = num(j?.[chave]?.pctChange);
-    itens.push({ id, rotulo, valor: `R$ ${fmt(bid)}`, variacao: variacaoPct(pct), tendencia: tendenciaDe(pct), detalhe: null });
-    // create_date vem no horário de Brasília ("2026-11-20 12:18:23")
-    const cd = j?.[chave]?.create_date;
-    if (cd) {
-      const d = new Date(cd.replace(" ", "T") + "-03:00");
-      if (!Number.isNaN(d.getTime()) && (!data || d > data)) data = d;
-    }
-  }
+  moedas.forEach((m, n) => {
+    const c = cotacoes[n];
+    if (!c) return;
+    itens.push({ id: m.id, rotulo: m.rotulo, valor: `R$ ${fmt(c.preco)}`, variacao: variacaoPct(c.pct), tendencia: tendenciaDe(c.pct), detalhe: null });
+    if (c.quando && (!data || c.quando > data)) data = c.quando;
+  });
   return { itens, data };
 }
 
@@ -131,27 +167,19 @@ async function ipca(): Promise<Indicador | null> {
   };
 }
 
-type Yahoo = {
-  chart?: { result?: { meta?: { regularMarketPrice?: number; regularMarketChangePercent?: number; regularMarketTime?: number } }[] };
-};
-
 async function ibovespa(): Promise<{ item: Indicador | null; data: Date | null }> {
-  const j = await buscarJson<Yahoo>("https://query1.finance.yahoo.com/v8/finance/chart/%5EBVSP?range=5d&interval=1d", REVALIDAR_COTACAO);
-  const meta = j?.chart?.result?.[0]?.meta;
-  const preco = num(meta?.regularMarketPrice);
-  if (preco === null) return { item: null, data: null };
-  const pct = num(meta?.regularMarketChangePercent);
-  const t = num(meta?.regularMarketTime);
+  const c = await yahoo("^BVSP");
+  if (!c) return { item: null, data: null };
   return {
     item: {
       id: "ibov",
       rotulo: "Ibovespa",
-      valor: `${preco.toLocaleString("pt-BR", { maximumFractionDigits: 0 })} pts`,
-      variacao: variacaoPct(pct),
-      tendencia: tendenciaDe(pct),
+      valor: `${c.preco.toLocaleString("pt-BR", { maximumFractionDigits: 0 })} pts`,
+      variacao: variacaoPct(c.pct),
+      tendencia: tendenciaDe(c.pct),
       detalhe: null
     },
-    data: t ? new Date(t * 1000) : null
+    data: c.quando
   };
 }
 

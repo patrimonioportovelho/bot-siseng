@@ -101,7 +101,7 @@ type Acoes = {
     id: string,
     destino: ColunaId,
     opcoes?: { motivo?: string | null; motivoObs?: string | null; forcar?: boolean }
-  ) => Promise<void>;
+  ) => Promise<void | { ok: boolean; erro?: string; codigo?: string }>;
   salvarCampo: (id: string, campo: string, valor: string | null) => Promise<ResultadoSalvar>;
   alternarTreinamento: (id: string, chave: string, feito: boolean) => Promise<ResultadoSalvar>;
   alternarFollowup: (id: string, chave: string, feito: boolean) => Promise<ResultadoSalvar>;
@@ -159,6 +159,7 @@ export function RecrutamentoEtiqueta({
   const [colunaAtual, setColunaAtual] = useState<ColunaId>(d.coluna);
   const [erroMover, setErroMover] = useState<string | null>(null);
   const [destinoRecusado, setDestinoRecusado] = useState<ColunaId | null>(null);
+  const [codigoRecusa, setCodigoRecusa] = useState<string | null>(null);
   const [movendo, setMovendo] = useState(false);
   const [motivoPendente, setMotivoPendente] = useState(false);
   const [motivoEscolhido, setMotivoEscolhido] = useState("");
@@ -167,9 +168,17 @@ export function RecrutamentoEtiqueta({
   async function mover(destino: ColunaId, opcoes?: { motivo?: string | null; motivoObs?: string | null; forcar?: boolean }) {
     setErroMover(null);
     setDestinoRecusado(null);
+    setCodigoRecusa(null);
     setMovendo(true);
     try {
-      await acoes.moverCard(d.id, destino, opcoes);
+      const r = await acoes.moverCard(d.id, destino, opcoes);
+      if (r && r.ok === false) {
+        // recusa de regra (a mensagem vem na resposta: em produção a de um erro lançado some)
+        setErroMover(r.erro ?? "Não foi possível mover.");
+        setDestinoRecusado(destino);
+        setCodigoRecusa(r.codigo ?? null);
+        return;
+      }
       setColunaAtual(destino);
       setMotivoPendente(false);
       router.refresh();
@@ -361,7 +370,7 @@ export function RecrutamentoEtiqueta({
             {erroMover && (
               <div className="text-[11px] text-red-600 mt-1">
                 {erroMover}
-                {destinoRecusado && erroMover.startsWith("Presença incompleta") && (
+                {destinoRecusado && codigoRecusa === "presenca_incompleta" && (
                   <button
                     type="button"
                     onClick={() => void mover(destinoRecusado, { forcar: true })}

@@ -60,7 +60,7 @@ export type DadosFin = {
 };
 
 type Acoes = {
-  moverCard: (id: string, destino: ColunaFinId, opcoes?: { encerramento?: string | null; motivo?: string | null }) => Promise<void>;
+  moverCard: (id: string, destino: ColunaFinId, opcoes?: { encerramento?: string | null; motivo?: string | null }) => Promise<void | { ok: boolean; erro?: string }>;
   definirStatusAndamento: (id: string, status: string) => Promise<ResultadoSalvar>;
   salvarCampo: (id: string, campo: string, valor: string | null) => Promise<ResultadoSalvar>;
   salvarRespostaCredito: (id: string, campo: string, valor: string | null) => Promise<ResultadoSalvar>;
@@ -151,7 +151,11 @@ export function FinanciamentoEtiqueta({
     setErroMover(null);
     setMovendo(true);
     try {
-      await acoes.moverCard(d.id, destino, opcoes);
+      const r = await acoes.moverCard(d.id, destino, opcoes);
+      if (r && r.ok === false) {
+        setErroMover(r.erro ?? "Não foi possível mover.");
+        return;
+      }
       setColunaAtual(destino);
       setPedindoDesfecho(false);
       router.refresh();

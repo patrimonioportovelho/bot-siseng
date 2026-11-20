@@ -81,7 +81,7 @@ export function FinanciamentoKanban({
   bancos: string[];
   parceiros: Opcao[];
   responsavelPorColuna: Record<string, string | null>;
-  moverCard?: (id: string, destino: ColunaFinId, opcoes?: OpcoesMover) => Promise<void>;
+  moverCard?: (id: string, destino: ColunaFinId, opcoes?: OpcoesMover) => Promise<void | { ok: boolean; erro?: string }>;
   definirResponsavelColuna?: (coluna: string, responsavelId: string | null) => Promise<ResultadoSalvar>;
   modoCorretor?: ModoCorretor;
 }) {
@@ -181,8 +181,14 @@ export function FinanciamentoKanban({
       const precisaAtualizar = grupoDe(coluna) === "processo" && anterior.coluna === "aprovado";
       pendentes.current += 1;
       moverCard(id, coluna, opcoes)
-        .then(() => {
+        .then((r) => {
           pendentes.current -= 1;
+          if (r && r.ok === false) {
+            // recusa de regra: o card volta e o motivo aparece (em produção a mensagem de um erro lançado some)
+            setCards((lista) => lista.map((c) => (c.id === id ? anterior : c)));
+            setErro(r.erro ?? "Não foi possível mover o card.");
+            return;
+          }
           if (precisaAtualizar) startTransition(() => router.refresh());
         })
         .catch((e: unknown) => {

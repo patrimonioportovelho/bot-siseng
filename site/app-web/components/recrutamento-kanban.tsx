@@ -83,7 +83,7 @@ export function RecrutamentoKanban({
   hoje: string;
   responsaveis: OpcaoResponsavel[];
   responsavelPorEtapa: Record<string, string | null>;
-  moverCard: (id: string, destino: ColunaId, opcoes?: OpcoesMover) => Promise<void>;
+  moverCard: (id: string, destino: ColunaId, opcoes?: OpcoesMover) => Promise<void | { ok: boolean; erro?: string; codigo?: string }>;
   definirResponsavelEtapa: (etapa: string, responsavelId: string | null) => Promise<ResultadoSalvar>;
 }) {
   const router = useRouter();
@@ -106,6 +106,8 @@ export function RecrutamentoKanban({
   const [soPendentes, setSoPendentes] = useState(false);
   // Motivo obrigatório ao mandar alguém para "Sem interesse".
   const [pedindoMotivo, setPedindoMotivo] = useState<{ id: string } | null>(null);
+  // Acolhida recusada por presença incompleta: os gestores podem liberar mesmo assim.
+  const [pedindoLiberar, setPedindoLiberar] = useState<{ id: string; coluna: ColunaId; mensagem: string } | null>(null);
   const [motivo, setMotivo] = useState("");
   const [motivoObs, setMotivoObs] = useState("");
   const [, startTransition] = useTransition();
@@ -156,8 +158,15 @@ export function RecrutamentoKanban({
       const precisaAtualizar = grupoDe(coluna) === "equipe" || grupoDe(anterior.coluna) === "equipe" || coluna === "Em treinamento";
       pendentes.current += 1;
       moverCard(id, coluna, opcoes)
-        .then(() => {
+        .then((r) => {
           pendentes.current -= 1;
+          if (r && r.ok === false) {
+            // recusa de regra: o card volta e o motivo aparece (em produção a mensagem de um erro lançado some)
+            setCards((lista) => lista.map((c) => (c.id === id ? anterior : c)));
+            if (r.codigo === "presenca_incompleta" && !opcoes?.forcar) setPedindoLiberar({ id, coluna, mensagem: r.erro ?? "Presença incompleta." });
+            else setErro(r.erro ?? "Não foi possível mover o card.");
+            return;
+          }
           if (precisaAtualizar) startTransition(() => router.refresh());
         })
         .catch((e: unknown) => {
@@ -309,6 +318,33 @@ export function RecrutamentoKanban({
           );
         })}
       </div>
+
+      {/* Presença incompleta: liberar mesmo assim (decisão dos gestores) */}
+      {pedindoLiberar && (
+        <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl border border-gray-200 shadow-lg p-4 w-full max-w-sm flex flex-col gap-3">
+            <div className="text-sm font-bold text-gray-800">Acolhida não liberada — {cards.find((c) => c.id === pedindoLiberar.id)?.nome}</div>
+            <p className="text-[11px] text-gray-600">{pedindoLiberar.mensagem}</p>
+            <p className="text-[11px] text-gray-500">Se os gestores decidiram liberar, a movimentação fica registrada como “liberado pelos gestores”.</p>
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => setPedindoLiberar(null)} className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 text-gray-600">
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const { id, coluna } = pedindoLiberar;
+                  setPedindoLiberar(null);
+                  executarMover(id, coluna, { forcar: true });
+                }}
+                className="text-xs bg-primary text-white rounded-lg px-3 py-1.5 font-semibold"
+              >
+                Liberar mesmo assim
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Motivo obrigatório (Sem interesse) */}
       {pedindoMotivo && (

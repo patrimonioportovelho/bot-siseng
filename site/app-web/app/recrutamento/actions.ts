@@ -28,6 +28,19 @@ function limpoOuNull(v: string | null | undefined): string | null {
 
 const DIA_MS = 86400000;
 
+// Recusa de regra de negócio. Em produção o Next esconde a mensagem de um erro lançado por uma server action (a tela só
+// recebe um texto genérico), então a ação devolve { ok: false, erro } e a tela mostra o motivo de verdade.
+class Recusa extends Error {
+  constructor(
+    mensagem: string,
+    readonly codigo?: "presenca_incompleta"
+  ) {
+    super(mensagem);
+  }
+}
+
+export type RespostaMoverRecrutamento = { ok: true } | { ok: false; erro: string; codigo?: "presenca_incompleta" };
+
 // ---------------------------------------------------------------------------
 // Mover o card entre colunas (arrastar e soltar no quadro, ou o seletor
 // "Etapa" dentro da etiqueta). Regras:
@@ -46,13 +59,13 @@ const DIA_MS = 86400000;
 //    cadastro do parceiro.
 // Lança Error com mensagem em português quando recusa (o quadro mostra).
 // ---------------------------------------------------------------------------
-export async function moverCardRecrutamentoAction(
+async function moverCardRecrutamento(
   parceiroId: string,
   destino: ColunaId,
   opcoes?: { motivo?: string | null; motivoObs?: string | null; forcar?: boolean }
 ): Promise<void> {
   const sessao = await requireEdicao("recrutamento");
-  if (!COLUNA_POR_ID.has(destino)) throw new Error("Coluna inválida.");
+  if (!COLUNA_POR_ID.has(destino)) throw new Recusa("Coluna inválida.");
 
   // Leituras em paralelo (uma ida só ao banco em vez de várias em fila).
   const [parceiro, linha, padraoEtapa] = await Promise.all([
@@ -66,10 +79,10 @@ export async function moverCardRecrutamentoAction(
     }),
     prisma.recrutamento_etapas.findUnique({ where: { etapa: destino }, select: { responsavel_id: true } })
   ]);
-  if (!parceiro) throw new Error("Parceiro não encontrado.");
+  if (!parceiro) throw new Recusa("Parceiro não encontrado.");
 
   const origem = colunaDoParceiro(parceiro, linha?.etapa);
-  if (!origem) throw new Error("Esse parceiro não faz parte do quadro de Recrutamento.");
+  if (!origem) throw new Recusa("Esse parceiro não faz parte do quadro de Recrutamento.");
   if (origem === destino) return;
 
   const hoje = hojeComoDataCalendario();
@@ -81,7 +94,7 @@ export async function moverCardRecrutamentoAction(
 
   if (destinoFunil) {
     if (!origemFunil && origem !== "sem_interesse") {
-      throw new Error(
+      throw new Recusa(
         origem === "saida"
           ? "Quem já saiu não volta pelo quadro — reative pelo cadastro do parceiro."
           : "Quem já é corretor não volta para o funil de recrutamento."
@@ -109,14 +122,15 @@ export async function moverCardRecrutamentoAction(
     // Responsável padrão da etapa (configurado no quadro), quando existe.
     if (padraoEtapa?.responsavel_id) dadosLinha.responsavel_id = padraoEtapa.responsavel_id;
   } else if (destino === "estagiario" || destino === "corretor") {
-    if (origem === "saida") throw new Error("Quem já saiu não volta pelo quadro — reative pelo cadastro do parceiro.");
-    if (origem === "sem_interesse") throw new Error("Mova primeiro para uma etapa do funil e depois para Corretor.");
+    if (origem === "saida") throw new Recusa("Quem já saiu não volta pelo quadro — reative pelo cadastro do parceiro.");
+    if (origem === "sem_interesse") throw new Recusa("Mova primeiro para uma etapa do funil e depois para Corretor.");
     // Regra dos 100%: com turma definida, só acolhe quem tem todas as presenças.
     if (origemFunil && linha?.turma_id && !opcoes?.forcar) {
       const p = presencaTurma(linha.treinamentos as EstadoTreinamentos | null);
       if (p.feitas < p.total) {
-        throw new Error(
-          `Presença incompleta (${p.feitas} de ${p.total}). A acolhida só é liberada com 100% da turma — registre as presenças na etiqueta ou peça a liberação dos gestores.`
+        throw new Recusa(
+          `Presença incompleta (${p.feitas} de ${p.total}). A acolhida só é liberada com 100% da turma — registre as presenças na etiqueta ou peça a liberação dos gestores.`,
+          "presenca_incompleta"
         );
       }
     }
@@ -129,14 +143,14 @@ export async function moverCardRecrutamentoAction(
     }
   } else if (destino === "saida") {
     if (origem !== "estagiario" && origem !== "corretor") {
-      throw new Error("Saída é só para quem já é Corretor ou Corretor Estagiário. Para recrutado que não seguiu, use “Sem interesse”.");
+      throw new Recusa("Saída é só para quem já é Corretor ou Corretor Estagiário. Para recrutado que não seguiu, use “Sem interesse”.");
     }
     dadosParceiro.status_funcao = "Inativo";
     dadosParceiro.funcao = parceiro.creci ? "Corretor Externo" : "Desligado";
     if (!parceiro.data_saida) dadosParceiro.data_saida = hoje;
   } else if (destino === "sem_interesse") {
-    if (!origemFunil) throw new Error("“Sem interesse” é só para quem ainda está no funil de recrutamento.");
-    if (!motivo) throw new Error("Informe o motivo da desistência (todos os casos precisam de motivo registrado).");
+    if (!origemFunil) throw new Recusa("“Sem interesse” é só para quem ainda está no funil de recrutamento.");
+    if (!motivo) throw new Recusa("Informe o motivo da desistência (todos os casos precisam de motivo registrado).");
     dadosParceiro.status_funcao = "Inativo";
     dadosLinha.motivo_desistencia = motivo;
     dadosLinha.motivo_obs = limpoOuNull(opcoes?.motivoObs);
@@ -191,6 +205,22 @@ export async function moverCardRecrutamentoAction(
         })
         .catch(() => {});
     });
+  }
+}
+
+export async function moverCardRecrutamentoAction(
+  parceiroId: string,
+  destino: ColunaId,
+  opcoes?: { motivo?: string | null; motivoObs?: string | null; forcar?: boolean }
+): Promise<RespostaMoverRecrutamento> {
+  try {
+    await moverCardRecrutamento(parceiroId, destino, opcoes);
+    return { ok: true };
+  } catch (e) {
+    if (e instanceof Recusa) return { ok: false, erro: e.message, codigo: e.codigo };
+    // acesso negado (o requireEdicao redireciona) precisa continuar subindo
+    if (e && typeof e === "object" && "digest" in e && String((e as { digest: unknown }).digest).startsWith("NEXT_REDIRECT")) throw e;
+    return { ok: false, erro: "Não foi possível mover agora. Atualize a página e tente de novo." };
   }
 }
 

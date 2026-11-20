@@ -86,6 +86,19 @@ export async function garantirEpisodiosFinanciamento(): Promise<void> {
   });
 }
 
+// Recusa de regra de negócio. Em produção o Next esconde a mensagem de um erro lançado por uma server action (a tela só
+// recebe um texto genérico), então a ação devolve { ok: false, erro } e a tela mostra o motivo de verdade.
+class Recusa extends Error {
+  constructor(
+    mensagem: string,
+    readonly codigo?: "presenca_incompleta"
+  ) {
+    super(mensagem);
+  }
+}
+
+export type RespostaMoverFinanciamento = { ok: true } | { ok: false; erro: string };
+
 // ---------------------------------------------------------------------------
 // Mover o card entre colunas (arrastar e soltar ou o seletor da etiqueta).
 //  - Colunas de CRÉDITO mudam o status da avaliação (só enquanto o processo
@@ -97,20 +110,20 @@ export async function garantirEpisodiosFinanciamento(): Promise<void> {
 // Toda mudança fecha a atividade de etapa anterior e abre a nova — é daí que
 // saem os tempos por etapa dos relatórios. Lança Error em português quando recusa.
 // ---------------------------------------------------------------------------
-export async function moverCardFinanciamentoAction(
+async function moverCardFinanciamento(
   avaliacaoId: string,
   destino: ColunaFinId,
   opcoes?: { encerramento?: string | null; motivo?: string | null }
 ): Promise<void> {
   const sessao = await requireEdicao("financiamento");
   const colunaDestino = COLUNA_FIN_POR_ID.get(destino);
-  if (!colunaDestino) throw new Error("Coluna inválida.");
+  if (!colunaDestino) throw new Recusa("Coluna inválida.");
 
   const [avaliacao, andamento] = await Promise.all([
     prisma.avaliacoes.findUnique({ where: { id: avaliacaoId }, select: { id: true, status: true, excluido: true } }),
     andamentoAtual(avaliacaoId)
   ]);
-  if (!avaliacao || avaliacao.excluido) throw new Error("Avaliação não encontrada.");
+  if (!avaliacao || avaliacao.excluido) throw new Recusa("Avaliação não encontrada.");
 
   const origem = colunaDoCard(avaliacao.status, andamento?.status_andamento ?? null);
   if (origem === destino) return;
@@ -125,19 +138,19 @@ export async function moverCardFinanciamentoAction(
 
   if (colunaDestino.grupo === "credito") {
     if (grupoOrigem === "processo") {
-      throw new Error("Este financiamento já está no processo. Mova entre as etapas do processo ou use Encerrados.");
+      throw new Recusa("Este financiamento já está no processo. Mova entre as etapas do processo ou use Encerrados.");
     }
-    if (origem === "concluido") throw new Error("Financiamento concluído não volta para o crédito.");
+    if (origem === "concluido") throw new Recusa("Financiamento concluído não volta para o crédito.");
     dadosAvaliacao.status = colunaDestino.statusAvaliacao;
   } else if (colunaDestino.grupo === "processo") {
     if (origem !== "aprovado" && grupoOrigem !== "processo") {
-      throw new Error("Só uma avaliação Aprovada entra no processo. Mova primeiro para “Aprovado”.");
+      throw new Recusa("Só uma avaliação Aprovada entra no processo. Mova primeiro para “Aprovado”.");
     }
     if (origem === "conformidade" && andamento?.status_andamento === "Inconforme") {
       const idxOrigem = COLUNAS_PROCESSO.findIndex((c) => c.id === origem);
       const idxDestino = COLUNAS_PROCESSO.findIndex((c) => c.id === destino);
       if (idxDestino > idxOrigem) {
-        throw new Error("Há uma inconformidade em aberto. Resolva (ou volte à etapa de correção) antes de avançar.");
+        throw new Recusa("Há uma inconformidade em aberto. Resolva (ou volte à etapa de correção) antes de avançar.");
       }
     }
     const padrao = colunaDestino.statusAndamento![0];
@@ -151,7 +164,7 @@ export async function moverCardFinanciamentoAction(
     // Moveu de volta/avante no processo: a avaliação precisa estar "Aprovado".
     if (avaliacao.status !== "Aprovado") dadosAvaliacao.status = "Aprovado";
   } else if (destino === "concluido") {
-    if (origem === "encerrado") throw new Error("Reabra a avaliação (mova para um estágio de crédito) antes de concluir.");
+    if (origem === "encerrado") throw new Recusa("Reabra a avaliação (mova para um estágio de crédito) antes de concluir.");
     dadosAvaliacao.status = "Concluído";
     if (andamento) {
       dadosAndamento.status_andamento = "Concluído";
@@ -162,9 +175,9 @@ export async function moverCardFinanciamentoAction(
     // encerrado
     const desfecho = limpoOuNull(opcoes?.encerramento);
     if (!desfecho || !ENCERRAMENTOS.includes(desfecho)) {
-      throw new Error("Escolha o desfecho: Reprovação, Avaliação cancelada ou Avaliação vencida.");
+      throw new Recusa("Escolha o desfecho: Reprovação, Avaliação cancelada ou Avaliação vencida.");
     }
-    if (origem === "concluido") throw new Error("Financiamento concluído não pode ser encerrado.");
+    if (origem === "concluido") throw new Recusa("Financiamento concluído não pode ser encerrado.");
     dadosAvaliacao.status = desfecho;
     motivoEtapa = limpoOuNull(opcoes?.motivo);
   }
@@ -232,6 +245,22 @@ export async function moverCardFinanciamentoAction(
       })
       .catch(() => {});
   });
+}
+
+export async function moverCardFinanciamentoAction(
+  avaliacaoId: string,
+  destino: ColunaFinId,
+  opcoes?: { encerramento?: string | null; motivo?: string | null }
+): Promise<RespostaMoverFinanciamento> {
+  try {
+    await moverCardFinanciamento(avaliacaoId, destino, opcoes);
+    return { ok: true };
+  } catch (e) {
+    if (e instanceof Recusa) return { ok: false, erro: e.message };
+    // acesso negado (o requireEdicao redireciona) precisa continuar subindo
+    if (e && typeof e === "object" && "digest" in e && String((e as { digest: unknown }).digest).startsWith("NEXT_REDIRECT")) throw e;
+    return { ok: false, erro: "Não foi possível mover agora. Atualize a página e tente de novo." };
+  }
 }
 
 // Status do andamento dentro da etapa atual (ex.: "Aguardando Documentos do

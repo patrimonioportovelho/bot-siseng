@@ -149,6 +149,7 @@ model avaliacoes {
   avaliacoes_clientes avaliacoes_clientes[]
   financiamento_acompanhamento financiamento_acompanhamento?
   financiamento_atividades     financiamento_atividades[]
+  simulacoes_habitacionais     simulacoes_habitacionais[]
 
   @@index([cliente_id], map: "idx_avaliacoes_cliente")
   @@index([parceiro_id], map: "idx_avaliacoes_parceiro")
@@ -2334,4 +2335,29 @@ model clientes_contatos {
   created_at      DateTime @default(now()) @db.Timestamptz(6)
 
   @@index([cliente_id, data(sort: Desc)], map: "idx_clientes_contatos_cliente")
+}
+
+// Simulação habitacional de imóveis usados (Caixa), na etiqueta do Financiamento (20/11/2026).
+model simulacao_parametros {
+  chave      String   @id
+  valor      Json?
+  grupo      String
+  descricao  String
+  fonte      String?
+  updated_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_by String?  @db.Uuid
+}
+
+model simulacoes_habitacionais {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  avaliacao_id String   @db.Uuid
+  entrada      Json
+  resultado    Json
+  status       String
+  criado_por   String?  @db.Uuid
+  created_at   DateTime @default(now()) @db.Timestamptz(6)
+
+  avaliacoes avaliacoes @relation(fields: [avaliacao_id], references: [id], onDelete: Cascade)
+
+  @@index([avaliacao_id, created_at(sort: Desc)], map: "simulacoes_habitacionais_avaliacao_idx")
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -110,13 +110,16 @@ export function FinanciamentoEtiqueta({
   responsaveis,
   remetenteLogado,
   responsavelPorColuna,
-  acoes
+  acoes,
+  simulacao
 }: {
   d: DadosFin;
   responsaveis: { id: string; nome: string }[];
   remetenteLogado: { id: string; primeiroNome: string };
   responsavelPorColuna: Record<string, string | null>;
   acoes: Acoes;
+  // Simulação habitacional (imóveis usados): só aparece enquanto o card está em "Montagem de processo".
+  simulacao?: ReactNode;
 }) {
   const router = useRouter();
   const salvar = (campo: string) => (valor: string | null) => acoes.salvarCampo(d.id, campo, valor);
@@ -646,6 +649,8 @@ export function FinanciamentoEtiqueta({
           ))}
         </div>
       </div>
+
+      {colunaAtual === "montagem" && simulacao}
 
       {/* Notas */}
       <div className={CARTAO}>

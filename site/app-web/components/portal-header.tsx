@@ -1,4 +1,6 @@
+import { Suspense } from "react";
 import Link from "next/link";
+import { PortalIndicadores, PortalIndicadoresCarregando } from "@/components/portal-indicadores";
 import { logoutPortalAction } from "@/app/portal/actions";
 import { requirePortalSession } from "@/lib/portal-auth";
 import { prisma } from "@/lib/prisma";
@@ -52,6 +54,10 @@ export async function PortalHeader({ nome }: { nome: string }) {
           </form>
         </div>
       </div>
+      {/* Dólar, euro, Selic, inflação e Ibovespa — carrega à parte, sem atrasar o resto da página. */}
+      <Suspense fallback={<PortalIndicadoresCarregando />}>
+        <PortalIndicadores />
+      </Suspense>
     </header>
   );
 }

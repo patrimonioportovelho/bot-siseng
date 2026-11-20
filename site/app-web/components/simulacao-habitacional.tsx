@@ -1,17 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { formatMoeda } from "@/lib/format";
 import type { EntradaSimulacao, ResultadoSimulacao } from "@/lib/financiamento/simulacao";
 import type { RespostaGerarSimulacao } from "@/app/financiamento/simulacao-actions";
+import type { CampoCredito, RespostaCredito } from "@/lib/financiamento/avaliacao-credito";
 
 export type PrefillSimulacao = {
   valorCompra: number | null;
   renda: number | null;
   nascimento: string | null; // YYYY-MM-DD
-  fgts3anos: boolean;
-  possuiImovel: boolean;
   municipio: string;
   uf: string;
 };
@@ -38,9 +37,24 @@ type Form = {
   possuiImovel: boolean;
   possuiSfh: boolean;
   jaUsouFgts: boolean;
-  cotista: boolean;
+  maisCompradores: boolean;
   relacionamento: boolean;
 };
+
+// Respostas da avaliação de crédito (feitas pelo corretor no portal e corrigíveis na etiqueta). Alimentam a simulação.
+export type RespostasCreditoSimulacao = Record<CampoCredito, RespostaCredito>;
+
+// Quanto cada resposta vale na simulação:
+//  - 3 anos de FGTS: libera o uso do FGTS na entrada e define o cliente como cotista (taxa menor no MCMV);
+//  - primeiro imóvel: "Sim" = não possui imóvel; "Não" = possui (bloqueia MCMV e FGTS; mude para "Não" se o imóvel for em outra cidade);
+//  - mais de um comprador/dependente: só gera alerta por enquanto.
+function doCredito(r: RespostasCreditoSimulacao | undefined) {
+  return {
+    fgts3anos: r?.credito_fgts_3_anos === "sim",
+    possuiImovel: r?.credito_primeiro_imovel === "nao",
+    maisCompradores: r?.credito_mais_compradores === "sim"
+  };
+}
 
 const CAMPO = "w-full text-xs border border-gray-300 rounded-lg px-2.5 py-1.5 outline-none focus:border-primary bg-white";
 const LABEL = "text-[11px] text-gray-600 block mb-0.5";
@@ -55,6 +69,7 @@ function lerNumeroBr(s: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+const rotuloResposta = (r: RespostaCredito) => (r === "sim" ? "sim" : r === "nao" ? "não" : "não respondido");
 const pct = (n: number | null | undefined, casas = 2) => (n == null ? "—" : `${(n * 100).toLocaleString("pt-BR", { minimumFractionDigits: casas, maximumFractionDigits: casas })}%`);
 const dinheiro = (n: number | null | undefined) => (n == null ? "—" : formatMoeda(n));
 const dataBr = (iso: string) => new Date(iso).toLocaleString("pt-BR", { timeZone: "America/Porto_Velho", day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" });
@@ -74,7 +89,7 @@ function formDeEntrada(e: EntradaSimulacao): Form {
     possuiImovel: e.possui_imovel_residencial_municipio,
     possuiSfh: e.possui_financiamento_sfh_ativo,
     jaUsouFgts: e.ja_usou_fgts_em_financiamento,
-    cotista: e.cotista_fgts,
+    maisCompradores: !!e.mais_de_um_comprador,
     relacionamento: !!e.relacionamento_caixa
   };
 }
@@ -288,14 +303,18 @@ function Resultado({ r, e }: { r: ResultadoSimulacao; e: EntradaSimulacao }) {
 export function SimulacaoHabitacional({
   avaliacaoId,
   prefill,
+  respostasCredito,
   historico,
   gerar
 }: {
   avaliacaoId: string;
   prefill: PrefillSimulacao;
+  // sempre as respostas ATUAIS (a etiqueta as reenvia quando são corrigidas)
+  respostasCredito?: RespostasCreditoSimulacao;
   historico: ItemHistoricoSimulacao[];
   gerar: (avaliacaoId: string, entrada: Record<string, unknown>) => Promise<RespostaGerarSimulacao>;
 }) {
+  const cred = doCredito(respostasCredito);
   const [f, setF] = useState<Form>({
     valorCompra: paraTexto(prefill.valorCompra),
     valorAvaliacao: "",
@@ -306,13 +325,18 @@ export function SimulacaoHabitacional({
     sistema: "SAC",
     prazo: "",
     saldoFgts: "",
-    fgts3anos: prefill.fgts3anos,
-    possuiImovel: prefill.possuiImovel,
+    fgts3anos: cred.fgts3anos,
+    possuiImovel: cred.possuiImovel,
     possuiSfh: false,
     jaUsouFgts: false,
-    cotista: prefill.fgts3anos,
+    maisCompradores: cred.maisCompradores,
     relacionamento: false
   });
+  // Corrigiu uma resposta na etiqueta: a simulação acompanha na hora.
+  useEffect(() => {
+    setF((x) => ({ ...x, fgts3anos: cred.fgts3anos, possuiImovel: cred.possuiImovel, maisCompradores: cred.maisCompradores }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [respostasCredito?.credito_fgts_3_anos, respostasCredito?.credito_primeiro_imovel, respostasCredito?.credito_mais_compradores]);
   const [gerando, setGerando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [atual, setAtual] = useState<{ entrada: EntradaSimulacao; resultado: ResultadoSimulacao; quando: string | null } | null>(null);
@@ -344,8 +368,10 @@ export function SimulacaoHabitacional({
         possui_imovel_residencial_municipio: f.possuiImovel,
         possui_financiamento_sfh_ativo: f.possuiSfh,
         ja_usou_fgts_em_financiamento: f.jaUsouFgts,
-        cotista_fgts: f.cotista,
-        relacionamento_caixa: f.relacionamento
+        // quem tem 3 anos de FGTS é cotista (define a taxa do MCMV)
+        cotista_fgts: f.fgts3anos,
+        relacionamento_caixa: f.relacionamento,
+        mais_de_um_comprador: f.maisCompradores
       });
       if (!r.ok) {
         setErro(r.erro);
@@ -372,6 +398,16 @@ export function SimulacaoHabitacional({
         Estimativa de financiamento da Caixa (MCMV ou SBPE) para a fase de montagem do processo. Confirme a renda e as respostas antes de gerar.
       </p>
 
+      {respostasCredito && (
+        <div className="mb-3 rounded-lg border border-blue-100 bg-blue-50/60 px-3 py-2 text-[11px] text-blue-900">
+          <span className="font-semibold">Vem da avaliação de crédito:</span>{" "}
+          3 anos de FGTS: <b>{rotuloResposta(respostasCredito.credito_fgts_3_anos)}</b> · mais de um comprador/dependente:{" "}
+          <b>{rotuloResposta(respostasCredito.credito_mais_compradores)}</b> · primeiro imóvel: <b>{rotuloResposta(respostasCredito.credito_primeiro_imovel)}</b>. Se
+          corrigir as perguntas acima, a simulação acompanha. “Não é o primeiro imóvel” conta como possuir imóvel (bloqueia MCMV e FGTS); se o imóvel for em outra
+          cidade, mude o campo abaixo para “Não”.
+        </div>
+      )}
+
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
         {txt("valorCompra", "Valor do imóvel (compra) *", "280.000,00")}
         {txt("valorAvaliacao", "Valor de avaliação (laudo)", "opcional")}
@@ -388,11 +424,11 @@ export function SimulacaoHabitacional({
         </div>
         {txt("prazo", "Prazo desejado (meses)", "máximo permitido")}
         {txt("saldoFgts", "Saldo do FGTS para a entrada", "opcional")}
-        <SimNao rotulo="3 anos ou mais de FGTS?" valor={f.fgts3anos} aoMudar={(v) => set("fgts3anos", v)} />
+        <SimNao rotulo="3 anos ou mais de FGTS? (cotista)" valor={f.fgts3anos} aoMudar={(v) => set("fgts3anos", v)} />
         <SimNao rotulo="Possui imóvel residencial no município?" valor={f.possuiImovel} aoMudar={(v) => set("possuiImovel", v)} />
+        <SimNao rotulo="Mais de um comprador e/ou dependente?" valor={f.maisCompradores} aoMudar={(v) => set("maisCompradores", v)} />
         <SimNao rotulo="Financiamento ativo no SFH?" valor={f.possuiSfh} aoMudar={(v) => set("possuiSfh", v)} />
         <SimNao rotulo="Já usou FGTS em financiamento ativo?" valor={f.jaUsouFgts} aoMudar={(v) => set("jaUsouFgts", v)} />
-        <SimNao rotulo="Cotista do FGTS?" valor={f.cotista} aoMudar={(v) => set("cotista", v)} />
         <SimNao rotulo="Relacionamento com a Caixa?" valor={f.relacionamento} aoMudar={(v) => set("relacionamento", v)} />
       </div>
 

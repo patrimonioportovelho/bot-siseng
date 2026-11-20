@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { cloneElement, isValidElement, useEffect, useMemo, useState, type ReactElement, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -128,6 +128,9 @@ export function FinanciamentoEtiqueta({
   const [statusAndamento, setStatusAndamento] = useState<string | null>(d.statusAndamento);
   const [atividades, setAtividades] = useState<AtividadeFinTela[]>(d.atividades);
   const [responsavelId, setResponsavelId] = useState<string | null>(d.responsavelId);
+  // Respostas do crédito: o seletor salva sozinho; guardamos o valor atual aqui para a simulação acompanhar.
+  const [respostas, setRespostas] = useState<Record<CampoCredito, RespostaCredito>>(d.respostasCredito);
+  useEffect(() => setRespostas(d.respostasCredito), [d.respostasCredito]);
   useEffect(() => {
     setAtividades(d.atividades);
     setColunaAtual(d.coluna);
@@ -293,13 +296,17 @@ export function FinanciamentoEtiqueta({
               <Rotulo>{p.pergunta}</Rotulo>
               <div className="mt-auto">
                 <CampoSelectAuto
-                  valor={d.respostasCredito[p.campo] || null}
+                  valor={respostas[p.campo] || null}
                   vazio="Não respondido"
                   opcoes={[
                     { valor: "sim", rotulo: p.sim },
                     { valor: "nao", rotulo: p.nao }
                   ]}
-                  salvar={(v) => acoes.salvarRespostaCredito(d.id, p.campo, v)}
+                  salvar={async (v) => {
+                    const r = await acoes.salvarRespostaCredito(d.id, p.campo, v);
+                    if (r.ok) setRespostas((x) => ({ ...x, [p.campo]: (v ?? "") as RespostaCredito }));
+                    return r;
+                  }}
                 />
               </div>
             </div>
@@ -650,7 +657,10 @@ export function FinanciamentoEtiqueta({
         </div>
       </div>
 
-      {colunaAtual === "montagem" && simulacao}
+      {colunaAtual === "montagem" &&
+        (isValidElement(simulacao)
+          ? cloneElement(simulacao as ReactElement<{ respostasCredito?: Record<CampoCredito, RespostaCredito> }>, { respostasCredito: respostas })
+          : simulacao)}
 
       {/* Notas */}
       <div className={CARTAO}>

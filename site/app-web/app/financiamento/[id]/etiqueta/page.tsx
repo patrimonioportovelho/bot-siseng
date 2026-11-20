@@ -182,11 +182,10 @@ export default async function EtiquetaFinanciamentoPage({ params }: { params: Pr
               valorCompra: and?.valor_venda ? Number(and.valor_venda) : and?.valor_avaliado ? Number(and.valor_avaliado) : null,
               renda: rendaTotal > 0 ? rendaTotal : null,
               nascimento: maisVelho ? maisVelho.toISOString().slice(0, 10) : null,
-              fgts3anos: a.credito_fgts_3_anos === true,
-              possuiImovel: a.credito_primeiro_imovel === false,
               municipio: "Porto Velho",
               uf: "RO"
             }}
+            respostasCredito={dados.respostasCredito}
             historico={historicoSimulacoes}
             gerar={gerarSimulacaoAction}
           />

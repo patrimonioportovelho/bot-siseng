@@ -30,6 +30,8 @@ export type EntradaSimulacao = {
   ja_usou_fgts_em_financiamento: boolean;
   cotista_fgts: boolean;
   relacionamento_caixa?: boolean | null;
+  // Resposta do crédito: ha mais de um comprador e/ou dependente na proposta (hoje so gera alerta; a regra de efeito nao foi confirmada).
+  mais_de_um_comprador?: boolean;
   data_simulacao?: string; // YYYY-MM-DD (padrão: hoje)
 };
 
@@ -427,6 +429,7 @@ export function simular(e: EntradaSimulacao, p: ParametrosSimulacao, agora: Date
 
   const aliquotaItbi = (p.itbi_aliquotas ?? []).find((t) => normalizar(t.municipio) === normalizar(e.municipio) && t.uf.toUpperCase() === uf)?.aliquota ?? null;
 
+  if (e.mais_de_um_comprador) alertas.push("Há mais de um comprador/dependente na proposta: some as rendas de todos e use o nascimento do mais velho. Confirme no simulador da Caixa se isso altera as condições.");
   alertas.push("A TR não é projetada: a prestação real muda com a atualização monetária do saldo devedor.");
 
   const ultima = cronograma[cronograma.length - 1];

@@ -35,7 +35,8 @@ function limparEntrada(bruto: Record<string, unknown>): EntradaSimulacao {
     possui_financiamento_sfh_ativo: sim(bruto.possui_financiamento_sfh_ativo),
     ja_usou_fgts_em_financiamento: sim(bruto.ja_usou_fgts_em_financiamento),
     cotista_fgts: sim(bruto.cotista_fgts),
-    relacionamento_caixa: sim(bruto.relacionamento_caixa)
+    relacionamento_caixa: sim(bruto.relacionamento_caixa),
+    mais_de_um_comprador: sim(bruto.mais_de_um_comprador)
   };
 }
 

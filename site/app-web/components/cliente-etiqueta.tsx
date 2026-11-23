@@ -7,6 +7,8 @@ import { ClienteWhatsapp } from "@/components/cliente-whatsapp";
 import { ETAPA_FUNIL_POR_ID, movimentoPermitido, type EtapaFunilId } from "@/lib/clientes/funil";
 import type { VinculoCliente } from "@/lib/clientes/vinculos-servidor";
 import type { ContatoCliente } from "@/app/clientes/funil-actions";
+import { CartaoAtividades, CartaoCanais, ProximaAtividade, type AcoesCrm } from "@/components/cliente-crm";
+import { ATIVIDADE_SUGERIDA, TEMPERATURAS, TIPOS_CONTATO_CRM, type AtividadeCliente, type CrmCliente } from "@/lib/crm/atividades";
 
 export type DadosClienteEtiqueta = {
   id: string;
@@ -29,6 +31,9 @@ export type DadosClienteEtiqueta = {
   repasseDesde?: string | null;
 };
 
+// Dia de hoje em Porto Velho (yyyy-mm-dd), vindo do servidor, para as atividades não trocarem de dia por causa do fuso.
+export type CrmDaEtiqueta = { hoje: string; crm: CrmCliente; atividades: AtividadeCliente[]; responsaveis: { id: string; nome: string }[]; acoes: AcoesCrm };
+
 type Acoes = {
   mover?: (id: string, destino: EtapaFunilId) => Promise<{ ok: true } | { ok: false; erro: string }>;
   registrarContato: (
@@ -42,7 +47,7 @@ type Acoes = {
   ) => Promise<{ ok: true; corretorNome: string; contato: ContatoCliente } | { ok: false; erro: string }>;
 };
 
-const TIPOS_CONTATO = ["WhatsApp", "Ligação", "E-mail", "Reunião", "Visita", "Nota"];
+const TIPOS_CONTATO = TIPOS_CONTATO_CRM;
 const CAMPO = "w-full text-xs border border-gray-300 rounded-lg px-2.5 py-1.5 outline-none focus:border-primary bg-white";
 const CARTAO = "bg-white border border-gray-200 rounded-xl p-4";
 
@@ -61,6 +66,7 @@ export function ClienteEtiqueta({
   corretoresParaTransferir = [],
   modoCorretor = false,
   extra,
+  crmEtiqueta,
   acoes
 }: {
   d: DadosClienteEtiqueta;
@@ -74,11 +80,21 @@ export function ClienteEtiqueta({
   modoCorretor?: boolean;
   // conteúdo extra logo depois do WhatsApp (ex.: "Complementar dados")
   extra?: ReactNode;
+  // próxima atividade, canais e opt-out (CRM do cliente)
+  crmEtiqueta: CrmDaEtiqueta;
   acoes: Acoes;
 }) {
   const router = useRouter();
   const [, startTransition] = useTransition();
   const [contatos, setContatos] = useState(contatosIniciais);
+  // CRM: atividades agendadas, estado do relacionamento e o aviso "agende a próxima atividade" depois de cada contato.
+  const [atividades, setAtividades] = useState<AtividadeCliente[]>(crmEtiqueta.atividades);
+  const [crm, setCrm] = useState<CrmCliente>(crmEtiqueta.crm);
+  const [prompt, setPrompt] = useState<{ titulo: string; tipo: string; origem: string; chave: number } | null>(null);
+  function pedirProximaAtividade(titulo: string, tipoContato: string, origem: string) {
+    if (tipoContato === "Transferência") return;
+    setPrompt({ titulo, tipo: ATIVIDADE_SUGERIDA[tipoContato] ?? "Ligar", origem, chave: Date.now() });
+  }
   const [erro, setErro] = useState("");
   const etapa = ETAPA_FUNIL_POR_ID.get(d.etapa);
 
@@ -110,6 +126,7 @@ export function ClienteEtiqueta({
     setContatos((l) => [r.contato, ...l]);
     setNota("");
     setResultado("");
+    pedirProximaAtividade("Contato registrado. Qual é a próxima atividade?", r.contato.tipo, "manual");
   }
 
   const jaContatado = contatos.some((c) => c.tipo !== "Nota" && c.tipo !== "Transferência");
@@ -149,6 +166,13 @@ export function ClienteEtiqueta({
             <div className="flex items-center gap-2 flex-wrap mt-1">
               {etapa && <span className={`text-[11px] font-bold rounded-full px-2.5 py-0.5 border ${etapa.cor}`}>{etapa.label}</span>}
               <span className="text-[11px] text-gray-500">{d.motivo}</span>
+              {crm.temperatura && TEMPERATURAS[crm.temperatura] && (
+                <span className={`text-[10px] font-bold rounded-full px-2 py-0.5 border ${TEMPERATURAS[crm.temperatura].cor}`}>
+                  {TEMPERATURAS[crm.temperatura].icone} {TEMPERATURAS[crm.temperatura].rotulo}
+                </span>
+              )}
+              {crm.optOut && <span className="text-[10px] font-bold rounded-full px-2 py-0.5 border bg-red-50 text-red-700 border-red-200">⛔ Opt-out (não quer novidades)</span>}
+              {crm.telefoneInvalido && <span className="text-[10px] font-bold rounded-full px-2 py-0.5 border bg-amber-50 text-amber-700 border-amber-200">Telefone inválido</span>}
               {d.papeis
                 .filter((p) => etapa?.label.replace(/s$/, "") !== p)
                 .map((p) => (
@@ -257,10 +281,67 @@ export function ClienteEtiqueta({
         remetenteIdPadrao={d.corretorId && remetentes.some((r) => r.id === d.corretorId) ? d.corretorId : remetentes.some((r) => r.id === remetenteLogado.id) ? remetenteLogado.id : null}
         remetenteFallback={remetenteLogado.primeiroNome}
         registrar={acoes.registrarContato}
-        aoRegistrar={(c) => setContatos((l) => [c, ...l])}
+        bloqueado={crm.optOut ? "Este cliente pediu para não receber novidades (opt-out). Não envie mensagens de marketing." : null}
+        aoRegistrar={(c) => {
+          setContatos((l) => [c, ...l]);
+          pedirProximaAtividade("Mensagem enviada. Qual é a próxima atividade?", c.tipo, "whatsapp");
+        }}
       />
 
+      {prompt && (
+        <ProximaAtividade
+          key={prompt.chave}
+          clienteId={d.id}
+          clienteNome={d.nome}
+          hoje={crmEtiqueta.hoje}
+          titulo={prompt.titulo}
+          tipoSugerido={prompt.tipo}
+          origem={prompt.origem}
+          responsaveis={crmEtiqueta.responsaveis}
+          responsavelPadraoId={d.corretorId}
+          acoes={crmEtiqueta.acoes}
+          aoAgendar={(a) => {
+            setAtividades((l) => [a, ...l]);
+            setPrompt(null);
+            startTransition(() => router.refresh());
+          }}
+          aoPular={(c) => {
+            setContatos((l) => [c, ...l]);
+            setPrompt(null);
+          }}
+          aoFechar={() => setPrompt(null)}
+        />
+      )}
+
       {extra}
+
+      <div className="grid lg:grid-cols-2 gap-4 items-start">
+        <CartaoAtividades
+          clienteId={d.id}
+          hoje={crmEtiqueta.hoje}
+          atividades={atividades}
+          acoes={crmEtiqueta.acoes}
+          aoConcluir={(a, c) => {
+            setAtividades((l) => l.map((x) => (x.id === a.id ? a : x)));
+            setContatos((l) => [c, ...l]);
+            pedirProximaAtividade("Atividade concluída. Qual é a próxima atividade?", c.tipo, "atividade");
+          }}
+          aoAgendarNova={() => setPrompt({ titulo: "Agendar atividade", tipo: "Ligar", origem: "manual", chave: Date.now() })}
+          aoRemover={(id) => setAtividades((l) => l.filter((x) => x.id !== id))}
+        />
+        <CartaoCanais
+          clienteId={d.id}
+          crm={crm}
+          telefone={d.telefone}
+          acoes={crmEtiqueta.acoes}
+          aoMudar={setCrm}
+          aoOptOut={(novo, c) => {
+            setCrm(novo);
+            setContatos((l) => [c, ...l]);
+            startTransition(() => router.refresh());
+          }}
+        />
+      </div>
 
       <div className="grid lg:grid-cols-2 gap-4">
         {/* Vínculos */}

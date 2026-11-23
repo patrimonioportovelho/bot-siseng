@@ -60,7 +60,7 @@ export default async function PortalAgendaPage({
   const inicioMes = new Date(ano, mesIndice, 1);
   const fimMes = new Date(ano, mesIndice + 1, 1);
 
-  const [atividadesMarketing, atividadesGestao, atividadesManutencao, solicitacoes, meusImoveis, parceiro, eventos, clientesAniv, cobertura] = await Promise.all([
+  const [atividadesMarketing, atividadesGestao, atividadesManutencao, solicitacoes, meusImoveis, parceiro, eventos, clientesAniv, cobertura, atividadesClientes] = await Promise.all([
     // Editorial do Marketing — qualquer marketing_atividades já É um
     // compromisso com data real (é uma atividade explicitamente agendada,
     // não um prazo solto). Antes isso excluía coluna "recebido"/"aguardando
@@ -118,8 +118,17 @@ export default async function PortalAgendaPage({
     }),
     // Aniversários dos clientes DESTE corretor (só os dele, só leitura).
     aniversariantesClientes({ ano, mesIndice, parceiroId: session.parceiroId }),
-    coberturaDatasNascimento({ parceiroId: session.parceiroId })
+    coberturaDatasNascimento({ parceiroId: session.parceiroId }),
+    // Atividades dos clientes dele (marcadas por ele ou pelo administrativo na etiqueta do cliente).
+    prisma.clientes_atividades.findMany({
+      where: { data: { gte: inicioMes, lt: fimMes }, OR: [{ responsavel_id: session.parceiroId }, { cliente_id: { in: (await prisma.clientes.findMany({ where: { parceiro_id: session.parceiroId }, select: { id: true } })).map((c) => c.id) } }] },
+      orderBy: { data: "asc" },
+      take: 1000
+    })
   ]);
+  const nomesClientesAtividades = new Map(
+    (await prisma.clientes.findMany({ where: { id: { in: [...new Set(atividadesClientes.map((a) => a.cliente_id))] } }, select: { id: true, nome: true } })).map((c) => [c.id, c.nome])
+  );
 
   const eventosVisiveis = eventos.filter((ev) => podeVerEvento(ev.visibilidade, parceiro?.funcao ?? null));
   const itensEventos = eventosVisiveis.flatMap((ev) =>
@@ -145,6 +154,15 @@ export default async function PortalAgendaPage({
   const itens = [
     ...itensEventos,
     ...itensAniversarios,
+    ...atividadesClientes.map((a) => ({
+      id: `cli-${a.id}`,
+      tipoLabel: `Cliente · ${a.tipo}${a.feito ? " ✓" : ""}`,
+      titulo: a.titulo,
+      data: a.data,
+      hora: a.hora,
+      contexto: nomesClientesAtividades.get(a.cliente_id) ?? "Cliente",
+      cor: "laranja" as const
+    })),
     ...atividadesMarketing.map((a) => ({
       id: `mkt-${a.id}`,
       tipoLabel: TIPO_ATIVIDADE_LABEL_MARKETING[a.tipo] ?? a.tipo,

@@ -13,7 +13,7 @@ type Item = {
   data: Date;
   hora?: string | null;
   contexto: string;
-  cor: "azul" | "verde" | "roxo" | "amarelo" | "rosa";
+  cor: "azul" | "verde" | "roxo" | "amarelo" | "rosa" | "laranja";
   cancelado?: boolean;
   canceladoMotivo?: string | null;
 };
@@ -25,7 +25,8 @@ const CORES: Record<Item["cor"], string> = {
   verde: "bg-[#3C7A57]/10 text-[#3C7A57] border-[#3C7A57]/30",
   roxo: "bg-primary/10 text-primary border-primary/30",
   amarelo: "bg-[#A9822E]/10 text-[#A9822E] border-[#A9822E]/30",
-  rosa: "bg-pink-50 text-pink-700 border-pink-200"
+  rosa: "bg-pink-50 text-pink-700 border-pink-200",
+  laranja: "bg-orange-50 text-orange-700 border-orange-200"
 };
 
 function mesmoDia(a: Date, b: Date): boolean {

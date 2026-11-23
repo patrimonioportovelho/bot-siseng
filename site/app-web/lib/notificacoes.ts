@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { situacaoVencimento, hojePortoVelho } from "@/lib/format";
+import { situacaoVencimento, hojePortoVelho, hojeInputDate } from "@/lib/format";
 import { STATUS_AVALIACAO_ATIVOS } from "@/lib/financiamento/opcoes";
 import { slaDaOrdem, labelColuna as labelColunaMarketing } from "@/lib/marketing/opcoes";
 import { proximaOcorrencia } from "@/lib/eventos/ocorrencias";
@@ -103,6 +103,34 @@ async function buscarIdsDispensados(parceiroId: string | null): Promise<Set<stri
     select: { notificacao_id: true }
   });
   return new Set(linhas.map((l) => l.notificacao_id));
+}
+
+// Atividades de clientes (CRM, marcadas em "Contatos e notas") que são desta pessoa e já venceram ou são de hoje.
+// Atrasada = urgente (vermelho). Some sozinha quando a atividade é concluída.
+async function atividadesDeClientes(parceiroId: string | null, hrefDoCliente: (clienteId: string) => string): Promise<Notificacao[]> {
+  if (!parceiroId) return [];
+  const hoje = new Date(`${hojeInputDate()}T00:00:00.000Z`);
+  const atividades = await prisma.clientes_atividades.findMany({
+    where: { responsavel_id: parceiroId, feito: false, data: { lte: hoje } },
+    orderBy: { data: "asc" },
+    take: LIMITE_POR_GRUPO
+  });
+  if (atividades.length === 0) return [];
+  const nomes = new Map(
+    (await prisma.clientes.findMany({ where: { id: { in: [...new Set(atividades.map((a) => a.cliente_id))] } }, select: { id: true, nome: true } })).map((c) => [c.id, c.nome])
+  );
+  return atividades.map((a) => {
+    const atrasada = a.data.getTime() < hoje.getTime();
+    return {
+      id: `ativ-cliente-${a.id}`,
+      titulo: `${a.tipo} — ${nomes.get(a.cliente_id) ?? "cliente"}`,
+      detalhe: atrasada ? `Atrasada desde ${a.data.toLocaleDateString("pt-BR", { timeZone: "UTC", day: "2-digit", month: "2-digit" })}: ${a.titulo}` : `Para hoje: ${a.titulo}`,
+      href: hrefDoCliente(a.cliente_id),
+      data: a.data,
+      urgente: atrasada,
+      apenasData: true
+    };
+  });
 }
 
 export async function obterNotificacoes(isAdm: boolean, parceiroId: string | null = null): Promise<Notificacao[]> {
@@ -298,6 +326,8 @@ export async function obterNotificacoes(isAdm: boolean, parceiroId: string | nul
     }
   }
 
+  itens.push(...(await atividadesDeClientes(parceiroId, (id) => `/clientes/${id}/etiqueta`)));
+
   // Notificações dispensadas (pedido do usuário 30/08/2026) — some da lista
   // antes de ordenar, igual a qualquer outro item que deixou de existir.
   const dispensados = await buscarIdsDispensados(parceiroId);
@@ -345,6 +375,7 @@ export async function obterNotificacoesPortal(funcaoDoParceiro: string | null, p
     const item = lembreteDeEvento(ev, hoje, "/portal/eventos");
     if (item) itens.push(item);
   }
+  itens.push(...(await atividadesDeClientes(parceiroId, (id) => `/portal/clientes/${id}`)));
 
   const dispensados = await buscarIdsDispensados(parceiroId);
   const itensVisiveis = dispensados.size > 0 ? itens.filter((i) => !dispensados.has(i.id)) : itens;

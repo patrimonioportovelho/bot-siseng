@@ -36,7 +36,7 @@ export async function itensDoMes(params: { ano: number; mesIndice: number; lojas
   // Filtro de Loja — via imóvel vinculado (mesmo padrão de app/manutencao/painel/page.tsx).
   const filtroLojaImovel = { OR: [{ loja_id: { in: lojas } }, { loja_id: null }] };
 
-  const [atividadesManutencao, atividadesGestao, atividadesMarketing, eventos, clientesAniv, parceirosAniv] = await Promise.all([
+  const [atividadesManutencao, atividadesGestao, atividadesMarketing, eventos, clientesAniv, parceirosAniv, atividadesClientes] = await Promise.all([
     prisma.manutencao_atividades.findMany({
       where: { data: { gte: inicioMes, lt: fimMes }, manutencoes: { excluido: false, imoveis: filtroLojaImovel } },
       orderBy: { data: "asc" },
@@ -65,8 +65,18 @@ export async function itensDoMes(params: { ano: number; mesIndice: number; lojas
       }
     }),
     aniversariantesClientes({ ano, mesIndice, lojas }),
-    aniversariantesParceiros({ ano, mesIndice, lojas })
+    aniversariantesParceiros({ ano, mesIndice, lojas }),
+    // Próximas atividades marcadas em "Contatos e notas" da etiqueta do cliente (CRM). Cliente sem loja aparece sempre.
+    prisma.clientes_atividades.findMany({ where: { data: { gte: inicioMes, lt: fimMes } }, orderBy: { data: "asc" }, take: 3000 })
   ]);
+  const clientesDasAtividades = new Map(
+    (
+      await prisma.clientes.findMany({
+        where: { id: { in: [...new Set(atividadesClientes.map((a) => a.cliente_id))] }, OR: [{ loja_id: { in: lojas } }, { loja_id: null }] },
+        select: { id: true, nome: true }
+      })
+    ).map((c) => [c.id, c.nome])
+  );
 
   const agora = hojePortoVelho();
 
@@ -116,6 +126,18 @@ export async function itensDoMes(params: { ano: number; mesIndice: number; lojas
       href: `/gestoes/${a.gestoes.id}`,
       contexto: a.gestoes.imoveis.endereco ?? a.gestoes.imoveis.id_legado ?? "Gestão"
     })),
+    ...atividadesClientes
+      .filter((a) => clientesDasAtividades.has(a.cliente_id))
+      .map((a) => ({
+        id: `cliente-${a.id}`,
+        tipoLabel: `Cliente · ${a.tipo}`,
+        titulo: a.titulo,
+        data: ymdDb(a.data),
+        hora: a.hora,
+        feito: a.feito,
+        href: `/clientes/${a.cliente_id}/etiqueta`,
+        contexto: clientesDasAtividades.get(a.cliente_id) ?? "Cliente"
+      })),
     ...atividadesMarketing.map((a) => ({
       id: `marketing-${a.id}`,
       tipoLabel: TIPO_ATIVIDADE_LABEL_MARKETING[a.tipo] ?? a.tipo,

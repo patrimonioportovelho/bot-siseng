@@ -2361,3 +2361,38 @@ model simulacoes_habitacionais {
 
   @@index([avaliacao_id, created_at(sort: Desc)], map: "simulacoes_habitacionais_avaliacao_idx")
 }
+
+// CRM do cliente (23/11/2026): próxima atividade agendada em "Contatos e notas" e estado do relacionamento.
+model clientes_atividades {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cliente_id     String    @db.Uuid
+  contato_id     String?   @db.Uuid
+  tipo           String
+  titulo         String
+  data           DateTime  @db.Date
+  hora           String?
+  responsavel_id String?   @db.Uuid
+  feito          Boolean   @default(false)
+  feito_em       DateTime? @db.Timestamptz(6)
+  feito_por      String?   @db.Uuid
+  origem         String    @default("manual")
+  criado_por     String?   @db.Uuid
+  created_at     DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@index([cliente_id, feito, data], map: "clientes_atividades_cliente_idx")
+  @@index([responsavel_id, data], map: "clientes_atividades_responsavel_idx")
+}
+
+model crm_clientes {
+  cliente_id        String    @id @db.Uuid
+  temperatura       String?
+  opt_out           Boolean   @default(false)
+  opt_out_em        DateTime? @db.Timestamptz(6)
+  opt_out_motivo    String?
+  telefone_invalido Boolean   @default(false)
+  instagram         String?
+  facebook          String?
+  fonte_dado        String?
+  updated_at        DateTime  @default(now()) @db.Timestamptz(6)
+  updated_by        String?   @db.Uuid
+}

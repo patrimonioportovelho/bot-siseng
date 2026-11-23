@@ -5,11 +5,13 @@ import { PortalHeader } from "@/components/portal-header";
 import { ClienteEtiqueta, type DadosClienteEtiqueta } from "@/components/cliente-etiqueta";
 import { ClienteComplementoForm } from "@/components/cliente-complemento-form";
 import { prisma } from "@/lib/prisma";
-import { formatTelefone } from "@/lib/format";
+import { formatTelefone, hojeInputDate } from "@/lib/format";
+import { carregarCrmDoCliente } from "@/lib/crm/servidor";
 import { etapaDoCliente } from "@/lib/clientes/funil-servidor";
 import { carregarVinculosCliente } from "@/lib/clientes/vinculos-servidor";
 import { clienteParaFormulario } from "@/lib/financiamento/avaliacao-credito-servidor";
 import { complementarClienteAction, listasFormularioClienteAction, registrarContatoPortalAction } from "../actions";
+import { agendarAtividadePortalAction, concluirAtividadePortalAction, optOutPortalAction, removerAtividadePortalAction, salvarCanaisPortalAction, semProximaAtividadePortalAction } from "../crm-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -22,10 +24,11 @@ export default async function PortalEtiquetaClientePage({ params }: { params: Pr
   const cliente = await prisma.clientes.findUnique({ where: { id } });
   if (!cliente || cliente.parceiro_id !== session.parceiroId) notFound();
 
-  const [etapa, vinculos, contatos] = await Promise.all([
+  const [etapa, vinculos, contatos, crmCliente] = await Promise.all([
     etapaDoCliente(id),
     carregarVinculosCliente(id),
-    prisma.clientes_contatos.findMany({ where: { cliente_id: id }, orderBy: { data: "desc" }, take: 100 })
+    prisma.clientes_contatos.findMany({ where: { cliente_id: id }, orderBy: { data: "desc" }, take: 100 }),
+    carregarCrmDoCliente(id)
   ]);
   if (!etapa) notFound();
 
@@ -78,6 +81,21 @@ export default async function PortalEtiquetaClientePage({ params }: { params: Pr
           remetentes={[]}
           remetenteLogado={{ id: session.parceiroId, primeiroNome: (session.nome ?? "").trim().split(/\s+/)[0] ?? "" }}
           extra={<ClienteComplementoForm clienteInicial={clienteParaFormulario(cliente)} carregarListas={listasFormularioClienteAction} salvar={complementarClienteAction} />}
+          crmEtiqueta={{
+            hoje: hojeInputDate(),
+            crm: crmCliente.crm,
+            atividades: crmCliente.atividades,
+            // no portal a atividade é sempre do próprio corretor
+            responsaveis: [],
+            acoes: {
+              agendar: agendarAtividadePortalAction,
+              concluir: concluirAtividadePortalAction,
+              remover: removerAtividadePortalAction,
+              semProxima: semProximaAtividadePortalAction,
+              salvarCanais: salvarCanaisPortalAction,
+              optOut: optOutPortalAction
+            }
+          }}
           acoes={{ registrarContato: registrarContatoPortalAction }}
         />
       </div>

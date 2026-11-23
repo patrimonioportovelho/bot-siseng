@@ -6,10 +6,12 @@ import { prisma } from "@/lib/prisma";
 import { requireAdminSession } from "@/lib/auth";
 import { acessosDaSessao, nivelEmModulos } from "@/lib/acessos";
 import { FUNCOES_CORRETOR } from "@/lib/transacoes/opcoes";
-import { formatTelefone } from "@/lib/format";
+import { formatTelefone, hojeInputDate } from "@/lib/format";
+import { carregarCrmDoCliente } from "@/lib/crm/servidor";
 import { etapaDoCliente } from "@/lib/clientes/funil-servidor";
 import { carregarVinculosCliente } from "@/lib/clientes/vinculos-servidor";
 import { moverClienteFunilAction, registrarContatoClienteAction, transferirClienteAction } from "../../funil-actions";
+import { agendarAtividadeAction, concluirAtividadeAction, optOutAction, removerAtividadeAction, salvarCanaisAction, semProximaAtividadeAction } from "../../crm-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +21,7 @@ export default async function EtiquetaClientePage({ params }: { params: Promise<
   const sessao = await requireAdminSession();
   const { id } = await params;
 
-  const [cliente, etapa, vinculos, contatos, remetentes, corretoresAtivos] = await Promise.all([
+  const [cliente, etapa, vinculos, contatos, remetentes, corretoresAtivos, crmCliente] = await Promise.all([
     prisma.clientes.findUnique({
       where: { id },
       select: { id: true, id_legado: true, nome: true, telefone: true, email: true, created_at: true, status_cadastro: true, parceiro_id: true, parceiros: { select: { nome: true, funcao: true, status_funcao: true } } }
@@ -37,7 +39,8 @@ export default async function EtiquetaClientePage({ params }: { params: Promise<
       where: { funcao: { in: FUNCOES_CORRETOR }, status_funcao: "Ativo" },
       orderBy: [{ funcao: "asc" }, { nome: "asc" }],
       select: { id: true, nome: true, funcao: true }
-    })
+    }),
+    carregarCrmDoCliente(id)
   ]);
   if (!cliente || !etapa) notFound();
 
@@ -88,6 +91,14 @@ export default async function EtiquetaClientePage({ params }: { params: Promise<
         // transferir cliente: só quem edita Clientes (acesso Administrativo ou Diretor)
         podeTransferir={nivelEmModulos(acessosDaSessao(sessao), ["clientes"]) === "editar"}
         corretoresParaTransferir={corretoresAtivos}
+        crmEtiqueta={{
+          hoje: hojeInputDate(),
+          crm: crmCliente.crm,
+          atividades: crmCliente.atividades,
+          // quem pode ficar responsável pela atividade: administrativo e corretores ativos
+          responsaveis: remetentes,
+          acoes: { agendar: agendarAtividadeAction, concluir: concluirAtividadeAction, remover: removerAtividadeAction, semProxima: semProximaAtividadeAction, salvarCanais: salvarCanaisAction, optOut: optOutAction }
+        }}
         acoes={{ mover: moverClienteFunilAction, registrarContato: registrarContatoClienteAction, transferir: transferirClienteAction }}
       />
     </div>

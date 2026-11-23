@@ -27,6 +27,7 @@ export function ClienteWhatsapp({
   remetenteIdPadrao,
   remetenteFallback,
   registrar,
+  bloqueado,
   aoRegistrar
 }: {
   clienteId: string;
@@ -39,6 +40,8 @@ export function ClienteWhatsapp({
   remetenteIdPadrao: string | null;
   remetenteFallback: string;
   registrar: Registrar;
+  // opt-out (LGPD): texto do aviso; com ele o envio fica bloqueado
+  bloqueado?: string | null;
   aoRegistrar: (c: ContatoCliente) => void;
 }) {
   const numero = numeroWhatsapp(telefoneDigitos);
@@ -80,7 +83,7 @@ export function ClienteWhatsapp({
   const pendentes = (texto.match(/\[[^\]]+\]/g) ?? []).length;
 
   function abrirWhatsapp() {
-    if (!numero) return;
+    if (!numero || bloqueado) return;
     // window.open precisa acontecer direto no clique (senão o navegador bloqueia a aba nova)
     window.open(`https://wa.me/${numero}?text=${encodeURIComponent(texto)}`, "_blank", "noopener,noreferrer");
     void registrarContato();
@@ -120,6 +123,8 @@ export function ClienteWhatsapp({
           {numero ? "Abre a conversa em outra aba e registra o contato." : "Sem telefone cadastrado — adicione na ficha do cliente."}
         </div>
       </div>
+
+      {bloqueado && <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] text-red-700">⛔ {bloqueado}</div>}
 
       <div className="grid md:grid-cols-3 gap-3 mb-2">
         <div>
@@ -171,7 +176,7 @@ export function ClienteWhatsapp({
         <button
           type="button"
           onClick={abrirWhatsapp}
-          disabled={!numero || estado === "registrando"}
+          disabled={!numero || !!bloqueado || estado === "registrando"}
           className="text-xs bg-green-600 text-white rounded-lg px-3 py-1.5 font-semibold disabled:opacity-50 hover:opacity-90"
         >
           Abrir no WhatsApp

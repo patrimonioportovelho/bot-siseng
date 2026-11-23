@@ -53,13 +53,15 @@ export async function resolverDestinatarios(filtro: FiltroDisparo): Promise<Dest
   if (filtro.clientes && qtd > 0) {
     // busca com folga: endereço repetido ou inválido é descartado depois
     const folga = Math.min(qtd * 2 + 20, MAXIMO_DESTINATARIOS * 2);
+    // LGPD: cliente que pediu para não receber novidades (opt-out no CRM) nunca entra no disparo
+    const optOut = (await prisma.crm_clientes.findMany({ where: { opt_out: true }, select: { cliente_id: true } })).map((o) => o.cliente_id);
     let clientes: { nome: string; email: string | null }[];
     if (filtro.clientes.ordem === "aleatorio") {
       clientes = await prisma.$queryRaw<{ nome: string; email: string | null }[]>`
-        SELECT nome, email FROM clientes WHERE email LIKE '%@%' ORDER BY random() LIMIT ${folga}`;
+        SELECT nome, email FROM clientes WHERE email LIKE '%@%' AND id <> ALL(${optOut}::uuid[]) ORDER BY random() LIMIT ${folga}`;
     } else {
       clientes = await prisma.clientes.findMany({
-        where: { email: { contains: "@" } },
+        where: { email: { contains: "@" }, id: { notIn: optOut } },
         orderBy: { created_at: filtro.clientes.ordem === "antigos" ? "asc" : "desc" },
         take: folga,
         select: { nome: true, email: true }

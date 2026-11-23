@@ -275,7 +275,7 @@ export default async function PortalFinanceiroPage() {
     <div className="min-h-screen bg-gray-50">
       <PortalHeader nome={session.nome} />
 
-      <div className="max-w-5xl mx-auto px-4 py-6">
+      <div className="w-full px-4 md:px-6 py-6">
         <div className="text-lg font-bold text-gray-900 mb-1">Financeiro</div>
         <p className="text-xs text-gray-500 mb-6">
           O que você recebeu, o que vai receber (previsão de comissão) e o que você precisa pagar (ex.: Fee Corretor
@@ -297,7 +297,7 @@ export default async function PortalFinanceiroPage() {
           </div>
         </div>
 
-        <div className="flex flex-col gap-4">
+        <div className="grid gap-4 xl:grid-cols-2 items-start">
           <Secao titulo="A pagar" sub="Toda dívida vinculada a você — pague aos poucos gerando um Pix por vez.">
             {aPagar.length === 0 && <p className="text-xs text-gray-400">Nenhuma dívida em aberto no momento.</p>}
             <div className="flex flex-col gap-2">

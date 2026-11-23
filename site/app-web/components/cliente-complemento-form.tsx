@@ -23,7 +23,7 @@ type Listas = {
 
 const CAMPO = "text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full outline-none focus:border-primary bg-white";
 const LABEL = "text-[11px] text-gray-600 block mb-0.5";
-const GRADE = "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-3 gap-y-2.5";
+const GRADE = "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-x-3 gap-y-2.5";
 
 // "Complementar dados" na etiqueta do corretor: a única coisa que ele edita no cliente. O lead que vai
 // virar contrato precisa do cadastro completo; o quadro de pendências mostra o que ainda falta.

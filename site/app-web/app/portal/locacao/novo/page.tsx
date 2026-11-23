@@ -90,7 +90,7 @@ export default async function PortalLocacaoNovoPage() {
     return (
       <div className="min-h-screen bg-gray-50">
         <PortalHeader nome={session.nome} />
-        <div className="max-w-3xl mx-auto px-4 py-6">
+        <div className="w-full px-4 md:px-6 py-6">
           <p className="text-sm text-red-600">Não encontrei seu cadastro de parceiro. Avise um administrador.</p>
         </div>
       </div>
@@ -113,7 +113,7 @@ export default async function PortalLocacaoNovoPage() {
     <div className="min-h-screen bg-gray-50">
       <PortalHeader nome={session.nome} />
 
-      <div className="max-w-3xl mx-auto px-4 py-6">
+      <div className="w-full px-4 md:px-6 py-6">
         <Link href="/portal" className="text-xs text-gray-500 hover:text-gray-800 inline-block mb-3">
           ← Voltar
         </Link>

@@ -406,7 +406,7 @@ export function PortalAvaliacaoCpfForm({
         <div className="bg-white border border-gray-200 rounded-xl p-4">
           <div className="text-sm font-bold text-gray-800 mb-1">O que você quer fazer?</div>
           <p className="text-[11px] text-gray-400 mb-3">Escolha antes de preencher. Dá pra transformar uma Consulta de CPF em Avaliação de crédito depois.</p>
-          <div className="grid md:grid-cols-2 gap-3">
+          <div className="grid md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
             {(
               [
                 { id: "consulta", titulo: "Consulta de CPF", texto: "Só ver se o CPF está limpo. Precisa de nome, CPF, sexo e telefone." },
@@ -513,7 +513,7 @@ export function PortalAvaliacaoCpfForm({
             )}
             <div className="pt-2 border-t border-gray-100">
               <div className="text-[11px] font-semibold text-gray-500 mb-2">Identificação</div>
-              <div className="grid md:grid-cols-2 gap-3">
+              <div className="grid md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
                 <div>
                   <label className={LABEL}>Nome completo *</label>
                   <input className={CAMPO} value={cliente.nome} onChange={(e) => atualizar("nome", e.target.value)} />
@@ -632,7 +632,7 @@ export function PortalAvaliacaoCpfForm({
 
             <div className="pt-2 border-t border-gray-100">
               <div className="text-[11px] font-semibold text-gray-500 mb-2">Contato</div>
-              <div className="grid md:grid-cols-2 gap-3">
+              <div className="grid md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
                 <div>
                   <label className={LABEL}>Telefone *</label>
                   <input className={CAMPO} placeholder="(69) 99999-9999" value={cliente.telefone} onChange={(e) => atualizar("telefone", e.target.value)} />
@@ -701,7 +701,7 @@ export function PortalAvaliacaoCpfForm({
 
             <div className="pt-2 border-t border-gray-100">
               <div className="text-[11px] font-semibold text-gray-500 mb-2">Profissional (importante pra avaliação)</div>
-              <div className="grid md:grid-cols-2 gap-3">
+              <div className="grid md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
                 <div>
                   <label className={LABEL}>Profissão</label>
                   <input className={CAMPO} value={cliente.profissao} onChange={(e) => atualizar("profissao", e.target.value)} />
@@ -730,7 +730,7 @@ export function PortalAvaliacaoCpfForm({
 
             <div className="pt-2 border-t border-gray-100">
               <div className="text-[11px] font-semibold text-gray-500 mb-2">Dados bancários</div>
-              <div className="grid md:grid-cols-2 gap-3">
+              <div className="grid md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
                 <div>
                   <label className={LABEL}>Banco</label>
                   <select className={CAMPO} value={cliente.bancoId} onChange={(e) => selecionarBanco(e.target.value)}>

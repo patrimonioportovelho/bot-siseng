@@ -844,7 +844,7 @@ export function PortalAdministracaoForm({
                   {c.cpfCnpj && <span className="text-gray-400 font-normal"> — {c.cpfCnpj}</span>}
                 </div>
               ) : (
-                <div className="grid md:grid-cols-2 gap-3">
+                <div className="grid md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
                   <div>
                     <label className={LABEL}>Tipo de cliente *</label>
                     <select
@@ -1095,7 +1095,7 @@ export function PortalAdministracaoForm({
               {!c.clienteId && (
               <div className="mt-3 pt-3 border-t border-gray-100">
                 <div className="text-[11px] font-semibold text-gray-500 mb-2">Dados bancários</div>
-                <div className="grid md:grid-cols-2 gap-3">
+                <div className="grid md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
                   <div>
                     <label className={LABEL}>Banco</label>
                     <select
@@ -1214,7 +1214,7 @@ export function PortalAdministracaoForm({
           </div>
         )}
 
-        <div className="grid md:grid-cols-2 gap-3">
+        <div className="grid md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
           <div>
             <label className={LABEL}>Tipo de imóvel</label>
             <select
@@ -1342,7 +1342,7 @@ export function PortalAdministracaoForm({
 
       <div className="bg-white border border-gray-200 rounded-xl p-4">
         <div className="text-sm font-bold text-gray-800 mb-3">4. Datas e prazo</div>
-        <div className="grid md:grid-cols-3 gap-3">
+        <div className="grid md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3">
           <div>
             <label className={LABEL}>Data de entrada</label>
             <input type="date" className={CAMPO} value={dataEntrada} onChange={(e) => setDataEntrada(e.target.value)} />
@@ -1365,7 +1365,7 @@ export function PortalAdministracaoForm({
 
       <div className="bg-white border border-gray-200 rounded-xl p-4">
         <div className="text-sm font-bold text-gray-800 mb-3">5. Valores</div>
-        <div className="grid md:grid-cols-3 gap-3">
+        <div className="grid md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3">
           <div>
             <label className={LABEL}>Valor do aluguel (R$)</label>
             <input
@@ -1420,7 +1420,7 @@ export function PortalAdministracaoForm({
 
       <div className="bg-white border border-gray-200 rounded-xl p-4">
         <div className="text-sm font-bold text-gray-800 mb-3">6. Condomínio, água e energia</div>
-        <div className="grid md:grid-cols-2 gap-3">
+        <div className="grid md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
           <div className="flex items-center gap-2">
             <input
               type="checkbox"
@@ -1471,7 +1471,7 @@ export function PortalAdministracaoForm({
 
       <div className="bg-white border border-gray-200 rounded-xl p-4">
         <div className="text-sm font-bold text-gray-800 mb-3">7. Vistoria</div>
-        <div className="grid md:grid-cols-2 gap-3">
+        <div className="grid md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
           <div className="flex items-center gap-2">
             <input
               type="checkbox"
@@ -1493,7 +1493,7 @@ export function PortalAdministracaoForm({
 
       <div className="bg-white border border-gray-200 rounded-xl p-4">
         <div className="text-sm font-bold text-gray-800 mb-3">8. Observação e pasta</div>
-        <div className="grid md:grid-cols-2 gap-3">
+        <div className="grid md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
           <CampoLink label="Pasta (link)" value={pastaUrl} onChange={setPastaUrl} />
         </div>
         <div className="mt-3">
@@ -1552,7 +1552,7 @@ export function PortalAdministracaoForm({
 
       <div className="bg-white border border-gray-200 rounded-xl p-4">
         <div className="text-sm font-bold text-gray-800 mb-3">10. Corretor (captador)</div>
-        <div className="grid md:grid-cols-2 gap-3 text-xs text-gray-700">
+        <div className="grid md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3 text-xs text-gray-700">
           <div>
             <span className="text-gray-400">Corretor: </span>
             {corretor.nome}

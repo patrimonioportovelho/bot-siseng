@@ -193,7 +193,7 @@ export default async function PortalAgendaPage({
     <div className="min-h-screen bg-gray-50">
       <PortalHeader nome={session.nome} />
 
-      <div className="max-w-5xl mx-auto px-4 py-6">
+      <div className="w-full px-4 md:px-6 py-6">
         <div className="text-lg font-bold text-gray-900 mb-1">Agenda</div>
         <p className="text-xs text-gray-500 mb-6">
           Acompanhe as atividades já confirmadas do escritório (Marketing, suas Gestões, Manutenções dos seus

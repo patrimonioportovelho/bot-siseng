@@ -42,7 +42,7 @@ export default async function PortalCaptacaoEtiquetaPage({ params }: { params: P
     <div className="min-h-screen bg-gray-50">
       <PortalHeader nome={session.nome} />
 
-      <div className="max-w-3xl mx-auto px-4 py-6 flex flex-col gap-4">
+      <div className="w-full px-4 md:px-6 py-6 flex flex-col gap-4">
         <Link href="/portal/captacao" className="text-xs text-gray-500 hover:text-gray-800 inline-block">
           ← Voltar para Ficha de Captação
         </Link>

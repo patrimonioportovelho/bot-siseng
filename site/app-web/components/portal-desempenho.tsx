@@ -114,7 +114,9 @@ export function PortalDesempenho({ d }: { d: DesempenhoCorretor }) {
           </div>
         </div>
 
-        <div className="mt-4 flex flex-wrap items-center gap-1.5">
+        {/* telas largas: botões de período à esquerda e datas à direita, na mesma linha */}
+        <div className="mt-4 lg:flex lg:items-end lg:justify-between lg:gap-6">
+        <div className="flex flex-wrap items-center gap-1.5">
           {PRESETS_PERIODO.map((x) => (
             <Link
               key={x.id}
@@ -128,7 +130,7 @@ export function PortalDesempenho({ d }: { d: DesempenhoCorretor }) {
             </Link>
           ))}
         </div>
-        <form method="get" className="mt-2.5 flex flex-wrap items-end gap-2">
+        <form method="get" className="mt-2.5 lg:mt-0 flex flex-wrap items-end gap-2">
           <input type="hidden" name="periodo" value="personalizado" />
           <label className="text-[10px] uppercase tracking-wide opacity-80">
             De
@@ -159,13 +161,14 @@ export function PortalDesempenho({ d }: { d: DesempenhoCorretor }) {
             Filtrar período
           </button>
         </form>
+        </div>
         {p.aviso && <p className="text-[11px] mt-2 bg-white/10 rounded-lg px-3 py-1.5">{p.aviso}</p>}
       </div>
 
       {/* Produção no período */}
       <div>
         <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Produção no período</div>
-        <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6 gap-3">
           <Tile
             destaque
             label="Captações"
@@ -192,17 +195,58 @@ export function PortalDesempenho({ d }: { d: DesempenhoCorretor }) {
         </div>
       </div>
 
-      {/* Leads por mês + comparativo */}
-      <div className="grid lg:grid-cols-2 gap-4 [&>*]:min-w-0">
-        <Bloco titulo="Leads por mês" sub="Clientes cadastrados no seu nome, mês a mês, dentro do período.">
-          <GraficoBarras
-            dados={d.leadsPorMes}
-            series={[{ chave: "leads", cor: "#04075c", nome: "Leads" }]}
-            formatarValor={(v) => String(v)}
-            mensagemVazia="Sem leads no período."
-          />
-          {!temLeads && <p className="text-[11px] text-gray-400 mt-2">Nenhum cliente cadastrado no seu nome neste período.</p>}
+      {/* Leads + carteira (coluna da esquerda) e comparativo com a equipe (direita): preenchem a largura toda */}
+      <div className="grid lg:grid-cols-2 gap-4 items-start [&>*]:min-w-0">
+        <div className="flex flex-col gap-4">
+          <Bloco titulo="Leads por mês" sub="Clientes cadastrados no seu nome, mês a mês, dentro do período.">
+            <GraficoBarras
+              dados={d.leadsPorMes}
+              series={[{ chave: "leads", cor: "#04075c", nome: "Leads" }]}
+              formatarValor={(v) => String(v)}
+              mensagemVazia="Sem leads no período."
+            />
+            {!temLeads && <p className="text-[11px] text-gray-400 mt-2">Nenhum cliente cadastrado no seu nome neste período.</p>}
+          </Bloco>
+
+        <Bloco titulo="Carteira atual" sub="Situação de hoje: não muda com o filtro de período.">
+          <div className="grid grid-cols-2 gap-3">
+            <Tile label="Imóveis na carteira" valor={String(c.imoveis)} sub={`${c.anunciados} anunciado${c.anunciados === 1 ? "" : "s"} no site`} />
+            <Tile label="Com exclusividade" valor={String(c.comExclusividade)} sub={`Sem exclusividade: ${c.semExclusividade}`} />
+            <Tile
+              label="Dias médios na carteira"
+              valor={c.diasMedios === null ? "—" : String(c.diasMedios)}
+              sub={c.diasMediosEscritorio === null ? undefined : `Média do escritório: ${c.diasMediosEscritorio}`}
+            />
+            <Tile
+              label="Preço médio da carteira"
+              valor={c.precoMedio === null ? "—" : moedaCompacta(c.precoMedio)}
+              sub={c.precoMedioEscritorio === null ? undefined : `Média do escritório: ${moedaCompacta(c.precoMedioEscritorio)}`}
+            />
+          </div>
+
+          {c.porEtapa.length > 0 && (
+            <div className="mt-4">
+              <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-2">Seus imóveis por etapa</div>
+              <div className="flex flex-col gap-1.5">
+                {c.porEtapa
+                  .sort((a, b) => b.qtd - a.qtd)
+                  .map((e) => (
+                    <div key={e.coluna} className="flex items-center gap-2">
+                      <span className="w-44 shrink-0 text-[11px] text-gray-600 truncate">{labelColuna(e.coluna)}</span>
+                      <div className="flex-1 h-2.5 bg-gray-100 rounded-full overflow-hidden">
+                        <div className="h-full rounded-full bg-primary/70" style={{ width: `${(e.qtd / maiorEtapa) * 100}%` }} />
+                      </div>
+                      <span className="w-6 text-right text-[11px] font-bold text-gray-800">{e.qtd}</span>
+                    </div>
+                  ))}
+              </div>
+              <Link href="/portal/captacao" className="text-[11px] text-primary font-semibold hover:underline inline-block mt-3">
+                Abrir o quadro da Ficha de Captação →
+              </Link>
+            </div>
+          )}
         </Bloco>
+        </div>
 
         <Bloco
           titulo="Comparativo com a equipe"
@@ -218,46 +262,6 @@ export function PortalDesempenho({ d }: { d: DesempenhoCorretor }) {
           </div>
         </Bloco>
       </div>
-
-      {/* Carteira atual */}
-      <Bloco titulo="Carteira atual" sub="Situação de hoje: não muda com o filtro de período.">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <Tile label="Imóveis na carteira" valor={String(c.imoveis)} sub={`${c.anunciados} anunciado${c.anunciados === 1 ? "" : "s"} no site`} />
-          <Tile label="Com exclusividade" valor={String(c.comExclusividade)} sub={`Sem exclusividade: ${c.semExclusividade}`} />
-          <Tile
-            label="Dias médios na carteira"
-            valor={c.diasMedios === null ? "—" : String(c.diasMedios)}
-            sub={c.diasMediosEscritorio === null ? undefined : `Média do escritório: ${c.diasMediosEscritorio}`}
-          />
-          <Tile
-            label="Preço médio da carteira"
-            valor={c.precoMedio === null ? "—" : moedaCompacta(c.precoMedio)}
-            sub={c.precoMedioEscritorio === null ? undefined : `Média do escritório: ${moedaCompacta(c.precoMedioEscritorio)}`}
-          />
-        </div>
-
-        {c.porEtapa.length > 0 && (
-          <div className="mt-4">
-            <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-2">Seus imóveis por etapa</div>
-            <div className="flex flex-col gap-1.5">
-              {c.porEtapa
-                .sort((a, b) => b.qtd - a.qtd)
-                .map((e) => (
-                  <div key={e.coluna} className="flex items-center gap-2">
-                    <span className="w-44 shrink-0 text-[11px] text-gray-600 truncate">{labelColuna(e.coluna)}</span>
-                    <div className="flex-1 h-2.5 bg-gray-100 rounded-full overflow-hidden">
-                      <div className="h-full rounded-full bg-primary/70" style={{ width: `${(e.qtd / maiorEtapa) * 100}%` }} />
-                    </div>
-                    <span className="w-6 text-right text-[11px] font-bold text-gray-800">{e.qtd}</span>
-                  </div>
-                ))}
-            </div>
-            <Link href="/portal/captacao" className="text-[11px] text-primary font-semibold hover:underline inline-block mt-3">
-              Abrir o quadro da Ficha de Captação →
-            </Link>
-          </div>
-        )}
-      </Bloco>
 
       <p className="text-[10px] text-gray-400">
         Dados do SisEng. Vendas e locações contam pela data de assinatura; vendas acordadas, pelo cadastro da transação; honorários, pelo repasse pago.

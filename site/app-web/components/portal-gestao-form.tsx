@@ -673,7 +673,7 @@ export function PortalGestaoForm({
                   {c.cpfCnpj && <span className="text-gray-400 font-normal"> — {c.cpfCnpj}</span>}
                 </div>
               ) : (
-                <div className="grid md:grid-cols-2 gap-3">
+                <div className="grid md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
                   <div>
                     <label className={LABEL}>Tipo de cliente *</label>
                     <select
@@ -928,7 +928,7 @@ export function PortalGestaoForm({
               {!c.clienteId && (
               <div className="mt-3 pt-3 border-t border-gray-100">
                 <div className="text-[11px] font-semibold text-gray-500 mb-2">Dados bancários</div>
-                <div className="grid md:grid-cols-2 gap-3">
+                <div className="grid md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
                   <div>
                     <label className={LABEL}>Banco</label>
                     <select
@@ -1050,7 +1050,7 @@ export function PortalGestaoForm({
           </div>
         )}
 
-        <div className="grid md:grid-cols-2 gap-3">
+        <div className="grid md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
           <div>
             <label className={LABEL}>Tipo de imóvel</label>
             <select
@@ -1205,7 +1205,7 @@ export function PortalGestaoForm({
               proprietários reservam o direito de promover, também, a venda do imóvel sem que haja obrigação em pagar a RE/MAX ENGIMOB comissões, desde que o
               cliente não tenha sido por ela apresentado.
             </p>
-            <div className="grid md:grid-cols-3 gap-3">
+            <div className="grid md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3">
               <div>
                 <label className={LABEL}>Comissão / honorários (%) *</label>
                 <input className={CAMPO} placeholder="6" value={porcHonorario} onChange={(e) => setPorcHonorario(e.target.value)} />
@@ -1220,7 +1220,7 @@ export function PortalGestaoForm({
       ) : (
       <div className="bg-white border border-gray-200 rounded-xl p-4">
         <div className="text-sm font-bold text-gray-800 mb-3">3. Cláusulas</div>
-        <div className="grid md:grid-cols-3 gap-3">
+        <div className="grid md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3">
           <div>
             <label className={LABEL}>Prazo da gestão (dias)</label>
             <input
@@ -1254,7 +1254,7 @@ export function PortalGestaoForm({
 
       <div className="bg-white border border-gray-200 rounded-xl p-4">
         <div className="text-sm font-bold text-gray-800 mb-3">{captacao ? "5." : "4."} Corretor responsável</div>
-        <div className="grid md:grid-cols-2 gap-3 text-xs text-gray-700">
+        <div className="grid md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3 text-xs text-gray-700">
           <div>
             <span className="text-gray-400">Corretor: </span>
             {corretor.nome}

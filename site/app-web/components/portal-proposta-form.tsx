@@ -466,7 +466,7 @@ export function PortalPropostaForm({
             {cliente.cpfCnpj && <span className="text-gray-400 font-normal"> — {cliente.cpfCnpj}</span>}
           </div>
         ) : (
-          <div className="grid md:grid-cols-2 gap-3">
+          <div className="grid md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
             <div>
               <label className={LABEL}>Tipo de cliente</label>
               <select
@@ -638,7 +638,7 @@ export function PortalPropostaForm({
         {!cliente.clienteId && (
         <div className="mt-3 pt-3 border-t border-gray-100">
           <div className="text-[11px] font-semibold text-gray-500 mb-2">Dados bancários</div>
-          <div className="grid md:grid-cols-2 gap-3">
+          <div className="grid md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
             <div>
               <label className={LABEL}>Banco</label>
               <select
@@ -707,7 +707,7 @@ export function PortalPropostaForm({
         <p className="text-[11px] text-gray-400 mb-3">
           Não é cadastrado no sistema — só entra no texto da proposta, do jeito que for digitado aqui.
         </p>
-        <div className="grid md:grid-cols-2 gap-3">
+        <div className="grid md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
           <div className="md:col-span-2">
             <label className={LABEL}>Descrição do imóvel</label>
             <input className={CAMPO} value={descricao} onChange={(e) => setDescricao(e.target.value)} />
@@ -751,7 +751,7 @@ export function PortalPropostaForm({
 
       <div className="bg-white border border-gray-200 rounded-xl p-4">
         <div className="text-sm font-bold text-gray-800 mb-3">3. Valor e condições</div>
-        <div className="grid md:grid-cols-2 gap-3 mb-4">
+        <div className="grid md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3 mb-4">
           <div>
             <label className={LABEL}>Valor da proposta (R$)</label>
             <input
@@ -811,7 +811,7 @@ export function PortalPropostaForm({
           </div>
         )}
 
-        <div className="grid md:grid-cols-3 gap-3 items-end bg-gray-50/50 border border-dashed border-gray-200 rounded-lg p-3">
+        <div className="grid md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3 items-end bg-gray-50/50 border border-dashed border-gray-200 rounded-lg p-3">
           <div>
             <label className={LABEL}>Tipo</label>
             <select
@@ -897,7 +897,7 @@ export function PortalPropostaForm({
 
       <div className="bg-white border border-gray-200 rounded-xl p-4">
         <div className="text-sm font-bold text-gray-800 mb-3">4. Corretor responsável</div>
-        <div className="grid md:grid-cols-2 gap-3 text-xs text-gray-700">
+        <div className="grid md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3 text-xs text-gray-700">
           <div>
             <span className="text-gray-400">Corretor: </span>
             {corretor.nome}

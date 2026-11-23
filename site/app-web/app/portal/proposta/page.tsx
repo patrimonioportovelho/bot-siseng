@@ -33,7 +33,7 @@ export default async function PortalPropostaPage() {
     <div className="min-h-screen bg-gray-50">
       <PortalHeader nome={session.nome} />
 
-      <div className="max-w-3xl mx-auto px-4 py-6">
+      <div className="w-full px-4 md:px-6 py-6">
         <Link href="/portal" className="text-xs text-gray-500 hover:text-gray-800 inline-block mb-3">
           ← Voltar
         </Link>
@@ -66,7 +66,7 @@ export default async function PortalPropostaPage() {
             <p className="text-xs text-gray-400">Nenhuma proposta gerada até agora.</p>
           </div>
         ) : (
-          <div className="flex flex-col gap-2">
+          <div className="grid gap-2 md:grid-cols-2 2xl:grid-cols-3 items-start">
             {propostas.map((p) => {
               const enderecoImovel =
                 p.descricao ||

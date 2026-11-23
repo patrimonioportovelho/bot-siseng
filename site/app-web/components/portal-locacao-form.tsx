@@ -384,7 +384,7 @@ function BlocoPessoas({
                   {p.cpfCnpj && <span className="text-gray-400 font-normal"> — {p.cpfCnpj}</span>}
                 </div>
               ) : (
-                <div className="grid md:grid-cols-2 gap-3">
+                <div className="grid md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
                   <div>
                     <label className={LABEL}>Tipo de cliente *</label>
                     <select
@@ -627,7 +627,7 @@ function BlocoPessoas({
               {!p.clienteId && (
                 <div className="mt-3 pt-3 border-t border-gray-100">
                   <div className="text-[11px] font-semibold text-gray-500 mb-2">Dados bancários</div>
-                  <div className="grid md:grid-cols-2 gap-3">
+                  <div className="grid md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
                     <div>
                       <label className={LABEL}>Banco</label>
                       <select className={CAMPO} value={p.bancoId} onChange={(e) => selecionarBanco(index, e.target.value)}>
@@ -1334,7 +1334,7 @@ export function PortalLocacaoForm({
 
       <div className="bg-white border border-gray-200 rounded-xl p-4">
         <div className="text-sm font-bold text-gray-800 mb-3">1. Identificação</div>
-        <div className="grid md:grid-cols-2 gap-3">
+        <div className="grid md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
           <div>
             <label className={LABEL}>Loja</label>
             <select className={CAMPO} value={lojaId} onChange={(e) => setLojaId(e.target.value)}>
@@ -1469,7 +1469,7 @@ export function PortalLocacaoForm({
               </button>
             </div>
 
-            <div className="grid md:grid-cols-2 gap-3 mb-4">
+            <div className="grid md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3 mb-4">
               <div>
                 <label className={LABEL}>Tipo de imóvel</label>
                 <select className={CAMPO} value={tipoImovelNovo} onChange={(e) => setTipoImovelNovo(e.target.value)}>
@@ -1614,7 +1614,7 @@ export function PortalLocacaoForm({
 
       <div className="bg-white border border-gray-200 rounded-xl p-4">
         <div className="text-sm font-bold text-gray-800 mb-3">4. Datas e valor</div>
-        <div className="grid md:grid-cols-3 gap-3">
+        <div className="grid md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3">
           <div>
             <label className={LABEL}>Data do cadastro</label>
             <input className={CAMPO + " bg-gray-100 text-gray-500"} value={dataCadastroTexto} readOnly />
@@ -1649,7 +1649,7 @@ export function PortalLocacaoForm({
 
       <div className="bg-white border border-gray-200 rounded-xl p-4">
         <div className="text-sm font-bold text-gray-800 mb-3">5. Detalhes da locação</div>
-        <div className="grid md:grid-cols-2 gap-3">
+        <div className="grid md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
           <div>
             <label className={LABEL}>Finalidade da locação</label>
             <select className={CAMPO} value={finalidadeLocacao} onChange={(e) => setFinalidadeLocacao(e.target.value)}>
@@ -1732,7 +1732,7 @@ export function PortalLocacaoForm({
           </div>
         </div>
 
-        <div className="grid md:grid-cols-2 gap-3 mt-3 pt-3 border-t border-gray-100">
+        <div className="grid md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3 mt-3 pt-3 border-t border-gray-100">
           <div>
             <span className={LABEL}>Valor da locação (aluguel, sem encargos)</span>
             <div className="text-sm font-semibold text-gray-800">{formatMoeda(valorLocacaoSemEncargos)}</div>
@@ -1760,7 +1760,7 @@ export function PortalLocacaoForm({
           A divisão entre os corretores (% de cada um e da imobiliária) fica com o administrativo — aqui só o
           honorário total e a parceria, se tiver.
         </p>
-        <div className="grid md:grid-cols-3 gap-3">
+        <div className="grid md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3">
           <div>
             <label className={LABEL}>Corretor do proprietário</label>
             <select className={CAMPO} value={corretorProprietarioId} onChange={(e) => setCorretorProprietarioId(e.target.value)}>

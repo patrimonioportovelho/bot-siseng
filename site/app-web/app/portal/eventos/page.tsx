@@ -99,7 +99,7 @@ export default async function PortalEventosPage() {
     <div className="min-h-screen bg-gray-50">
       <PortalHeader nome={session.nome} />
 
-      <div className="max-w-3xl mx-auto px-4 py-6">
+      <div className="w-full px-4 md:px-6 py-6">
         <div className="text-lg font-bold text-gray-900 mb-1">Eventos</div>
         <p className="text-xs text-gray-500 mb-6">
           Reuniões, treinamentos e outros eventos abertos pra você. Confirme presença ou avise que não vai — ajuda o
@@ -112,7 +112,7 @@ export default async function PortalEventosPage() {
           </div>
         )}
 
-        <div className="flex flex-col gap-3">
+        <div className="grid gap-3 lg:grid-cols-2 items-start">
           {eventos.map(({ ev, proxima, status, levaConvidado, quantidadePessoas, observacoes, pagoOk, isento, devido }) => (
             <div key={ev.id} className="bg-white border border-gray-200 rounded-xl p-4 flex gap-3">
               {ev.imagem_url && (

@@ -66,6 +66,12 @@ export const MODELOS_MENSAGEM_FIN: ModeloMensagemFin[] = [
     texto: `Oi, {nome}! ${ASSINATURA} Chegamos na etapa de engenharia: o banco precisa avaliar o imóvel {imovel}. [Pagar o boleto da taxa de avaliação / combinar o dia da vistoria com o engenheiro]. Qualquer dúvida me chama.`
   },
   {
+    id: "cli_formularios",
+    destinatario: "cliente",
+    titulo: "Assinar os formulários do banco",
+    texto: `Oi, {nome}! ${ASSINATURA} Agora precisamos da sua assinatura nos formulários do banco para o financiamento do imóvel {imovel}. Temos 5 dias úteis para concluir. Qual dia e horário ficam melhores para você assinar?`
+  },
+  {
     id: "cli_inconforme",
     destinatario: "cliente",
     titulo: "Pendência apontada pelo banco (inconformidade)",
@@ -164,6 +170,12 @@ export const MODELOS_MENSAGEM_FIN: ModeloMensagemFin[] = [
     texto: `Oi, {nome}! ${ASSINATURA} Estou acompanhando a venda do imóvel {imovel}, que será financiada pelo comprador. Para o banco aprovar, preciso dos documentos do vendedor e do imóvel: [documentos]. Consegue me enviar até {prazo}?`
   },
   {
+    id: "ven_formularios",
+    destinatario: "vendedor",
+    titulo: "Assinar os formulários do banco (vendedor)",
+    texto: `Oi, {nome}! ${ASSINATURA} Para seguir com o financiamento da venda do imóvel {imovel}, precisamos da sua assinatura nos formulários do banco. Temos 5 dias úteis para concluir. Qual dia e horário ficam melhores para você assinar?`
+  },
+  {
     id: "ven_livre",
     destinatario: "vendedor",
     titulo: "Mensagem livre",
@@ -181,7 +193,7 @@ export function modeloSugeridoFin(params: {
   statusAvaliacao: string;
 }): string {
   const { coluna, destinatario, inconformidadeAberta, statusAvaliacao } = params;
-  if (destinatario === "vendedor") return "ven_documentos";
+  if (destinatario === "vendedor") return coluna === "formularios" ? "ven_formularios" : "ven_documentos";
 
   if (destinatario === "parceiro") {
     if (inconformidadeAberta) return "par_pendencia";
@@ -203,6 +215,7 @@ export function modeloSugeridoFin(params: {
     aprovado: "cli_aprovado",
     documentacao: "cli_documentacao",
     engenharia: "cli_engenharia",
+    formularios: "cli_formularios",
     conformidade: "cli_comite",
     comite: "cli_comite",
     contrato: "cli_contrato",

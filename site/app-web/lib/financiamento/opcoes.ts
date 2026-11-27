@@ -70,6 +70,7 @@ export const STATUS_ANDAMENTO_OPCOES = [
   "Aguardando Documento do Imóvel",
   "Aguardando a Engenharia",
   "Aguardando o Laudo",
+  "Aguardando Assinatura de Formulários",
   "Aguardando Conformidade",
   "Inconforme",
   "Conforme",
@@ -104,6 +105,7 @@ export const STATUS_ANDAMENTO_COM_OPCOES: Record<string, string[]> = {
     "Agendamento realizado",
     "Aguardando engenheiro incluir laudo no Siopi"
   ],
+  "Aguardando Assinatura de Formulários": ["Aguardando assinatura do comprador", "Aguardando assinatura do vendedor"],
   "Aguardando Registro": [
     "Registro com Depachante imobiliária",
     "Registro com Despachante externo",

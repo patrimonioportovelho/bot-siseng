@@ -88,6 +88,16 @@ export const GRUPOS_CHECKLIST: GrupoChecklist[] = [
     ]
   },
   {
+    id: "formularios",
+    coluna: "formularios",
+    titulo: "Assinatura de formulários",
+    itens: [
+      { chave: "form_comprador", titulo: "Formulários assinados pelo comprador" },
+      { chave: "form_vendedor", titulo: "Formulários assinados pelo vendedor" },
+      { chave: "form_entregues", titulo: "Formulários assinados entregues ao banco" }
+    ]
+  },
+  {
     id: "conformidade",
     coluna: "conformidade",
     titulo: "Conformidade (análise documental e jurídica)",

@@ -15,6 +15,7 @@ export type ColunaFinId =
   | "aprovado"
   | "documentacao"
   | "engenharia"
+  | "formularios"
   | "conformidade"
   | "comite"
   | "contrato"
@@ -50,6 +51,7 @@ export const COLUNAS_FIN: ColunaFin[] = [
   { id: "aprovado", label: "Aprovado", grupo: "credito", dica: "Crédito aprovado. Acompanhe a validade e inicie o processo.", cor: "bg-indigo-50 text-indigo-700 border-indigo-200", slaDias: 10, statusAvaliacao: "Aprovado" },
   { id: "documentacao", label: "Documentação", grupo: "processo", dica: "Documentos do comprador, do vendedor e do imóvel.", cor: "bg-sky-50 text-sky-700 border-sky-200", slaDias: 10, statusAndamento: ["Pendente", "Aguardando Documentos do vendedor", "Aguardando Documentos do comprador", "Aguardando Documento do Imóvel"] },
   { id: "engenharia", label: "Engenharia e laudo", grupo: "processo", dica: "Vistoria do engenheiro e laudo de avaliação do imóvel.", cor: "bg-cyan-50 text-cyan-700 border-cyan-200", slaDias: 10, statusAndamento: ["Aguardando a Engenharia", "Aguardando o Laudo"] },
+  { id: "formularios", label: "Assinatura de formulários", grupo: "processo", dica: "Colher as assinaturas dos formulários do banco (comprador e vendedor).", cor: "bg-yellow-50 text-yellow-700 border-yellow-200", slaDias: 5, slaUteis: true, statusAndamento: ["Aguardando Assinatura de Formulários"] },
   { id: "conformidade", label: "Conformidade", grupo: "processo", dica: "Análise documental e jurídica: conforme ou inconforme.", cor: "bg-violet-50 text-violet-700 border-violet-200", slaDias: 5, statusAndamento: ["Aguardando Conformidade", "Conforme", "Inconforme"] },
   { id: "comite", label: "Comitê e dotação", grupo: "processo", dica: "Aprovação do comitê e dotação orçamentária.", cor: "bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200", slaDias: 15, statusAndamento: ["Aguardando comitê", "Dotação Orçamentária"] },
   { id: "contrato", label: "Assinatura do contrato", grupo: "processo", dica: "Assinar o contrato (alienação fiduciária).", cor: "bg-teal-50 text-teal-700 border-teal-200", slaDias: 7, statusAndamento: ["Assinando Contrato"] },

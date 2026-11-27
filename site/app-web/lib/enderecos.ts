@@ -40,29 +40,28 @@ export type CepEncontrado = {
   uf: string;
 };
 
-// Busca automática de CEP via ViaCEP — chamada direto do navegador (sem
-// passar pelo nosso servidor). Devolve null em qualquer situação de CEP
-// não encontrado/erro de rede, para o formulário simplesmente não
-// preencher nada automaticamente (usuário sempre pode digitar manual).
-// Timeout de 8s (achado "menor" da auditoria de 29/08/2026) — sem isso, se o
-// ViaCEP ficar fora do ar, o campo de CEP ficava "carregando" indefinidamente
-// em vez de simplesmente desistir e deixar o usuário preencher na mão.
-export async function buscarCep(cep: string): Promise<CepEncontrado | null> {
-  const d = cep.replace(/\D/g, "");
-  if (d.length !== 8) return null;
+// Busca automática de CEP, direto do navegador (sem passar pelo nosso servidor): primeiro o ViaCEP e, se ele não
+// conhecer o CEP ou estiver fora do ar, a BrasilAPI (que às vezes devolve só cidade e estado). Só o número do CEP é
+// enviado. Devolve null quando nenhuma das duas acha; o usuário sempre pode digitar o endereço à mão.
+// Cada fonte tem 6s de limite, para o campo nunca ficar "carregando" sem fim.
+async function consultar(url: string): Promise<Record<string, unknown> | null> {
   try {
-    const resp = await fetch(`https://viacep.com.br/ws/${d}/json/`, { signal: AbortSignal.timeout(8_000) });
-    if (!resp.ok) return null;
-    const json = await resp.json();
-    if (json?.erro) return null;
-    return {
-      cep: d,
-      logradouro: String(json.logradouro ?? ""),
-      bairro: String(json.bairro ?? ""),
-      localidade: String(json.localidade ?? ""),
-      uf: String(json.uf ?? "")
-    };
+    const resp = await fetch(url, { signal: AbortSignal.timeout(6_000) });
+    return resp.ok ? await resp.json() : null;
   } catch {
     return null;
   }
+}
+
+export async function buscarCep(cep: string): Promise<CepEncontrado | null> {
+  const d = cep.replace(/\D/g, "");
+  if (d.length !== 8) return null;
+  const texto = (v: unknown) => String(v ?? "");
+
+  const via = await consultar(`https://viacep.com.br/ws/${d}/json/`);
+  if (via && !via.erro) return { cep: d, logradouro: texto(via.logradouro), bairro: texto(via.bairro), localidade: texto(via.localidade), uf: texto(via.uf) };
+
+  const br = await consultar(`https://brasilapi.com.br/api/cep/v2/${d}`);
+  if (br && br.city && br.state) return { cep: d, logradouro: texto(br.street), bairro: texto(br.neighborhood), localidade: texto(br.city), uf: texto(br.state) };
+  return null;
 }

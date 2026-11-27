@@ -100,6 +100,7 @@ export async function ConteudoNovoGestao({ modo }: { modo: "gestao" | "captacao"
               .map((v) => ({
                 id: v.imoveis.id,
                 tipoImovel: v.imoveis.tipo_imovel ?? "",
+                cep: v.imoveis.cep ?? "",
                 rua: v.imoveis.rua ?? "",
                 nPredial: v.imoveis.n_predial ?? "",
                 complemento: v.imoveis.complemento ?? "",

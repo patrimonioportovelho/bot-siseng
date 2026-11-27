@@ -12,7 +12,8 @@ import {
   CAT_PROFISSAO_OPCOES
 } from "@/lib/clientes/opcoes";
 import { validarCpfCnpj } from "@/lib/clientes/validacao";
-import { buscarCep, UF_PARA_ESTADO } from "@/lib/enderecos";
+import { UF_PARA_ESTADO, type CepEncontrado } from "@/lib/enderecos";
+import { CampoCep } from "@/components/campo-cep";
 import { gerarContratoGestaoAction } from "@/app/portal/gestao/actions";
 import { FichaCaptacaoCampos } from "@/components/ficha-captacao-campos";
 import { fichaVazia, type FichaDados } from "@/lib/gestoes/ficha";
@@ -80,6 +81,7 @@ type ClienteLinha = {
 type ImovelDoCliente = {
   id: string;
   tipoImovel: string;
+  cep: string;
   rua: string;
   nPredial: string;
   complemento: string;
@@ -360,10 +362,7 @@ export function PortalGestaoForm({
   // Busca automática de CEP (ViaCEP) pro imóvel — mesmo comportamento já
   // usado em components/portal-compra-venda-form.tsx,
   // components/portal-locacao-form.tsx e components/portal-administracao-form.tsx.
-  async function buscarEnderecoImovelPorCep() {
-    const encontrado = await buscarCep(cep);
-    if (!encontrado) return;
-
+  function preencherEnderecoImovel(encontrado: CepEncontrado) {
     const nomeEstado = UF_PARA_ESTADO[encontrado.uf] ?? "";
     const estadoEncontrado = estados.find((e) => e.nome.toLowerCase() === nomeEstado.toLowerCase());
     const cidadeEncontrada = estadoEncontrado
@@ -372,9 +371,9 @@ export function PortalGestaoForm({
         )
       : undefined;
 
-    setRua(encontrado.logradouro || rua);
-    setBairro(encontrado.bairro || bairro);
-    setEstadoId(estadoEncontrado?.id ?? estadoId);
+    setRua((atual) => encontrado.logradouro || atual);
+    setBairro((atual) => encontrado.bairro || atual);
+    setEstadoId((atual) => estadoEncontrado?.id ?? atual);
     setCidadeId(cidadeEncontrada?.id ?? "");
   }
 
@@ -393,11 +392,7 @@ export function PortalGestaoForm({
 
   // Busca automática de CEP (ViaCEP) — mesmo comportamento do cadastro
   // administrativo (ver components/cliente-form.tsx), aplicado por linha.
-  async function buscarEnderecoClientePorCep(index: number) {
-    const cepDigitado = clientes[index]?.cep ?? "";
-    const encontrado = await buscarCep(cepDigitado);
-    if (!encontrado) return;
-
+  function preencherEnderecoCliente(index: number, encontrado: CepEncontrado) {
     const nomeEstado = UF_PARA_ESTADO[encontrado.uf] ?? "";
     const estadoEncontrado = estados.find((e) => e.nome.toLowerCase() === nomeEstado.toLowerCase());
     const cidadeEncontrada = estadoEncontrado
@@ -494,6 +489,7 @@ export function PortalGestaoForm({
   function limparImovel() {
     setImovelId("");
     setTipoImovel("");
+    setCep("");
     setRua("");
     setNPredial("");
     setComplemento("");
@@ -517,6 +513,7 @@ export function PortalGestaoForm({
     if (!im) return;
     setImovelId(im.id);
     setTipoImovel(im.tipoImovel);
+    setCep(im.cep);
     setRua(im.rua);
     setNPredial(im.nPredial);
     setComplemento(im.complemento);
@@ -728,12 +725,7 @@ export function PortalGestaoForm({
                       mesmo padrão do cadastro de Clientes do admin (19/08/2026). */}
                   <div>
                     <label className={LABEL}>CEP</label>
-                    <input
-                      className={CAMPO}
-                      value={c.cep}
-                      onChange={(e) => atualizarCliente(index, "cep", e.target.value)}
-                      onBlur={() => buscarEnderecoClientePorCep(index)}
-                    />
+                    <CampoCep className={CAMPO} valor={c.cep} aoMudar={(v) => atualizarCliente(index, "cep", v)} aoEncontrar={(e) => preencherEnderecoCliente(index, e)} />
                   </div>
                   <div>
                     <label className={LABEL}>Logradouro</label>
@@ -1069,14 +1061,7 @@ export function PortalGestaoForm({
           </div>
           <div>
             <label className={LABEL}>CEP</label>
-            <input
-              className={imovelId ? CAMPO_TRAVADO : CAMPO}
-              readOnly={Boolean(imovelId)}
-              value={cep}
-              onChange={(e) => setCep(e.target.value)}
-              onBlur={buscarEnderecoImovelPorCep}
-              placeholder="00000-000"
-            />
+            <CampoCep className={imovelId ? CAMPO_TRAVADO : CAMPO} travado={Boolean(imovelId)} valor={cep} aoMudar={setCep} aoEncontrar={preencherEnderecoImovel} />
           </div>
           <div>
             <label className={LABEL}>Rua</label>

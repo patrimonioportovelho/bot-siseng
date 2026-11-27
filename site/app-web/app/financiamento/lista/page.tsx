@@ -110,6 +110,7 @@ export default async function FinanciamentoPage({
             {
               OR: [
                 { clientes: { nome: { contains: termo, mode: "insensitive" as const } } },
+                { parceiros: { nome: { contains: termo, mode: "insensitive" as const } } },
                 { id_legado: { contains: termo, mode: "insensitive" as const } },
                 ...(termoDigitos
                   ? [
@@ -240,7 +241,7 @@ export default async function FinanciamentoPage({
               type="text"
               name="q"
               defaultValue={termo}
-              placeholder="Buscar por cliente, CPF ou Id..."
+              placeholder="Buscar por cliente, CPF, corretor ou Id..."
               className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full sm:w-56 outline-none focus:border-primary"
             />
             <select

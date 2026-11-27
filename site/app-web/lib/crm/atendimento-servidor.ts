@@ -326,8 +326,9 @@ export async function concluirAtendimento(
   // 9) quadro de Clientes: quem quer (ou quer depois) fica "Em atendimento"; quem não quer sai
   if ((desfecho === "quer" || desfecho === "futuro") && !cliente.atendimento_desde) {
     await prisma.clientes.update({ where: { id: clienteId }, data: { atendimento_desde: new Date(), atendimento_por: ator.parceiroId } });
-  } else if (desfecho === "nao_quer" && cliente.atendimento_desde) {
-    await prisma.clientes.update({ where: { id: clienteId }, data: { atendimento_desde: null, atendimento_por: null } });
+  } else if (desfecho === "nao_quer") {
+    if (cliente.atendimento_desde) await prisma.clientes.update({ where: { id: clienteId }, data: { atendimento_desde: null, atendimento_por: null } });
+    await prisma.clientes.updateMany({ where: { id: clienteId, funil_coluna: "atendimento" }, data: { funil_coluna: null, funil_coluna_em: null, funil_coluna_por: null } });
   }
 
   await limparRepasse(ator, clienteId);

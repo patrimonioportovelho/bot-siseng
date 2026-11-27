@@ -27,6 +27,7 @@ export default async function AdministracoesPage({
             {
               OR: [
                 { clientes: { nome: { contains: termo, mode: "insensitive" as const } } },
+                { parceiros: { nome: { contains: termo, mode: "insensitive" as const } } },
                 { imoveis: { endereco: { contains: termo, mode: "insensitive" as const } } },
                 { id_legado: { contains: termo, mode: "insensitive" as const } }
               ]
@@ -84,7 +85,7 @@ export default async function AdministracoesPage({
                 type="text"
                 name="q"
                 defaultValue={termo}
-                placeholder="Buscar por proprietário, imóvel ou Id..."
+                placeholder="Buscar por proprietário, imóvel, corretor ou Id..."
                 className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full sm:w-64 outline-none focus:border-primary"
               />
               <button type="submit" className="text-xs bg-white border border-gray-300 text-gray-600 rounded-lg px-3 py-1.5">

@@ -36,7 +36,8 @@ export default async function ClientesPage({
               OR: [
                 { nome: { contains: termo, mode: "insensitive" as const } },
                 { email: { contains: termo, mode: "insensitive" as const } },
-                { cpf: { contains: termo, mode: "insensitive" as const } }
+                { cpf: { contains: termo, mode: "insensitive" as const } },
+                { parceiros: { nome: { contains: termo, mode: "insensitive" as const } } }
               ]
             }
           ]
@@ -83,7 +84,7 @@ export default async function ClientesPage({
                 type="text"
                 name="q"
                 defaultValue={termo}
-                placeholder="Buscar por nome, e-mail ou CPF..."
+                placeholder="Buscar por nome, e-mail, CPF ou corretor..."
                 className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full sm:w-64 outline-none focus:border-primary"
               />
               <button type="submit" className="text-xs bg-white border border-gray-300 text-gray-600 rounded-lg px-3 py-1.5">

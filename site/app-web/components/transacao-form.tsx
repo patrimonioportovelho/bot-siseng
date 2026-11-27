@@ -450,7 +450,18 @@ export function TransacaoForm({
   const porcImobiliariaTexto = formatPercentual(fracImobiliaria);
   const valorImobiliariaRS = restanteRateioRS * fracImobiliaria;
 
-  const corretores = useMemo(() => parceiros.filter((p) => FUNCOES_CORRETOR.includes(p.funcao ?? "")), [parceiros]);
+  // Corretores em atividade, mais quem JÁ está gravado nesta transação (externo, desligado…): sem isso a tela
+  // mostrava o campo vazio e salvar apagava o corretor, e a conta deixava de bater.
+  const corretores = useMemo(
+    () =>
+      parceiros
+        .filter((p) => FUNCOES_CORRETOR.includes(p.funcao ?? "") || p.id === t?.corretor_proprietario_id || p.id === t?.corretor_contraparte_id)
+        .map((p) => (FUNCOES_CORRETOR.includes(p.funcao ?? "") ? p : { ...p, nome: `${p.nome} (${p.funcao ?? "sem função"})` })),
+    [parceiros, t?.corretor_proprietario_id, t?.corretor_contraparte_id]
+  );
+  // Numa transação já cadastrada, o corretor gravado não é trocado sozinho ao mexer no imóvel ou no cliente.
+  const preencherProprietario = !t?.corretor_proprietario_id;
+  const preencherContraparte = !t?.corretor_contraparte_id;
 
   // Pedido do usuário (16/08/2026): "quando for definir os corretores já
   // venha automaticamente a porcentagem do corretor pré-definida... o
@@ -504,7 +515,7 @@ export function TransacaoForm({
     setListaImovelAberta(false);
     setAdmImovelId("");
     const corretorAuto = i.parceiroId ?? i.proprietarios[0]?.parceiroId ?? "";
-    if (corretorAuto) {
+    if (corretorAuto && preencherProprietario) {
       setCorretorProprietarioId(corretorAuto);
       setPorcCorretorProprietarioTexto(porcPadraoCorretor(corretorAuto, "proprietario"));
     }
@@ -515,7 +526,7 @@ export function TransacaoForm({
     setBuscaAdministracao(labelAdministracao(a));
     setListaAdministracaoAberta(false);
     setImovelId(a.imovelId);
-    if (a.parceiroId) {
+    if (a.parceiroId && preencherProprietario) {
       setCorretorProprietarioId(a.parceiroId);
       setPorcCorretorProprietarioTexto(porcPadraoCorretor(a.parceiroId, "proprietario"));
     }
@@ -526,7 +537,7 @@ export function TransacaoForm({
     setInteressados((atual) => [...atual, c]);
     setBuscaInteressado("");
     setListaInteressadoAberta(false);
-    if (eraOPrimeiro && c.parceiroId) {
+    if (eraOPrimeiro && c.parceiroId && preencherContraparte) {
       setCorretorContraparteId(c.parceiroId);
       setPorcCorretorContraparteTexto(porcPadraoCorretor(c.parceiroId, "interessado"));
     }

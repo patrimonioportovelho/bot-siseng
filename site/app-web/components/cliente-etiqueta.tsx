@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useTransition, type ReactNode } from "reac
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ClienteWhatsapp } from "@/components/cliente-whatsapp";
-import { ETAPA_FUNIL_POR_ID, movimentoPermitido, type EtapaFunilId } from "@/lib/clientes/funil";
+import { ETAPAS_FUNIL, ETAPA_FUNIL_POR_ID, type EtapaFunilId } from "@/lib/clientes/funil";
 import type { VinculoCliente } from "@/lib/clientes/vinculos-servidor";
 import type { ContatoCliente } from "@/app/clientes/funil-actions";
 import { CartaoAtividades, CartaoCanais, ProximaAtividade, type AcoesCrm } from "@/components/cliente-crm";
@@ -31,7 +31,7 @@ export type DadosClienteEtiqueta = {
   etapa: EtapaFunilId;
   motivo: string;
   papeis: string[];
-  voltaParaLeads: boolean;
+  movido: boolean;
   atendimentoDesde: string | null;
   imovelReferencia: string | null;
   // repassado ao corretor e ainda sem movimento dele (só no portal)
@@ -52,7 +52,7 @@ export type CrmDaEtiqueta = {
 };
 
 type Acoes = {
-  mover?: (id: string, destino: EtapaFunilId) => Promise<{ ok: true } | { ok: false; erro: string }>;
+  mover?: (id: string, destino: EtapaFunilId | "auto") => Promise<{ ok: true } | { ok: false; erro: string }>;
   registrarContato: (
     clienteId: string,
     dados: { tipo: string; resultado: string | null; nota: string | null }
@@ -133,10 +133,7 @@ export function ClienteEtiqueta({
   const [nota, setNota] = useState("");
   const [salvando, setSalvando] = useState(false);
 
-  const podeAtender = movimentoPermitido({ etapa: d.etapa, motivo: d.motivo, papeis: d.papeis, voltaParaLeads: d.voltaParaLeads }, "atendimento");
-  const podeVoltar = movimentoPermitido({ etapa: d.etapa, motivo: d.motivo, papeis: d.papeis, voltaParaLeads: d.voltaParaLeads }, "leads");
-
-  async function mover(destino: EtapaFunilId) {
+  async function mover(destino: EtapaFunilId | "auto") {
     setErro("");
     if (!acoes.mover) return;
     const r = await acoes.mover(d.id, destino);
@@ -223,14 +220,21 @@ export function ClienteEtiqueta({
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            {!modoCorretor && d.etapa === "leads" && podeAtender.ok && (
-              <button type="button" onClick={() => void mover("atendimento")} className="text-xs bg-amber-600 text-white rounded-lg px-3 py-1.5 font-semibold hover:opacity-90">
-                Marcar em atendimento
-              </button>
+            {!modoCorretor && acoes.mover && (
+              <label className="text-[11px] text-gray-500 flex items-center gap-1.5">
+                Coluna no quadro
+                <select value={d.etapa} onChange={(e) => void mover(e.target.value as EtapaFunilId)} className="text-xs border border-gray-300 rounded-lg px-2 py-1.5 bg-white font-semibold text-gray-700">
+                  {ETAPAS_FUNIL.map((x) => (
+                    <option key={x.id} value={x.id}>
+                      {x.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
             )}
-            {!modoCorretor && d.etapa === "atendimento" && podeVoltar.ok && (
-              <button type="button" onClick={() => void mover("leads")} className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 font-semibold text-gray-600">
-                Voltar para Leads
+            {!modoCorretor && d.movido && (
+              <button type="button" onClick={() => void mover("auto")} className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 font-semibold text-gray-600" title="O sistema volta a escolher a coluna">
+                Voltar ao automático
               </button>
             )}
             {!modoCorretor && (

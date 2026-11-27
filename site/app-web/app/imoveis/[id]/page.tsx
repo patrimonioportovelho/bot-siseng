@@ -47,7 +47,8 @@ export default async function ImovelDetalhePage({
       select: { id: true, nome: true, id_legado: true, parceiro_id: true }
     }),
     prisma.parceiros.findMany({
-      where: { funcao: { in: FUNCOES_CAPTADOR } },
+      // quem está gravado continua na lista (mesmo externo ou desligado), senão salvar apagaria o corretor
+      where: { OR: [{ funcao: { in: FUNCOES_CAPTADOR } }, { imoveis: { some: { id } } }] },
       orderBy: { nome: "asc" },
       select: { id: true, nome: true }
     }),

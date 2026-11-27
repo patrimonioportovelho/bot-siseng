@@ -60,7 +60,7 @@ export default async function MarketingDetalhePage({
 
   const [corretores, administrativos, empreendimentos, imovel, imoveis] = await Promise.all([
     prisma.parceiros.findMany({
-      where: { funcao: "Corretor", status_funcao: "Ativo" },
+      where: { OR: [{ funcao: "Corretor", status_funcao: "Ativo" }, { marketing_ordens_marketing_ordens_solicitante_parceiro_idToparceiros: { some: { id } } }] },
       orderBy: { nome: "asc" },
       select: { id: true, nome: true }
     }),

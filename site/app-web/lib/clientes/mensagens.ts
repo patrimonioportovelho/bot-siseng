@@ -204,7 +204,9 @@ const SUGERIDO: Record<EtapaFunilId, string> = {
   negocio: "neg_parabens",
   proprietarios: "prop_checkin",
   inquilinos: "inq_relacionamento",
-  compradores: "comp_posvenda"
+  // a coluna Compradores agora é de quem está procurando comprar
+  compradores: "atend_acompanhar",
+  concluidos: "comp_posvenda"
 };
 
 // Modelo sugerido pela etapa; um lead que já foi contactado e não respondeu ganha o "retomar".

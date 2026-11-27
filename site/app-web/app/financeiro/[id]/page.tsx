@@ -86,7 +86,7 @@ export default async function MovimentacaoPage({
       select: { id: true, nome: true }
     }),
     prisma.parceiros.findMany({
-      where: { status_funcao: "Ativo", funcao: { not: "Recrutados" } },
+      where: { OR: [{ status_funcao: "Ativo", funcao: { not: "Recrutados" } }, { movimentacoes: { some: { id } } }] },
       orderBy: { nome: "asc" },
       select: { id: true, nome: true }
     }),

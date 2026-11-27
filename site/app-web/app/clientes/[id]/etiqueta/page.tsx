@@ -70,7 +70,7 @@ export default async function EtiquetaClientePage({ params, searchParams }: { pa
     etapa: etapa.derivacao.etapa,
     motivo: etapa.derivacao.motivo,
     papeis: etapa.derivacao.papeis,
-    voltaParaLeads: etapa.derivacao.voltaParaLeads,
+    movido: etapa.derivacao.manual,
     atendimentoDesde: etapa.atendimentoDesde ? etapa.atendimentoDesde.toISOString() : null,
     imovelReferencia: vinculos.imovelReferencia
   };

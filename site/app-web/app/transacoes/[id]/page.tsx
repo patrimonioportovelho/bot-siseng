@@ -68,7 +68,14 @@ export default async function TransacaoDetalhePage({
       }
     }),
     prisma.parceiros.findMany({
-      where: { funcao: { not: "Recrutados" } },
+      where: {
+        OR: [
+          { funcao: { not: "Recrutados" } },
+          { transacoes_transacoes_corretor_proprietario_idToparceiros: { some: { id } } },
+          { transacoes_transacoes_corretor_contraparte_idToparceiros: { some: { id } } },
+          { transacoes_transacoes_parceiro_externo_idToparceiros: { some: { id } } }
+        ]
+      },
       orderBy: { nome: "asc" },
       select: { id: true, nome: true, funcao: true, porc_proprietario: true, porc_interessado: true }
     }),

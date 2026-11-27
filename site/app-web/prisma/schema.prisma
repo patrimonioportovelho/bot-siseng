@@ -307,6 +307,10 @@ model clientes {
   repasse_por                                            String?       @db.Uuid
   atendimento_desde                                      DateTime?     @db.Timestamptz(6)
   atendimento_por                                        String?       @db.Uuid
+  // coluna do Kanban escolhida à mão (vazio = calculada)
+  funil_coluna                                           String?
+  funil_coluna_em                                        DateTime?     @db.Timestamptz(6)
+  funil_coluna_por                                       String?       @db.Uuid
   created_at                                             DateTime      @default(now()) @db.Timestamptz(6)
   updated_at                                             DateTime      @default(now()) @db.Timestamptz(6)
   adm_imoveis                                            adm_imoveis[]

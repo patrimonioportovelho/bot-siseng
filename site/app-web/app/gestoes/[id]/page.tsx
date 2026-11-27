@@ -60,7 +60,8 @@ export default async function GestaoDetalhePage({
 
   const [parceiros, ultimoDocumento, clientes] = await Promise.all([
     prisma.parceiros.findMany({
-      where: { funcao: "Corretor", status_funcao: "Ativo" },
+      // quem está gravado continua na lista (mesmo externo ou desligado), senão salvar apagaria o corretor
+      where: { OR: [{ funcao: "Corretor", status_funcao: "Ativo" }, { gestoes: { some: { id } } }] },
       orderBy: { nome: "asc" },
       select: { id: true, nome: true }
     }),

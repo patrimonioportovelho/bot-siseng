@@ -58,7 +58,7 @@ export default async function PortalEtiquetaClientePage({ params, searchParams }
     etapa: etapa.derivacao.etapa,
     motivo: etapa.derivacao.motivo,
     papeis: etapa.derivacao.papeis,
-    voltaParaLeads: etapa.derivacao.voltaParaLeads,
+    movido: etapa.derivacao.manual,
     atendimentoDesde: etapa.atendimentoDesde ? etapa.atendimentoDesde.toISOString() : null,
     imovelReferencia: vinculos.imovelReferencia,
     repasseDesde: cliente.repasse_desde ? cliente.repasse_desde.toISOString() : null

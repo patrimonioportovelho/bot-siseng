@@ -6,9 +6,9 @@ export const dynamic = "force-dynamic";
 export default async function TransacoesVendaPage({
   searchParams
 }: {
-  searchParams: Promise<{ q?: string; excluido?: string; erro?: string }>;
+  searchParams: Promise<{ q?: string; corretor?: string; excluido?: string; erro?: string }>;
 }) {
-  const { q, excluido, erro } = await searchParams;
+  const { q, corretor, excluido, erro } = await searchParams;
 
   return (
     <div>
@@ -23,7 +23,7 @@ export default async function TransacoesVendaPage({
           Cadastro apagado com sucesso.
         </div>
       )}
-      <TransacoesLista tipo="Compra e Venda" q={q} novoHref="/transacoes/novo?tipo=Compra%20e%20Venda" />
+      <TransacoesLista tipo="Compra e Venda" q={q} corretor={corretor} novoHref="/transacoes/novo?tipo=Compra%20e%20Venda" />
     </div>
   );
 }

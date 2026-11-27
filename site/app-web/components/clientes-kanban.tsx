@@ -6,14 +6,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { DockArraste, useAutoRolagemArraste } from "@/components/dock-arraste";
 import { useQuadroOtimista } from "@/components/use-quadro-otimista";
-import { ETAPAS_FUNIL, ETAPA_FUNIL_POR_ID, movimentoPermitido, type EtapaFunilId } from "@/lib/clientes/funil";
+import { ETAPAS_FUNIL, ETAPA_FUNIL_POR_ID, type EtapaFunilId } from "@/lib/clientes/funil";
 import type { ClienteFunil } from "@/lib/clientes/funil-servidor";
 
-// Quadro (Kanban) de Clientes. A etapa de cada cliente é calculada no servidor a partir dos
-// vínculos, contratos, propostas e avaliações (ver lib/clientes/funil.ts), então o quadro e a
-// lista concordam sempre; a tela se atualiza sozinha a cada 30 s e ao voltar para a aba, e um
-// cliente novo (por exemplo, cadastrado pelo corretor no portal) aparece em Leads. Só dá para
-// arrastar entre Leads e Em atendimento; as outras colunas são automáticas.
+// Quadro (Kanban) de Clientes. A coluna é calculada no servidor pelo que está ativo (ver lib/clientes/funil.ts) e
+// quem edita Clientes pode arrastar o cartão para qualquer uma. A tela se atualiza sozinha a cada 30 s e ao voltar
+// para a aba, e um cliente novo (por exemplo, cadastrado pelo corretor no portal) aparece em Leads.
 
 const POR_COLUNA_INICIAL = 40;
 const ATUALIZAR_A_CADA_MS = 30_000;
@@ -38,13 +36,12 @@ export function ClientesKanban({
 
   // O card muda de coluna na hora e a gravação roda em segundo plano (mesmo comportamento dos
   // outros quadros); se o servidor recusar, o card volta e o motivo aparece.
-  const { itens: cards, moverPara, erro, limparErro } = useQuadroOtimista<ClienteFunil>(cardsServidor, (mover ?? (async () => ({ ok: false, erro: "Sem permissão para mover." }))) as (id: string, destino: string) => Promise<{ ok: boolean; erro?: string }>, (c, destino) =>
-    destino === "atendimento"
-      ? { motivo: "Marcado em atendimento", voltaParaLeads: true, atendimentoDesde: new Date().toISOString() }
-      : { motivo: "Apenas cadastrado", voltaParaLeads: false, atendimentoDesde: null }
-  );
+  const { itens: cards, moverPara, erro, limparErro } = useQuadroOtimista<ClienteFunil>(cardsServidor, (mover ?? (async () => ({ ok: false, erro: "Sem permissão para mover." }))) as (id: string, destino: string) => Promise<{ ok: boolean; erro?: string }>, (c, destino) => ({
+    movido: destino !== c.colunaAutomatica,
+    motivo: destino === c.colunaAutomatica ? "Posição do sistema" : "Movido para cá agora",
+    atendimentoDesde: destino === "atendimento" ? new Date().toISOString() : null
+  }));
 
-  const [avisoRegra, setAvisoRegra] = useState<string | null>(null);
   const [arrastandoId, setArrastandoId] = useState<string | null>(null);
   useAutoRolagemArraste(arrastandoId !== null);
   const [colunaAlvo, setColunaAlvo] = useState<EtapaFunilId | null>(null);
@@ -75,7 +72,7 @@ export function ClientesKanban({
     const termo = busca.trim().toLowerCase();
     const digitos = busca.replace(/\D/g, "");
     return cards.filter((c) => {
-      if (termo && !c.nome.toLowerCase().includes(termo) && !(c.idLegado ?? "").toLowerCase().includes(termo) && !(digitos && (c.telefoneDigitos ?? "").includes(digitos))) return false;
+      if (termo && !c.nome.toLowerCase().includes(termo) && !(c.idLegado ?? "").toLowerCase().includes(termo) && !(c.corretorNome ?? "").toLowerCase().includes(termo) && !(digitos && (c.telefoneDigitos ?? "").includes(digitos))) return false;
       if (filtroCorretor === "__sem") {
         if (c.corretorNome) return false;
       } else if (filtroCorretor === "__inativo") {
@@ -101,12 +98,6 @@ export function ClientesKanban({
     setArrastandoId(null);
     const c = cards.find((x) => x.id === id);
     if (!c || c.coluna === destino) return;
-    const regra = movimentoPermitido({ etapa: c.coluna, motivo: c.motivo, papeis: c.papeis, voltaParaLeads: c.voltaParaLeads }, destino);
-    if (!regra.ok) {
-      setAvisoRegra(regra.erro);
-      return;
-    }
-    setAvisoRegra(null);
     moverPara(id, destino);
   }
 
@@ -117,7 +108,7 @@ export function ClientesKanban({
           type="text"
           value={busca}
           onChange={(e) => setBusca(e.target.value)}
-          placeholder="Buscar por nome, Id ou telefone..."
+          placeholder="Buscar por nome, Id, telefone ou corretor..."
           className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full sm:w-64 outline-none focus:border-primary bg-white"
         />
         {!modoCorretor && (
@@ -137,15 +128,12 @@ export function ClientesKanban({
         <span className="text-[11px] text-gray-400 ml-auto">{filtrados.length} de {cards.length} clientes · atualiza sozinho</span>
       </div>
 
-      {(erro || avisoRegra) && (
+      {erro && (
         <div className="bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg px-3 py-2 flex items-center justify-between gap-2">
-          <span>{erro ?? avisoRegra}</span>
+          <span>{erro}</span>
           <button
             type="button"
-            onClick={() => {
-              limparErro();
-              setAvisoRegra(null);
-            }}
+            onClick={limparErro}
             className="text-red-400 hover:text-red-600"
           >
             ×
@@ -162,7 +150,7 @@ export function ClientesKanban({
 
       <DockArraste
         ativo={!modoCorretor && arrastandoId !== null}
-        colunas={ETAPAS_FUNIL.filter((e) => e.manual).map((c) => ({ id: c.id, label: c.label, cor: c.cor }))}
+        colunas={ETAPAS_FUNIL.map((c) => ({ id: c.id, label: c.label, cor: c.cor }))}
         aoSoltar={(id) => aoSoltar(id as EtapaFunilId)}
       />
       <div className="flex flex-col md:flex-row gap-3 md:overflow-x-auto pb-2">
@@ -191,7 +179,6 @@ export function ClientesKanban({
                   <span className="text-[11px] font-semibold shrink-0">{doGrupo.length}</span>
                 </div>
                 <div className="text-[10px] opacity-80 leading-snug mt-0.5">{coluna.dica}</div>
-                {!coluna.manual && !modoCorretor && <div className="text-[10px] opacity-60 mt-0.5">Etapa automática</div>}
               </div>
 
               <div className="flex flex-col gap-2 md:max-h-[68vh] md:overflow-y-auto">
@@ -252,7 +239,10 @@ const Cartao = memo(function Cartao({
           {emAtendimento !== null ? `${emAtendimento}d` : `${diasCadastro}d`}
         </span>
       </div>
-      <div className="text-[10px] text-gray-500 leading-snug">{c.motivo}</div>
+      <div className="text-[10px] text-gray-500 leading-snug">
+        {c.movido && <span title="Posição escolhida arrastando o cartão">✋ </span>}
+        {c.motivo}
+      </div>
       {outrosPapeis.length > 0 && (
         <div className="flex items-center gap-1 flex-wrap">
           {outrosPapeis.map((p) => (

@@ -42,7 +42,7 @@ export default async function MetaDetalhePage({
   const [meta, corretores, lojas] = await Promise.all([
     prisma.metas.findUnique({ where: { id }, include: { parceiros: true, lojas: true } }),
     prisma.parceiros.findMany({
-      where: { funcao: { in: FUNCOES_CORRETOR }, status_funcao: "Ativo" },
+      where: { OR: [{ funcao: { in: FUNCOES_CORRETOR }, status_funcao: "Ativo" }, { metas: { some: { id } } }] },
       orderBy: { nome: "asc" },
       select: { id: true, nome: true, funcao: true }
     }),

@@ -3,36 +3,23 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { logAlteracao, requireEdicao } from "@/lib/auth";
-import { etapaDoCliente } from "@/lib/clientes/funil-servidor";
-import { movimentoPermitido, type EtapaFunilId } from "@/lib/clientes/funil";
+import { moverCliente } from "@/lib/clientes/funil-mover";
+import type { EtapaFunilId } from "@/lib/clientes/funil";
 import { FUNCOES_CORRETOR } from "@/lib/transacoes/opcoes";
 import { registrarAviso } from "@/lib/avisos-equipe";
 
 export type ContatoCliente = { id: string; tipo: string; resultado: string | null; nota: string | null; data: string; por: string | null };
 
-// Mover um card no quadro de Clientes. Só Leads <-> Em atendimento muda algo: as outras etapas
-// são calculadas pelos vínculos, contratos e propostas. Devolve { ok: false, erro } em vez de lançar
-// (em produção o Next esconde a mensagem de um erro lançado).
-export async function moverClienteFunilAction(id: string, destino: EtapaFunilId): Promise<{ ok: true } | { ok: false; erro: string }> {
+// Mover um card no quadro de Clientes (livre; a regra fica em lib/clientes/funil-mover.ts).
+export async function moverClienteFunilAction(id: string, destino: EtapaFunilId | "auto"): Promise<{ ok: true } | { ok: false; erro: string }> {
   const admin = await requireEdicao("clientes");
-  const atual = await etapaDoCliente(id);
-  if (!atual) return { ok: false, erro: "Cliente não encontrado." };
-  const regra = movimentoPermitido(atual.derivacao, destino);
-  if (!regra.ok) return regra;
-  if (destino === atual.derivacao.etapa) return { ok: true };
-
-  await prisma.clientes.update({
-    where: { id },
-    data: destino === "atendimento" ? { atendimento_desde: new Date(), atendimento_por: admin.parceiroId } : { atendimento_desde: null, atendimento_por: null }
-  });
-  await logAlteracao({
-    entidadeTipo: "clientes",
-    entidadeId: id,
-    acao: "mover_funil_cliente",
-    dadosAntes: { etapa: atual.derivacao.etapa },
-    dadosDepois: { etapa: destino }
-  }).catch(() => undefined);
-  revalidatePath("/clientes");
+  const r = await moverCliente(admin.parceiroId, id, destino);
+  if (!r.ok) return r;
+  if (r.antes !== destino) {
+    await logAlteracao({ entidadeTipo: "clientes", entidadeId: id, acao: "mover_funil_cliente", dadosAntes: { etapa: r.antes }, dadosDepois: { etapa: destino } }).catch(() => undefined);
+    revalidatePath("/clientes");
+    revalidatePath("/clientes/funil");
+  }
   return { ok: true };
 }
 

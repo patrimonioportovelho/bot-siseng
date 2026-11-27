@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { formatMoeda, formatDataCalendario, statusTone, resolverPeriodo } from "@/lib/format";
 import { buscarResumoHonorarios } from "@/lib/financeiro/honorario-lancado";
 import { SeloHonorario } from "@/components/selo-honorario";
+import { buscaDeTransacoes, corretoresComTransacao, ehId, transacoesDoCorretor } from "@/lib/busca/transacoes";
 
 export const dynamic = "force-dynamic";
 
@@ -18,9 +19,10 @@ const PAGE_SIZE = 50;
 export default async function TransacoesPeriodoPage({
   searchParams
 }: {
-  searchParams: Promise<{ periodo?: string; inicio?: string; fim?: string; q?: string; page?: string }>;
+  searchParams: Promise<{ periodo?: string; inicio?: string; fim?: string; q?: string; corretor?: string; page?: string }>;
 }) {
-  const { periodo, inicio: inicioParam, fim: fimParam, q, page: pageParam } = await searchParams;
+  const { periodo, inicio: inicioParam, fim: fimParam, q, corretor, page: pageParam } = await searchParams;
+  const corretorId = ehId(corretor) ? corretor : "";
   const periodoResolvido = resolverPeriodo({ periodo, inicio: inicioParam, fim: fimParam });
   const { inicio, fimExclusivo } = periodoResolvido;
   const termo = (q ?? "").trim();
@@ -29,24 +31,10 @@ export default async function TransacoesPeriodoPage({
   const where = {
     excluido: false,
     data_assinatura: { gte: inicio, lt: fimExclusivo },
-    ...(termo
-      ? {
-          OR: [
-            { imoveis: { endereco: { contains: termo, mode: "insensitive" as const } } },
-            {
-              clientes_transacoes_cliente_idToclientes: { nome: { contains: termo, mode: "insensitive" as const } }
-            },
-            {
-              clientes_transacoes_cliente_contraparte_idToclientes: {
-                nome: { contains: termo, mode: "insensitive" as const }
-              }
-            },
-            { id_legado: { contains: termo, mode: "insensitive" as const } }
-          ]
-        }
-      : {})
+    AND: [...(termo ? [buscaDeTransacoes(termo)] : []), ...(corretorId ? [transacoesDoCorretor(corretorId)] : [])]
   };
 
+  const [corretores, soma] = await Promise.all([corretoresComTransacao(), prisma.transacoes.aggregate({ where, _sum: { valor_transacao: true } })]);
   const [transacoes, total] = await Promise.all([
     prisma.transacoes.findMany({
       where,
@@ -68,6 +56,7 @@ export default async function TransacoesPeriodoPage({
   // Preserva o período atual em qualquer link/paginação desta tela.
   const paramsPeriodo: Record<string, string | undefined> = {
     periodo: periodoResolvido.preset,
+    corretor: corretorId || undefined,
     inicio: periodoResolvido.preset === "personalizado" ? periodoResolvido.inicioTexto : undefined,
     fim: periodoResolvido.preset === "personalizado" ? periodoResolvido.fimTexto : undefined
   };
@@ -91,7 +80,10 @@ export default async function TransacoesPeriodoPage({
 
       <div className="bg-white border border-gray-200 rounded-xl p-4">
         <div className="flex items-center justify-between mb-1 flex-wrap gap-2">
-          <div className="text-sm font-bold text-gray-800">Transações do período ({total})</div>
+          <div className="text-sm font-bold text-gray-800">
+            Transações do período ({total})
+            <span className="ml-2 text-xs font-semibold text-gray-500">Valor somado: {formatMoeda(soma._sum.valor_transacao ?? 0)}</span>
+          </div>
         </div>
         <p className="text-[11px] text-gray-400 mb-3">
           Período: {formatDataCalendario(inicio)} até {formatDataCalendario(new Date(fimExclusivo.getTime() - 1))}, pela Data de
@@ -110,9 +102,17 @@ export default async function TransacoesPeriodoPage({
             type="text"
             name="q"
             defaultValue={termo}
-            placeholder="Buscar por imóvel, cliente ou Id..."
+            placeholder="Buscar por imóvel, cliente, corretor ou Id..."
             className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full sm:w-64 outline-none focus:border-primary"
           />
+          <select name="corretor" defaultValue={corretorId} className="text-xs border border-gray-300 rounded-lg px-2 py-1.5 bg-white outline-none focus:border-primary max-w-full">
+            <option value="">Todos os corretores</option>
+            {corretores.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.nome}
+              </option>
+            ))}
+          </select>
           <button type="submit" className="text-xs bg-white border border-gray-300 text-gray-600 rounded-lg px-3 py-1.5">
             Buscar
           </button>

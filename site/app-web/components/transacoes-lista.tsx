@@ -16,6 +16,7 @@ import {
 import { ehNovo, SELO_NOVO_CLASSES, LINHA_NOVA_CLASSES } from "@/lib/novo";
 import { buscarResumoHonorarios } from "@/lib/financeiro/honorario-lancado";
 import { SeloHonorario } from "@/components/selo-honorario";
+import { buscaDeTransacoes, corretoresComTransacao, ehId, transacoesDoCorretor } from "@/lib/busca/transacoes";
 
 // Elaboração de Contrato de Locação precisa aparecer primeiro no dashboard
 // de Locação (é o que precisa de atenção pra virar contrato) — o resto dos
@@ -31,12 +32,23 @@ const TONE_CLASSES: Record<Tone, string> = {
   cancelada: "bg-red-50 text-red-600 border-red-200"
 };
 
+// Quem são os corretores gravados no contrato (aparece abaixo do imóvel).
+function LinhaCorretores({ nomes }: { nomes: (string | undefined)[] }) {
+  const unicos = [...new Set(nomes.filter((n): n is string => !!n))];
+  return (
+    <span className={`block truncate text-[10px] ${unicos.length ? "text-gray-400" : "text-amber-600"}`} title={unicos.join(" · ")}>
+      {unicos.length ? `Corretor: ${unicos.map((n) => n.split(" ").slice(0, 2).join(" ")).join(" · ")}` : "Sem corretor informado"}
+    </span>
+  );
+}
+
 // Listagem compartilhada por /transacoes/locacao e /transacoes/venda — cada
 // uma chama isso com o Tipo já fixo (menu separado, sem aba de trocar tipo).
 // Agrupa por Loja e, dentro da loja, por Status (mesmo padrão da tela de
 // Administrações). Linha inteira é clicável e abre o detalhe.
-export async function TransacoesLista({ tipo, q, novoHref }: { tipo: "Locação" | "Compra e Venda"; q?: string; novoHref: string }) {
+export async function TransacoesLista({ tipo, q, corretor, novoHref }: { tipo: "Locação" | "Compra e Venda"; q?: string; corretor?: string; novoHref: string }) {
   const termo = (q ?? "").trim();
+  const corretorId = ehId(corretor) ? corretor : "";
   const somenteLocacao = tipo === "Locação";
   const lojasFiltro = await lojasSelecionadas();
 
@@ -48,29 +60,8 @@ export async function TransacoesLista({ tipo, q, novoHref }: { tipo: "Locação"
     // null" que whereLojaFiltro usa pros models onde loja é opcional.
     AND: [
       whereLojaFiltroObrigatorio(lojasFiltro),
-      ...(termo
-        ? [
-            {
-              OR: [
-                { imoveis: { endereco: { contains: termo, mode: "insensitive" as const } } },
-                { imoveis: { inscricao: { contains: termo, mode: "insensitive" as const } } },
-                {
-                  imoveis: {
-                    imoveis_proprietarios: {
-                      some: { clientes: { nome: { contains: termo, mode: "insensitive" as const } } }
-                    }
-                  }
-                },
-                {
-                  transacoes_contrapartes: {
-                    some: { clientes: { nome: { contains: termo, mode: "insensitive" as const } } }
-                  }
-                },
-                { id_legado: { contains: termo, mode: "insensitive" as const } }
-              ]
-            }
-          ]
-        : [])
+      ...(termo ? [buscaDeTransacoes(termo)] : []),
+      ...(corretorId ? [transacoesDoCorretor(corretorId)] : [])
     ]
   };
 
@@ -102,9 +93,14 @@ export async function TransacoesLista({ tipo, q, novoHref }: { tipo: "Locação"
     include: {
       lojas: true,
       imoveis: { include: { imoveis_proprietarios: { include: { clientes: true }, orderBy: { ordem: "asc" } } } },
-      transacoes_contrapartes: { include: { clientes: true }, orderBy: { ordem: "asc" } }
+      transacoes_contrapartes: { include: { clientes: true }, orderBy: { ordem: "asc" } },
+      parceiros_transacoes_corretor_proprietario_idToparceiros: { select: { nome: true } },
+      parceiros_transacoes_corretor_contraparte_idToparceiros: { select: { nome: true } }
     }
   });
+  const corretores = await corretoresComTransacao(tipo);
+  const filtrando = !!termo || !!corretorId;
+  const valorTotal = transacoes.reduce((soma, t) => soma + Number(t.valor_transacao), 0);
 
   // Situação do honorário no Financeiro (Não lançado / Pendente / Parcial /
   // Pago) — uma consulta só pra lista inteira.
@@ -146,6 +142,7 @@ export async function TransacoesLista({ tipo, q, novoHref }: { tipo: "Locação"
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
         <div className="text-sm font-bold text-gray-800">
           {tipo} ({transacoes.length})
+          {filtrando && <span className="ml-2 text-xs font-semibold text-gray-500">Valor somado: {formatMoeda(valorTotal)}</span>}
         </div>
         <div className="flex gap-2 flex-wrap">
           <form className="flex gap-2 flex-wrap">
@@ -153,9 +150,17 @@ export async function TransacoesLista({ tipo, q, novoHref }: { tipo: "Locação"
               type="text"
               name="q"
               defaultValue={termo}
-              placeholder="Buscar por imóvel, cliente ou Id..."
+              placeholder="Buscar por imóvel, cliente, corretor ou Id..."
               className="text-xs border border-gray-300 rounded-lg px-3 py-1.5 w-full sm:w-64 outline-none focus:border-primary"
             />
+            <select name="corretor" defaultValue={corretorId} className="text-xs border border-gray-300 rounded-lg px-2 py-1.5 bg-white outline-none focus:border-primary max-w-full">
+              <option value="">Todos os corretores</option>
+              {corretores.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.nome}
+                </option>
+              ))}
+            </select>
             <button type="submit" className="text-xs bg-white border border-gray-300 text-gray-600 rounded-lg px-3 py-1.5">
               Buscar
             </button>
@@ -284,8 +289,9 @@ export async function TransacoesLista({ tipo, q, novoHref }: { tipo: "Locação"
                               )}
                             </span>
                           )}
-                          <span className={`text-xs truncate ${situacao === "vencido" ? "text-red-700" : "text-gray-500"}`}>
-                            {somenteLocacao ? t.imoveis?.endereco ?? "—" : formatInscricao(t.imoveis?.inscricao) || "—"}
+                          <span className={`text-xs min-w-0 ${situacao === "vencido" ? "text-red-700" : "text-gray-500"}`}>
+                            <span className="block truncate">{somenteLocacao ? t.imoveis?.endereco ?? "—" : formatInscricao(t.imoveis?.inscricao) || "—"}</span>
+                            <LinhaCorretores nomes={[t.parceiros_transacoes_corretor_proprietario_idToparceiros?.nome, t.parceiros_transacoes_corretor_contraparte_idToparceiros?.nome]} />
                           </span>
                           <span
                             className={`text-xs font-medium truncate ${situacao === "vencido" ? "text-red-800" : "text-gray-800"}`}

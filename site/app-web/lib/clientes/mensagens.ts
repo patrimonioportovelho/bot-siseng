@@ -113,6 +113,73 @@ export const MODELOS_MENSAGEM_CLIENTE: ModeloMensagemCliente[] = [
     titulo: "Pedir indicação",
     texto: `Oi, {nome}! ${ASSINATURA} Se você conhece alguém que está pensando em comprar, vender ou alugar um imóvel, ficarei muito grato(a) pela indicação. Posso cuidar com o mesmo carinho!`
   },
+  // ---------------- Roteiro de atendimento (CRM) ----------------
+  {
+    id: "roteiro_sem_resposta",
+    grupo: "Roteiro de atendimento",
+    titulo: "Tentativa sem resposta",
+    texto: `Oi, {nome}, tudo bem? ${ASSINATURA} Tentei falar com você e não consegui. Qual o melhor horário para eu te ligar? Se preferir, podemos conversar por aqui mesmo.`
+  },
+  {
+    id: "roteiro_reativacao",
+    grupo: "Roteiro de atendimento",
+    titulo: "Reativação de lead antigo",
+    texto: `Oi, {nome}! ${ASSINATURA} Faz um tempo que conversamos sobre imóvel. Você ainda está procurando, ou posso atualizar o seu cadastro?`
+  },
+  {
+    id: "roteiro_pos_venda",
+    grupo: "Roteiro de atendimento",
+    titulo: "Pós-venda: como está a casa nova",
+    texto: `Oi, {nome}! ${ASSINATURA} Passando para saber como está a casa nova. Ficou tudo certo com a documentação? Se precisar de algo, conte comigo.`
+  },
+  {
+    id: "roteiro_captacao",
+    grupo: "Roteiro de atendimento",
+    titulo: "Captação: proprietário",
+    texto: `Oi, {nome}! ${ASSINATURA} O seu imóvel {imovel} ainda está disponível? Se pensa em vender ou alugar, posso fazer uma avaliação sem compromisso.`
+  },
+  {
+    id: "roteiro_sair_aluguel",
+    grupo: "Roteiro de atendimento",
+    titulo: "Inquilino: sair do aluguel / simulação",
+    texto: `Oi, {nome}! ${ASSINATURA} Já pensou em sair do aluguel? Hoje dá para comprar com uma parcela parecida com o aluguel. Quer que eu faça uma simulação para você, sem compromisso?`
+  },
+  {
+    id: "roteiro_envio_opcoes",
+    grupo: "Roteiro de atendimento",
+    titulo: "Envio de opções de imóveis",
+    texto: `Oi, {nome}! ${ASSINATURA} Separei algumas opções com o perfil que conversamos: [links dos imóveis]. Qual delas você gostaria de visitar?`
+  },
+  {
+    id: "roteiro_retorno",
+    grupo: "Roteiro de atendimento",
+    titulo: "Retorno combinado",
+    texto: `Oi, {nome}! ${ASSINATURA} Como combinamos, estou retornando. Podemos conversar agora ou prefere outro horário?`
+  },
+  {
+    id: "roteiro_aniversario",
+    grupo: "Roteiro de atendimento",
+    titulo: "Aniversário do cliente",
+    texto: `{nome}, feliz aniversário! 🎉 ${ASSINATURA} Desejo um novo ciclo cheio de saúde e conquistas. Um grande abraço!`
+  },
+  {
+    id: "roteiro_aniversario_casa",
+    grupo: "Roteiro de atendimento",
+    titulo: "Aniversário da casa",
+    texto: `Oi, {nome}! 🏠 ${ASSINATURA} Está fazendo um ano da sua conquista! Como está sendo morar aí? Foi um prazer fazer parte desse momento.`
+  },
+  {
+    id: "roteiro_indicacao",
+    grupo: "Roteiro de atendimento",
+    titulo: "Pedido de indicação",
+    texto: `Oi, {nome}! ${ASSINATURA} Se alguém da sua família ou do trabalho estiver procurando imóvel, a gente cuida com o mesmo carinho. Pode me passar o contato?`
+  },
+  {
+    id: "roteiro_agradecer_indicacao",
+    grupo: "Roteiro de atendimento",
+    titulo: "Agradecimento por indicação",
+    texto: `Oi, {nome}! ${ASSINATURA} Muito obrigado pela indicação! Vou cuidar muito bem de quem você indicou e te conto como foi.`
+  },
   // ---------------- Livre ----------------
   {
     id: "livre",

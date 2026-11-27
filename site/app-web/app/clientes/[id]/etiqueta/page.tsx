@@ -8,10 +8,12 @@ import { acessosDaSessao, nivelEmModulos } from "@/lib/acessos";
 import { FUNCOES_CORRETOR } from "@/lib/transacoes/opcoes";
 import { formatTelefone, hojeInputDate } from "@/lib/format";
 import { carregarCrmDoCliente } from "@/lib/crm/servidor";
+import { carregarAtendimentos } from "@/lib/crm/atendimento-servidor";
+import { segmentoDoCliente } from "@/lib/crm/roteiro";
 import { etapaDoCliente } from "@/lib/clientes/funil-servidor";
 import { carregarVinculosCliente } from "@/lib/clientes/vinculos-servidor";
 import { moverClienteFunilAction, registrarContatoClienteAction, transferirClienteAction } from "../../funil-actions";
-import { agendarAtividadeAction, concluirAtividadeAction, optOutAction, removerAtividadeAction, salvarCanaisAction, semProximaAtividadeAction } from "../../crm-actions";
+import { agendarAtividadeAction, concluirAtividadeAction, optOutAction, removerAtividadeAction, concluirAtendimentoAction, descartarAtendimentoAction, salvarAtendimentoAction, salvarCanaisAction, semProximaAtividadeAction } from "../../crm-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +23,7 @@ export default async function EtiquetaClientePage({ params }: { params: Promise<
   const sessao = await requireAdminSession();
   const { id } = await params;
 
-  const [cliente, etapa, vinculos, contatos, remetentes, corretoresAtivos, crmCliente] = await Promise.all([
+  const [cliente, etapa, vinculos, contatos, remetentes, corretoresAtivos, crmCliente, atendimentos] = await Promise.all([
     prisma.clientes.findUnique({
       where: { id },
       select: { id: true, id_legado: true, nome: true, telefone: true, email: true, created_at: true, status_cadastro: true, parceiro_id: true, parceiros: { select: { nome: true, funcao: true, status_funcao: true } } }
@@ -40,7 +42,8 @@ export default async function EtiquetaClientePage({ params }: { params: Promise<
       orderBy: [{ funcao: "asc" }, { nome: "asc" }],
       select: { id: true, nome: true, funcao: true }
     }),
-    carregarCrmDoCliente(id)
+    carregarCrmDoCliente(id),
+    carregarAtendimentos(id)
   ]);
   if (!cliente || !etapa) notFound();
 
@@ -97,7 +100,13 @@ export default async function EtiquetaClientePage({ params }: { params: Promise<
           atividades: crmCliente.atividades,
           // quem pode ficar responsável pela atividade: administrativo e corretores ativos
           responsaveis: remetentes,
-          acoes: { agendar: agendarAtividadeAction, concluir: concluirAtividadeAction, remover: removerAtividadeAction, semProxima: semProximaAtividadeAction, salvarCanais: salvarCanaisAction, optOut: optOutAction }
+          acoes: { agendar: agendarAtividadeAction, concluir: concluirAtividadeAction, remover: removerAtividadeAction, semProxima: semProximaAtividadeAction, salvarCanais: salvarCanaisAction, optOut: optOutAction },
+          roteiro: {
+            segmentoSugerido: segmentoDoCliente(etapa.derivacao.papeis, vinculos.vinculos.map((v) => v.tipo)),
+            assistente: (sessao.nome ?? "").trim().split(/\s+/)[0] ?? "",
+            inicial: atendimentos,
+            acoes: { salvar: salvarAtendimentoAction, descartar: descartarAtendimentoAction, concluir: concluirAtendimentoAction }
+          }
         }}
         acoes={{ mover: moverClienteFunilAction, registrarContato: registrarContatoClienteAction, transferir: transferirClienteAction }}
       />

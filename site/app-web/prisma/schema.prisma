@@ -2393,6 +2393,27 @@ model crm_clientes {
   instagram         String?
   facebook          String?
   fonte_dado        String?
+  indicado_por_cliente_id String? @db.Uuid
   updated_at        DateTime  @default(now()) @db.Timestamptz(6)
   updated_by        String?   @db.Uuid
+}
+
+// Roteiro de atendimento guiado (27/11/2026): cada execução (pausada, concluída ou cancelada).
+model crm_atendimentos {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cliente_id      String    @db.Uuid
+  segmento        String
+  status          String    @default("em_andamento")
+  versao_roteiro  Int       @default(1)
+  caminho         Json      @default("[\"C1\"]")
+  respostas       Json      @default("{}")
+  desfecho        String?
+  temperatura     String?
+  resumo          String?
+  por_parceiro_id String?   @db.Uuid
+  created_at      DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime  @default(now()) @db.Timestamptz(6)
+  concluido_em    DateTime? @db.Timestamptz(6)
+
+  @@index([cliente_id, created_at(sort: Desc)], map: "crm_atendimentos_cliente_idx")
 }

@@ -28,6 +28,7 @@ export function ClienteWhatsapp({
   remetenteFallback,
   registrar,
   bloqueado,
+  modeloPedido,
   aoRegistrar
 }: {
   clienteId: string;
@@ -42,6 +43,8 @@ export function ClienteWhatsapp({
   registrar: Registrar;
   // opt-out (LGPD): texto do aviso; com ele o envio fica bloqueado
   bloqueado?: string | null;
+  // o roteiro de atendimento pede um modelo (muda a `chave` a cada pedido)
+  modeloPedido?: { id: string; chave: number } | null;
   aoRegistrar: (c: ContatoCliente) => void;
 }) {
   const numero = numeroWhatsapp(telefoneDigitos);
@@ -79,6 +82,14 @@ export function ClienteWhatsapp({
     const m = MODELO_CLIENTE_POR_ID.get(novo);
     if (m) setTexto(preencherMensagem(m.texto, ctx));
   }
+
+  const pedidoRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!modeloPedido || pedidoRef.current === modeloPedido.chave) return;
+    pedidoRef.current = modeloPedido.chave;
+    trocarModelo(modeloPedido.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modeloPedido]);
 
   const pendentes = (texto.match(/\[[^\]]+\]/g) ?? []).length;
 

@@ -39,6 +39,8 @@ export type ClienteFunil = {
   // repassado ao corretor e ainda sem movimento dele (aparece como "novo para você" no portal)
   repasseDesde: string | null;
   ultimoContatoDias: number | null;
+  // CRM: temperatura do roteiro de atendimento ("nao_quer" = opt-out)
+  temperatura: string | null;
 };
 
 function sinaisVazios(): SinaisCliente {
@@ -169,10 +171,12 @@ export async function carregarFunil(where: object, opcoes: { restrito?: boolean 
   });
   const clientes = baseClientes;
   const ids = opcoes.restrito ? clientes.map((c) => c.id) : null;
-  const [sinais, contatos] = await Promise.all([
+  const [sinais, contatos, estadosCrm] = await Promise.all([
     carregarSinais(ids),
-    prisma.clientes_contatos.groupBy({ by: ["cliente_id"], where: ids ? { cliente_id: { in: ids } } : {}, _max: { data: true } })
+    prisma.clientes_contatos.groupBy({ by: ["cliente_id"], where: ids ? { cliente_id: { in: ids } } : {}, _max: { data: true } }),
+    prisma.crm_clientes.findMany({ where: { OR: [{ temperatura: { not: null } }, { opt_out: true }], ...(ids ? { cliente_id: { in: ids } } : {}) }, select: { cliente_id: true, temperatura: true, opt_out: true } })
   ]);
+  const temperaturas = new Map(estadosCrm.map((e) => [e.cliente_id, e.opt_out ? "nao_quer" : e.temperatura]));
   const ultimoContato = new Map(contatos.map((c) => [c.cliente_id, c._max.data]));
   const agora = new Date();
   return clientes.map((c) => {
@@ -195,7 +199,8 @@ export async function carregarFunil(where: object, opcoes: { restrito?: boolean 
       voltaParaLeads: d.voltaParaLeads,
       atendimentoDesde: c.atendimento_desde ? c.atendimento_desde.toISOString() : null,
       repasseDesde: c.repasse_desde ? c.repasse_desde.toISOString() : null,
-      ultimoContatoDias: contato ? Math.max(0, Math.floor((agora.getTime() - contato.getTime()) / DIA_MS)) : null
+      ultimoContatoDias: contato ? Math.max(0, Math.floor((agora.getTime() - contato.getTime()) / DIA_MS)) : null,
+      temperatura: temperaturas.get(c.id) ?? null
     };
   });
 }

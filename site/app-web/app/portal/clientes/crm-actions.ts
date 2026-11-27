@@ -1,6 +1,7 @@
 "use server";
 
 import { requirePortalSession } from "@/lib/portal-auth";
+import { concluirAtendimento, descartarAtendimento, salvarAtendimento } from "@/lib/crm/atendimento-servidor";
 import { agendarAtividade, concluirAtividade, definirOptOut, registrarSemProximaAtividade, removerAtividade, salvarCanais, type Ator } from "@/lib/crm/servidor";
 
 // CRM do cliente no portal do corretor: só nos clientes que estão no nome dele (a conferência é feita em lib/crm/servidor.ts).
@@ -26,4 +27,15 @@ export async function salvarCanaisPortalAction(clienteId: string, d: Parameters<
 }
 export async function optOutPortalAction(clienteId: string, optOut: boolean, motivo: string | null) {
   return definirOptOut(await ator(), clienteId, optOut, motivo);
+}
+
+// Roteiro de atendimento guiado
+export async function salvarAtendimentoPortalAction(clienteId: string, d: Parameters<typeof salvarAtendimento>[2]) {
+  return salvarAtendimento(await ator(), clienteId, d);
+}
+export async function descartarAtendimentoPortalAction(clienteId: string, atendimentoId: string) {
+  return descartarAtendimento(await ator(), clienteId, atendimentoId);
+}
+export async function concluirAtendimentoPortalAction(clienteId: string, d: Parameters<typeof concluirAtendimento>[2]) {
+  return concluirAtendimento(await ator(), clienteId, d);
 }

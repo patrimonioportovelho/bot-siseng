@@ -1,5 +1,6 @@
 "use client";
 
+import { TEMPERATURAS } from "@/lib/crm/atividades";
 import { memo, useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -263,6 +264,11 @@ const Cartao = memo(function Cartao({
       )}
       <div className="flex items-center justify-between gap-2 text-[10px] text-gray-500">
         <span className="truncate">{c.telefone ?? "Sem telefone"}</span>
+        {c.temperatura && TEMPERATURAS[c.temperatura] && (
+          <span className={`text-[9px] font-bold rounded-full border px-1.5 shrink-0 ${TEMPERATURAS[c.temperatura].cor}`} title={TEMPERATURAS[c.temperatura].rotulo}>
+            {TEMPERATURAS[c.temperatura].icone}
+          </span>
+        )}
         <span className="truncate shrink-0 max-w-[45%]">{c.corretorNome?.split(" ")[0] ?? "—"}</span>
       </div>
       {!corretor && !c.corretorAtivo && <div className="text-[10px] text-red-600">Sem corretor ativo</div>}

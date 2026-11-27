@@ -1,6 +1,7 @@
 "use server";
 
 import { requireEdicao } from "@/lib/auth";
+import { concluirAtendimento, descartarAtendimento, salvarAtendimento } from "@/lib/crm/atendimento-servidor";
 import { agendarAtividade, concluirAtividade, definirOptOut, registrarSemProximaAtividade, removerAtividade, salvarCanais, type Ator } from "@/lib/crm/servidor";
 
 // CRM do cliente no administrativo: agendar a próxima atividade, concluir, canais (Instagram, Facebook) e opt-out.
@@ -27,4 +28,15 @@ export async function salvarCanaisAction(clienteId: string, d: Parameters<typeof
 }
 export async function optOutAction(clienteId: string, optOut: boolean, motivo: string | null) {
   return definirOptOut(await ator(), clienteId, optOut, motivo);
+}
+
+// Roteiro de atendimento guiado
+export async function salvarAtendimentoAction(clienteId: string, d: Parameters<typeof salvarAtendimento>[2]) {
+  return salvarAtendimento(await ator(), clienteId, d);
+}
+export async function descartarAtendimentoAction(clienteId: string, atendimentoId: string) {
+  return descartarAtendimento(await ator(), clienteId, atendimentoId);
+}
+export async function concluirAtendimentoAction(clienteId: string, d: Parameters<typeof concluirAtendimento>[2]) {
+  return concluirAtendimento(await ator(), clienteId, d);
 }

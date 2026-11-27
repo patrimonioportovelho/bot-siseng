@@ -7,11 +7,13 @@ import { ClienteComplementoForm } from "@/components/cliente-complemento-form";
 import { prisma } from "@/lib/prisma";
 import { formatTelefone, hojeInputDate } from "@/lib/format";
 import { carregarCrmDoCliente } from "@/lib/crm/servidor";
+import { carregarAtendimentos } from "@/lib/crm/atendimento-servidor";
+import { segmentoDoCliente } from "@/lib/crm/roteiro";
 import { etapaDoCliente } from "@/lib/clientes/funil-servidor";
 import { carregarVinculosCliente } from "@/lib/clientes/vinculos-servidor";
 import { clienteParaFormulario } from "@/lib/financiamento/avaliacao-credito-servidor";
 import { complementarClienteAction, listasFormularioClienteAction, registrarContatoPortalAction } from "../actions";
-import { agendarAtividadePortalAction, concluirAtividadePortalAction, optOutPortalAction, removerAtividadePortalAction, salvarCanaisPortalAction, semProximaAtividadePortalAction } from "../crm-actions";
+import { agendarAtividadePortalAction, concluirAtividadePortalAction, optOutPortalAction, removerAtividadePortalAction, concluirAtendimentoPortalAction, descartarAtendimentoPortalAction, salvarAtendimentoPortalAction, salvarCanaisPortalAction, semProximaAtividadePortalAction } from "../crm-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -24,11 +26,12 @@ export default async function PortalEtiquetaClientePage({ params }: { params: Pr
   const cliente = await prisma.clientes.findUnique({ where: { id } });
   if (!cliente || cliente.parceiro_id !== session.parceiroId) notFound();
 
-  const [etapa, vinculos, contatos, crmCliente] = await Promise.all([
+  const [etapa, vinculos, contatos, crmCliente, atendimentos] = await Promise.all([
     etapaDoCliente(id),
     carregarVinculosCliente(id),
     prisma.clientes_contatos.findMany({ where: { cliente_id: id }, orderBy: { data: "desc" }, take: 100 }),
-    carregarCrmDoCliente(id)
+    carregarCrmDoCliente(id),
+    carregarAtendimentos(id)
   ]);
   if (!etapa) notFound();
 
@@ -94,6 +97,12 @@ export default async function PortalEtiquetaClientePage({ params }: { params: Pr
               semProxima: semProximaAtividadePortalAction,
               salvarCanais: salvarCanaisPortalAction,
               optOut: optOutPortalAction
+            },
+            roteiro: {
+              segmentoSugerido: segmentoDoCliente(etapa.derivacao.papeis, vinculos.vinculos.map((v) => v.tipo)),
+              assistente: (session.nome ?? "").trim().split(/\s+/)[0] ?? "",
+              inicial: atendimentos,
+              acoes: { salvar: salvarAtendimentoPortalAction, descartar: descartarAtendimentoPortalAction, concluir: concluirAtendimentoPortalAction }
             }
           }}
           acoes={{ registrarContato: registrarContatoPortalAction }}

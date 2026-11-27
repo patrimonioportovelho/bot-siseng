@@ -17,7 +17,11 @@ export const TIPOS_AVISO: Record<string, { icone: string; titulo: (nome: string)
   gestao: { icone: "📑", titulo: (n) => `${n} gerou um contrato de Gestão` },
   ficha_captacao: { icone: "🏷️", titulo: (n) => `${n} gerou uma Ficha de Captação` },
   // dirigido ao corretor (portal): o administrativo passou um cliente para ele
-  cliente_recebido: { icone: "📥", titulo: (n) => `${n} passou um cliente para você` }
+  cliente_recebido: { icone: "📥", titulo: (n) => `${n} passou um cliente para você` },
+  // roteiro de atendimento (CRM)
+  lead_quente: { icone: "🔥", titulo: (n) => `${n} passou um lead quente para você` },
+  lead_quente_sem_corretor: { icone: "🔥", titulo: (n) => `${n}: lead quente SEM corretor` },
+  atencao_adm: { icone: "⚠️", titulo: (n) => `${n} pediu atenção do administrativo` }
 };
 
 const MINUTOS_SEM_REPETIR_LOGIN = 10;

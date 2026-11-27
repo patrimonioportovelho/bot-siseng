@@ -21,7 +21,7 @@ type Resp<T> = ({ ok: true } & T) | { ok: false; erro: string };
 
 const FUNCOES_RESPONSAVEL = ["Administrativo", "Corretor", "Corretor Estagiário"];
 
-async function clienteDoAtor(ator: Ator, clienteId: string) {
+export async function clienteDoAtor(ator: Ator, clienteId: string) {
   const c = await prisma.clientes.findUnique({ where: { id: clienteId }, select: { id: true, nome: true, parceiro_id: true } });
   if (!c) return null;
   if (ator.portal && c.parceiro_id !== ator.parceiroId) return null;
@@ -29,12 +29,12 @@ async function clienteDoAtor(ator: Ator, clienteId: string) {
 }
 
 // O corretor fez o primeiro movimento: o cliente deixa de ser "novo para você".
-async function limparRepasse(ator: Ator, clienteId: string) {
+export async function limparRepasse(ator: Ator, clienteId: string) {
   if (!ator.portal) return;
   await prisma.clientes.updateMany({ where: { id: clienteId, parceiro_id: ator.parceiroId, repasse_desde: { not: null } }, data: { repasse_desde: null, repasse_por: null } });
 }
 
-async function registrarLog(ator: Ator, clienteId: string, acao: string, depois: unknown) {
+export async function registrarLog(ator: Ator, clienteId: string, acao: string, depois: unknown) {
   const dados = { entidadeTipo: "clientes", entidadeId: clienteId, acao, dadosDepois: depois };
   if (ator.portal) await logAlteracaoPortal({ parceiroId: ator.parceiroId, ...dados }).catch(() => undefined);
   else await logAlteracao(dados).catch(() => undefined);
@@ -201,6 +201,19 @@ export async function salvarCanais(
   return { ok: true, crm: (await carregarCrmDoCliente(clienteId)).crm };
 }
 
+// Opt-out: lembretes automáticos de relacionamento (novidades e ganchos) que estavam em aberto são encerrados, sem
+// apagar, para ninguém procurar o cliente por causa deles. Devolve quantos foram encerrados.
+export async function encerrarLembretesDeMarketing(clienteId: string, atorId: string): Promise<number> {
+  const abertos = await prisma.clientes_atividades.findMany({
+    where: { cliente_id: clienteId, feito: false, origem: "roteiro", OR: [{ titulo: { startsWith: "Manutenção:" } }, { titulo: { startsWith: "Lembrar:" } }] },
+    select: { id: true, titulo: true }
+  });
+  for (const a of abertos) {
+    await prisma.clientes_atividades.update({ where: { id: a.id }, data: { feito: true, feito_em: new Date(), feito_por: atorId, titulo: `Cancelada (opt-out) — ${a.titulo}`.slice(0, 200) } });
+  }
+  return abertos.length;
+}
+
 // LGPD: o cliente pediu para não receber novidades. Bloqueia contatos de marketing (WhatsApp do gerador e e-mail em
 // lote) e fica visível na etiqueta. Também pode ser desfeito (o cliente voltou a aceitar).
 export async function definirOptOut(ator: Ator, clienteId: string, optOut: boolean, motivo: string | null): Promise<Resp<{ crm: CrmCliente; contato: ContatoRegistrado }>> {
@@ -215,6 +228,7 @@ export async function definirOptOut(ator: Ator, clienteId: string, optOut: boole
   const contato = await prisma.clientes_contatos.create({
     data: { cliente_id: clienteId, tipo: "Nota", resultado: optOut ? "Opt-out (não quer novidades)" : "Voltou a aceitar contatos", nota: m, por_parceiro_id: ator.parceiroId }
   });
+  if (optOut) await encerrarLembretesDeMarketing(clienteId, ator.parceiroId);
   await limparRepasse(ator, clienteId);
   await registrarLog(ator, clienteId, optOut ? "opt_out_cliente" : "opt_in_cliente", { motivo: m });
   revalidar(ator, clienteId);

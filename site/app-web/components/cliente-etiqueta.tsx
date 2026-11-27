@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, type ReactNode } from "react";
+import { useRef, useState, useTransition, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ClienteWhatsapp } from "@/components/cliente-whatsapp";
@@ -8,6 +8,9 @@ import { ETAPA_FUNIL_POR_ID, movimentoPermitido, type EtapaFunilId } from "@/lib
 import type { VinculoCliente } from "@/lib/clientes/vinculos-servidor";
 import type { ContatoCliente } from "@/app/clientes/funil-actions";
 import { CartaoAtividades, CartaoCanais, ProximaAtividade, type AcoesCrm } from "@/components/cliente-crm";
+import { ClienteRoteiro, type AcoesRoteiro } from "@/components/cliente-roteiro";
+import type { Segmento } from "@/lib/crm/roteiro";
+import type { AtendimentosDoCliente } from "@/lib/crm/atendimento-servidor";
 import { ATIVIDADE_SUGERIDA, TEMPERATURAS, TIPOS_CONTATO_CRM, type AtividadeCliente, type CrmCliente } from "@/lib/crm/atividades";
 
 export type DadosClienteEtiqueta = {
@@ -32,7 +35,15 @@ export type DadosClienteEtiqueta = {
 };
 
 // Dia de hoje em Porto Velho (yyyy-mm-dd), vindo do servidor, para as atividades não trocarem de dia por causa do fuso.
-export type CrmDaEtiqueta = { hoje: string; crm: CrmCliente; atividades: AtividadeCliente[]; responsaveis: { id: string; nome: string }[]; acoes: AcoesCrm };
+export type CrmDaEtiqueta = {
+  hoje: string;
+  crm: CrmCliente;
+  atividades: AtividadeCliente[];
+  responsaveis: { id: string; nome: string }[];
+  acoes: AcoesCrm;
+  // roteiro de atendimento guiado
+  roteiro: { segmentoSugerido: Segmento; assistente: string; inicial: AtendimentosDoCliente; acoes: AcoesRoteiro };
+};
 
 type Acoes = {
   mover?: (id: string, destino: EtapaFunilId) => Promise<{ ok: true } | { ok: false; erro: string }>;
@@ -91,6 +102,8 @@ export function ClienteEtiqueta({
   const [atividades, setAtividades] = useState<AtividadeCliente[]>(crmEtiqueta.atividades);
   const [crm, setCrm] = useState<CrmCliente>(crmEtiqueta.crm);
   const [prompt, setPrompt] = useState<{ titulo: string; tipo: string; origem: string; chave: number } | null>(null);
+  const [modeloPedido, setModeloPedido] = useState<{ id: string; chave: number } | null>(null);
+  const areaWhatsapp = useRef<HTMLDivElement>(null);
   function pedirProximaAtividade(titulo: string, tipoContato: string, origem: string) {
     if (tipoContato === "Transferência") return;
     setPrompt({ titulo, tipo: ATIVIDADE_SUGERIDA[tipoContato] ?? "Ligar", origem, chave: Date.now() });
@@ -270,7 +283,9 @@ export function ClienteEtiqueta({
       </div>
 
       {/* WhatsApp */}
+      <div ref={areaWhatsapp}>
       <ClienteWhatsapp
+        modeloPedido={modeloPedido}
         clienteId={d.id}
         nome={d.nome}
         telefoneDigitos={d.telefoneDigitos}
@@ -287,6 +302,7 @@ export function ClienteEtiqueta({
           pedirProximaAtividade("Mensagem enviada. Qual é a próxima atividade?", c.tipo, "whatsapp");
         }}
       />
+      </div>
 
       {prompt && (
         <ProximaAtividade
@@ -423,6 +439,30 @@ export function ClienteEtiqueta({
           )}
         </div>
       </div>
+
+      <ClienteRoteiro
+        clienteId={d.id}
+        nome={d.nome}
+        assistente={crmEtiqueta.roteiro.assistente}
+        imovel={d.imovelReferencia}
+        hoje={crmEtiqueta.hoje}
+        segmentoSugerido={crmEtiqueta.roteiro.segmentoSugerido}
+        inicial={crmEtiqueta.roteiro.inicial}
+        responsaveis={crmEtiqueta.responsaveis}
+        corretorId={corretorAtual.ativo ? corretorAtual.id : null}
+        acoes={crmEtiqueta.roteiro.acoes}
+        aoConcluir={(r) => {
+          setCrm(r.crm);
+          setAtividades(r.atividades);
+          setContatos((l) => [...r.contatos, ...l]);
+          setPrompt(null);
+          startTransition(() => router.refresh());
+        }}
+        aoPedirModelo={(id) => {
+          setModeloPedido({ id, chave: Date.now() });
+          areaWhatsapp.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+        }}
+      />
     </div>
   );
 }

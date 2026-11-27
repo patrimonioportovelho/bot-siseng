@@ -2,6 +2,8 @@
 
 import { requireEdicao } from "@/lib/auth";
 import { concluirAtendimento, descartarAtendimento, salvarAtendimento } from "@/lib/crm/atendimento-servidor";
+import { adicionarGancho, removerGancho, salvarFicha } from "@/lib/crm/ficha-servidor";
+import type { FichaDados } from "@/lib/crm/ficha";
 import { agendarAtividade, concluirAtividade, definirOptOut, registrarSemProximaAtividade, removerAtividade, salvarCanais, type Ator } from "@/lib/crm/servidor";
 
 // CRM do cliente no administrativo: agendar a próxima atividade, concluir, canais (Instagram, Facebook) e opt-out.
@@ -39,4 +41,15 @@ export async function descartarAtendimentoAction(clienteId: string, atendimentoI
 }
 export async function concluirAtendimentoAction(clienteId: string, d: Parameters<typeof concluirAtendimento>[2]) {
   return concluirAtendimento(await ator(), clienteId, d);
+}
+
+// Ficha de relacionamento e ganchos de conversa
+export async function salvarFichaAction(clienteId: string, dados: FichaDados) {
+  return salvarFicha(await ator(), clienteId, dados);
+}
+export async function adicionarGanchoAction(clienteId: string, texto: string, lembrarEm: string | null) {
+  return adicionarGancho(await ator(), clienteId, texto, lembrarEm);
+}
+export async function removerGanchoAction(ganchoId: string) {
+  return removerGancho(await ator(), ganchoId);
 }

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { lembretesDeDatas } from "@/lib/crm/lembretes-servidor";
 import { situacaoVencimento, hojePortoVelho, hojeInputDate } from "@/lib/format";
 import { STATUS_AVALIACAO_ATIVOS } from "@/lib/financiamento/opcoes";
 import { slaDaOrdem, labelColuna as labelColunaMarketing } from "@/lib/marketing/opcoes";
@@ -133,7 +134,27 @@ async function atividadesDeClientes(parceiroId: string | null, hrefDoCliente: (c
   });
 }
 
-export async function obterNotificacoes(isAdm: boolean, parceiroId: string | null = null): Promise<Notificacao[]> {
+// Datas do relacionamento com o cliente (aniversários, casa, ganchos). O link abre a etiqueta já com a mensagem
+// sugerida. Uma falha aqui nunca derruba o sino.
+async function lembretesDeClientes(opcoes: { parceiroId?: string | null; autorId?: string | null }, hrefDoCliente: (clienteId: string) => string): Promise<Notificacao[]> {
+  try {
+    return (await lembretesDeDatas(opcoes)).slice(0, LIMITE_POR_GRUPO).map((l) => ({
+      id: l.id,
+      titulo: l.titulo,
+      detalhe: l.detalhe,
+      href: `${hrefDoCliente(l.clienteId)}${l.modelo ? `?modelo=${l.modelo}` : ""}`,
+      data: new Date(`${l.data}T00:00:00.000Z`),
+      urgente: false,
+      apenasData: true
+    }));
+  } catch (erro) {
+    console.error("lembretes de clientes", erro);
+    return [];
+  }
+}
+
+// `verClientes` = a pessoa tem acesso ao módulo Clientes (só então vê os lembretes de datas dos clientes).
+export async function obterNotificacoes(isAdm: boolean, parceiroId: string | null = null, verClientes = false): Promise<Notificacao[]> {
   const desde = new Date(Date.now() - DIAS_PARA_NOTIFICAR_CADASTRO * 24 * 60 * 60 * 1000);
   const whereAvaliacoesAtivas = {
     excluido: false,
@@ -326,7 +347,9 @@ export async function obterNotificacoes(isAdm: boolean, parceiroId: string | nul
     }
   }
 
-  itens.push(...(await atividadesDeClientes(parceiroId, (id) => `/clientes/${id}/etiqueta`)));
+  const href = (id: string) => `/clientes/${id}/etiqueta`;
+  const doCrm = await Promise.all([atividadesDeClientes(parceiroId, href), verClientes ? lembretesDeClientes({ autorId: parceiroId }, href) : []]);
+  itens.push(...doCrm.flat());
 
   // Notificações dispensadas (pedido do usuário 30/08/2026) — some da lista
   // antes de ordenar, igual a qualquer outro item que deixou de existir.
@@ -375,7 +398,10 @@ export async function obterNotificacoesPortal(funcaoDoParceiro: string | null, p
     const item = lembreteDeEvento(ev, hoje, "/portal/eventos");
     if (item) itens.push(item);
   }
-  itens.push(...(await atividadesDeClientes(parceiroId, (id) => `/portal/clientes/${id}`)));
+  // sem corretor identificado não há "meus clientes" para lembrar
+  const href = (id: string) => `/portal/clientes/${id}`;
+  const doCrm = await Promise.all([atividadesDeClientes(parceiroId, href), parceiroId ? lembretesDeClientes({ parceiroId, autorId: parceiroId }, href) : []]);
+  itens.push(...doCrm.flat());
 
   const dispensados = await buscarIdsDispensados(parceiroId);
   const itensVisiveis = dispensados.size > 0 ? itens.filter((i) => !dispensados.has(i.id)) : itens;

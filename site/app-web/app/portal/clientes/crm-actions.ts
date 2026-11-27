@@ -2,6 +2,8 @@
 
 import { requirePortalSession } from "@/lib/portal-auth";
 import { concluirAtendimento, descartarAtendimento, salvarAtendimento } from "@/lib/crm/atendimento-servidor";
+import { adicionarGancho, removerGancho, salvarFicha } from "@/lib/crm/ficha-servidor";
+import type { FichaDados } from "@/lib/crm/ficha";
 import { agendarAtividade, concluirAtividade, definirOptOut, registrarSemProximaAtividade, removerAtividade, salvarCanais, type Ator } from "@/lib/crm/servidor";
 
 // CRM do cliente no portal do corretor: só nos clientes que estão no nome dele (a conferência é feita em lib/crm/servidor.ts).
@@ -38,4 +40,15 @@ export async function descartarAtendimentoPortalAction(clienteId: string, atendi
 }
 export async function concluirAtendimentoPortalAction(clienteId: string, d: Parameters<typeof concluirAtendimento>[2]) {
   return concluirAtendimento(await ator(), clienteId, d);
+}
+
+// Ficha de relacionamento e ganchos de conversa
+export async function salvarFichaPortalAction(clienteId: string, dados: FichaDados) {
+  return salvarFicha(await ator(), clienteId, dados);
+}
+export async function adicionarGanchoPortalAction(clienteId: string, texto: string, lembrarEm: string | null) {
+  return adicionarGancho(await ator(), clienteId, texto, lembrarEm);
+}
+export async function removerGanchoPortalAction(ganchoId: string) {
+  return removerGancho(await ator(), ganchoId);
 }

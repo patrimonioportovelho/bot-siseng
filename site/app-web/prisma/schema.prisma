@@ -2399,6 +2399,34 @@ model crm_clientes {
 }
 
 // Roteiro de atendimento guiado (27/11/2026): cada execução (pausada, concluída ou cancelada).
+model crm_fichas {
+  cliente_id   String    @id @db.Uuid
+  dados        Json      @default("{}")
+  casamento_em DateTime? @db.Date
+  casa_em      DateTime? @db.Date
+  updated_at   DateTime  @default(now()) @db.Timestamptz(6)
+  updated_by   String?   @db.Uuid
+}
+
+model crm_ganchos {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cliente_id      String    @db.Uuid
+  texto           String
+  lembrar_em      DateTime? @db.Date
+  atividade_id    String?   @db.Uuid
+  por_parceiro_id String?   @db.Uuid
+  created_at      DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@index([cliente_id, created_at(sort: Desc)], map: "crm_ganchos_cliente_idx")
+}
+
+model crm_roteiro_edicoes {
+  pergunta_id String   @id
+  dados       Json
+  updated_at  DateTime @default(now()) @db.Timestamptz(6)
+  updated_by  String?  @db.Uuid
+}
+
 model crm_atendimentos {
   id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   cliente_id      String    @db.Uuid

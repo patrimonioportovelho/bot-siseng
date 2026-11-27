@@ -1,23 +1,12 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import { ATALHOS_DE_DATA, TEMPERATURAS, TIPOS_ATIVIDADE_CRM, somarDias } from "@/lib/crm/atividades";
-import { DESFECHOS, ETAPAS, PERGUNTA_POR_ID, PRIMEIRA_PERGUNTA, SEGMENTOS, type Pergunta, type Segmento } from "@/lib/crm/roteiro";
-import {
-  MAXIMO_TENTATIVAS,
-  avancar,
-  contextoDe,
-  desfechoFinal,
-  preencherFala,
-  proximaPergunta,
-  resumoDoAtendimento,
-  sugerirProxima,
-  temOptOut,
-  temperaturaFinal,
-  validarResposta,
-  type Resposta,
-  type Respostas
-} from "@/lib/crm/roteiro-motor";
+import { DESFECHOS, ETAPAS, PRIMEIRA_PERGUNTA, SEGMENTOS, type Pergunta, type Segmento } from "@/lib/crm/roteiro";
+import { aplicarEdicoes, type EdicoesRoteiro } from "@/lib/crm/roteiro-edicoes";
+import { CAMPOS_FICHA, type FichaDoCliente } from "@/lib/crm/ficha";
+import { CampoDaFicha, dataDoSistema } from "@/components/cliente-ficha";
+import { MAXIMO_TENTATIVAS, avancar, criarMotor, desfechoFinal, temOptOut, type Motor, type Resposta, type Respostas } from "@/lib/crm/roteiro-motor";
 import type { AtendimentoTela, AtendimentosDoCliente, Conclusao, ProximaEscolhida } from "@/lib/crm/atendimento-servidor";
 
 const CAMPO = "w-full text-xs border border-gray-300 rounded-lg px-2.5 py-1.5 outline-none focus:border-primary bg-white";
@@ -41,8 +30,8 @@ function Selo({ desfecho }: { desfecho: keyof typeof DESFECHOS }) {
 }
 
 // Barra de etapas: a atual em destaque, as já respondidas em verde.
-function Etapas({ atual, caminho }: { atual: string | null; caminho: string[] }) {
-  const feitas = new Set(caminho.slice(0, -1).map((id) => PERGUNTA_POR_ID.get(id)?.etapa));
+function Etapas({ atual, caminho, mapa }: { atual: string | null; caminho: string[]; mapa: Motor["mapa"] }) {
+  const feitas = new Set(caminho.slice(0, -1).map((id) => mapa.get(id)?.etapa));
   return (
     <div className="flex gap-1 overflow-x-auto pb-1">
       {ETAPAS.map((e) => {
@@ -94,6 +83,9 @@ export function ClienteRoteiro({
   responsaveis,
   corretorId,
   acoes,
+  edicoes,
+  ficha,
+  antesDeLigar,
   aoConcluir,
   aoPedirModelo
 }: {
@@ -107,6 +99,12 @@ export function ClienteRoteiro({
   responsaveis: { id: string; nome: string }[];
   corretorId: string | null;
   acoes: AcoesRoteiro;
+  // textos e opções alterados pelo administrativo
+  edicoes: EdicoesRoteiro;
+  // ficha de relacionamento (preenchida na etapa "Relacionamento")
+  ficha: FichaDoCliente;
+  // resumo mostrado antes de começar
+  antesDeLigar?: ReactNode;
   aoConcluir: (r: Conclusao) => void;
   aoPedirModelo: (modeloId: string) => void;
 }) {
@@ -124,11 +122,12 @@ export function ClienteRoteiro({
   const idRef = useRef<string | null>(inicial.aberto?.id ?? null);
   const fila = useRef<Promise<unknown>>(Promise.resolve());
   const raiz = useRef<HTMLDivElement>(null);
+  const motor = useMemo(() => criarMotor(aplicarEdicoes(edicoes)), [edicoes]);
 
   const perguntaId = caminho[caminho.length - 1];
-  const pergunta = PERGUNTA_POR_ID.get(perguntaId) as Pergunta;
+  const pergunta = motor.mapa.get(perguntaId) as Pergunta;
   const resposta: Resposta = respostas[perguntaId] ?? {};
-  const ctx = contextoDe(segmento, caminho, respostas);
+  const ctx = motor.contextoDe(segmento, caminho, respostas);
 
   // Salvamentos em fila (um de cada vez), para nunca criar dois atendimentos abertos.
   function salvar(seg: Segmento, cam: string[], resp: Respostas) {
@@ -159,9 +158,9 @@ export function ClienteRoteiro({
 
   // Preenche o que o caminho já sugere ao chegar numa pergunta (datas e a ação do "QUER").
   function preparar(id: string, cam: string[], resp: Respostas): Respostas {
-    const p = PERGUNTA_POR_ID.get(id);
+    const p = motor.mapa.get(id);
     if (!p || resp[id]) return resp;
-    const c = contextoDe(segmento, cam, resp);
+    const c = motor.contextoDe(segmento, cam, resp);
     if (p.tipo === "data") {
       const dias = id === "D_FUT_QUANDO" ? (c.diasRetorno ?? 30) : id === "C2" ? 1 : 0;
       return { ...resp, [id]: { data: somarDias(hoje, dias) } };
@@ -174,17 +173,17 @@ export function ClienteRoteiro({
   }
 
   function seguir() {
-    const falha = validarResposta(pergunta, respostas[perguntaId], respostas, hoje);
+    const falha = motor.validarResposta(pergunta, respostas[perguntaId], respostas, hoje);
     if (falha) {
       setErro(falha);
       return;
     }
     setErro("");
-    const prox = proximaPergunta(segmento, caminho, respostas);
+    const prox = motor.proximaPergunta(segmento, caminho, respostas);
     if (prox === "FIM") {
-      const c = contextoDe(segmento, caminho, respostas);
+      const c = motor.contextoDe(segmento, caminho, respostas);
       const desfecho = desfechoFinal(c, dados.tentativasSeguidas);
-      const s = sugerirProxima(c, desfecho, respostas, hoje, dados.tentativasSeguidas, primeiroNome);
+      const s = motor.sugerirProxima(c, desfecho, respostas, hoje, dados.tentativasSeguidas, primeiroNome);
       setProxima(s.obrigatoria ? { tipo: s.tipo, titulo: s.titulo, data: s.data, hora: s.hora, responsavelId: corretorId } : null);
       setModo("resumo");
       void salvar(segmento, caminho, respostas);
@@ -227,7 +226,7 @@ export function ClienteRoteiro({
   function continuar(a: AtendimentoTela) {
     idRef.current = a.id;
     setSegmento(a.segmento);
-    const cam = a.caminho.length && a.caminho.every((c) => PERGUNTA_POR_ID.has(c)) ? a.caminho : [PRIMEIRA_PERGUNTA];
+    const cam = a.caminho.length && a.caminho.every((c) => motor.mapa.has(c)) ? a.caminho : [PRIMEIRA_PERGUNTA];
     setCaminho(cam);
     setRespostas(a.respostas);
     setResultado(null);
@@ -292,9 +291,11 @@ export function ClienteRoteiro({
   }
 
   const desfechoPrevisto = desfechoFinal(ctx, dados.tentativasSeguidas);
-  const temperatura = modo === "resumo" ? temperaturaFinal(ctx, desfechoPrevisto, caminho, respostas, hoje) : null;
+  const temperatura = modo === "resumo" ? motor.temperaturaFinal(ctx, desfechoPrevisto, caminho, respostas, hoje) : null;
   const opcoesComObs = (pergunta?.opcoes ?? []).some((o) => o.obsObrigatoria && resposta.v?.includes(o.id));
   const respostaDaObjecao = pergunta?.opcoes?.find((o) => o.resposta && resposta.v?.includes(o.id))?.resposta;
+
+  const camposDescobertos = perguntaId === "R1" ? CAMPOS_FICHA.filter((c) => resposta.v?.includes(c.descoberta)) : [];
 
   return (
     <div ref={raiz} className="bg-white border border-gray-200 rounded-xl p-4 scroll-mt-4">
@@ -316,6 +317,7 @@ export function ClienteRoteiro({
       {/* ---------- Início ---------- */}
       {modo === "inicio" && (
         <div className="flex flex-col gap-3">
+          {antesDeLigar}
           <p className="text-[11px] text-gray-500">Passo a passo para conduzir a conversa. Marque as respostas durante ou logo depois da ligação: o sistema registra o contato, a temperatura e a próxima atividade.</p>
           {dados.tentativasSeguidas > 0 && (
             <div className="text-[11px] rounded-lg border border-amber-200 bg-amber-50 text-amber-800 px-3 py-2">
@@ -361,12 +363,12 @@ export function ClienteRoteiro({
       {/* ---------- Perguntas ---------- */}
       {modo === "perguntas" && pergunta && (
         <div className="flex flex-col gap-3">
-          <Etapas atual={pergunta.etapa} caminho={caminho} />
+          <Etapas atual={pergunta.etapa} caminho={caminho} mapa={motor.mapa} />
 
           {pergunta.fala && (
             <div className="rounded-lg border-l-4 border-blue-400 bg-blue-50 px-3 py-2">
               <div className="text-[10px] uppercase tracking-wide text-blue-500 font-bold">Fala sugerida</div>
-              <div className="text-sm text-blue-900 mt-0.5">“{preencherFala(pergunta.fala, { nome: primeiroNome, assistente, imovel, respostas })}”</div>
+              <div className="text-sm text-blue-900 mt-0.5">“{motor.preencherFala(pergunta.fala, { nome: primeiroNome, assistente, imovel, respostas })}”</div>
             </div>
           )}
           {pergunta.dica && <div className="text-[11px] text-gray-500">💡 {pergunta.dica}</div>}
@@ -375,7 +377,7 @@ export function ClienteRoteiro({
 
           {(pergunta.tipo === "unica" || pergunta.tipo === "multipla" || pergunta.tipo === "indicacao") && (
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
-              {pergunta.opcoes?.map((o) => {
+              {pergunta.opcoes?.filter((o) => !o.oculta || resposta.v?.includes(o.id)).map((o) => {
                 const marcada = !!resposta.v?.includes(o.id);
                 return (
                   <button
@@ -390,6 +392,23 @@ export function ClienteRoteiro({
                   </button>
                 );
               })}
+            </div>
+          )}
+
+          {perguntaId === "R1" && camposDescobertos.length > 0 && (
+            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+              <div className="text-[11px] font-bold text-gray-700 mb-2">Anote na ficha de relacionamento (opcional)</div>
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                {camposDescobertos.map((c) => (
+                  <CampoDaFicha
+                    key={c.id}
+                    campo={c}
+                    valor={resposta.ficha?.[c.id] ?? ficha.dados[c.id]}
+                    travado={dataDoSistema(c.id, ficha)}
+                    aoMudar={(v) => mudar({ ficha: { ...(resposta.ficha ?? {}), [c.id]: v } })}
+                  />
+                ))}
+              </div>
             </div>
           )}
 
@@ -455,7 +474,7 @@ export function ClienteRoteiro({
       {/* ---------- Resumo ---------- */}
       {modo === "resumo" && (
         <div className="flex flex-col gap-3">
-          <Etapas atual={null} caminho={[...caminho, ""]} />
+          <Etapas atual={null} caminho={[...caminho, ""]} mapa={motor.mapa} />
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs text-gray-500">Desfecho:</span>
             <Selo desfecho={desfechoPrevisto} />
@@ -468,7 +487,7 @@ export function ClienteRoteiro({
           </div>
 
           <div className="rounded-lg border border-gray-100 divide-y divide-gray-100">
-            {resumoDoAtendimento(caminho, respostas).map((l) => (
+            {motor.resumoDoAtendimento(caminho, respostas).map((l) => (
               <div key={l.id} className="px-3 py-1.5 text-xs flex gap-2">
                 <span className="text-gray-500 w-40 shrink-0">{l.rotulo}</span>
                 <span className="text-gray-800">{l.texto}</span>

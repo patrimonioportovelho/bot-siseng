@@ -10,20 +10,23 @@ import { formatTelefone, hojeInputDate } from "@/lib/format";
 import { carregarCrmDoCliente } from "@/lib/crm/servidor";
 import { carregarAtendimentos } from "@/lib/crm/atendimento-servidor";
 import { segmentoDoCliente } from "@/lib/crm/roteiro";
+import { carregarFicha } from "@/lib/crm/ficha-servidor";
+import { carregarEdicoes } from "@/lib/crm/roteiro-edicoes-servidor";
 import { etapaDoCliente } from "@/lib/clientes/funil-servidor";
 import { carregarVinculosCliente } from "@/lib/clientes/vinculos-servidor";
 import { moverClienteFunilAction, registrarContatoClienteAction, transferirClienteAction } from "../../funil-actions";
-import { agendarAtividadeAction, concluirAtividadeAction, optOutAction, removerAtividadeAction, concluirAtendimentoAction, descartarAtendimentoAction, salvarAtendimentoAction, salvarCanaisAction, semProximaAtividadeAction } from "../../crm-actions";
+import { agendarAtividadeAction, concluirAtividadeAction, optOutAction, removerAtividadeAction, concluirAtendimentoAction, descartarAtendimentoAction, salvarAtendimentoAction, salvarFichaAction, adicionarGanchoAction, removerGanchoAction, salvarCanaisAction, semProximaAtividadeAction } from "../../crm-actions";
 
 export const dynamic = "force-dynamic";
 
 // Etiqueta do cliente: a etapa do quadro, os vínculos, o gerador de WhatsApp e o histórico de
 // contatos numa tela só (mesmo desenho das etiquetas do Financiamento e do Recrutamento).
-export default async function EtiquetaClientePage({ params }: { params: Promise<{ id: string }> }) {
+export default async function EtiquetaClientePage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ modelo?: string }> }) {
   const sessao = await requireAdminSession();
   const { id } = await params;
+  const { modelo } = await searchParams;
 
-  const [cliente, etapa, vinculos, contatos, remetentes, corretoresAtivos, crmCliente, atendimentos] = await Promise.all([
+  const [cliente, etapa, vinculos, contatos, remetentes, corretoresAtivos, crmCliente, atendimentos, ficha, edicoesRoteiro] = await Promise.all([
     prisma.clientes.findUnique({
       where: { id },
       select: { id: true, id_legado: true, nome: true, telefone: true, email: true, created_at: true, status_cadastro: true, parceiro_id: true, parceiros: { select: { nome: true, funcao: true, status_funcao: true } } }
@@ -43,7 +46,9 @@ export default async function EtiquetaClientePage({ params }: { params: Promise<
       select: { id: true, nome: true, funcao: true }
     }),
     carregarCrmDoCliente(id),
-    carregarAtendimentos(id)
+    carregarAtendimentos(id),
+    carregarFicha(id),
+    carregarEdicoes()
   ]);
   if (!cliente || !etapa) notFound();
 
@@ -80,6 +85,7 @@ export default async function EtiquetaClientePage({ params }: { params: Promise<
       </div>
       <ClienteEtiqueta
         d={dados}
+        modeloInicial={modelo ?? null}
         vinculos={vinculos.vinculos}
         contatosIniciais={contatos.map((c) => ({
           id: c.id,
@@ -105,8 +111,10 @@ export default async function EtiquetaClientePage({ params }: { params: Promise<
             segmentoSugerido: segmentoDoCliente(etapa.derivacao.papeis, vinculos.vinculos.map((v) => v.tipo)),
             assistente: (sessao.nome ?? "").trim().split(/\s+/)[0] ?? "",
             inicial: atendimentos,
+            edicoes: edicoesRoteiro,
             acoes: { salvar: salvarAtendimentoAction, descartar: descartarAtendimentoAction, concluir: concluirAtendimentoAction }
-          }
+          },
+          ficha: { inicial: ficha, acoes: { salvar: salvarFichaAction, adicionarGancho: adicionarGanchoAction, removerGancho: removerGanchoAction } }
         }}
         acoes={{ mover: moverClienteFunilAction, registrarContato: registrarContatoClienteAction, transferir: transferirClienteAction }}
       />

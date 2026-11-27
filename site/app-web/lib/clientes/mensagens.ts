@@ -166,7 +166,13 @@ export const MODELOS_MENSAGEM_CLIENTE: ModeloMensagemCliente[] = [
     id: "roteiro_aniversario_casa",
     grupo: "Roteiro de atendimento",
     titulo: "Aniversário da casa",
-    texto: `Oi, {nome}! 🏠 ${ASSINATURA} Está fazendo um ano da sua conquista! Como está sendo morar aí? Foi um prazer fazer parte desse momento.`
+    texto: `Oi, {nome}! 🏠 ${ASSINATURA} Hoje faz mais um ano que você pegou as chaves desse lar! Como está sendo morar aí? Foi um prazer fazer parte desse momento.`
+  },
+  {
+    id: "roteiro_aniversario_casamento",
+    grupo: "Roteiro de atendimento",
+    titulo: "Aniversário de casamento",
+    texto: `{nome}, feliz aniversário de casamento! 💍 ${ASSINATURA} Que venham muitos anos de parceria e alegria. Um abraço para vocês!`
   },
   {
     id: "roteiro_indicacao",

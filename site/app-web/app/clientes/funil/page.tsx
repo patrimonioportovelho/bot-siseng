@@ -3,6 +3,8 @@ import { Topbar } from "@/components/topbar";
 import { ClientesKanban } from "@/components/clientes-kanban";
 import { lojasSelecionadas, whereLojaFiltro } from "@/lib/lojas/filtro";
 import { carregarFunil } from "@/lib/clientes/funil-servidor";
+import { requireAdminSession } from "@/lib/auth";
+import { acessosDaSessao, nivelEmModulos } from "@/lib/acessos";
 import { moverClienteFunilAction } from "../funil-actions";
 
 export const dynamic = "force-dynamic";
@@ -11,6 +13,8 @@ export const dynamic = "force-dynamic";
 // calculada (vínculos, contratos, propostas, avaliações), então um cliente novo que o corretor
 // cadastra no portal já aparece aqui, em Leads, e muda de coluna sozinho conforme avança.
 export default async function ClientesFunilPage() {
+  const sessao = await requireAdminSession();
+  const podeEditar = nivelEmModulos(acessosDaSessao(sessao), ["clientes"]) === "editar";
   const lojasFiltro = await lojasSelecionadas();
   // mesmo filtro da lista: sem arquivados e respeitando a loja escolhida no topo
   const cards = await carregarFunil({
@@ -32,6 +36,11 @@ export default async function ClientesFunilPage() {
           <Link href="/clientes" className="text-xs border border-gray-300 bg-white rounded-lg px-3 py-1.5 font-semibold text-gray-600 whitespace-nowrap">
             Ver em lista
           </Link>
+          {podeEditar && (
+            <Link href="/clientes/roteiro" className="text-xs border border-gray-300 bg-white rounded-lg px-3 py-1.5 font-semibold text-gray-600 whitespace-nowrap">
+              Editar roteiro
+            </Link>
+          )}
           <Link href="/clientes/novo" className="text-xs bg-primary text-white rounded-lg px-3 py-1.5 font-semibold whitespace-nowrap">
             + Adicionar cliente
           </Link>

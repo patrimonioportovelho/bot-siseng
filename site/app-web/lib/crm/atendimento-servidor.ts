@@ -5,15 +5,11 @@ import { registrarAviso } from "@/lib/avisos-equipe";
 import { gerarProximoIdCliente } from "@/lib/clientes/id-legado";
 import { TIPOS_ATIVIDADE_CRM, somarDias } from "@/lib/crm/atividades";
 import { DESFECHOS, PERGUNTA_POR_ID, SEGMENTOS, VERSAO_ROTEIRO, type Desfecho, type Segmento } from "@/lib/crm/roteiro";
-import {
-  contextoDe,
-  desfechoFinal,
-  temOptOut,
-  temperaturaFinal,
-  textoDoResumo,
-  validarAtendimento,
-  type Respostas
-} from "@/lib/crm/roteiro-motor";
+import { criarMotor, desfechoFinal, temOptOut, type Respostas } from "@/lib/crm/roteiro-motor";
+import { aplicarEdicoes } from "@/lib/crm/roteiro-edicoes";
+import { carregarEdicoes } from "@/lib/crm/roteiro-edicoes-servidor";
+import { CAMPOS_FICHA, limparFicha, type FichaDados, type FichaDoCliente } from "@/lib/crm/ficha";
+import { carregarFicha, criarGancho, gravarFicha } from "@/lib/crm/ficha-servidor";
 import { carregarCrmDoCliente, clienteDoAtor, encerrarLembretesDeMarketing, limparRepasse, registrarLog, type Ator, type ContatoRegistrado } from "@/lib/crm/servidor";
 import type { AtividadeCliente, CrmCliente } from "@/lib/crm/atividades";
 
@@ -94,7 +90,8 @@ function limparDados(segmento: string, caminho: unknown, respostas: unknown): { 
         obs: txt(r.obs, 600),
         nome: txt(r.nome, 120),
         telefone: txt(r.telefone, 25),
-        lembrar: txt(r.lembrar, 10)
+        lembrar: txt(r.lembrar, 10),
+        ficha: id === "R1" && r.ficha ? limparFicha(r.ficha) : undefined
       })
     );
   }
@@ -136,6 +133,7 @@ export type Conclusao = {
   atividades: AtividadeCliente[];
   contatos: ContatoRegistrado[];
   atendimentos: AtendimentosDoCliente;
+  ficha: FichaDoCliente;
   modelo: string | null;
   feito: string[]; // o que o sistema fez, para mostrar a quem atendeu
 };
@@ -151,7 +149,9 @@ export async function concluirAtendimento(
   const dados = limparDados(d.segmento, d.caminho, d.respostas);
   if (!dados) return { ok: false, erro: "Atendimento inválido. Atualize a página." };
   const hoje = hojeInputDate();
-  const erro = validarAtendimento(dados.segmento, dados.caminho, dados.respostas, hoje);
+  // o roteiro em vigor: o original com as edições do administrativo
+  const motor = criarMotor(aplicarEdicoes(await carregarEdicoes()));
+  const erro = motor.validarAtendimento(dados.segmento, dados.caminho, dados.respostas, hoje);
   if (erro) return { ok: false, erro };
 
   const cliente = await prisma.clientes.findUnique({
@@ -160,11 +160,18 @@ export async function concluirAtendimento(
   });
   if (!cliente) return { ok: false, erro: "Cliente não encontrado." };
 
-  const ctx = contextoDe(dados.segmento, dados.caminho, dados.respostas);
+  // da ficha, só vale o que ficou marcado em "O que você descobriu"
+  const r1 = dados.respostas.R1;
+  const descobertas = dados.caminho.includes("R1") ? (r1?.v ?? []) : [];
+  const fichaNova: FichaDados = {};
+  for (const c of CAMPOS_FICHA) if (descobertas.includes(c.descoberta) && r1?.ficha?.[c.id]) fichaNova[c.id] = r1.ficha[c.id];
+  if (r1) dados.respostas.R1 = { ...r1, ficha: Object.keys(fichaNova).length ? fichaNova : undefined };
+
+  const ctx = motor.contextoDe(dados.segmento, dados.caminho, dados.respostas);
   const tentativas = await contarTentativas(clienteId);
   const desfecho = desfechoFinal(ctx, tentativas);
   const optOut = temOptOut(ctx);
-  const temperatura = temperaturaFinal(ctx, desfecho, dados.caminho, dados.respostas, hoje);
+  const temperatura = motor.temperaturaFinal(ctx, desfecho, dados.caminho, dados.respostas, hoje);
 
   // Regra: próxima atividade com data é obrigatória, menos no "não quer" com opt-out.
   const proxima = optOut ? null : d.proxima;
@@ -173,7 +180,7 @@ export async function concluirAtendimento(
     if (!/^\d{4}-\d{2}-\d{2}$/.test(proxima.data) || proxima.data < hoje) return { ok: false, erro: "A próxima atividade precisa de uma data (hoje ou futura)." };
   }
 
-  const resumo = textoDoResumo(desfecho, dados.caminho, dados.respostas);
+  const resumo = motor.textoDoResumo(desfecho, dados.caminho, dados.respostas);
   const corretor = cliente.parceiros && cliente.parceiros.status_funcao === "Ativo" ? cliente.parceiros : null;
   // responsável padrão: o corretor do cliente; o corretor no portal sempre é ele mesmo
   let responsavel = ator.portal ? ator.parceiroId : (proxima?.responsavelId ?? corretor?.id ?? ator.parceiroId);
@@ -217,7 +224,7 @@ export async function concluirAtendimento(
   feito.push("Atendimento registrado em Contatos e notas.");
 
   // 3) estado do relacionamento
-  const motivoOpt = PERGUNTA_POR_ID.get("D_NQ_MOTIVO")?.opcoes?.find((o) => dados.respostas.D_NQ_MOTIVO?.v?.includes(o.id))?.rotulo ?? "Pediu para não receber novidades";
+  const motivoOpt = motor.mapa.get("D_NQ_MOTIVO")?.opcoes?.find((o) => dados.respostas.D_NQ_MOTIVO?.v?.includes(o.id))?.rotulo ?? "Pediu para não receber novidades";
   const estado = {
     ...(temperatura ? { temperatura } : {}),
     ...(ctx.telefoneInvalido ? { telefone_invalido: true } : {}),
@@ -258,7 +265,7 @@ export async function concluirAtendimento(
     if (corretor && corretor.id !== ator.parceiroId) {
       const jaTem = proxima && proxima.tipo === "Ligar" && proxima.data === hoje && responsavel === corretor.id;
       if (!jaTem) await criarAtividade({ tipo: "Ligar", titulo: `Ligar para o cliente (lead quente) — ${cliente.nome}`, data: hoje, responsavelId: corretor.id, contatoId: contato.id });
-      await registrarAviso({ tipo: "lead_quente", parceiroId: ator.parceiroId, paraParceiroId: corretor.id, detalhe: `${cliente.nome} — ${PERGUNTA_POR_ID.get("D_QUER")?.opcoes?.find((o) => dados.respostas.D_QUER?.v?.includes(o.id))?.rotulo ?? "quer seguir"}`, url: `/portal/clientes/${clienteId}` });
+      await registrarAviso({ tipo: "lead_quente", parceiroId: ator.parceiroId, paraParceiroId: corretor.id, detalhe: `${cliente.nome} — ${motor.mapa.get("D_QUER")?.opcoes?.find((o) => dados.respostas.D_QUER?.v?.includes(o.id))?.rotulo ?? "quer seguir"}`, url: `/portal/clientes/${clienteId}` });
       feito.push(`${corretor.nome.split(" ")[0]} foi avisado e tem “Ligar” para hoje.`);
     } else if (!corretor) {
       await registrarAviso({ tipo: "lead_quente_sem_corretor", parceiroId: ator.parceiroId, detalhe: cliente.nome, url: `/clientes/${clienteId}/etiqueta` });
@@ -274,11 +281,21 @@ export async function concluirAtendimento(
     feito.push(`Administrativo avisado: ${assunto}.`);
   }
 
-  // 7) gancho com "lembrar em"
+  // 7) ficha de relacionamento e gancho de conversa (com "lembrar em" vira atividade; no opt-out, sem lembrete)
+  if (await gravarFicha(ator, clienteId, fichaNova, false)) feito.push("Ficha de relacionamento atualizada.");
   const gancho = dados.respostas.R2;
-  if (!optOut && dados.caminho.includes("R2") && gancho?.texto?.trim() && gancho.lembrar && gancho.lembrar >= hoje) {
-    await criarAtividade({ tipo: "Outro", titulo: `Lembrar: ${gancho.texto.trim()} — ${cliente.nome}`, data: gancho.lembrar, responsavelId: ator.portal ? ator.parceiroId : (corretor?.id ?? ator.parceiroId) });
-    feito.push(`Lembrete do gancho marcado para ${gancho.lembrar.split("-").reverse().join("/")}.`);
+  if (dados.caminho.includes("R2") && gancho?.texto?.trim()) {
+    const lembrar = !optOut && gancho.lembrar && gancho.lembrar >= hoje ? gancho.lembrar : null;
+    await criarGancho({
+      clienteId,
+      nomeCliente: cliente.nome,
+      texto: gancho.texto,
+      lembrarEm: lembrar,
+      responsavelId: ator.portal ? ator.parceiroId : (corretor?.id ?? ator.parceiroId),
+      autorId: ator.parceiroId,
+      atendimentoContatoId: contato.id
+    });
+    feito.push(lembrar ? `Gancho guardado, com lembrete em ${lembrar.split("-").reverse().join("/")}.` : "Gancho guardado na ficha.");
   }
 
   // 8) indicação: vira um lead novo, ligado a quem indicou
@@ -318,6 +335,6 @@ export async function concluirAtendimento(
   revalidatePath(ator.portal ? `/portal/clientes/${clienteId}` : `/clientes/${clienteId}/etiqueta`);
   revalidatePath(ator.portal ? "/portal/clientes" : "/clientes/funil");
 
-  const [{ crm, atividades }, atendimentos] = await Promise.all([carregarCrmDoCliente(clienteId), carregarAtendimentos(clienteId)]);
-  return { ok: true, crm, atividades, contatos, atendimentos, modelo: ctx.modelo, feito };
+  const [{ crm, atividades }, atendimentos, ficha] = await Promise.all([carregarCrmDoCliente(clienteId), carregarAtendimentos(clienteId), carregarFicha(clienteId)]);
+  return { ok: true, crm, atividades, contatos, atendimentos, ficha, modelo: ctx.modelo, feito };
 }

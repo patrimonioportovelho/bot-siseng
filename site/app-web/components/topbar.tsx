@@ -1,4 +1,5 @@
 import { getAdminSession } from "@/lib/auth";
+import { acessosDaSessao, nivelEmModulos } from "@/lib/acessos";
 import { logoutAction } from "@/app/login/actions";
 import { listarLojas, lojasSelecionadas } from "@/lib/lojas/filtro";
 import { LojaFiltroBotao } from "@/components/loja-filtro-botao";
@@ -19,7 +20,7 @@ export async function Topbar() {
   const [lojas, selecionadas, notificacoes] = await Promise.all([
     listarLojas(),
     lojasSelecionadas(),
-    obterNotificacoes(Boolean(session?.isAdm), session?.parceiroId ?? null)
+    obterNotificacoes(Boolean(session?.isAdm), session?.parceiroId ?? null, !!session && nivelEmModulos(acessosDaSessao(session), ["clientes"]) !== null)
   ]);
 
   return (

@@ -55,7 +55,18 @@ export type Acao =
   | { t: "segmento"; v: Segmento }
   | { t: "tag"; v: string };
 
-export type Opcao = { id: string; rotulo: string; proximo?: string; acoes?: Acao[]; obsObrigatoria?: boolean; resposta?: string };
+export type Opcao = {
+  id: string;
+  rotulo: string;
+  proximo?: string;
+  acoes?: Acao[];
+  obsObrigatoria?: boolean;
+  resposta?: string;
+  // escondida pelo administrativo (não aparece mais para escolher)
+  oculta?: boolean;
+  // opção criada pelo administrativo: funciona igual a esta
+  como?: string;
+};
 
 export type Pergunta = {
   id: string;

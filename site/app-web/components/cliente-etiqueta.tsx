@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useTransition, type ReactNode } from "react";
+import { useEffect, useRef, useState, useTransition, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ClienteWhatsapp } from "@/components/cliente-whatsapp";
@@ -9,6 +9,10 @@ import type { VinculoCliente } from "@/lib/clientes/vinculos-servidor";
 import type { ContatoCliente } from "@/app/clientes/funil-actions";
 import { CartaoAtividades, CartaoCanais, ProximaAtividade, type AcoesCrm } from "@/components/cliente-crm";
 import { ClienteRoteiro, type AcoesRoteiro } from "@/components/cliente-roteiro";
+import { ClienteFicha, type AcoesFicha } from "@/components/cliente-ficha";
+import { AntesDeLigar } from "@/components/cliente-antes-de-ligar";
+import type { EdicoesRoteiro } from "@/lib/crm/roteiro-edicoes";
+import type { FichaDoCliente } from "@/lib/crm/ficha";
 import type { Segmento } from "@/lib/crm/roteiro";
 import type { AtendimentosDoCliente } from "@/lib/crm/atendimento-servidor";
 import { ATIVIDADE_SUGERIDA, TEMPERATURAS, TIPOS_CONTATO_CRM, type AtividadeCliente, type CrmCliente } from "@/lib/crm/atividades";
@@ -42,7 +46,9 @@ export type CrmDaEtiqueta = {
   responsaveis: { id: string; nome: string }[];
   acoes: AcoesCrm;
   // roteiro de atendimento guiado
-  roteiro: { segmentoSugerido: Segmento; assistente: string; inicial: AtendimentosDoCliente; acoes: AcoesRoteiro };
+  roteiro: { segmentoSugerido: Segmento; assistente: string; inicial: AtendimentosDoCliente; edicoes: EdicoesRoteiro; acoes: AcoesRoteiro };
+  // ficha de relacionamento e ganchos
+  ficha: { inicial: FichaDoCliente; acoes: AcoesFicha };
 };
 
 type Acoes = {
@@ -78,6 +84,7 @@ export function ClienteEtiqueta({
   modoCorretor = false,
   extra,
   crmEtiqueta,
+  modeloInicial = null,
   acoes
 }: {
   d: DadosClienteEtiqueta;
@@ -93,6 +100,8 @@ export function ClienteEtiqueta({
   extra?: ReactNode;
   // próxima atividade, canais e opt-out (CRM do cliente)
   crmEtiqueta: CrmDaEtiqueta;
+  // modelo de WhatsApp pedido pelo link (ex.: aviso de aniversário no sino)
+  modeloInicial?: string | null;
   acoes: Acoes;
 }) {
   const router = useRouter();
@@ -104,6 +113,14 @@ export function ClienteEtiqueta({
   const [prompt, setPrompt] = useState<{ titulo: string; tipo: string; origem: string; chave: number } | null>(null);
   const [modeloPedido, setModeloPedido] = useState<{ id: string; chave: number } | null>(null);
   const areaWhatsapp = useRef<HTMLDivElement>(null);
+  const [ficha, setFicha] = useState<FichaDoCliente>(crmEtiqueta.ficha.inicial);
+  // veio de um aviso: já deixa a mensagem sugerida aberta
+  useEffect(() => {
+    if (!modeloInicial) return;
+    setModeloPedido({ id: modeloInicial, chave: Date.now() });
+    const t = setTimeout(() => areaWhatsapp.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 300);
+    return () => clearTimeout(t);
+  }, [modeloInicial]);
   function pedirProximaAtividade(titulo: string, tipoContato: string, origem: string) {
     if (tipoContato === "Transferência") return;
     setPrompt({ titulo, tipo: ATIVIDADE_SUGERIDA[tipoContato] ?? "Ligar", origem, chave: Date.now() });
@@ -451,7 +468,11 @@ export function ClienteEtiqueta({
         responsaveis={crmEtiqueta.responsaveis}
         corretorId={corretorAtual.ativo ? corretorAtual.id : null}
         acoes={crmEtiqueta.roteiro.acoes}
+        edicoes={crmEtiqueta.roteiro.edicoes}
+        ficha={ficha}
+        antesDeLigar={<AntesDeLigar hoje={crmEtiqueta.hoje} segmento={crmEtiqueta.roteiro.segmentoSugerido} crm={crm} contatos={contatos} atividades={atividades} ficha={ficha} />}
         aoConcluir={(r) => {
+          setFicha(r.ficha);
           setCrm(r.crm);
           setAtividades(r.atividades);
           setContatos((l) => [...r.contatos, ...l]);
@@ -461,6 +482,18 @@ export function ClienteEtiqueta({
         aoPedirModelo={(id) => {
           setModeloPedido({ id, chave: Date.now() });
           areaWhatsapp.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+        }}
+      />
+
+      <ClienteFicha
+        clienteId={d.id}
+        hoje={crmEtiqueta.hoje}
+        ficha={ficha}
+        optOut={crm.optOut}
+        acoes={crmEtiqueta.ficha.acoes}
+        aoMudar={(r) => {
+          setFicha(r.ficha);
+          setAtividades(r.atividades);
         }}
       />
     </div>

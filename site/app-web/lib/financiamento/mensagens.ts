@@ -96,6 +96,12 @@ export const MODELOS_MENSAGEM_FIN: ModeloMensagemFin[] = [
     texto: `Oi, {nome}! ${ASSINATURA} Contrato assinado! Agora o cartório registra o contrato e a alienação fiduciária na matrícula do imóvel. Te aviso a cada passo e, se o cartório pedir algo, já te falo.`
   },
   {
+    id: "cli_garantia",
+    destinatario: "cliente",
+    titulo: "Garantia Habitacional — documentação na Caixa",
+    texto: `Oi, {nome}! ${ASSINATURA} O contrato do imóvel {imovel} já está registrado e agora estamos na etapa de entrega da documentação à Caixa, para a liberação do valor financiado ao vendedor. O prazo da Caixa é de 5 dias úteis. Te aviso assim que o pagamento sair.`
+  },
+  {
     id: "cli_concluido",
     destinatario: "cliente",
     titulo: "Financiamento concluído",
@@ -176,6 +182,12 @@ export const MODELOS_MENSAGEM_FIN: ModeloMensagemFin[] = [
     texto: `Oi, {nome}! ${ASSINATURA} Para seguir com o financiamento da venda do imóvel {imovel}, precisamos da sua assinatura nos formulários do banco. Temos 5 dias úteis para concluir. Qual dia e horário ficam melhores para você assinar?`
   },
   {
+    id: "ven_garantia",
+    destinatario: "vendedor",
+    titulo: "Garantia Habitacional — pagamento ao vendedor",
+    texto: `Oi, {nome}! ${ASSINATURA} Boa notícia sobre a venda do imóvel {imovel}: o contrato já está registrado e estamos na etapa de entrega da documentação à Caixa para a liberação do valor financiado a você. O prazo da Caixa é de 5 dias úteis. Aviso assim que o pagamento sair.`
+  },
+  {
     id: "ven_livre",
     destinatario: "vendedor",
     titulo: "Mensagem livre",
@@ -193,7 +205,7 @@ export function modeloSugeridoFin(params: {
   statusAvaliacao: string;
 }): string {
   const { coluna, destinatario, inconformidadeAberta, statusAvaliacao } = params;
-  if (destinatario === "vendedor") return coluna === "formularios" ? "ven_formularios" : "ven_documentos";
+  if (destinatario === "vendedor") return coluna === "formularios" ? "ven_formularios" : coluna === "garantia" ? "ven_garantia" : "ven_documentos";
 
   if (destinatario === "parceiro") {
     if (inconformidadeAberta) return "par_pendencia";
@@ -220,6 +232,7 @@ export function modeloSugeridoFin(params: {
     comite: "cli_comite",
     contrato: "cli_contrato",
     registro: "cli_registro",
+    garantia: "cli_garantia",
     concluido: "cli_concluido",
     encerrado: "cli_livre"
   };
